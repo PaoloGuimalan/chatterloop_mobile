@@ -2,7 +2,6 @@ import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 
