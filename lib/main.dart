@@ -1,6 +1,5 @@
 import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 void main() {

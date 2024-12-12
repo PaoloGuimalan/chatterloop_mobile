@@ -1,5 +1,3 @@
-import 'package:chatterloop_app/core/utils/routing_tools.dart';
-import 'package:chatterloop_app/main.dart';
 import 'package:flutter/material.dart';
 
 class WelcomeScreen extends StatefulWidget {
