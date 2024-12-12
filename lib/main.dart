@@ -1,9 +1,18 @@
+import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
+import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_redux/flutter_redux.dart';
 
 void main() {
-  runApp(const MyApp());
+  StateStore reduxStore = StateStore();
+
+  runApp(StoreProvider<AppState>(
+    store: reduxStore.store, // Wrap with StoreProvider
+    child: const MyApp(),
+  ));
 }
 
 class MyApp extends StatelessWidget {
@@ -35,32 +44,44 @@ class MyHomePage extends StatefulWidget {
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class _MyHomePageState extends State<MyHomePage> {
-  bool isLoggedIn = false;
-
   @override
   void initState() {
     super.initState();
-    setLoginState();
-  }
-
-  void setLoginState() {
-    Future.delayed(Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() {
-          isLoggedIn = true;
-        });
-      }
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return isLoggedIn
-        ? MaterialApp(
-            navigatorKey: navigatorKey,
-            initialRoute: '/',
-            routes: AppRoutes.routes,
-          )
-        : WelcomeScreen();
+    return AppContainer();
+  }
+}
+
+class AppContainer extends StatefulWidget {
+  const AppContainer({super.key});
+
+  @override
+  State<AppContainer> createState() => AppContainerState();
+}
+
+class AppContainerState extends State<AppContainer> {
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StoreConnector<AppState, UserAuth>(builder: (context, userAuth) {
+      bool? isLoggedIn = userAuth.auth;
+      return isLoggedIn != null
+          ? MaterialApp(
+              navigatorKey: navigatorKey,
+              initialRoute: isLoggedIn ? '/' : '/login',
+              routes:
+                  isLoggedIn ? AppRoutes.privateroutes : AppRoutes.publicroutes,
+            )
+          : WelcomeScreen();
+    }, converter: (store) {
+      return store.state.userAuth;
+    });
   }
 }
