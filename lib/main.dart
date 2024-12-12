@@ -1,4 +1,6 @@
+import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 void main() {
@@ -31,11 +33,35 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 class _MyHomePageState extends State<MyHomePage> {
+  bool isLoggedIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    setLoginState();
+  }
+
+  void setLoginState() {
+    Future.delayed(Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          isLoggedIn = true;
+        });
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      routes: {"/": (context) => WelcomeScreen()},
-    );
+    return isLoggedIn
+        ? MaterialApp(
+            navigatorKey: navigatorKey,
+            initialRoute: '/',
+            routes: AppRoutes.routes,
+          )
+        : WelcomeScreen();
   }
 }

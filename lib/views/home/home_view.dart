@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class HomeView extends StatefulWidget {
+  const HomeView({super.key});
 
   @override
-  LoginScreenState createState() => LoginScreenState();
+  HomeViewState createState() => HomeViewState();
 }
 
-class LoginScreenState extends State<LoginScreen> {
+class HomeViewState extends State<HomeView> {
   @override
   void initState() {
     super.initState();
@@ -18,7 +18,7 @@ class LoginScreenState extends State<LoginScreen> {
     return MaterialApp(
       home: Scaffold(
         body: Center(
-          child: Text("Hello, Login!"),
+          child: Text("Hello, Home!"),
         ),
       ),
     );

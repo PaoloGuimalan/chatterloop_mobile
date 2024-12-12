@@ -1,3 +1,5 @@
+import 'package:chatterloop_app/core/utils/routing_tools.dart';
+import 'package:chatterloop_app/main.dart';
 import 'package:flutter/material.dart';
 
 class WelcomeScreen extends StatefulWidget {
@@ -11,6 +13,8 @@ class WelcomeScreenState extends State<WelcomeScreen> {
   @override
   void initState() {
     super.initState();
+    // RoutingTools routingTools = RoutingTools();
+    // routingTools.redirectTimeout("/login", 3);
   }
 
   @override
