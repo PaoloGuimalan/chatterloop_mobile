@@ -1,10 +1,19 @@
+// ignore_for_file: use_build_context_synchronously
+import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
+import 'package:chatterloop_app/core/utils/jwt_tools.dart';
+import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 void main() {
   StateStore reduxStore = StateStore();
@@ -68,16 +77,65 @@ class AppContainerState extends State<AppContainer> {
     super.initState();
   }
 
+  final storage = FlutterSecureStorage();
+
+  Future<void> checkToken(BuildContext context) async {
+    APIRequests apiRequests = APIRequests();
+    JwtTools jwt = JwtTools();
+    String? token = await storage.read(key: 'token');
+
+    if (kDebugMode) {
+      print("JWT Checker Triggered");
+    }
+
+    if (!mounted) return;
+
+    UserAuth userAuth = StoreProvider.of<AppState>(context).state.userAuth;
+
+    if (token == null) {
+      Future.delayed(Duration(seconds: 3), () {
+        StoreProvider.of<AppState>(context).dispatch(
+            DispatchModel(setUserAuthT, UserAuth(false, userAuth.user)));
+      });
+      navigatorKey.currentState?.pushNamed('/login');
+      return;
+    }
+
+    JWTCheckerResponse? jwtcheckResponse =
+        await apiRequests.jwtCheckerRequest();
+
+    if (jwtcheckResponse?.usertoken != null) {
+      Map<String, dynamic>? userResponse =
+          jwt.verifyJwt(jwtcheckResponse?.usertoken ?? '', secretKey);
+      Future.delayed(Duration(seconds: 3), () {
+        StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+            setUserAuthT,
+            UserAuth(
+                true,
+                UserAccount(
+                    userResponse?["userID"],
+                    UserFullname(
+                        userResponse?["fullname"]["firstName"],
+                        userResponse?["fullname"]["middleName"],
+                        userResponse?["fullname"]["lastName"]),
+                    userResponse?["email"],
+                    userResponse?["isActivated"],
+                    userResponse?["isVerified"]))));
+        navigatorKey.currentState?.pushNamed("/");
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    checkToken(context);
     return StoreConnector<AppState, UserAuth>(builder: (context, userAuth) {
       bool? isLoggedIn = userAuth.auth;
       return isLoggedIn != null
           ? MaterialApp(
               navigatorKey: navigatorKey,
               initialRoute: isLoggedIn ? '/' : '/login',
-              routes:
-                  isLoggedIn ? AppRoutes.privateroutes : AppRoutes.publicroutes,
+              routes: AppRoutes.routes,
             )
           : WelcomeScreen();
     }, converter: (store) {
