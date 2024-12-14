@@ -1,11 +1,17 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/utils/jwt_tools.dart';
+import 'package:chatterloop_app/main.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
-import 'package:flutter/foundation.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -18,6 +24,7 @@ class LoginScreenState extends State<LoginScreen> {
   String email = "";
   String password = "";
   bool obscurePassword = true;
+  final storage = FlutterSecureStorage();
 
   @override
   void initState() {
@@ -30,14 +37,24 @@ class LoginScreenState extends State<LoginScreen> {
     LoginResponse? loginResponse =
         await apiRequests.loginRequest(email, password);
 
-    if (kDebugMode) {
-      print("RESPONSE");
-      print(loginResponse?.authtoken);
-      if (loginResponse?.authtoken != null &&
-          loginResponse?.usertoken != null) {
-        print(jwt.verifyJwt(loginResponse?.authtoken ?? '', secretKey));
-        print(jwt.verifyJwt(loginResponse?.usertoken ?? '', secretKey));
-      }
+    if (loginResponse?.authtoken != null && loginResponse?.usertoken != null) {
+      await storage.write(key: 'token', value: loginResponse?.authtoken);
+      Map<String, dynamic>? userResponse =
+          jwt.verifyJwt(loginResponse?.usertoken ?? '', secretKey);
+      StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+          setUserAuthT,
+          UserAuth(
+              true,
+              UserAccount(
+                  userResponse?["userID"],
+                  UserFullname(
+                      userResponse?["fullname"]["firstName"],
+                      userResponse?["fullname"]["middleName"],
+                      userResponse?["fullname"]["lastName"]),
+                  userResponse?["email"],
+                  userResponse?["isActivated"],
+                  userResponse?["isVerified"]))));
+      navigatorKey.currentState?.pushNamed("/");
     }
   }
 

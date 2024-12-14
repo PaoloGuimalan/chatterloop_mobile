@@ -1,11 +1,13 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/main.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -20,10 +22,11 @@ class HomeViewState extends State<HomeView> {
     super.initState();
   }
 
+  final storage = FlutterSecureStorage();
+
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
-      UserAuth userAuth = state.userAuth;
       return MaterialApp(
         home: Scaffold(
           body: Center(
@@ -31,12 +34,14 @@ class HomeViewState extends State<HomeView> {
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Text("Hello, Home!"),
               ElevatedButton(
-                  onPressed: () {
-                    if (kDebugMode) {
-                      print(userAuth.auth);
-                    }
+                  onPressed: () async {
+                    await storage.delete(key: 'token');
                     StoreProvider.of<AppState>(context).dispatch(DispatchModel(
-                        setUserAuthT, UserAuth(false, userAuth.user)));
+                        setUserAuthT,
+                        UserAuth(
+                            false,
+                            UserAccount("", UserFullname("", "", ""), "", false,
+                                false))));
                     navigatorKey.currentState?.pushNamed("/login");
                   },
                   child: Text("Click"))

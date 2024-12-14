@@ -11,3 +11,13 @@ class LoginResponse {
     );
   }
 }
+
+class JWTCheckerResponse {
+  String usertoken;
+
+  JWTCheckerResponse(this.usertoken);
+
+  factory JWTCheckerResponse.fromJson(Map<String, dynamic> json) {
+    return JWTCheckerResponse(json['usertoken']);
+  }
+}
