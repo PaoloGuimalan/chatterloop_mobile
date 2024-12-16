@@ -30,22 +30,94 @@ class HomeViewState extends State<HomeView> {
       return MaterialApp(
         home: Scaffold(
           body: Center(
-            child:
+            child: Stack(
+              children: [
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text("Hello, Home!"),
-              ElevatedButton(
-                  onPressed: () async {
-                    await storage.delete(key: 'token');
-                    StoreProvider.of<AppState>(context).dispatch(DispatchModel(
-                        setUserAuthT,
-                        UserAuth(
-                            false,
-                            UserAccount("", UserFullname("", "", ""), "", false,
-                                false))));
-                    navigatorKey.currentState?.pushNamed("/login");
-                  },
-                  child: Text("Click"))
-            ]),
+                  Expanded(
+                      child: Container(
+                    width: MediaQuery.of(context).size.width,
+                    color: Color(0xfff0f2f5),
+                    child: Center(
+                      child: Text("Hello, Home!"),
+                    ),
+                  )),
+                  Container(
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border(
+                            top: BorderSide(
+                                width: 0.5, color: Color(0xffd2d2d2)))),
+                    height: 70,
+                    padding: EdgeInsets.all(10),
+                    width: MediaQuery.of(context).size.width,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        ElevatedButton(onPressed: () {}, child: Text("H")),
+                        ElevatedButton(onPressed: () {}, child: Text("M")),
+                        ElevatedButton(onPressed: () {}, child: Text("C")),
+                        ElevatedButton(onPressed: () {}, child: Text("S")),
+                        ElevatedButton(onPressed: () {}, child: Text("P*")),
+                      ],
+                    ),
+                  )
+                ]),
+                Positioned(
+                    top: 0,
+                    height: 70,
+                    width: MediaQuery.of(context).size.width,
+                    child: Padding(
+                      padding: EdgeInsets.all(10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisSize: MainAxisSize.max,
+                        children: [
+                          Text(
+                            "Chatterloop",
+                            style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF565656)),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              ElevatedButton(
+                                  onPressed: () {}, child: Text("M*")),
+                              SizedBox(
+                                width: 5,
+                              ),
+                              ElevatedButton(
+                                  onPressed: () {}, child: Text("N")),
+                              SizedBox(
+                                width: 5,
+                              ),
+                              ElevatedButton(
+                                  onPressed: () async {
+                                    await storage.delete(key: 'token');
+                                    StoreProvider.of<AppState>(context)
+                                        .dispatch(DispatchModel(
+                                            setUserAuthT,
+                                            UserAuth(
+                                                false,
+                                                UserAccount(
+                                                    "",
+                                                    UserFullname("", "", ""),
+                                                    "",
+                                                    false,
+                                                    false))));
+                                    navigatorKey.currentState
+                                        ?.pushNamed("/login");
+                                  },
+                                  child: Text("L")),
+                            ],
+                          )
+                        ],
+                      ),
+                    )),
+              ],
+            ),
           ),
         ),
       );
