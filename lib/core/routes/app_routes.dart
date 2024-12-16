@@ -5,6 +5,12 @@ import 'package:flutter/material.dart';
 class AppRoutes {
   static Map<String, WidgetBuilder> routes = {
     "/login": (context) => LoginScreen(),
-    "/": (context) => HomeView()
+    "/": (context) => Container(
+          color: Colors.white,
+          child: Padding(
+            padding: EdgeInsets.only(top: 30),
+            child: HomeView(),
+          ),
+        )
   };
 }
