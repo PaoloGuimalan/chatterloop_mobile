@@ -68,7 +68,8 @@ class HomeViewState extends State<HomeView> {
                     height: 70,
                     width: MediaQuery.of(context).size.width,
                     child: Padding(
-                      padding: EdgeInsets.all(10),
+                      padding: EdgeInsets.only(
+                          top: 30, bottom: 10, left: 10, right: 10),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         mainAxisSize: MainAxisSize.max,
