@@ -127,7 +127,11 @@ class AppContainerState extends State<AppContainer> {
                         userResponse?["fullname"]["lastName"]),
                     userResponse?["email"],
                     userResponse?["isActivated"],
-                    userResponse?["isVerified"]))));
+                    userResponse?["isVerified"],
+                    null,
+                    null,
+                    null,
+                    null))));
         navigatorKey.currentState?.pushNamed("/");
       });
     }

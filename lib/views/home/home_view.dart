@@ -1,8 +1,14 @@
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, depend_on_referenced_packages
 
+import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post_item_widget.dart';
+import 'package:chatterloop_app/core/utils/jwt_tools.dart';
 import 'package:chatterloop_app/main.dart';
+import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/post_models/user_post_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +27,7 @@ class HomeViewState extends State<HomeView> {
   void initState() {
     super.initState();
   }
+  // HomeView({super.key});
 
   final storage = FlutterSecureStorage();
 
@@ -37,9 +44,33 @@ class HomeViewState extends State<HomeView> {
         overlayColor: Color(0xFF565656));
   }
 
+  Future<void> getPostsProcess(BuildContext context) async {
+    APIRequests apiRequests = APIRequests();
+    JwtTools jwt = JwtTools();
+
+    PostsResponse? postsResponse =
+        await apiRequests.getPostsRequest(10.toString());
+
+    if (postsResponse != null) {
+      Map<String, dynamic>? decodedPostResponse =
+          jwt.verifyJwt(postsResponse.result, secretKey);
+
+      List<dynamic> postsInJson = decodedPostResponse?["data"]["posts"];
+
+      List<UserPost> postresponse =
+          postsInJson.map((post) => UserPost.fromJson(post)).toList();
+
+      StoreProvider.of<AppState>(context)
+          .dispatch(DispatchModel(setFeedPostsT, postresponse));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
+      if (state.posts.isEmpty) {
+        getPostsProcess(context);
+      }
       return MaterialApp(
         home: Scaffold(
           body: Center(
@@ -51,7 +82,15 @@ class HomeViewState extends State<HomeView> {
                     width: MediaQuery.of(context).size.width,
                     color: Color(0xfff0f2f5),
                     child: Center(
-                      child: Text("Hello, Home!"),
+                      child: Padding(
+                        padding: EdgeInsets.only(top: 45),
+                        child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: state.posts.length,
+                            itemBuilder: (context, index) {
+                              return PostItemWidget(post: state.posts[index]);
+                            }),
+                      ),
                     ),
                   )),
                   Container(
@@ -174,7 +213,11 @@ class HomeViewState extends State<HomeView> {
                                                       UserFullname("", "", ""),
                                                       "",
                                                       false,
-                                                      false))));
+                                                      false,
+                                                      null,
+                                                      null,
+                                                      null,
+                                                      null))));
                                       navigatorKey.currentState
                                           ?.pushNamed("/login");
                                     },

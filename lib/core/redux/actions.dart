@@ -11,4 +11,13 @@ class ReduxActions {
         return state;
     }
   }
+
+  AppState setFeedPosts(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case setFeedPostsT:
+        return AppState(posts: action.payload);
+      default:
+        return state;
+    }
+  }
 }

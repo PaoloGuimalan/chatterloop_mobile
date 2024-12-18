@@ -53,7 +53,11 @@ class LoginScreenState extends State<LoginScreen> {
                       userResponse?["fullname"]["lastName"]),
                   userResponse?["email"],
                   userResponse?["isActivated"],
-                  userResponse?["isVerified"]))));
+                  userResponse?["isVerified"],
+                  null,
+                  null,
+                  null,
+                  null))));
       navigatorKey.currentState?.pushNamed("/");
     }
   }

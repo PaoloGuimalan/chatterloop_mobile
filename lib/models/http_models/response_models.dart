@@ -1,3 +1,13 @@
+class JWTCheckerResponse {
+  String usertoken;
+
+  JWTCheckerResponse(this.usertoken);
+
+  factory JWTCheckerResponse.fromJson(Map<String, dynamic> json) {
+    return JWTCheckerResponse(json['usertoken']);
+  }
+}
+
 class LoginResponse {
   String usertoken;
   String authtoken;
@@ -12,12 +22,14 @@ class LoginResponse {
   }
 }
 
-class JWTCheckerResponse {
-  String usertoken;
+class PostsResponse {
+  String result;
 
-  JWTCheckerResponse(this.usertoken);
+  PostsResponse(this.result);
 
-  factory JWTCheckerResponse.fromJson(Map<String, dynamic> json) {
-    return JWTCheckerResponse(json['usertoken']);
+  factory PostsResponse.fromJson(Map<String, dynamic> json) {
+    return PostsResponse(
+      json['result'],
+    );
   }
 }
