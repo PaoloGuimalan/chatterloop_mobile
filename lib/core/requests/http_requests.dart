@@ -61,4 +61,31 @@ class APIRequests {
       return null;
     }
   }
+
+  Future<PostsResponse?> getPostsRequest(String range) async {
+    String? token = await storage.read(key: 'token');
+
+    if (token == null) {
+      return null;
+    }
+
+    Map<String, String> headers = {'x-access-token': token, 'range': range};
+
+    try {
+      final response = await dio.get('${endpoints.apiUrl}${endpoints.getPosts}',
+          options: Options(headers: headers));
+
+      if (response.data["status"] == false) {
+        return null;
+      }
+
+      return PostsResponse(response.data["result"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
 }

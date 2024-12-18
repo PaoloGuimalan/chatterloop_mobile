@@ -9,8 +9,14 @@ AppState _setUserAuth(AppState state, dynamic action) {
       authState: reducers.setUserAuth(state, action).userAuth);
 }
 
-final appReducer = combineReducers<AppState>(
-    [TypedReducer<AppState, dynamic>(_setUserAuth).call]);
+AppState _setFeedPosts(AppState state, dynamic action) {
+  return state.copyWith(postslist: reducers.setFeedPosts(state, action).posts);
+}
+
+final appReducer = combineReducers<AppState>([
+  TypedReducer<AppState, dynamic>(_setUserAuth).call,
+  TypedReducer<AppState, dynamic>(_setFeedPosts).call
+]);
 
 class StateStore {
   final Store<AppState> store =
