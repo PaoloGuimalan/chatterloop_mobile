@@ -1,49 +1,78 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:chewie/chewie.dart';
 import 'package:video_player/video_player.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  final Uri videoUrl;
-
+  final String videoUrl;
   const VideoPlayerScreen({super.key, required this.videoUrl});
 
   @override
-  VideoPlayerScreenState createState() => VideoPlayerScreenState();
+  State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class VideoPlayerScreenState extends State<VideoPlayerScreen> {
-  late VideoPlayerController _videoPlayerController;
-  late ChewieController _chewieController;
+class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+  late VideoPlayerController _controller;
+  late Future<void> initializeVideoPlayerFuture;
 
-  @override
   @override
   void initState() {
     super.initState();
-    _videoPlayerController = VideoPlayerController.networkUrl(widget.videoUrl)
-      ..initialize().then((_) {
-        setState(() {});
-      }).catchError((e) {
-        if (kDebugMode) {
-          print('Error initializing video: $e');
-        }
-      });
+
+    // Create and store the VideoPlayerController. The VideoPlayerController
+    // offers several different constructors to play videos from assets, files,
+    // or the internet.
+    _controller = VideoPlayerController.networkUrl(
+      Uri.parse(
+        widget.videoUrl,
+      ),
+    );
+
+    initializeVideoPlayerFuture = _controller.initialize();
   }
 
   @override
   void dispose() {
+    // Ensure disposing of the VideoPlayerController to free up resources.
+    _controller.dispose();
+
     super.dispose();
-    _chewieController.dispose();
-    _videoPlayerController.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Video Player')),
-      body: Center(
-        child: Chewie(
-          controller: _chewieController,
+    // Complete the code in the next step.
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: 200),
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            // If the video is playing, pause it.
+            if (_controller.value.isPlaying) {
+              _controller.pause();
+            } else {
+              // If the video is paused, play it.
+              _controller.play();
+            }
+          });
+        },
+        child: FutureBuilder(
+          future: initializeVideoPlayerFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.done) {
+              // If the VideoPlayerController has finished initialization, use
+              // the data it provides to limit the aspect ratio of the video.
+              return AspectRatio(
+                aspectRatio: _controller.value.aspectRatio,
+                // Use the VideoPlayer widget to display the video.
+                child: VideoPlayer(_controller),
+              );
+            } else {
+              // If the VideoPlayerController is still initializing, show a
+              // loading spinner.
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
+          },
         ),
       ),
     );
