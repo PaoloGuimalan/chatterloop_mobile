@@ -11,6 +11,7 @@ import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/post_models/user_post_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -23,9 +24,13 @@ class HomeView extends StatefulWidget {
 }
 
 class HomeViewState extends State<HomeView> {
+  final ScrollController _scrollController = ScrollController();
+  int postLength = 10;
+
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
   }
   // HomeView({super.key});
 
@@ -34,7 +39,7 @@ class HomeViewState extends State<HomeView> {
   ButtonStyle _buttonStyle(bool fromHeader) {
     return ElevatedButton.styleFrom(
         backgroundColor: fromHeader ? Colors.white : Colors.white,
-        fixedSize: Size(50, 50),
+        fixedSize: fromHeader ? Size(30, 30) : Size(50, 50),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(60), // Rounded corners if needed
         ),
@@ -44,12 +49,12 @@ class HomeViewState extends State<HomeView> {
         overlayColor: Color(0xFF565656));
   }
 
-  Future<void> getPostsProcess(BuildContext context) async {
+  Future<void> getPostsProcess(BuildContext context, int postLengthProp) async {
     APIRequests apiRequests = APIRequests();
     JwtTools jwt = JwtTools();
 
     PostsResponse? postsResponse =
-        await apiRequests.getPostsRequest(10.toString());
+        await apiRequests.getPostsRequest(postLengthProp.toString());
 
     if (postsResponse != null) {
       Map<String, dynamic>? decodedPostResponse =
@@ -66,10 +71,37 @@ class HomeViewState extends State<HomeView> {
   }
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+
+      if (currentScroll >= maxScroll - 800 &&
+          currentScroll <= maxScroll - 790) {
+        if (kDebugMode) {
+          print('Triggered 500 pixels before bottom!');
+          setState(() {
+            int newPostLength = postLength + 10;
+            postLength = newPostLength;
+
+            getPostsProcess(context, newPostLength);
+          });
+        }
+        // You can load more items here or perform any action.
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
       if (state.posts.isEmpty) {
-        getPostsProcess(context);
+        getPostsProcess(context, postLength);
       }
       return MaterialApp(
         home: Scaffold(
@@ -83,9 +115,10 @@ class HomeViewState extends State<HomeView> {
                     color: Color(0xfff0f2f5),
                     child: Center(
                       child: Padding(
-                        padding: EdgeInsets.only(top: 45),
+                        padding: EdgeInsets.only(top: 40),
                         child: ListView.builder(
                             shrinkWrap: true,
+                            controller: _scrollController,
                             itemCount: state.posts.length,
                             itemBuilder: (context, index) {
                               return PostItemWidget(post: state.posts[index]);
@@ -177,11 +210,14 @@ class HomeViewState extends State<HomeView> {
                               children: [
                                 ElevatedButton(
                                     style: _buttonStyle(true),
-                                    onPressed: () {},
+                                    onPressed: () {
+                                      navigatorKey.currentState
+                                          ?.pushNamed("/messages");
+                                    },
                                     child: Center(
                                       child: Icon(
                                         Icons.messenger_outline_rounded,
-                                        size: 25,
+                                        size: 23,
                                       ),
                                     )),
                                 SizedBox(
@@ -189,11 +225,14 @@ class HomeViewState extends State<HomeView> {
                                 ),
                                 ElevatedButton(
                                     style: _buttonStyle(true),
-                                    onPressed: () {},
+                                    onPressed: () {
+                                      navigatorKey.currentState
+                                          ?.pushNamed("/notifications");
+                                    },
                                     child: Center(
                                       child: Icon(
                                         Icons.notifications_none,
-                                        size: 27,
+                                        size: 25,
                                       ),
                                     )),
                                 SizedBox(
@@ -224,7 +263,7 @@ class HomeViewState extends State<HomeView> {
                                     child: Center(
                                       child: Icon(
                                         Icons.logout,
-                                        size: 25,
+                                        size: 23,
                                         color: Colors.red,
                                       ),
                                     )),

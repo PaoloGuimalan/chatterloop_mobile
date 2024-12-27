@@ -134,6 +134,15 @@ class AppContainerState extends State<AppContainer> {
                     null))));
         navigatorKey.currentState?.pushNamed("/");
       });
+    } else {
+      await storage.delete(key: 'token');
+      StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+          setUserAuthT,
+          UserAuth(
+              false,
+              UserAccount("", UserFullname("", "", ""), "", false, false, null,
+                  null, null, null))));
+      navigatorKey.currentState?.pushNamed("/login");
     }
   }
 

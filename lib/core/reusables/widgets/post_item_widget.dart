@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/models/post_models/user_post_model.dart';
 import 'package:flutter/material.dart';
 
@@ -51,7 +52,7 @@ class PostItemWidgetState extends State<PostItemWidget> {
                   children: [
                     Padding(
                       padding: EdgeInsets.only(
-                          top: 15, bottom: 15, right: 5, left: 5),
+                          top: 15, bottom: 5, right: 5, left: 5),
                       child: Row(
                         mainAxisSize: MainAxisSize.max,
                         children: [
@@ -89,7 +90,7 @@ class PostItemWidgetState extends State<PostItemWidget> {
                                       color: Color(0xFF565656),
                                       fontWeight: FontWeight.bold)),
                               _post.tagging.isTagged
-                                  ? Text(" is withasdsad asd asd as",
+                                  ? Text(" is with",
                                       style: TextStyle(
                                         fontSize: 14,
                                         color: Color(0xFF565656),
@@ -97,20 +98,12 @@ class PostItemWidgetState extends State<PostItemWidget> {
                                   : SizedBox(
                                       height: 0,
                                     ),
-                              _post.tagging.isTagged
-                                  ? Row(
-                                      children: [
-                                        ..._post.taggedUsers.map((tagged) => Text(
-                                            " ${tagged.fullName.firstName}${tagged.fullName.middleName == "N/A" ? "" : " ${tagged.fullName.middleName}"} ${tagged.fullName.lastName}",
-                                            style: TextStyle(
-                                                fontSize: 14,
-                                                color: Color(0xFF565656),
-                                                fontWeight: FontWeight.bold)))
-                                      ],
-                                    )
-                                  : SizedBox(
-                                      height: 0,
-                                    )
+                              ..._post.taggedUsers.map((tagged) => Text(
+                                  " ${tagged.fullName.firstName}${tagged.fullName.middleName == "N/A" ? "" : " ${tagged.fullName.middleName}"} ${tagged.fullName.lastName}",
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF565656),
+                                      fontWeight: FontWeight.bold)))
                             ],
                           )),
                         ],
@@ -118,7 +111,12 @@ class PostItemWidgetState extends State<PostItemWidget> {
                     ),
                     Column(
                       children: [
-                        Text(_post.content.data),
+                        Padding(
+                          padding: EdgeInsets.only(right: 12, left: 12),
+                          child: Center(
+                            child: Text(_post.content.data),
+                          ),
+                        ),
                         SizedBox(
                           height: 10,
                         ),
@@ -152,7 +150,9 @@ class PostItemWidgetState extends State<PostItemWidget> {
                                               )
                                             : reference.referenceMediaType ==
                                                     "video"
-                                                ? Text("")
+                                                ? VideoPlayerScreen(
+                                                    videoUrl:
+                                                        reference.reference)
                                                 : SizedBox(
                                                     height: 0,
                                                   ))
@@ -171,7 +171,7 @@ class PostItemWidgetState extends State<PostItemWidget> {
                               border: Border(
                                   top: BorderSide(
                                       width: 0.5, color: Color(0xffd2d2d2)))),
-                          height: 50,
+                          height: 40,
                           padding: EdgeInsets.all(5),
                           width: MediaQuery.of(context).size.width,
                           child: Row(
@@ -184,7 +184,7 @@ class PostItemWidgetState extends State<PostItemWidget> {
                                 child: Center(
                                   child: Icon(
                                     Icons.thumb_up_alt_outlined,
-                                    size: 25,
+                                    size: 23,
                                   ),
                                 ),
                               ),
@@ -193,14 +193,14 @@ class PostItemWidgetState extends State<PostItemWidget> {
                                   style: _buttonStyle(false),
                                   child: Icon(
                                     Icons.insert_comment_outlined,
-                                    size: 25,
+                                    size: 23,
                                   )),
                               ElevatedButton(
                                   onPressed: () {},
                                   style: _buttonStyle(false),
                                   child: Icon(
                                     Icons.switch_access_shortcut_outlined,
-                                    size: 25,
+                                    size: 23,
                                   )),
                             ],
                           ),
