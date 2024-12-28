@@ -4,8 +4,8 @@ import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/core/utils/jwt_tools.dart';
-import 'package:chatterloop_app/main.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
@@ -58,7 +58,7 @@ class LoginScreenState extends State<LoginScreen> {
                   null,
                   null,
                   null))));
-      navigatorKey.currentState?.pushNamed("/");
+      navigatorKey.currentState?.pushNamed("/home");
     }
   }
 
