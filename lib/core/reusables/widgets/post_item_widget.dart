@@ -171,7 +171,7 @@ class PostItemWidgetState extends State<PostItemWidget> {
                               border: Border(
                                   top: BorderSide(
                                       width: 0.5, color: Color(0xffd2d2d2)))),
-                          height: 40,
+                          height: 50,
                           padding: EdgeInsets.all(5),
                           width: MediaQuery.of(context).size.width,
                           child: Row(

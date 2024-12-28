@@ -51,8 +51,6 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
 class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
@@ -132,7 +130,7 @@ class AppContainerState extends State<AppContainer> {
                     null,
                     null,
                     null))));
-        navigatorKey.currentState?.pushNamed("/");
+        navigatorKey.currentState?.pushNamed("/home");
       });
     } else {
       await storage.delete(key: 'token');
@@ -154,7 +152,7 @@ class AppContainerState extends State<AppContainer> {
       return isLoggedIn != null
           ? MaterialApp(
               navigatorKey: navigatorKey,
-              initialRoute: isLoggedIn ? '/' : '/login',
+              initialRoute: isLoggedIn ? '/home' : '/login',
               routes: AppRoutes.routes,
             )
           : WelcomeScreen();

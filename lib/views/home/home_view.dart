@@ -1,17 +1,10 @@
 // ignore_for_file: use_build_context_synchronously, depend_on_referenced_packages
 
-import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
-import 'package:chatterloop_app/core/reusables/widgets/post_item_widget.dart';
-import 'package:chatterloop_app/core/utils/jwt_tools.dart';
-import 'package:chatterloop_app/main.dart';
-import 'package:chatterloop_app/models/http_models/response_models.dart';
-import 'package:chatterloop_app/models/post_models/user_post_model.dart';
+import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -24,13 +17,9 @@ class HomeView extends StatefulWidget {
 }
 
 class HomeViewState extends State<HomeView> {
-  final ScrollController _scrollController = ScrollController();
-  int postLength = 10;
-
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
   }
   // HomeView({super.key});
 
@@ -49,60 +38,9 @@ class HomeViewState extends State<HomeView> {
         overlayColor: Color(0xFF565656));
   }
 
-  Future<void> getPostsProcess(BuildContext context, int postLengthProp) async {
-    APIRequests apiRequests = APIRequests();
-    JwtTools jwt = JwtTools();
-
-    PostsResponse? postsResponse =
-        await apiRequests.getPostsRequest(postLengthProp.toString());
-
-    if (postsResponse != null) {
-      Map<String, dynamic>? decodedPostResponse =
-          jwt.verifyJwt(postsResponse.result, secretKey);
-
-      List<dynamic> postsInJson = decodedPostResponse?["data"]["posts"];
-
-      List<UserPost> postresponse =
-          postsInJson.map((post) => UserPost.fromJson(post)).toList();
-
-      StoreProvider.of<AppState>(context)
-          .dispatch(DispatchModel(setFeedPostsT, postresponse));
-    }
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.hasClients) {
-      final maxScroll = _scrollController.position.maxScrollExtent;
-      final currentScroll = _scrollController.position.pixels;
-
-      if (currentScroll >= maxScroll - 800 &&
-          currentScroll <= maxScroll - 790) {
-        if (kDebugMode) {
-          print('Triggered 500 pixels before bottom!');
-          setState(() {
-            int newPostLength = postLength + 10;
-            postLength = newPostLength;
-
-            getPostsProcess(context, newPostLength);
-          });
-        }
-        // You can load more items here or perform any action.
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
-      if (state.posts.isEmpty) {
-        getPostsProcess(context, postLength);
-      }
       return MaterialApp(
         home: Scaffold(
           body: Center(
@@ -110,21 +48,10 @@ class HomeViewState extends State<HomeView> {
               children: [
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Expanded(
-                      child: Container(
-                    width: MediaQuery.of(context).size.width,
-                    color: Color(0xfff0f2f5),
-                    child: Center(
-                      child: Padding(
-                        padding: EdgeInsets.only(top: 40),
-                        child: ListView.builder(
-                            shrinkWrap: true,
-                            controller: _scrollController,
-                            itemCount: state.posts.length,
-                            itemBuilder: (context, index) {
-                              return PostItemWidget(post: state.posts[index]);
-                            }),
-                      ),
-                    ),
+                      child: MaterialApp(
+                    initialRoute: "/home",
+                    navigatorKey: navigatorTabKey,
+                    routes: AppRoutes.tabs,
                   )),
                   Container(
                     decoration: BoxDecoration(
@@ -140,7 +67,9 @@ class HomeViewState extends State<HomeView> {
                       mainAxisSize: MainAxisSize.max,
                       children: [
                         ElevatedButton(
-                          onPressed: () {},
+                          onPressed: () {
+                            navigatorTabKey.currentState?.pushNamed("/home");
+                          },
                           style: _buttonStyle(false),
                           child: Center(
                             child: Icon(
@@ -150,28 +79,38 @@ class HomeViewState extends State<HomeView> {
                           ),
                         ),
                         ElevatedButton(
-                            onPressed: () {},
+                            onPressed: () {
+                              navigatorTabKey.currentState?.pushNamed("/map");
+                            },
                             style: _buttonStyle(false),
                             child: Icon(
                               Icons.map_outlined,
                               size: 27,
                             )),
                         ElevatedButton(
-                            onPressed: () {},
+                            onPressed: () {
+                              navigatorTabKey.currentState
+                                  ?.pushNamed("/contacts");
+                            },
                             style: _buttonStyle(false),
                             child: Icon(
                               Icons.contacts_outlined,
                               size: 25,
                             )),
                         ElevatedButton(
-                            onPressed: () {},
+                            onPressed: () {
+                              navigatorTabKey.currentState
+                                  ?.pushNamed("/servers");
+                            },
                             style: _buttonStyle(false),
                             child: Icon(
                               Icons.dataset_outlined,
                               size: 27,
                             )),
                         ElevatedButton(
-                            onPressed: () {},
+                            onPressed: () {
+                              navigatorKey.currentState?.pushNamed("/profile");
+                            },
                             style: _buttonStyle(false),
                             child: Icon(
                               Icons.person_2_sharp,
