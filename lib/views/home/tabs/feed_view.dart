@@ -64,14 +64,14 @@ class FeedStateView extends State<FeedView> {
 
       if (currentScroll >= maxScroll - 800 &&
           currentScroll <= maxScroll - 770) {
+        setState(() {
+          int newPostLength = postLength + 10;
+          postLength = newPostLength;
+
+          getPostsProcess(context, newPostLength);
+        });
         if (kDebugMode) {
           print('Triggered 500 pixels before bottom!');
-          setState(() {
-            int newPostLength = postLength + 10;
-            postLength = newPostLength;
-
-            getPostsProcess(context, newPostLength);
-          });
         }
         // You can load more items here or perform any action.
       }
