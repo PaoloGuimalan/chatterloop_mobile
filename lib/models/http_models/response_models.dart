@@ -22,13 +22,13 @@ class LoginResponse {
   }
 }
 
-class PostsResponse {
+class EncodedResponse {
   String result;
 
-  PostsResponse(this.result);
+  EncodedResponse(this.result);
 
-  factory PostsResponse.fromJson(Map<String, dynamic> json) {
-    return PostsResponse(
+  factory EncodedResponse.fromJson(Map<String, dynamic> json) {
+    return EncodedResponse(
       json['result'],
     );
   }

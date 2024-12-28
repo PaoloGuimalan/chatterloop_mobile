@@ -4,4 +4,5 @@ class Endpoints {
   String jwtChecker = '/auth/jwtchecker';
   String login = '/auth/login';
   String getPosts = '/posts/feed';
+  String getContacts = '/u/getContacts';
 }

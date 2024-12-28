@@ -7,9 +7,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 final dio = Dio();
+final storage = FlutterSecureStorage();
 Endpoints endpoints = Endpoints();
 JwtTools jwt = JwtTools();
-final storage = FlutterSecureStorage();
 
 class APIRequests {
   Future<LoginResponse?> loginRequest(String email, String password) async {
@@ -62,7 +62,7 @@ class APIRequests {
     }
   }
 
-  Future<PostsResponse?> getPostsRequest(String range) async {
+  Future<EncodedResponse?> getPostsRequest(String range) async {
     String? token = await storage.read(key: 'token');
 
     if (token == null) {
@@ -79,7 +79,35 @@ class APIRequests {
         return null;
       }
 
-      return PostsResponse(response.data["result"]);
+      return EncodedResponse(response.data["result"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
+  Future<EncodedResponse?> getContactsRequest() async {
+    String? token = await storage.read(key: 'token');
+
+    if (token == null) {
+      return null;
+    }
+
+    Map<String, String> headers = {'x-access-token': token};
+
+    try {
+      final response = await dio.get(
+          '${endpoints.apiUrl}${endpoints.getContacts}',
+          options: Options(headers: headers));
+
+      if (response.data["status"] == false) {
+        return null;
+      }
+
+      return EncodedResponse(response.data["result"]);
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

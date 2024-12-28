@@ -40,7 +40,7 @@ class FeedStateView extends State<FeedView> {
     APIRequests apiRequests = APIRequests();
     JwtTools jwt = JwtTools();
 
-    PostsResponse? postsResponse =
+    EncodedResponse? postsResponse =
         await apiRequests.getPostsRequest(postLengthProp.toString());
 
     if (postsResponse != null) {
