@@ -52,16 +52,43 @@ class ContactsStateView extends State<ContactsView> {
     return MaterialApp(
       home: Scaffold(
         body: Center(
-            child: Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(top: 40, left: 5, right: 5),
-            child: ListView.builder(
-                shrinkWrap: true,
-                // controller: _scrollController,
-                itemCount: contactsList.length,
-                itemBuilder: (context, index) {
-                  return Text(contactsList[index].contactID);
-                }),
+            child: Padding(
+          padding: EdgeInsets.only(top: 5, left: 5, right: 5),
+          child: Column(
+            children: [
+              SizedBox(
+                width: MediaQuery.of(context).size.width,
+                height: 50,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.contact_page_sharp,
+                      size: 30,
+                      color: Color(0xffff7043),
+                    ),
+                    SizedBox(
+                      width: 5,
+                    ),
+                    Text("Contacts",
+                        style: TextStyle(
+                            fontSize: 17,
+                            color: Color(0xFF565656),
+                            fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                    padding: EdgeInsets.only(top: 0, bottom: 10),
+                    shrinkWrap: true,
+                    // controller: _scrollController,
+                    itemCount: contactsList.length,
+                    itemBuilder: (context, index) {
+                      return Text(contactsList[index].contactID);
+                    }),
+              )
+            ],
           ),
         )),
       ),

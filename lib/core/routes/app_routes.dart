@@ -15,7 +15,7 @@ class AppRoutes {
     "/home": (context) => Container(
           color: Colors.white,
           child: Padding(
-            padding: EdgeInsets.only(top: 30),
+            padding: EdgeInsets.only(top: 0),
             child: HomeView(),
           ),
         ),
