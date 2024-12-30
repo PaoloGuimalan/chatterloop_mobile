@@ -89,17 +89,16 @@ class FeedStateView extends State<FeedView> {
           body: Container(
             width: MediaQuery.of(context).size.width,
             color: Color(0xfff0f2f5),
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.only(top: 40),
-                child: ListView.builder(
-                    shrinkWrap: true,
-                    controller: _scrollController,
-                    itemCount: state.posts.length,
-                    itemBuilder: (context, index) {
-                      return PostItemWidget(post: state.posts[index]);
-                    }),
-              ),
+            child: Padding(
+              padding: EdgeInsets.only(top: 5),
+              child: ListView.builder(
+                  padding: EdgeInsets.only(top: 0, bottom: 10),
+                  shrinkWrap: true,
+                  controller: _scrollController,
+                  itemCount: state.posts.length,
+                  itemBuilder: (context, index) {
+                    return PostItemWidget(post: state.posts[index]);
+                  }),
             ),
           ),
         ),

@@ -47,6 +47,95 @@ class HomeViewState extends State<HomeView> {
             child: Stack(
               children: [
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(
+                    height: 90,
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border(
+                            bottom: BorderSide(
+                                width: 0.5, color: Color(0xffd2d2d2)))),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                          top: 30, bottom: 0, left: 10, right: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisSize: MainAxisSize.max,
+                        children: [
+                          Text(
+                            "Chatterloop",
+                            style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF565656)),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              ElevatedButton(
+                                  style: _buttonStyle(true),
+                                  onPressed: () {
+                                    navigatorKey.currentState
+                                        ?.pushNamed("/messages");
+                                  },
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.messenger_outline_rounded,
+                                      size: 23,
+                                    ),
+                                  )),
+                              SizedBox(
+                                width: 2,
+                              ),
+                              ElevatedButton(
+                                  style: _buttonStyle(true),
+                                  onPressed: () {
+                                    navigatorKey.currentState
+                                        ?.pushNamed("/notifications");
+                                  },
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.notifications_none,
+                                      size: 25,
+                                    ),
+                                  )),
+                              SizedBox(
+                                width: 2,
+                              ),
+                              ElevatedButton(
+                                  style: _buttonStyle(true),
+                                  onPressed: () async {
+                                    await storage.delete(key: 'token');
+                                    StoreProvider.of<AppState>(context)
+                                        .dispatch(DispatchModel(
+                                            setUserAuthT,
+                                            UserAuth(
+                                                false,
+                                                UserAccount(
+                                                    "",
+                                                    UserFullname("", "", ""),
+                                                    "",
+                                                    false,
+                                                    false,
+                                                    null,
+                                                    null,
+                                                    null,
+                                                    null))));
+                                    navigatorKey.currentState
+                                        ?.pushNamed("/login");
+                                  },
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.logout,
+                                      size: 23,
+                                      color: Colors.red,
+                                    ),
+                                  )),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                  ),
                   Expanded(
                       child: MaterialApp(
                     initialRoute: "/home",
@@ -120,98 +209,11 @@ class HomeViewState extends State<HomeView> {
                     ),
                   )
                 ]),
-                Positioned(
-                    top: 0,
-                    height: 60,
-                    width: MediaQuery.of(context).size.width,
-                    child: Container(
-                      decoration: BoxDecoration(
-                          color: Colors.white,
-                          border: Border(
-                              bottom: BorderSide(
-                                  width: 0.5, color: Color(0xffd2d2d2)))),
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                            top: 0, bottom: 0, left: 10, right: 10),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            Text(
-                              "Chatterloop",
-                              style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF565656)),
-                            ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                ElevatedButton(
-                                    style: _buttonStyle(true),
-                                    onPressed: () {
-                                      navigatorKey.currentState
-                                          ?.pushNamed("/messages");
-                                    },
-                                    child: Center(
-                                      child: Icon(
-                                        Icons.messenger_outline_rounded,
-                                        size: 23,
-                                      ),
-                                    )),
-                                SizedBox(
-                                  width: 2,
-                                ),
-                                ElevatedButton(
-                                    style: _buttonStyle(true),
-                                    onPressed: () {
-                                      navigatorKey.currentState
-                                          ?.pushNamed("/notifications");
-                                    },
-                                    child: Center(
-                                      child: Icon(
-                                        Icons.notifications_none,
-                                        size: 25,
-                                      ),
-                                    )),
-                                SizedBox(
-                                  width: 2,
-                                ),
-                                ElevatedButton(
-                                    style: _buttonStyle(true),
-                                    onPressed: () async {
-                                      await storage.delete(key: 'token');
-                                      StoreProvider.of<AppState>(context)
-                                          .dispatch(DispatchModel(
-                                              setUserAuthT,
-                                              UserAuth(
-                                                  false,
-                                                  UserAccount(
-                                                      "",
-                                                      UserFullname("", "", ""),
-                                                      "",
-                                                      false,
-                                                      false,
-                                                      null,
-                                                      null,
-                                                      null,
-                                                      null))));
-                                      navigatorKey.currentState
-                                          ?.pushNamed("/login");
-                                    },
-                                    child: Center(
-                                      child: Icon(
-                                        Icons.logout,
-                                        size: 23,
-                                        color: Colors.red,
-                                      ),
-                                    )),
-                              ],
-                            )
-                          ],
-                        ),
-                      ),
-                    )),
+                // Positioned(
+                //     top: 0,
+                //     height: 60,
+                //     width: MediaQuery.of(context).size.width,
+                //     child: ),
               ],
             ),
           ),
