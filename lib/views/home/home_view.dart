@@ -71,39 +71,46 @@ class HomeViewState extends State<HomeView> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              ElevatedButton(
-                                  style: _buttonStyle(true),
-                                  onPressed: () {
-                                    navigatorKey.currentState
-                                        ?.pushNamed("/messages");
-                                  },
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.messenger_outline_rounded,
-                                      size: 23,
-                                    ),
-                                  )),
-                              SizedBox(
-                                width: 2,
+                              GestureDetector(
+                                onTap: () {
+                                  navigatorKey.currentState
+                                      ?.pushNamed("/messages");
+                                },
+                                child: SizedBox(
+                                    width: 45,
+                                    height: 40,
+                                    child: Center(
+                                      child: Icon(
+                                        color: Color(0xff555555),
+                                        Icons.messenger_outline_rounded,
+                                        size: 23,
+                                      ),
+                                    )),
                               ),
-                              ElevatedButton(
-                                  style: _buttonStyle(true),
-                                  onPressed: () {
+                              SizedBox(
+                                width: 5,
+                              ),
+                              GestureDetector(
+                                  onTap: () {
                                     navigatorKey.currentState
                                         ?.pushNamed("/notifications");
                                   },
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.notifications_none,
-                                      size: 25,
+                                  child: SizedBox(
+                                    width: 45,
+                                    height: 40,
+                                    child: Center(
+                                      child: Icon(
+                                        color: Color(0xff555555),
+                                        Icons.notifications_none,
+                                        size: 25,
+                                      ),
                                     ),
                                   )),
                               SizedBox(
-                                width: 2,
+                                width: 5,
                               ),
-                              ElevatedButton(
-                                  style: _buttonStyle(true),
-                                  onPressed: () async {
+                              GestureDetector(
+                                  onTap: () async {
                                     await storage.delete(key: 'token');
                                     StoreProvider.of<AppState>(context)
                                         .dispatch(DispatchModel(
@@ -123,11 +130,15 @@ class HomeViewState extends State<HomeView> {
                                     navigatorKey.currentState
                                         ?.pushNamed("/login");
                                   },
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.logout,
-                                      size: 23,
-                                      color: Colors.red,
+                                  child: SizedBox(
+                                    width: 45,
+                                    height: 40,
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.logout,
+                                        size: 23,
+                                        color: Colors.red,
+                                      ),
                                     ),
                                   )),
                             ],
