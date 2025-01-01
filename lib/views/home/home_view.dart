@@ -44,188 +44,198 @@ class HomeViewState extends State<HomeView> {
       return MaterialApp(
         home: Scaffold(
           body: Center(
-            child: Stack(
-              children: [
-                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Container(
-                    height: 90,
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border(
-                            bottom: BorderSide(
-                                width: 0.5, color: Color(0xffd2d2d2)))),
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                          top: 30, bottom: 0, left: 10, right: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        mainAxisSize: MainAxisSize.max,
-                        children: [
-                          Text(
-                            "Chatterloop",
-                            style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF565656)),
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              GestureDetector(
-                                onTap: () {
-                                  navigatorKey.currentState
-                                      ?.pushNamed("/messages");
-                                },
-                                child: SizedBox(
-                                    width: 45,
-                                    height: 40,
-                                    child: Center(
-                                      child: Icon(
-                                        color: Color(0xff555555),
-                                        Icons.messenger_outline_rounded,
-                                        size: 23,
-                                      ),
-                                    )),
-                              ),
-                              SizedBox(
-                                width: 5,
-                              ),
-                              GestureDetector(
-                                  onTap: () {
-                                    navigatorKey.currentState
-                                        ?.pushNamed("/notifications");
-                                  },
-                                  child: SizedBox(
-                                    width: 45,
-                                    height: 40,
-                                    child: Center(
-                                      child: Icon(
-                                        color: Color(0xff555555),
-                                        Icons.notifications_none,
-                                        size: 25,
-                                      ),
-                                    ),
-                                  )),
-                              SizedBox(
-                                width: 5,
-                              ),
-                              GestureDetector(
-                                  onTap: () async {
-                                    await storage.delete(key: 'token');
-                                    StoreProvider.of<AppState>(context)
-                                        .dispatch(DispatchModel(
-                                            setUserAuthT,
-                                            UserAuth(
-                                                false,
-                                                UserAccount(
-                                                    "",
-                                                    UserFullname("", "", ""),
-                                                    "",
-                                                    false,
-                                                    false,
-                                                    null,
-                                                    null,
-                                                    null,
-                                                    null))));
-                                    navigatorKey.currentState
-                                        ?.pushNamed("/login");
-                                  },
-                                  child: SizedBox(
-                                    width: 45,
-                                    height: 40,
-                                    child: Center(
-                                      child: Icon(
-                                        Icons.logout,
-                                        size: 23,
-                                        color: Colors.red,
-                                      ),
-                                    ),
-                                  )),
-                            ],
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                      child: MaterialApp(
-                    initialRoute: "/home",
-                    navigatorKey: navigatorTabKey,
-                    routes: AppRoutes.tabs,
-                  )),
-                  Container(
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border(
-                            top: BorderSide(
-                                width: 0.5, color: Color(0xffd2d2d2)))),
-                    height: 70,
-                    padding: EdgeInsets.all(10),
-                    width: MediaQuery.of(context).size.width,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      mainAxisSize: MainAxisSize.max,
+            child: Container(
+              color: Color(0xfff0f2f5),
+              width: MediaQuery.of(context).size.width,
+              child: Stack(
+                children: [
+                  Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        ElevatedButton(
-                          onPressed: () {
-                            navigatorTabKey.currentState?.pushNamed("/home");
-                          },
-                          style: _buttonStyle(false),
-                          child: Center(
-                            child: Icon(
-                              Icons.home_outlined,
-                              size: 30,
+                        Container(
+                          height: 90,
+                          decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: Border(
+                                  bottom: BorderSide(
+                                      width: 0.5, color: Color(0xffd2d2d2)))),
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                                top: 30, bottom: 0, left: 10, right: 10),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              mainAxisSize: MainAxisSize.max,
+                              children: [
+                                Text(
+                                  "Chatterloop",
+                                  style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF565656)),
+                                ),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () {
+                                        navigatorKey.currentState
+                                            ?.pushNamed("/messages");
+                                      },
+                                      child: SizedBox(
+                                          width: 45,
+                                          height: 40,
+                                          child: Center(
+                                            child: Icon(
+                                              color: Color(0xff555555),
+                                              Icons.messenger_outline_rounded,
+                                              size: 23,
+                                            ),
+                                          )),
+                                    ),
+                                    SizedBox(
+                                      width: 5,
+                                    ),
+                                    GestureDetector(
+                                        onTap: () {
+                                          navigatorKey.currentState
+                                              ?.pushNamed("/notifications");
+                                        },
+                                        child: SizedBox(
+                                          width: 45,
+                                          height: 40,
+                                          child: Center(
+                                            child: Icon(
+                                              color: Color(0xff555555),
+                                              Icons.notifications_none,
+                                              size: 25,
+                                            ),
+                                          ),
+                                        )),
+                                    SizedBox(
+                                      width: 5,
+                                    ),
+                                    GestureDetector(
+                                        onTap: () async {
+                                          await storage.delete(key: 'token');
+                                          StoreProvider.of<AppState>(context)
+                                              .dispatch(DispatchModel(
+                                                  setUserAuthT,
+                                                  UserAuth(
+                                                      false,
+                                                      UserAccount(
+                                                          "",
+                                                          UserFullname(
+                                                              "", "", ""),
+                                                          "",
+                                                          false,
+                                                          false,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null))));
+                                          navigatorKey.currentState
+                                              ?.pushNamed("/login");
+                                        },
+                                        child: SizedBox(
+                                          width: 45,
+                                          height: 40,
+                                          child: Center(
+                                            child: Icon(
+                                              Icons.logout,
+                                              size: 23,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                        )),
+                                  ],
+                                )
+                              ],
                             ),
                           ),
                         ),
-                        ElevatedButton(
-                            onPressed: () {
-                              navigatorTabKey.currentState?.pushNamed("/map");
-                            },
-                            style: _buttonStyle(false),
-                            child: Icon(
-                              Icons.map_outlined,
-                              size: 27,
-                            )),
-                        ElevatedButton(
-                            onPressed: () {
-                              navigatorTabKey.currentState
-                                  ?.pushNamed("/contacts");
-                            },
-                            style: _buttonStyle(false),
-                            child: Icon(
-                              Icons.contacts_outlined,
-                              size: 25,
-                            )),
-                        ElevatedButton(
-                            onPressed: () {
-                              navigatorTabKey.currentState
-                                  ?.pushNamed("/servers");
-                            },
-                            style: _buttonStyle(false),
-                            child: Icon(
-                              Icons.dataset_outlined,
-                              size: 27,
-                            )),
-                        ElevatedButton(
-                            onPressed: () {
-                              navigatorKey.currentState?.pushNamed("/profile");
-                            },
-                            style: _buttonStyle(false),
-                            child: Icon(
-                              Icons.person_2_sharp,
-                              size: 30,
-                            )),
-                      ],
-                    ),
-                  )
-                ]),
-                // Positioned(
-                //     top: 0,
-                //     height: 60,
-                //     width: MediaQuery.of(context).size.width,
-                //     child: ),
-              ],
+                        Expanded(
+                            child: MaterialApp(
+                          initialRoute: "/home",
+                          navigatorKey: navigatorTabKey,
+                          routes: AppRoutes.tabs,
+                        )),
+                        Container(
+                          decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: Border(
+                                  top: BorderSide(
+                                      width: 0.5, color: Color(0xffd2d2d2)))),
+                          height: 70,
+                          padding: EdgeInsets.all(10),
+                          width: MediaQuery.of(context).size.width,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            mainAxisSize: MainAxisSize.max,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () {
+                                  navigatorTabKey.currentState
+                                      ?.pushNamed("/home");
+                                },
+                                style: _buttonStyle(false),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.home_outlined,
+                                    size: 30,
+                                  ),
+                                ),
+                              ),
+                              ElevatedButton(
+                                  onPressed: () {
+                                    navigatorTabKey.currentState
+                                        ?.pushNamed("/map");
+                                  },
+                                  style: _buttonStyle(false),
+                                  child: Icon(
+                                    Icons.map_outlined,
+                                    size: 27,
+                                  )),
+                              ElevatedButton(
+                                  onPressed: () {
+                                    navigatorTabKey.currentState
+                                        ?.pushNamed("/contacts");
+                                  },
+                                  style: _buttonStyle(false),
+                                  child: Icon(
+                                    Icons.contacts_outlined,
+                                    size: 25,
+                                  )),
+                              ElevatedButton(
+                                  onPressed: () {
+                                    navigatorTabKey.currentState
+                                        ?.pushNamed("/servers");
+                                  },
+                                  style: _buttonStyle(false),
+                                  child: Icon(
+                                    Icons.dataset_outlined,
+                                    size: 27,
+                                  )),
+                              ElevatedButton(
+                                  onPressed: () {
+                                    navigatorKey.currentState
+                                        ?.pushNamed("/profile");
+                                  },
+                                  style: _buttonStyle(false),
+                                  child: Icon(
+                                    Icons.person_2_sharp,
+                                    size: 30,
+                                  )),
+                            ],
+                          ),
+                        )
+                      ]),
+                  // Positioned(
+                  //     top: 0,
+                  //     height: 60,
+                  //     width: MediaQuery.of(context).size.width,
+                  //     child: ),
+                ],
+              ),
             ),
           ),
         ),
