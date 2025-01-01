@@ -56,59 +56,66 @@ class ContactsStateView extends State<ContactsView> {
       return MaterialApp(
         home: Scaffold(
           body: Center(
-              child: Padding(
-            padding: EdgeInsets.only(top: 5, left: 5, right: 5),
-            child: Column(
-              children: [
-                SizedBox(
-                  width: MediaQuery.of(context).size.width,
-                  height: 50,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.contact_page_sharp,
-                        size: 30,
-                        color: Color(0xffff7043),
-                      ),
-                      SizedBox(
-                        width: 5,
-                      ),
-                      Text("Contacts",
-                          style: TextStyle(
-                              fontSize: 17,
-                              color: Color(0xFF565656),
-                              fontWeight: FontWeight.bold)),
-                    ],
+              child: Container(
+            color: Color(0xfff0f2f5),
+            width: MediaQuery.of(context).size.width,
+            child: Padding(
+              padding: EdgeInsets.only(top: 5, left: 5, right: 5),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: MediaQuery.of(context).size.width,
+                    height: 50,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.contact_page_sharp,
+                          size: 30,
+                          color: Color(0xffff7043),
+                        ),
+                        SizedBox(
+                          width: 5,
+                        ),
+                        Text("Contacts",
+                            style: TextStyle(
+                                fontSize: 17,
+                                color: Color(0xFF565656),
+                                fontWeight: FontWeight.bold)),
+                      ],
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: ListView.builder(
-                      padding: EdgeInsets.only(
-                          top: 0, bottom: 10, left: 10, right: 10),
-                      shrinkWrap: true,
-                      // controller: _scrollController,
-                      itemCount: contactsList.length,
-                      itemBuilder: (context, index) {
-                        if (contactsList[index].type == "single") {
-                          if (contactsList[index].userdetails.userone.userID ==
-                              state.userAuth.user.userID) {
-                            return ContactsItemWidget(
-                                contact:
-                                    contactsList[index].userdetails.usertwo!);
-                          } else {
-                            return ContactsItemWidget(
-                                contact:
-                                    contactsList[index].userdetails.userone);
+                  Expanded(
+                    child: ListView.builder(
+                        padding: EdgeInsets.only(
+                            top: 0, bottom: 10, left: 10, right: 10),
+                        shrinkWrap: true,
+                        // controller: _scrollController,
+                        itemCount: contactsList.length,
+                        itemBuilder: (context, index) {
+                          if (contactsList[index].type == "single") {
+                            if (contactsList[index]
+                                    .userdetails
+                                    .userone
+                                    .userID ==
+                                state.userAuth.user.userID) {
+                              return ContactsItemWidget(
+                                  contact:
+                                      contactsList[index].userdetails.usertwo!);
+                            } else {
+                              return ContactsItemWidget(
+                                  contact:
+                                      contactsList[index].userdetails.userone);
+                            }
                           }
-                        }
 
-                        return SizedBox(
-                          height: 0,
-                        );
-                      }),
-                )
-              ],
+                          return SizedBox(
+                            height: 0,
+                          );
+                        }),
+                  )
+                ],
+              ),
             ),
           )),
         ),
