@@ -116,4 +116,32 @@ class APIRequests {
       return null;
     }
   }
+
+  Future<EncodedResponse?> getConversationListRequest() async {
+    String? token = await storage.read(key: 'token');
+
+    if (token == null) {
+      return null;
+    }
+
+    Map<String, String> headers = {'x-access-token': token};
+
+    try {
+      final response = await dio.get(
+          '${endpoints.apiUrl}${endpoints.getConversationList}',
+          options: Options(headers: headers));
+
+      if (response.data["status"] == false) {
+        return null;
+      }
+
+      return EncodedResponse(response.data["result"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
 }

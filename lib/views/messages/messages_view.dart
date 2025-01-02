@@ -1,5 +1,10 @@
+import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
+import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 
@@ -11,16 +16,44 @@ class MessagesView extends StatefulWidget {
 }
 
 class MessagesStateView extends State<MessagesView> {
-  final List<dynamic> messagesList = [];
+  List<MessageItem> messagesList = [];
 
   @override
   void initState() {
     super.initState();
   }
 
+  Future<void> getConversationListProcess() async {
+    EncodedResponse? getConversationListResponse =
+        await APIRequests().getConversationListRequest();
+
+    if (getConversationListResponse != null) {
+      Map<String, dynamic>? decodedConversationList =
+          jwt.verifyJwt(getConversationListResponse.result, secretKey);
+
+      List<dynamic> rawConversationList =
+          decodedConversationList?["conversationslist"];
+
+      List<MessageItem> spreadedConversationList = rawConversationList
+          .map((message) => MessageItem.fromJson(message))
+          .toList();
+
+      setState(() {
+        messagesList = spreadedConversationList;
+      });
+
+      if (kDebugMode) {
+        print(rawConversationList);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
+      if (messagesList.isEmpty) {
+        getConversationListProcess();
+      }
       return MaterialApp(
         home: Scaffold(
           body: Center(
@@ -208,7 +241,15 @@ class MessagesStateView extends State<MessagesView> {
 
                                   // adjust loop by index minus 1 one rendering the list
                                   return SizedBox(
-                                    height: 0,
+                                    width: MediaQuery.of(context).size.width,
+                                    child: Column(
+                                      children: [
+                                        Text(messagesList[index - 1].content),
+                                        SizedBox(
+                                          height: 5,
+                                        )
+                                      ],
+                                    ),
                                   );
                                 }))
                       ]),

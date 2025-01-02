@@ -5,4 +5,5 @@ class Endpoints {
   String login = '/auth/login';
   String getPosts = '/posts/feed';
   String getContacts = '/u/getContacts';
+  String getConversationList = '/u/initConversationList';
 }
