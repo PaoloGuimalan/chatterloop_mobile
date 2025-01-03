@@ -1,6 +1,7 @@
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/reusables/widgets/message_item.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
@@ -132,8 +133,8 @@ class MessagesStateView extends State<MessagesView> {
                                     return SizedBox(
                                       width: MediaQuery.of(context).size.width,
                                       child: Padding(
-                                        padding:
-                                            EdgeInsets.only(top: 10, bottom: 5),
+                                        padding: EdgeInsets.only(
+                                            top: 10, bottom: 10),
                                         child: Row(
                                           children: [
                                             GestureDetector(
@@ -240,17 +241,9 @@ class MessagesStateView extends State<MessagesView> {
                                   }
 
                                   // adjust loop by index minus 1 one rendering the list
-                                  return SizedBox(
-                                    width: MediaQuery.of(context).size.width,
-                                    child: Column(
-                                      children: [
-                                        Text(messagesList[index - 1].content),
-                                        SizedBox(
-                                          height: 5,
-                                        )
-                                      ],
-                                    ),
-                                  );
+                                  return MessageItemView(
+                                      message: messagesList[index - 1],
+                                      userID: state.userAuth.user.userID);
                                 }))
                       ]),
                 ],
