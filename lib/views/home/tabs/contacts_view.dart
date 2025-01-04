@@ -4,6 +4,7 @@ import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/reusables/widgets/contacts_item.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
+import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
@@ -100,12 +101,20 @@ class ContactsStateView extends State<ContactsView> {
                                     .userID ==
                                 state.userAuth.user.userID) {
                               return ContactsItemWidget(
-                                  contact:
-                                      contactsList[index].userdetails.usertwo!);
+                                contact:
+                                    contactsList[index].userdetails.usertwo!,
+                                conversationMetaData: ConversationViewProps(
+                                    contactsList[index].contactID,
+                                    contactsList[index].type),
+                              );
                             } else {
                               return ContactsItemWidget(
-                                  contact:
-                                      contactsList[index].userdetails.userone);
+                                contact:
+                                    contactsList[index].userdetails.userone,
+                                conversationMetaData: ConversationViewProps(
+                                    contactsList[index].contactID,
+                                    contactsList[index].type),
+                              );
                             }
                           }
 

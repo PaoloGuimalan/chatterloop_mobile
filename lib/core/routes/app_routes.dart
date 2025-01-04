@@ -6,6 +6,7 @@ import 'package:chatterloop_app/views/home/tabs/map_view.dart';
 import 'package:chatterloop_app/views/home/tabs/profile_view.dart';
 import 'package:chatterloop_app/views/home/tabs/server_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
+import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
 import 'package:chatterloop_app/views/notifications/notifications_view.dart';
 import 'package:flutter/material.dart';
 
@@ -20,6 +21,7 @@ class AppRoutes {
           ),
         ),
     "/messages": (context) => MessagesView(),
+    "/conversation": (context) => ConversationView(),
     "/notifications": (context) => NotificationsView(),
     "/profile": (context) => ProfileView()
   };

@@ -1,5 +1,7 @@
+import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
+import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/material.dart';
 
 class MessageItemView extends StatefulWidget {
@@ -98,7 +100,37 @@ class MessageItemViewState extends State<MessageItemView> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   )
-                ]))
+                ])),
+            _message.unread > 0
+                ? SizedBox(
+                    width: 30,
+                    height: 60,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10)),
+                          width: 30,
+                          height: 17,
+                          child: Center(
+                            child: Text(
+                              _message.unread > 99
+                                  ? "+99"
+                                  : _message.unread.toString(),
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.white),
+                            ),
+                          ),
+                        )
+                      ],
+                    ),
+                  )
+                : SizedBox(
+                    width: 6,
+                  )
           ],
         );
       case "group":
@@ -186,7 +218,37 @@ class MessageItemViewState extends State<MessageItemView> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   )
-                ]))
+                ])),
+            _message.unread > 0
+                ? SizedBox(
+                    width: 30,
+                    height: 60,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10)),
+                          width: 30,
+                          height: 17,
+                          child: Center(
+                            child: Text(
+                              _message.unread > 99
+                                  ? "+99"
+                                  : _message.unread.toString(),
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.white),
+                            ),
+                          ),
+                        )
+                      ],
+                    ),
+                  )
+                : SizedBox(
+                    width: 6,
+                  )
           ],
         );
       case "server":
@@ -283,7 +345,37 @@ class MessageItemViewState extends State<MessageItemView> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   )
-                ]))
+                ])),
+            _message.unread > 0
+                ? SizedBox(
+                    width: 30,
+                    height: 60,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10)),
+                          width: 30,
+                          height: 20,
+                          child: Center(
+                            child: Text(
+                              _message.unread > 99
+                                  ? "+99"
+                                  : _message.unread.toString(),
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.white),
+                            ),
+                          ),
+                        )
+                      ],
+                    ),
+                  )
+                : SizedBox(
+                    width: 6,
+                  )
           ],
         );
       default:
@@ -297,22 +389,55 @@ class MessageItemViewState extends State<MessageItemView> {
       width: MediaQuery.of(context).size.width,
       child: Column(
         children: [
-          Container(
-            width: MediaQuery.of(context).size.width,
-            decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: Color(0xffd2d2d2), width: 1),
-                borderRadius: BorderRadius.circular(7)),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 400, minHeight: 85),
-              child: Center(
-                child: Padding(
-                  padding: EdgeInsets.only(top: 6, bottom: 6, right: 10),
-                  child: messageItemIdentified(_message.conversationType),
-                ),
-              ),
-            ),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 600, minHeight: 85),
+            child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    padding:
+                        EdgeInsets.only(top: 5, bottom: 5, left: 0, right: 0),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(7))),
+                onPressed: () {
+                  if (_message.conversationType == "single" ||
+                      _message.conversationType == "group") {
+                    navigatorKey.currentState?.pushNamed("/conversation",
+                        arguments: ConversationViewProps(
+                            _message.conversationID,
+                            _message.conversationType));
+                  }
+                },
+                child: Container(
+                  width: MediaQuery.of(context).size.width,
+                  decoration: BoxDecoration(
+                      color: Colors.transparent,
+                      // color: Colors.white,
+                      // border: Border.all(color: Color(0xffd2d2d2), width: 1),
+                      borderRadius: BorderRadius.circular(7)),
+                  child: Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 6, bottom: 6, right: 4),
+                      child: messageItemIdentified(_message.conversationType),
+                    ),
+                  ),
+                )),
           ),
+          // Container(
+          //   width: MediaQuery.of(context).size.width,
+          //   decoration: BoxDecoration(
+          //       color: Colors.white,
+          //       border: Border.all(color: Color(0xffd2d2d2), width: 1),
+          //       borderRadius: BorderRadius.circular(7)),
+          //   child: ConstrainedBox(
+          //     constraints: BoxConstraints(maxWidth: 400, minHeight: 85),
+          //     child: Center(
+          //       child: Padding(
+          //         padding: EdgeInsets.only(top: 6, bottom: 6, right: 10),
+          //         child: messageItemIdentified(_message.conversationType),
+          //       ),
+          //     ),
+          //   ),
+          // ),
           SizedBox(
             height: 5,
           )

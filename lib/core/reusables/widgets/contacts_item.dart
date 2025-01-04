@@ -1,19 +1,26 @@
+import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
+import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class ContactsItemWidget extends StatefulWidget {
   final UsersContactPreview contact;
-  const ContactsItemWidget({super.key, required this.contact});
+  final ConversationViewProps conversationMetaData;
+  const ContactsItemWidget(
+      {super.key, required this.contact, required this.conversationMetaData});
 
   @override
   ContactsItemWidgetState createState() => ContactsItemWidgetState();
 }
 
 class ContactsItemWidgetState extends State<ContactsItemWidget> {
+  late ConversationViewProps _conversationMetaData;
+
   @override
   void initState() {
     super.initState();
+    _conversationMetaData = widget.conversationMetaData;
   }
 
   @override
@@ -73,6 +80,12 @@ class ContactsItemWidgetState extends State<ContactsItemWidget> {
                       children: [
                         GestureDetector(
                           onTap: () {
+                            navigatorKey.currentState?.pushNamed(
+                                "/conversation",
+                                arguments: ConversationViewProps(
+                                    _conversationMetaData.conversationID,
+                                    _conversationMetaData.conversationType));
+
                             if (kDebugMode) {
                               print("Message");
                             }
