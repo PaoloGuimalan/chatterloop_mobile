@@ -75,7 +75,7 @@ class MessagesStateView extends State<MessagesView> {
                                       width: 0.5, color: Color(0xffd2d2d2)))),
                           child: Padding(
                             padding: EdgeInsets.only(
-                                top: 30, bottom: 0, left: 10, right: 10),
+                                top: 30, bottom: 0, left: 5, right: 10),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               mainAxisSize: MainAxisSize.max,
@@ -83,18 +83,27 @@ class MessagesStateView extends State<MessagesView> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.start,
                                   children: [
-                                    GestureDetector(
-                                      onTap: () {
-                                        navigatorKey.currentState
-                                            ?.pushNamed("/home");
-                                      },
-                                      child: SizedBox(
-                                          width: 45,
-                                          height: 40,
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          maxWidth: 40, maxHeight: 40),
+                                      child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              elevation: 0,
+                                              padding: EdgeInsets.only(
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  left: 0,
+                                                  right: 0)),
+                                          onPressed: () {
+                                            navigatorKey.currentState
+                                                ?.pushNamed("/home");
+                                          },
                                           child: Center(
                                             child: Icon(
+                                              Icons.arrow_back_ios_new_rounded,
                                               color: Color(0xff555555),
-                                              Icons.arrow_back_ios,
                                               size: 20,
                                             ),
                                           )),

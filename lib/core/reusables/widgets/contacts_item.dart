@@ -78,51 +78,61 @@ class ContactsItemWidgetState extends State<ContactsItemWidget> {
                     padding: EdgeInsets.only(right: 10),
                     child: Row(
                       children: [
-                        GestureDetector(
-                          onTap: () {
-                            navigatorKey.currentState?.pushNamed(
-                                "/conversation",
-                                arguments: ConversationViewProps(
-                                    _conversationMetaData.conversationID,
-                                    _conversationMetaData.conversationType));
+                        ConstrainedBox(
+                          constraints:
+                              BoxConstraints(maxWidth: 40, maxHeight: 40),
+                          child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  elevation: 0,
+                                  padding: EdgeInsets.only(
+                                      top: 0, bottom: 0, left: 0, right: 0)),
+                              onPressed: () {
+                                navigatorKey.currentState?.pushNamed(
+                                    "/conversation",
+                                    arguments: ConversationViewProps(
+                                        _conversationMetaData.conversationID,
+                                        _conversationMetaData.conversationType,
+                                        _conversationMetaData
+                                            .conversationPreview));
 
-                            if (kDebugMode) {
-                              print("Message");
-                            }
-                          },
-                          child: SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: Center(
-                              child: Icon(
-                                color: Color(0xff9cc2ff),
-                                Icons.messenger_outline_rounded,
-                                size: 23,
-                              ),
-                            ),
-                          ),
+                                if (kDebugMode) {
+                                  print("Message");
+                                }
+                              },
+                              child: Center(
+                                child: Icon(
+                                  color: Color(0xff9cc2ff),
+                                  Icons.messenger_outline_rounded,
+                                  size: 23,
+                                ),
+                              )),
                         ),
                         SizedBox(
                           width: 5,
                         ),
-                        GestureDetector(
-                          onTap: () {
-                            if (kDebugMode) {
-                              print("Unfriend");
-                            }
-                          },
-                          child: SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: Center(
-                              child: Icon(
-                                color: Color(0xffff6675),
-                                Icons.person_remove_outlined,
-                                size: 23,
-                              ),
-                            ),
-                          ),
-                        )
+                        ConstrainedBox(
+                          constraints:
+                              BoxConstraints(maxWidth: 40, maxHeight: 40),
+                          child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  elevation: 0,
+                                  padding: EdgeInsets.only(
+                                      top: 0, bottom: 0, left: 0, right: 0)),
+                              onPressed: () {
+                                if (kDebugMode) {
+                                  print("Unfriend");
+                                }
+                              },
+                              child: Center(
+                                child: Icon(
+                                  color: Color(0xffff6675),
+                                  Icons.person_remove_outlined,
+                                  size: 23,
+                                ),
+                              )),
+                        ),
                       ],
                     ),
                   )

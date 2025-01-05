@@ -58,7 +58,9 @@ class LoginScreenState extends State<LoginScreen> {
                   null,
                   null,
                   null))));
-      navigatorKey.currentState?.pushNamed("/home");
+      // navigatorKey.currentState?.popAndPushNamed("/home");
+      navigatorKey.currentState
+          ?.pushNamedAndRemoveUntil('/home', (Route<dynamic> route) => false);
     }
   }
 

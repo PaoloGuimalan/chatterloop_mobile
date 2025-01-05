@@ -2,6 +2,7 @@ import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/reusables/widgets/contacts_item.dart';
+import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
@@ -100,20 +101,42 @@ class ContactsStateView extends State<ContactsView> {
                                     .userone
                                     .userID ==
                                 state.userAuth.user.userID) {
+                              String previewName =
+                                  "${contactsList[index].userdetails.usertwo!.fullname.firstName} ${contactsList[index].userdetails.usertwo!.fullname.middleName == "N/A" ? " " : "${contactsList[index].userdetails.usertwo!.fullname.middleName} "}${contactsList[index].userdetails.usertwo!.fullname.lastName}";
+                              String previewProfile = ContentValidator()
+                                  .validateConversationProfile(
+                                      contactsList[index]
+                                          .userdetails
+                                          .usertwo!
+                                          .profile,
+                                      contactsList[index].type);
                               return ContactsItemWidget(
                                 contact:
                                     contactsList[index].userdetails.usertwo!,
                                 conversationMetaData: ConversationViewProps(
                                     contactsList[index].contactID,
-                                    contactsList[index].type),
+                                    contactsList[index].type,
+                                    ConversationPreview(
+                                        previewProfile, previewName)),
                               );
                             } else {
+                              String previewName =
+                                  "${contactsList[index].userdetails.userone.fullname.firstName} ${contactsList[index].userdetails.userone.fullname.middleName == "N/A" ? " " : "${contactsList[index].userdetails.userone.fullname.middleName} "}${contactsList[index].userdetails.userone.fullname.lastName}";
+                              String previewProfile = ContentValidator()
+                                  .validateConversationProfile(
+                                      contactsList[index]
+                                          .userdetails
+                                          .userone
+                                          .profile,
+                                      contactsList[index].type);
                               return ContactsItemWidget(
                                 contact:
                                     contactsList[index].userdetails.userone,
                                 conversationMetaData: ConversationViewProps(
                                     contactsList[index].contactID,
-                                    contactsList[index].type),
+                                    contactsList[index].type,
+                                    ConversationPreview(
+                                        previewProfile, previewName)),
                               );
                             }
                           }
