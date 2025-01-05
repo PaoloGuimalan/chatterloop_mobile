@@ -76,14 +76,23 @@ class HomeViewState extends State<HomeView> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.end,
                                   children: [
-                                    GestureDetector(
-                                      onTap: () {
-                                        navigatorKey.currentState
-                                            ?.pushNamed("/messages");
-                                      },
-                                      child: SizedBox(
-                                          width: 45,
-                                          height: 40,
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          maxWidth: 40, maxHeight: 40),
+                                      child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              elevation: 0,
+                                              padding: EdgeInsets.only(
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  left: 0,
+                                                  right: 0)),
+                                          onPressed: () {
+                                            navigatorKey.currentState
+                                                ?.pushNamed("/messages");
+                                          },
                                           child: Center(
                                             child: Icon(
                                               color: Color(0xff555555),
@@ -95,58 +104,81 @@ class HomeViewState extends State<HomeView> {
                                     SizedBox(
                                       width: 5,
                                     ),
-                                    GestureDetector(
-                                        onTap: () {
-                                          navigatorKey.currentState
-                                              ?.pushNamed("/notifications");
-                                        },
-                                        child: SizedBox(
-                                          width: 45,
-                                          height: 40,
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          maxWidth: 40, maxHeight: 40),
+                                      child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              elevation: 0,
+                                              padding: EdgeInsets.only(
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  left: 0,
+                                                  right: 0)),
+                                          onPressed: () {
+                                            navigatorKey.currentState
+                                                ?.pushNamed("/notifications");
+                                          },
                                           child: Center(
                                             child: Icon(
                                               color: Color(0xff555555),
                                               Icons.notifications_none,
                                               size: 25,
                                             ),
-                                          ),
-                                        )),
+                                          )),
+                                    ),
                                     SizedBox(
                                       width: 5,
                                     ),
-                                    GestureDetector(
-                                        onTap: () async {
-                                          await storage.delete(key: 'token');
-                                          StoreProvider.of<AppState>(context)
-                                              .dispatch(DispatchModel(
-                                                  setUserAuthT,
-                                                  UserAuth(
-                                                      false,
-                                                      UserAccount(
-                                                          "",
-                                                          UserFullname(
-                                                              "", "", ""),
-                                                          "",
-                                                          false,
-                                                          false,
-                                                          null,
-                                                          null,
-                                                          null,
-                                                          null))));
-                                          navigatorKey.currentState
-                                              ?.pushNamed("/login");
-                                        },
-                                        child: SizedBox(
-                                          width: 45,
-                                          height: 40,
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          maxWidth: 40, maxHeight: 40),
+                                      child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              elevation: 0,
+                                              padding: EdgeInsets.only(
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  left: 0,
+                                                  right: 0)),
+                                          onPressed: () async {
+                                            await storage.delete(key: 'token');
+                                            StoreProvider.of<AppState>(context)
+                                                .dispatch(DispatchModel(
+                                                    setUserAuthT,
+                                                    UserAuth(
+                                                        false,
+                                                        UserAccount(
+                                                            "",
+                                                            UserFullname(
+                                                                "", "", ""),
+                                                            "",
+                                                            false,
+                                                            false,
+                                                            null,
+                                                            null,
+                                                            null,
+                                                            null))));
+                                            // navigatorKey.currentState
+                                            //     ?.popAndPushNamed("/login");
+                                            navigatorKey.currentState
+                                                ?.pushNamedAndRemoveUntil(
+                                                    '/login',
+                                                    (Route<dynamic> route) =>
+                                                        false);
+                                          },
                                           child: Center(
                                             child: Icon(
                                               Icons.logout,
                                               size: 23,
                                               color: Colors.red,
                                             ),
-                                          ),
-                                        )),
+                                          )),
+                                    ),
                                   ],
                                 )
                               ],

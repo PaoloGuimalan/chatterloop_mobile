@@ -1,4 +1,5 @@
 import 'package:chatterloop_app/core/routes/app_routes.dart';
+import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
@@ -55,7 +56,7 @@ class MessageItemViewState extends State<MessageItemView> {
                           conversationUserLead.profile != "" &&
                                   conversationUserLead.profile != "none"
                               ? conversationUserLead.profile
-                              : 'https://chatterloop.netlify.app/assets/default-e4788211.png',
+                              : ContentValidator().singleChatPreviewImage,
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -154,7 +155,7 @@ class MessageItemViewState extends State<MessageItemView> {
                                   _message.groupdetails?.profile != "none" &&
                                   _message.groupdetails?.profile != null
                               ? _message.groupdetails?.profile as String
-                              : 'https://chatterloop.netlify.app/assets/group-chat-icon-d6f42fe5.jpg',
+                              : ContentValidator().groupChatPreviewImage,
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -272,7 +273,7 @@ class MessageItemViewState extends State<MessageItemView> {
                                   _message.serverdetails?.profile != "none" &&
                                   _message.serverdetails?.profile != null
                               ? _message.serverdetails?.profile as String
-                              : 'https://chatterloop.netlify.app/assets/servericon-e125462b.png',
+                              : ContentValidator().serverMainPreviewImage,
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -399,12 +400,33 @@ class MessageItemViewState extends State<MessageItemView> {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(7))),
                 onPressed: () {
-                  if (_message.conversationType == "single" ||
-                      _message.conversationType == "group") {
+                  if (_message.conversationType == "single") {
+                    UsersContactPreview conversationUserLead =
+                        _userID == _message.users[0].userID
+                            ? _message.users[1]
+                            : _message.users[0];
+                    String previewName =
+                        "${conversationUserLead.fullname.firstName}${conversationUserLead.fullname.middleName == "N/A" ? "" : " ${conversationUserLead.fullname.middleName}"} ${conversationUserLead.fullname.lastName}";
+
                     navigatorKey.currentState?.pushNamed("/conversation",
                         arguments: ConversationViewProps(
                             _message.conversationID,
-                            _message.conversationType));
+                            _message.conversationType,
+                            ConversationPreview(
+                                ContentValidator().validateConversationProfile(
+                                    conversationUserLead.profile,
+                                    _message.conversationType),
+                                previewName)));
+                  } else if (_message.conversationType == "group") {
+                    navigatorKey.currentState?.pushNamed("/conversation",
+                        arguments: ConversationViewProps(
+                            _message.conversationID,
+                            _message.conversationType,
+                            ConversationPreview(
+                                ContentValidator().validateConversationProfile(
+                                    _message.groupdetails?.profile,
+                                    _message.conversationType),
+                                _message.groupdetails?.groupName ?? "")));
                   }
                 },
                 child: Container(
@@ -422,22 +444,6 @@ class MessageItemViewState extends State<MessageItemView> {
                   ),
                 )),
           ),
-          // Container(
-          //   width: MediaQuery.of(context).size.width,
-          //   decoration: BoxDecoration(
-          //       color: Colors.white,
-          //       border: Border.all(color: Color(0xffd2d2d2), width: 1),
-          //       borderRadius: BorderRadius.circular(7)),
-          //   child: ConstrainedBox(
-          //     constraints: BoxConstraints(maxWidth: 400, minHeight: 85),
-          //     child: Center(
-          //       child: Padding(
-          //         padding: EdgeInsets.only(top: 6, bottom: 6, right: 10),
-          //         child: messageItemIdentified(_message.conversationType),
-          //       ),
-          //     ),
-          //   ),
-          // ),
           SizedBox(
             height: 5,
           )
