@@ -69,16 +69,19 @@ class UsersContactPreview {
   final UserFullname fullname;
   final String profile;
   final String? coverphoto;
+  final bool? isActivated;
+  final bool? isVerified;
 
-  const UsersContactPreview(
-      this.userID, this.fullname, this.profile, this.coverphoto);
+  const UsersContactPreview(this.userID, this.fullname, this.profile,
+      this.coverphoto, this.isActivated, this.isVerified);
 
   factory UsersContactPreview.fromJson(Map<String, dynamic> json) {
     return UsersContactPreview(
-      json["userID"],
-      UserFullname.fromJson(json["fullname"]),
-      json["profile"],
-      json["coverphoto"],
-    );
+        json["userID"],
+        UserFullname.fromJson(json["fullname"]),
+        json["profile"],
+        json["coverphoto"],
+        json["isActivated"],
+        json["isVerified"]);
   }
 }
