@@ -1,6 +1,11 @@
+import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
+import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 
@@ -15,13 +20,41 @@ class ConversationView extends StatefulWidget {
 
 class ConversationStateView extends State<ConversationView> {
   // late MessageItem _conversationMetaData;
-  List<dynamic> conversationContentList = [];
-  int range = 10;
+  bool isInitialized = false;
+  List<MessageContent> conversationContentList = [];
+  int range = 20;
 
   @override
   void initState() {
     super.initState();
     // _conversationMetaData = widget.conversationMetaData;
+  }
+
+  Future<void> initConversationProcess(
+      String conversationID, int rangeProp) async {
+    EncodedResponse? initConversationResponse =
+        await APIRequests().initConversationRequest(conversationID, rangeProp);
+
+    if (initConversationResponse != null) {
+      Map<String, dynamic>? decodedInitConversation =
+          jwt.verifyJwt(initConversationResponse.result, secretKey);
+
+      List<dynamic> rawInitConversation = decodedInitConversation?["messages"];
+
+      List<MessageContent> messageContentList = rawInitConversation
+          .map((message) => MessageContent.fromJson(message))
+          .toList();
+
+      setState(() {
+        conversationContentList = messageContentList;
+        isInitialized = true;
+      });
+
+      if (kDebugMode) {
+        // print(rawContactsList);
+        print(messageContentList);
+      }
+    }
   }
 
   @override
@@ -30,6 +63,9 @@ class ConversationStateView extends State<ConversationView> {
         ModalRoute.of(context)?.settings.arguments as ConversationViewProps;
     return StoreConnector<AppState, AppState>(
       builder: (context, state) {
+        if (conversationContentList.isEmpty && !isInitialized) {
+          initConversationProcess(conversationMetaData.conversationID, range);
+        }
         return MaterialApp(
           home: Scaffold(
             body: Center(
@@ -161,7 +197,7 @@ class ConversationStateView extends State<ConversationView> {
                                             child: Icon(
                                               Icons.call,
                                               color: Color(0xff4994ec),
-                                              size: 22,
+                                              size: 24,
                                             ),
                                           )),
                                     ),
@@ -186,7 +222,7 @@ class ConversationStateView extends State<ConversationView> {
                                             child: Icon(
                                               Icons.videocam_rounded,
                                               color: Color(0xff4caf50),
-                                              size: 22,
+                                              size: 24,
                                             ),
                                           )),
                                     ),
@@ -211,7 +247,7 @@ class ConversationStateView extends State<ConversationView> {
                                             child: Icon(
                                               Icons.info,
                                               color: Color(0xff1c7def),
-                                              size: 22,
+                                              size: 24,
                                             ),
                                           )),
                                     )
@@ -224,7 +260,7 @@ class ConversationStateView extends State<ConversationView> {
                         Expanded(
                           child: ListView.builder(
                             padding: EdgeInsets.symmetric(horizontal: 10),
-                            itemCount: conversationContentList.length + 1,
+                            itemCount: conversationContentList.length,
                             itemBuilder: (context, index) {
                               return SizedBox(
                                 width: MediaQuery.of(context).size.width,
@@ -236,7 +272,9 @@ class ConversationStateView extends State<ConversationView> {
                                       "Conversation ID: ${conversationMetaData.conversationID}",
                                     ),
                                     Text(
-                                        "ConversationType: ${conversationMetaData.conversationType}")
+                                        "ConversationType: ${conversationMetaData.conversationType}"),
+                                    Text(
+                                        "Content: ${conversationContentList[index].content}")
                                   ],
                                 ),
                               );
