@@ -82,7 +82,7 @@ class MessageItemViewState extends State<MessageItemView> {
                   SizedBox(
                     width: MediaQuery.of(context).size.width,
                     child: Text(
-                      "${_isCurrentUserSender ? "you: " : ""}${_message.content}",
+                      "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
                       style: TextStyle(
                         fontSize: 14,
                         color: Color(0xFF565656),
@@ -200,7 +200,7 @@ class MessageItemViewState extends State<MessageItemView> {
                   SizedBox(
                     width: MediaQuery.of(context).size.width,
                     child: Text(
-                      "${_isCurrentUserSender ? "you: " : ""}${_message.content}",
+                      "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
                       style: TextStyle(
                         fontSize: 14,
                         color: Color(0xFF565656),
@@ -327,7 +327,7 @@ class MessageItemViewState extends State<MessageItemView> {
                   SizedBox(
                     width: MediaQuery.of(context).size.width,
                     child: Text(
-                      "${_isCurrentUserSender ? "you: " : ""}${_message.content}",
+                      "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
                       style: TextStyle(
                         fontSize: 14,
                         color: Color(0xFF565656),

@@ -1,6 +1,7 @@
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/reusables/widgets/message_content_widget.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
@@ -19,8 +20,9 @@ class ConversationView extends StatefulWidget {
 }
 
 class ConversationStateView extends State<ConversationView> {
-  // late MessageItem _conversationMetaData;
+  final ScrollController _scrollController = ScrollController();
   bool isInitialized = false;
+  bool isAutoScroll = true;
   List<MessageContent> conversationContentList = [];
   int range = 20;
 
@@ -259,23 +261,35 @@ class ConversationStateView extends State<ConversationView> {
                         ),
                         Expanded(
                           child: ListView.builder(
-                            padding: EdgeInsets.symmetric(horizontal: 10),
+                            reverse: true,
+                            controller: _scrollController,
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
                             itemCount: conversationContentList.length,
                             itemBuilder: (context, index) {
+                              MessageContent contentItem =
+                                  conversationContentList[
+                                      conversationContentList.length -
+                                          1 -
+                                          index];
+                              String previousContentUserID = index > 0 &&
+                                      index < conversationContentList.length - 1
+                                  ? conversationContentList[
+                                          conversationContentList.length -
+                                              1 -
+                                              index -
+                                              1]
+                                      .sender
+                                  : index == 0
+                                      ? "start"
+                                      : "end";
+
                               return SizedBox(
                                 width: MediaQuery.of(context).size.width,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      "Conversation ID: ${conversationMetaData.conversationID}",
-                                    ),
-                                    Text(
-                                        "ConversationType: ${conversationMetaData.conversationType}"),
-                                    Text(
-                                        "Content: ${conversationContentList[index].content}")
-                                  ],
+                                child: MessageContentWidget(
+                                  messageContent: contentItem,
+                                  previousContentUserID: previousContentUserID,
+                                  currentUserID: state.userAuth.user.userID,
                                 ),
                               );
                             },
