@@ -111,14 +111,18 @@ class PostItemWidgetState extends State<PostItemWidget> {
                     ),
                     Column(
                       children: [
-                        Padding(
-                          padding: EdgeInsets.only(right: 12, left: 12),
-                          child: Center(
-                            child: Text(_post.content.data),
-                          ),
-                        ),
+                        _post.content.data == ""
+                            ? SizedBox(
+                                height: 5,
+                              )
+                            : Padding(
+                                padding: EdgeInsets.only(right: 12, left: 12),
+                                child: Center(
+                                  child: Text(_post.content.data),
+                                ),
+                              ),
                         SizedBox(
-                          height: 10,
+                          height: _post.content.data == "" ? 0 : 10,
                         ),
                         Container(
                           child: _post.type.contentType == "media"
