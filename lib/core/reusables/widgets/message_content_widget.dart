@@ -48,7 +48,46 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         ? SizedBox(
                             height: 0,
                           )
-                        : Text("...")
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.delete,
+                                    color: Color(0xFF565656),
+                                    size: 18,
+                                  ),
+                                )),
+                          ),
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
                   ],
                 )),
           SizedBox(
@@ -61,7 +100,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   color: isCurrentUser ? Color(0xff1c7def) : Color(0xffdedede),
                   borderRadius: BorderRadius.circular(10)),
               child: Padding(
-                padding: EdgeInsets.all(7),
+                padding:
+                    EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
                 child: Text(
                   content,
                   style: TextStyle(
@@ -87,7 +127,24 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         ? SizedBox(
                             height: 0,
                           )
-                        : Text("...")
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
                   ],
                 ))
         ],
@@ -110,7 +167,46 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         ? SizedBox(
                             height: 0,
                           )
-                        : Text("...")
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.delete,
+                                    color: Color(0xFF565656),
+                                    size: 18,
+                                  ),
+                                )),
+                          ),
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
                   ],
                 )),
           SizedBox(
@@ -154,7 +250,24 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         ? SizedBox(
                             height: 0,
                           )
-                        : Text("...")
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
                   ],
                 ))
         ],
@@ -177,7 +290,46 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         ? SizedBox(
                             height: 0,
                           )
-                        : Text("...")
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.delete,
+                                    color: Color(0xFF565656),
+                                    size: 18,
+                                  ),
+                                )),
+                          ),
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
                   ],
                 )),
           SizedBox(
@@ -205,7 +357,24 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         ? SizedBox(
                             height: 0,
                           )
-                        : Text("...")
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
                   ],
                 ))
         ],
@@ -243,10 +412,196 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         ],
       );
     } else {
-      return SizedBox(
-        height: 0,
+      return Row(
+        mainAxisAlignment:
+            isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          !isParentSenderCurrentUser
+              ? SizedBox(
+                  width: 0,
+                )
+              : Expanded(
+                  child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.delete,
+                                    color: Color(0xFF565656),
+                                    size: 18,
+                                  ),
+                                )),
+                          ),
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
+                  ],
+                )),
+          SizedBox(
+            width: 5,
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 300, minHeight: 70),
+            child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Color(0xffe4e4e4),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    padding:
+                        EdgeInsets.only(top: 0, bottom: 0, left: 0, right: 0)),
+                onPressed: () {},
+                child: Container(
+                  decoration:
+                      BoxDecoration(borderRadius: BorderRadius.circular(10)),
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                        top: 10, bottom: 10, left: 10, right: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        Icon(
+                          Icons.file_copy_outlined,
+                          color: Colors.black,
+                          size: 35,
+                        ),
+                        SizedBox(
+                          width: 10,
+                        ),
+                        Expanded(
+                            child: Text(
+                          content.split("%%%")[1],
+                          style: TextStyle(fontSize: 14, color: Colors.black),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ))
+                      ],
+                    ),
+                  ),
+                )),
+          ),
+          SizedBox(
+            width: 5,
+          ),
+          isParentSenderCurrentUser
+              ? SizedBox(
+                  width: 0,
+                )
+              : Expanded(
+                  child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
+                  ],
+                ))
+        ],
       );
     }
+  }
+
+  Widget messageDeletedItem(String messageType, bool isParentSenderCurrentUser,
+      bool isCurrentUser, bool isReply) {
+    return Row(
+      mainAxisAlignment:
+          isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: [
+        !isParentSenderCurrentUser
+            ? SizedBox(
+                width: 0,
+              )
+            : Expanded(
+                child: SizedBox(
+                height: 0,
+              )),
+        SizedBox(
+          width: 5,
+        ),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 300),
+          child: Container(
+            decoration: BoxDecoration(
+                color: Colors.transparent,
+                border: Border.all(color: Color(0xFFdedede), width: 1),
+                borderRadius: BorderRadius.circular(10)),
+            child: Padding(
+              padding: EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
+              child: Text(
+                "Message deleted",
+                style: TextStyle(fontSize: 14, color: Color(0xFFdedede)),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 5,
+        ),
+        isParentSenderCurrentUser
+            ? SizedBox(
+                width: 0,
+              )
+            : Expanded(
+                child: SizedBox(
+                height: 0,
+              ))
+      ],
+    );
   }
 
   @override
@@ -327,26 +682,42 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     ),
                     Opacity(
                       opacity: 0.6,
-                      child: messageTypeSwitch(
-                          _messageContent.replyedmessage?[0].content as String,
-                          _messageContent.replyedmessage?[0].messageType
-                              as String,
-                          _messageContent.sender == _currentUserID,
-                          _messageContent.replyedmessage?[0].sender ==
-                              _currentUserID,
-                          true),
+                      child:
+                          _messageContent.replyedmessage?[0].isDeleted as bool
+                              ? messageDeletedItem(
+                                  _messageContent.replyedmessage?[0].messageType
+                                      as String,
+                                  _messageContent.sender == _currentUserID,
+                                  _messageContent.replyedmessage?[0].sender ==
+                                      _currentUserID,
+                                  true)
+                              : messageTypeSwitch(
+                                  _messageContent.replyedmessage?[0].content
+                                      as String,
+                                  _messageContent.replyedmessage?[0].messageType
+                                      as String,
+                                  _messageContent.sender == _currentUserID,
+                                  _messageContent.replyedmessage?[0].sender ==
+                                      _currentUserID,
+                                  true),
                     )
                   ],
                 )
               : SizedBox(
                   height: 0,
                 ),
-          messageTypeSwitch(
-              _messageContent.content,
-              _messageContent.messageType,
-              _messageContent.sender == _currentUserID,
-              _messageContent.sender == _currentUserID,
-              false)
+          _messageContent.isDeleted as bool
+              ? messageDeletedItem(
+                  _messageContent.messageType,
+                  _messageContent.sender == _currentUserID,
+                  _messageContent.sender == _currentUserID,
+                  false)
+              : messageTypeSwitch(
+                  _messageContent.content,
+                  _messageContent.messageType,
+                  _messageContent.sender == _currentUserID,
+                  _messageContent.sender == _currentUserID,
+                  false)
         ],
       ),
     );
