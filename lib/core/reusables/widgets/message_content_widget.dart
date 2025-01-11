@@ -94,7 +94,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
             width: 5,
           ),
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 300),
+            constraints: BoxConstraints(maxWidth: 270),
             child: Container(
               decoration: BoxDecoration(
                   color: isCurrentUser ? Color(0xff1c7def) : Color(0xffdedede),
@@ -213,7 +213,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
             width: 5,
           ),
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 300),
+            constraints: BoxConstraints(maxWidth: 270),
             child: Center(
               child: ConstrainedBox(
                   constraints: BoxConstraints(
@@ -336,7 +336,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
             width: 5,
           ),
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 300),
+            constraints: BoxConstraints(maxWidth: 270),
             child: VideoPlayerScreen(
                 videoUrl:
                     content.split("%%%")[0].replaceAll("###", "%23%23%23")),
@@ -475,7 +475,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
             width: 5,
           ),
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 300, minHeight: 70),
+            constraints: BoxConstraints(maxWidth: 270, minHeight: 70),
             child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                     backgroundColor: Color(0xffe4e4e4),
@@ -574,7 +574,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           width: 5,
         ),
         ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: 300),
+          constraints: BoxConstraints(maxWidth: 270),
           child: Container(
             decoration: BoxDecoration(
                 color: Colors.transparent,
