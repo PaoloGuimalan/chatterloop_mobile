@@ -129,7 +129,7 @@ class LoginScreenState extends State<LoginScreen> {
                                           borderRadius:
                                               BorderRadius.circular(100)),
                                       child: Image.asset(
-                                        'lib/assets/images/chatterloop.png',
+                                        'assets/images/chatterloop.png',
                                         fit: BoxFit.cover,
                                       ),
                                     ),

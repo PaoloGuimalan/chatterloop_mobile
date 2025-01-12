@@ -60,10 +60,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             if (snapshot.connectionState == ConnectionState.done) {
               // If the VideoPlayerController has finished initialization, use
               // the data it provides to limit the aspect ratio of the video.
-              return AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                // Use the VideoPlayer widget to display the video.
-                child: VideoPlayer(_controller),
+              return ClipRect(
+                child: Align(
+                  alignment: Alignment.center,
+                  child: FittedBox(
+                    fit: BoxFit
+                        .contain, // Ensures the video is contained within the given space
+                    child: SizedBox(
+                      width: _controller.value.size.width,
+                      height: _controller.value.size.height,
+                      child: VideoPlayer(_controller),
+                    ),
+                  ),
+                ),
               );
             } else {
               // If the VideoPlayerController is still initializing, show a

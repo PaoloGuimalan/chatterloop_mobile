@@ -13,11 +13,11 @@ class HomeViewContainer extends StatefulWidget {
 
 class HomeViewContainerState extends State<HomeViewContainer> {
   SseConnection sse = SseConnection();
+  bool isSSEInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    sse.initializeConnection();
   }
 
   @override
@@ -26,9 +26,22 @@ class HomeViewContainerState extends State<HomeViewContainer> {
     super.dispose();
   }
 
+  void initSSEConnection() {
+    sse.initializeConnection();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+        isSSEInitialized = true;
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
+      if (!isSSEInitialized) {
+        initSSEConnection();
+      }
       return MaterialApp(
         navigatorKey: privateNavigatorKey,
         initialRoute: '/main',

@@ -337,9 +337,12 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
-            child: VideoPlayerScreen(
-                videoUrl:
-                    content.split("%%%")[0].replaceAll("###", "%23%23%23")),
+            child: Container(
+              color: Colors.black,
+              child: VideoPlayerScreen(
+                  videoUrl:
+                      content.split("%%%")[0].replaceAll("###", "%23%23%23")),
+            ),
           ),
           SizedBox(
             width: 5,

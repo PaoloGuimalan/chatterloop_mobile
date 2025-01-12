@@ -45,6 +45,8 @@ dependencies:
   http: ^1.2.2
   flutter_client_sse: ^2.0.3
   restart: ^1.0.0+1
+  event_bus: ^2.0.1
+  audioplayers: ^6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -69,7 +71,8 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - lib/assets/images/
+    - assets/images/
+    - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

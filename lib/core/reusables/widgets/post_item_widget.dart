@@ -154,9 +154,12 @@ class PostItemWidgetState extends State<PostItemWidget> {
                                               )
                                             : reference.referenceMediaType ==
                                                     "video"
-                                                ? VideoPlayerScreen(
-                                                    videoUrl:
-                                                        reference.reference)
+                                                ? Container(
+                                                    color: Colors.black,
+                                                    child: VideoPlayerScreen(
+                                                        videoUrl: reference
+                                                            .reference),
+                                                  )
                                                 : SizedBox(
                                                     height: 0,
                                                   ))
