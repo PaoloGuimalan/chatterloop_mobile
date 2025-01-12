@@ -1,5 +1,4 @@
 // ignore_for_file: use_build_context_synchronously
-
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
@@ -142,6 +141,11 @@ class MessagesStateView extends State<MessagesView> {
                         ),
                         Expanded(
                             child: ListView.builder(
+                                key: ValueKey(messagesList.isEmpty
+                                    ? 0
+                                    : state.messages
+                                        .map((message) => message.unread)
+                                        .reduce((a, b) => a + b)),
                                 padding: EdgeInsets.only(
                                     top: 0, bottom: 10, left: 10, right: 10),
                                 shrinkWrap: true,

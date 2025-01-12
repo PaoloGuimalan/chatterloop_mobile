@@ -38,7 +38,7 @@ class WelcomeScreenState extends State<WelcomeScreen> {
                     maxWidth: 180,
                   ),
                   child: Image.asset(
-                    'lib/assets/images/chatterloop.png',
+                    'assets/images/chatterloop.png',
                     fit: BoxFit.cover,
                   ),
                 ),
