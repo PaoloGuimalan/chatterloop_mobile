@@ -13,9 +13,21 @@ AppState _setFeedPosts(AppState state, dynamic action) {
   return state.copyWith(postslist: reducers.setFeedPosts(state, action).posts);
 }
 
+AppState _setMessagesList(AppState state, dynamic action) {
+  return state.copyWith(
+      messageslist: reducers.setMessagesList(state, action).messages);
+}
+
+AppState _setContactsList(AppState state, dynamic action) {
+  return state.copyWith(
+      contactslist: reducers.setContactsList(state, action).contacts);
+}
+
 final appReducer = combineReducers<AppState>([
   TypedReducer<AppState, dynamic>(_setUserAuth).call,
-  TypedReducer<AppState, dynamic>(_setFeedPosts).call
+  TypedReducer<AppState, dynamic>(_setFeedPosts).call,
+  TypedReducer<AppState, dynamic>(_setMessagesList).call,
+  TypedReducer<AppState, dynamic>(_setContactsList).call
 ]);
 
 class StateStore {

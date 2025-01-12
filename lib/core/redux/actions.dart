@@ -20,4 +20,22 @@ class ReduxActions {
         return state;
     }
   }
+
+  AppState setMessagesList(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case setMessagesListT:
+        return AppState(messages: action.payload);
+      default:
+        return state;
+    }
+  }
+
+  AppState setContactsList(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case setContactsListT:
+        return AppState(contacts: action.payload);
+      default:
+        return state;
+    }
+  }
 }

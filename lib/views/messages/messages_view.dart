@@ -1,10 +1,14 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/reusables/widgets/message_item.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
@@ -17,14 +21,15 @@ class MessagesView extends StatefulWidget {
 }
 
 class MessagesStateView extends State<MessagesView> {
-  List<MessageItem> messagesList = [];
+  // List<MessageItem> messagesList = [];
+  bool isInitialized = false;
 
   @override
   void initState() {
     super.initState();
   }
 
-  Future<void> getConversationListProcess() async {
+  Future<void> getConversationListProcess(BuildContext context) async {
     EncodedResponse? getConversationListResponse =
         await APIRequests().getConversationListRequest();
 
@@ -40,8 +45,12 @@ class MessagesStateView extends State<MessagesView> {
           .toList();
 
       setState(() {
-        messagesList = spreadedConversationList;
+        // messagesList = spreadedConversationList;
+        isInitialized = true;
       });
+
+      StoreProvider.of<AppState>(context)
+          .dispatch(DispatchModel(setMessagesListT, spreadedConversationList));
 
       if (kDebugMode) {
         print(rawConversationList);
@@ -52,8 +61,9 @@ class MessagesStateView extends State<MessagesView> {
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
-      if (messagesList.isEmpty) {
-        getConversationListProcess();
+      List<MessageItem> messagesList = state.messages;
+      if (!isInitialized) {
+        getConversationListProcess(context);
       }
       return MaterialApp(
         home: Scaffold(
@@ -97,8 +107,8 @@ class MessagesStateView extends State<MessagesView> {
                                                   left: 0,
                                                   right: 0)),
                                           onPressed: () {
-                                            navigatorKey.currentState
-                                                ?.pushNamed("/home");
+                                            privateNavigatorKey.currentState
+                                                ?.pushNamed("/main");
                                           },
                                           child: Center(
                                             child: Icon(

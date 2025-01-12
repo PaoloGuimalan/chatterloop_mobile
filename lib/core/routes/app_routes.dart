@@ -1,5 +1,6 @@
 import 'package:chatterloop_app/views/auth/login_view.dart';
 import 'package:chatterloop_app/views/home/home_view.dart';
+import 'package:chatterloop_app/views/home/home_view_container.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
 import 'package:chatterloop_app/views/home/tabs/feed_view.dart';
 import 'package:chatterloop_app/views/home/tabs/map_view.dart';
@@ -13,7 +14,15 @@ import 'package:flutter/material.dart';
 class AppRoutes {
   static Map<String, WidgetBuilder> routes = {
     "/login": (context) => LoginScreen(),
-    "/home": (context) => Container(
+    "/home": (context) => HomeViewContainer(),
+    // "/messages": (context) => MessagesView(),
+    // "/conversation": (context) => ConversationView(),
+    // "/notifications": (context) => NotificationsView(),
+    // "/profile": (context) => ProfileView()
+  };
+
+  static Map<String, WidgetBuilder> privateroutes = {
+    "/main": (context) => Container(
           color: Colors.white,
           child: Padding(
             padding: EdgeInsets.only(top: 0),
@@ -35,4 +44,6 @@ class AppRoutes {
 }
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> privateNavigatorKey =
+    GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> navigatorTabKey = GlobalKey<NavigatorState>();

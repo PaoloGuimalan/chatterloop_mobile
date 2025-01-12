@@ -109,7 +109,7 @@ class ConversationStateView extends State<ConversationView> {
                                               left: 0,
                                               right: 0)),
                                       onPressed: () {
-                                        navigatorKey.currentState
+                                        privateNavigatorKey.currentState
                                             ?.popAndPushNamed("/messages");
                                       },
                                       child: Center(
