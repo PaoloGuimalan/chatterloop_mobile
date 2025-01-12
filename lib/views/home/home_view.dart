@@ -4,6 +4,7 @@ import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
@@ -14,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:restart/restart.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -275,11 +277,13 @@ class HomeViewState extends State<HomeView> {
                                                             null))));
                                             // navigatorKey.currentState
                                             //     ?.popAndPushNamed("/login");
-                                            navigatorKey.currentState
-                                                ?.pushNamedAndRemoveUntil(
-                                                    '/login',
-                                                    (Route<dynamic> route) =>
-                                                        false);
+                                            SseConnection().closeConnection();
+                                            // navigatorKey.currentState
+                                            //     ?.pushNamedAndRemoveUntil(
+                                            //         '/login',
+                                            //         (Route<dynamic> route) =>
+                                            //             false);
+                                            restart();
                                           },
                                           child: Center(
                                             child: Icon(

@@ -1,5 +1,6 @@
 class Endpoints {
   String apiUrl = 'https://chatterloop.onrender.com';
+  String sseRoute = '/u/sseNotifications/';
 
   String jwtChecker = '/auth/jwtchecker';
   String login = '/auth/login';
