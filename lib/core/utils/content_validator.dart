@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class ContentValidator {
   final String singleChatPreviewImage =
       'https://chatterloop.netlify.app/assets/default-e4788211.png';
@@ -24,6 +26,12 @@ class ContentValidator {
       return conversationTypeImage[conversationType] as String;
     } else {
       return profile;
+    }
+  }
+
+  void printer(dynamic data) {
+    if (kDebugMode) {
+      print(data);
     }
   }
 }

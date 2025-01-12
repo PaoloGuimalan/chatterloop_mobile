@@ -1,4 +1,5 @@
 import 'package:chatterloop_app/core/configs/keys.dart';
+import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/core/utils/jwt_tools.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
@@ -14,6 +15,7 @@ JwtTools jwt = JwtTools();
 
 class APIRequests {
   Future<LoginResponse?> loginRequest(String email, String password) async {
+    ContentValidator().printer('${endpoints.apiUrl}${endpoints.login}');
     String token = jwt
         .createJwt({'email_username': email, 'password': password}, secretKey);
 
@@ -36,6 +38,7 @@ class APIRequests {
   }
 
   Future<JWTCheckerResponse?> jwtCheckerRequest() async {
+    ContentValidator().printer('${endpoints.apiUrl}${endpoints.jwtChecker}');
     String? token = await storage.read(key: 'token');
 
     if (token == null) {
@@ -64,6 +67,7 @@ class APIRequests {
   }
 
   Future<EncodedResponse?> getPostsRequest(String range) async {
+    ContentValidator().printer('${endpoints.apiUrl}${endpoints.getPosts}');
     String? token = await storage.read(key: 'token');
 
     if (token == null) {
@@ -91,6 +95,7 @@ class APIRequests {
   }
 
   Future<EncodedResponse?> getContactsRequest() async {
+    ContentValidator().printer('${endpoints.apiUrl}${endpoints.getContacts}');
     String? token = await storage.read(key: 'token');
 
     if (token == null) {
@@ -119,6 +124,8 @@ class APIRequests {
   }
 
   Future<EncodedResponse?> getConversationListRequest() async {
+    ContentValidator()
+        .printer('${endpoints.apiUrl}${endpoints.getConversationList}');
     String? token = await storage.read(key: 'token');
 
     if (token == null) {
@@ -148,6 +155,8 @@ class APIRequests {
 
   Future<EncodedResponse?> initConversationRequest(
       String conversationID, int range) async {
+    ContentValidator().printer(
+        '${endpoints.apiUrl}${endpoints.initConversation}$conversationID');
     String? token = await storage.read(key: 'token');
 
     if (token == null) {
@@ -180,6 +189,8 @@ class APIRequests {
 
   Future<EncodedResponse?> getConversationInfoRequest(
       String conversationID, String conversationType) async {
+    ContentValidator().printer(
+        '${endpoints.apiUrl}${endpoints.getConversationInfo}$conversationID/$conversationType');
     String? token = await storage.read(key: 'token');
 
     if (token == null) {
@@ -209,6 +220,8 @@ class APIRequests {
 
   Future<EncodedResponse?> seenNewMessagesRequest(
       ISeenNewMessagesRequest payload, int range) async {
+    ContentValidator()
+        .printer('${endpoints.apiUrl}${endpoints.seenNewMessages}');
     String? token = await storage.read(key: 'token');
     String encodedPayload = jwt.createJwt(payload.toJson(), secretKey);
 

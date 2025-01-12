@@ -88,7 +88,7 @@ class ContactsItemWidgetState extends State<ContactsItemWidget> {
                                   padding: EdgeInsets.only(
                                       top: 0, bottom: 0, left: 0, right: 0)),
                               onPressed: () {
-                                navigatorKey.currentState?.pushNamed(
+                                privateNavigatorKey.currentState?.pushNamed(
                                     "/conversation",
                                     arguments: ConversationViewProps(
                                         _conversationMetaData.conversationID,

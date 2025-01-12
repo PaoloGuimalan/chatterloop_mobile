@@ -1,9 +1,13 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/reusables/widgets/contacts_item.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/foundation.dart';
@@ -18,14 +22,16 @@ class ContactsView extends StatefulWidget {
 }
 
 class ContactsStateView extends State<ContactsView> {
+  bool isContactsInitialized = false;
+
   @override
   void initState() {
     super.initState();
   }
 
-  List<UserContacts> contactsList = [];
+  // List<UserContacts> contactsList = [];
 
-  Future<void> getContactsProcess() async {
+  Future<void> getContactsProcess(BuildContext context) async {
     EncodedResponse? getContactsResponse =
         await APIRequests().getContactsRequest();
 
@@ -40,8 +46,12 @@ class ContactsStateView extends State<ContactsView> {
           .toList();
 
       setState(() {
-        contactsList = spreadedContactsList;
+        // contactsList = spreadedContactsList;
+        isContactsInitialized = true;
       });
+
+      StoreProvider.of<AppState>(context)
+          .dispatch(DispatchModel(setContactsListT, spreadedContactsList));
 
       if (kDebugMode) {
         print(rawContactsList);
@@ -52,8 +62,9 @@ class ContactsStateView extends State<ContactsView> {
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
-      if (contactsList.isEmpty) {
-        getContactsProcess();
+      List<UserContacts> contactsList = state.contacts;
+      if (!isContactsInitialized) {
+        getContactsProcess(context);
       }
       return MaterialApp(
         home: Scaffold(

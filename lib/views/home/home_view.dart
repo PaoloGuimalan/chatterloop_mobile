@@ -1,10 +1,16 @@
 // ignore_for_file: use_build_context_synchronously, depend_on_referenced_packages
 
+import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
+import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -17,11 +23,13 @@ class HomeView extends StatefulWidget {
 }
 
 class HomeViewState extends State<HomeView> {
+  bool isMessagesInitialized = false;
+  bool isContactsInitialized = false;
+
   @override
   void initState() {
     super.initState();
   }
-  // HomeView({super.key});
 
   final storage = FlutterSecureStorage();
 
@@ -38,9 +46,77 @@ class HomeViewState extends State<HomeView> {
         overlayColor: Color(0xFF565656));
   }
 
+  Future<void> getConversationListProcess(BuildContext context) async {
+    EncodedResponse? getConversationListResponse =
+        await APIRequests().getConversationListRequest();
+
+    if (getConversationListResponse != null) {
+      Map<String, dynamic>? decodedConversationList =
+          jwt.verifyJwt(getConversationListResponse.result, secretKey);
+
+      List<dynamic> rawConversationList =
+          decodedConversationList?["conversationslist"];
+
+      List<MessageItem> spreadedConversationList = rawConversationList
+          .map((message) => MessageItem.fromJson(message))
+          .toList();
+
+      setState(() {
+        // messagesList = spreadedConversationList;
+        isMessagesInitialized = true;
+      });
+
+      StoreProvider.of<AppState>(context)
+          .dispatch(DispatchModel(setMessagesListT, spreadedConversationList));
+
+      // if (kDebugMode) {
+      //   print(rawConversationList);
+      // }
+    }
+  }
+
+  Future<void> getContactsProcess(BuildContext context) async {
+    EncodedResponse? getContactsResponse =
+        await APIRequests().getContactsRequest();
+
+    if (getContactsResponse != null) {
+      Map<String, dynamic>? decodedContactsList =
+          jwt.verifyJwt(getContactsResponse.result, secretKey);
+
+      List<dynamic> rawContactsList = decodedContactsList?["contacts"];
+
+      List<UserContacts> spreadedContactsList = rawContactsList
+          .map((contact) => UserContacts.fromJson(contact))
+          .toList();
+
+      setState(() {
+        // contactsList = spreadedContactsList;
+        isContactsInitialized = true;
+      });
+
+      StoreProvider.of<AppState>(context)
+          .dispatch(DispatchModel(setContactsListT, spreadedContactsList));
+
+      if (kDebugMode) {
+        print(rawContactsList);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
+      int unreadTotal = state.messages.isEmpty
+          ? 0
+          : state.messages
+              .map((message) => message.unread)
+              .reduce((a, b) => a + b);
+      if (!isMessagesInitialized) {
+        getConversationListProcess(context);
+      }
+      if (!isContactsInitialized) {
+        getContactsProcess(context);
+      }
       return MaterialApp(
         home: Scaffold(
           body: Center(
@@ -90,15 +166,49 @@ class HomeViewState extends State<HomeView> {
                                                   left: 0,
                                                   right: 0)),
                                           onPressed: () {
-                                            navigatorKey.currentState
+                                            privateNavigatorKey.currentState
                                                 ?.pushNamed("/messages");
                                           },
-                                          child: Center(
-                                            child: Icon(
-                                              color: Color(0xff555555),
-                                              Icons.messenger_outline_rounded,
-                                              size: 23,
-                                            ),
+                                          child: Stack(
+                                            children: [
+                                              Center(
+                                                child: Icon(
+                                                  color: Color(0xff555555),
+                                                  Icons
+                                                      .messenger_outline_rounded,
+                                                  size: 23,
+                                                ),
+                                              ),
+                                              unreadTotal > 0
+                                                  ? Positioned(
+                                                      bottom: 5,
+                                                      right: 0,
+                                                      child: Container(
+                                                        decoration: BoxDecoration(
+                                                            color: Colors.red,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        10)),
+                                                        width: 22,
+                                                        height: 17,
+                                                        child: Center(
+                                                          child: Text(
+                                                            unreadTotal > 99
+                                                                ? "+99"
+                                                                : unreadTotal
+                                                                    .toString(),
+                                                            style: TextStyle(
+                                                                fontSize: 10,
+                                                                color: Colors
+                                                                    .white),
+                                                          ),
+                                                        ),
+                                                      ))
+                                                  : SizedBox(
+                                                      height: 0,
+                                                    )
+                                            ],
                                           )),
                                     ),
                                     SizedBox(
@@ -118,7 +228,7 @@ class HomeViewState extends State<HomeView> {
                                                   left: 0,
                                                   right: 0)),
                                           onPressed: () {
-                                            navigatorKey.currentState
+                                            privateNavigatorKey.currentState
                                                 ?.pushNamed("/notifications");
                                           },
                                           child: Center(
@@ -249,7 +359,7 @@ class HomeViewState extends State<HomeView> {
                                   )),
                               ElevatedButton(
                                   onPressed: () {
-                                    navigatorKey.currentState
+                                    privateNavigatorKey.currentState
                                         ?.pushNamed("/profile");
                                   },
                                   style: _buttonStyle(false),

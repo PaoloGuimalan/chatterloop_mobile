@@ -408,7 +408,7 @@ class MessageItemViewState extends State<MessageItemView> {
                     String previewName =
                         "${conversationUserLead.fullname.firstName}${conversationUserLead.fullname.middleName == "N/A" ? "" : " ${conversationUserLead.fullname.middleName}"} ${conversationUserLead.fullname.lastName}";
 
-                    navigatorKey.currentState?.pushNamed("/conversation",
+                    privateNavigatorKey.currentState?.pushNamed("/conversation",
                         arguments: ConversationViewProps(
                             _message.conversationID,
                             _message.conversationType,
@@ -418,7 +418,7 @@ class MessageItemViewState extends State<MessageItemView> {
                                     _message.conversationType),
                                 previewName)));
                   } else if (_message.conversationType == "group") {
-                    navigatorKey.currentState?.pushNamed("/conversation",
+                    privateNavigatorKey.currentState?.pushNamed("/conversation",
                         arguments: ConversationViewProps(
                             _message.conversationID,
                             _message.conversationType,
