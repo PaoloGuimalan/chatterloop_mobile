@@ -559,7 +559,7 @@ class ConversationStateView extends State<ConversationView> {
                                                             MainAxisSize.max,
                                                         children: [
                                                           Text(
-                                                            "Replying to @${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList().isNotEmpty ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender == state.userAuth.user.userID ? "your message" : conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender : ""}",
+                                                            "Replying to ${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList().isNotEmpty ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender == state.userAuth.user.userID ? "your message" : "@${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender}" : ""}",
                                                             style: TextStyle(
                                                                 fontSize: 12,
                                                                 color: conversationContentList
