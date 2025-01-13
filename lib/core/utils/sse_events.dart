@@ -38,13 +38,14 @@ class SseEvents {
         Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
 
         if (mainListener) {
-          if (parsedresponse["onseen"]) {
-            // play seen ringtone
-          }
-
           if (parsedresponse["message"] != userAuth.user.userID) {
             // play message ringtone
-            audioPlayer.play(AssetSource('sounds/message_alert.mp3'));
+            if (parsedresponse["onseen"]) {
+              // play seen ringtone
+              audioPlayer.play(AssetSource('sounds/seen_alert.mp3'));
+            } else {
+              audioPlayer.play(AssetSource('sounds/message_alert.mp3'));
+            }
           }
         }
 
