@@ -1,13 +1,19 @@
+import 'dart:async';
+
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/message_content_widget.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
+import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 
 class ConversationView extends StatefulWidget {
@@ -20,16 +26,25 @@ class ConversationView extends StatefulWidget {
 }
 
 class ConversationStateView extends State<ConversationView> {
+  StreamSubscription<SSEModel>? _eventBusSubscription;
   final ScrollController _scrollController = ScrollController();
   bool isInitialized = false;
+  bool isSeenMessageInitialized = false;
   bool isAutoScroll = true;
   List<MessageContent> conversationContentList = [];
+  ConversationInfoModel? conversationInfo;
   int range = 20;
 
   @override
   void initState() {
     super.initState();
     // _conversationMetaData = widget.conversationMetaData;
+  }
+
+  @override
+  void dispose() {
+    _eventBusSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> initConversationProcess(
@@ -47,14 +62,63 @@ class ConversationStateView extends State<ConversationView> {
           .map((message) => MessageContent.fromJson(message))
           .toList();
 
-      setState(() {
-        conversationContentList = messageContentList;
-        isInitialized = true;
-      });
+      if (mounted) {
+        setState(() {
+          conversationContentList = messageContentList;
+          isInitialized = true;
+        });
+      }
 
+      // if (kDebugMode) {
+      //   // print(rawContactsList);
+      //   print(messageContentList);
+      // }
+    }
+  }
+
+  Future<void> getConversationInfoProcess(
+      String conversationID, String conversationType) async {
+    EncodedResponse? getConversationInfoResponse = await APIRequests()
+        .getConversationInfoRequest(conversationID, conversationType);
+
+    if (getConversationInfoResponse != null) {
+      Map<String, dynamic>? decodedGetConversationInfo =
+          jwt.verifyJwt(getConversationInfoResponse.result, secretKey);
+
+      dynamic rawGetConversationInfo =
+          decodedGetConversationInfo?["data"]["data"];
+
+      ConversationInfoModel conversationInfoFinal =
+          ConversationInfoModel.fromJson(rawGetConversationInfo);
+
+      if (mounted) {
+        setState(() {
+          conversationInfo = conversationInfoFinal;
+        });
+      }
+
+      // if (kDebugMode) {
+      //   // print(rawContactsList);
+      //   print(rawGetConversationInfo);
+      // }
+    }
+  }
+
+  Future<void> seenMessagesProcess(
+      ISeenNewMessagesRequest payload, int rangeProp) async {
+    if (mounted) {
+      setState(() {
+        isSeenMessageInitialized = true;
+      });
+    }
+
+    EncodedResponse? getConversationInfoResponse =
+        await APIRequests().seenNewMessagesRequest(payload, rangeProp);
+
+    if (getConversationInfoResponse != null) {
       if (kDebugMode) {
         // print(rawContactsList);
-        print(messageContentList);
+        print(getConversationInfoResponse);
       }
     }
   }
@@ -66,7 +130,51 @@ class ConversationStateView extends State<ConversationView> {
     return StoreConnector<AppState, AppState>(
       builder: (context, state) {
         if (conversationContentList.isEmpty && !isInitialized) {
-          initConversationProcess(conversationMetaData.conversationID, range);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            initConversationProcess(conversationMetaData.conversationID, range);
+            getConversationInfoProcess(conversationMetaData.conversationID,
+                conversationMetaData.conversationType);
+            _eventBusSubscription =
+                eventBus.on<SSEModel>().listen((SSEModel event) {
+              if (event.event == "messages_list") {
+                if (mounted) {
+                  int newRange = range + 1;
+                  if (conversationInfo != null) {
+                    seenMessagesProcess(
+                        ISeenNewMessagesRequest(
+                            conversationMetaData.conversationID,
+                            range,
+                            conversationInfo!.users
+                                .map((user) => user.userID.toString())
+                                .toList()),
+                        newRange);
+                  }
+                  initConversationProcess(
+                          conversationMetaData.conversationID, newRange)
+                      .then((_) {
+                    setState(() {
+                      range = newRange;
+                    });
+                  });
+                }
+              }
+            });
+          });
+        }
+
+        if (!isSeenMessageInitialized) {
+          if (conversationInfo != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              seenMessagesProcess(
+                  ISeenNewMessagesRequest(
+                      conversationMetaData.conversationID,
+                      range,
+                      conversationInfo!.users
+                          .map((user) => user.userID.toString())
+                          .toList()),
+                  range);
+            });
+          }
         }
         return MaterialApp(
           home: Scaffold(
@@ -261,6 +369,8 @@ class ConversationStateView extends State<ConversationView> {
                         ),
                         Expanded(
                           child: ListView.builder(
+                            key: ValueKey(
+                                "${range}_${conversationMetaData.conversationID}"),
                             reverse: true,
                             controller: _scrollController,
                             padding: EdgeInsets.symmetric(
