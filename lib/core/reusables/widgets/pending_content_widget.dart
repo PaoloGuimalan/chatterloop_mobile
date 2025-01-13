@@ -1,35 +1,30 @@
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
-import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:flutter/material.dart';
 
-class MessageContentWidget extends StatefulWidget {
-  final MessageContent messageContent;
-  final String previousContentUserID;
-  final String currentUserID;
-  final void Function(bool, String) onPressed;
-  const MessageContentWidget(
+class PendingContentWidget extends StatefulWidget {
+  final String messageID;
+  final String content;
+  final String contentType;
+  const PendingContentWidget(
       {super.key,
-      required this.messageContent,
-      required this.previousContentUserID,
-      required this.currentUserID,
-      required this.onPressed});
+      required this.messageID,
+      required this.content,
+      required this.contentType});
 
   @override
-  MessageContentWidgetState createState() => MessageContentWidgetState();
+  PendingContentWidgetState createState() => PendingContentWidgetState();
 }
 
-class MessageContentWidgetState extends State<MessageContentWidget> {
-  late MessageContent _messageContent;
-  late String _previousContentUserID;
-  late String _currentUserID;
-  late void Function(bool, String) _onPressed;
+class PendingContentWidgetState extends State<PendingContentWidget> {
+  late String _messageID;
+  late String _content;
+  late String _contentType;
   @override
   void initState() {
     super.initState();
-    _messageContent = widget.messageContent;
-    _previousContentUserID = widget.previousContentUserID;
-    _currentUserID = widget.currentUserID;
-    _onPressed = widget.onPressed;
+    _messageID = widget.messageID;
+    _content = widget.content;
+    _contentType = widget.contentType;
   }
 
   Widget messageTypeSwitch(String content, String messageType, String messageID,
@@ -83,9 +78,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     elevation: 0,
                                     padding: EdgeInsets.only(
                                         top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
+                                onPressed: () {},
                                 child: Center(
                                   child: Icon(
                                     Icons.reply,
@@ -142,9 +135,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     elevation: 0,
                                     padding: EdgeInsets.only(
                                         top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
+                                onPressed: () {},
                                 child: Center(
                                   child: Icon(
                                     Icons.reply,
@@ -206,9 +197,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     elevation: 0,
                                     padding: EdgeInsets.only(
                                         top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
+                                onPressed: () {},
                                 child: Center(
                                   child: Icon(
                                     Icons.reply,
@@ -269,9 +258,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     elevation: 0,
                                     padding: EdgeInsets.only(
                                         top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
+                                onPressed: () {},
                                 child: Center(
                                   child: Icon(
                                     Icons.reply,
@@ -333,9 +320,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     elevation: 0,
                                     padding: EdgeInsets.only(
                                         top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
+                                onPressed: () {},
                                 child: Center(
                                   child: Icon(
                                     Icons.reply,
@@ -383,9 +368,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     elevation: 0,
                                     padding: EdgeInsets.only(
                                         top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
+                                onPressed: () {},
                                 child: Center(
                                   child: Icon(
                                     Icons.reply,
@@ -479,9 +462,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     elevation: 0,
                                     padding: EdgeInsets.only(
                                         top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
+                                onPressed: () {},
                                 child: Center(
                                   child: Icon(
                                     Icons.reply,
@@ -561,9 +542,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     elevation: 0,
                                     padding: EdgeInsets.only(
                                         top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
+                                onPressed: () {},
                                 child: Center(
                                   child: Icon(
                                     Icons.reply,
@@ -579,54 +558,6 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     }
   }
 
-  Widget messageDeletedItem(String messageType, bool isParentSenderCurrentUser,
-      bool isCurrentUser, bool isReply) {
-    return Row(
-      mainAxisAlignment:
-          isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-      children: [
-        !isParentSenderCurrentUser
-            ? SizedBox(
-                width: 0,
-              )
-            : Expanded(
-                child: SizedBox(
-                height: 0,
-              )),
-        SizedBox(
-          width: 5,
-        ),
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: 270),
-          child: Container(
-            decoration: BoxDecoration(
-                color: Colors.transparent,
-                border: Border.all(color: Color(0xFFdedede), width: 1),
-                borderRadius: BorderRadius.circular(10)),
-            child: Padding(
-              padding: EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
-              child: Text(
-                "Message deleted",
-                style: TextStyle(fontSize: 14, color: Color(0xFFdedede)),
-              ),
-            ),
-          ),
-        ),
-        SizedBox(
-          width: 5,
-        ),
-        isParentSenderCurrentUser
-            ? SizedBox(
-                width: 0,
-              )
-            : Expanded(
-                child: SizedBox(
-                height: 0,
-              ))
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -634,116 +565,41 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
       child: Column(
         children: [
           SizedBox(
-            height: _messageContent.isReply ? 7 : 0,
+            height: 0,
           ),
-          _previousContentUserID != _messageContent.sender ||
-                  _previousContentUserID == "end"
-              ? Column(
-                  children: [
-                    SizedBox(
-                      height: 5,
-                    ),
-                    _messageContent.conversationType != "single" &&
-                            _messageContent.messageType != "notif" &&
-                            _currentUserID != _messageContent.sender
-                        ? Row(
-                            mainAxisAlignment:
-                                _messageContent.sender == _currentUserID
-                                    ? MainAxisAlignment.end
-                                    : MainAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: EdgeInsets.only(
-                                    left: 7, right: 7, bottom: 2),
-                                child: Text(
-                                  _messageContent.sender,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF565656),
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              )
-                            ],
-                          )
-                        : SizedBox(
-                            height: 0,
-                          )
-                  ],
-                )
-              : SizedBox(
-                  height: 0,
-                ),
           SizedBox(
-            height: _messageContent.isReply ? 0 : 5,
+            height: 5,
           ),
-          _messageContent.isReply
-              ? Column(
+          Column(
+            children: [
+              Opacity(
+                opacity: 0.6,
+                child: messageTypeSwitch(
+                    _content,
+                    _contentType,
+                    _messageID,
+                    true,
+                    true,
+                    true), // pretend isReply to disable message buttons
+              ),
+              Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    SizedBox(
-                      height: 0,
-                    ),
-                    Row(
-                      mainAxisAlignment:
-                          _messageContent.sender == _currentUserID
-                              ? MainAxisAlignment.end
-                              : MainAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding:
-                              EdgeInsets.only(left: 7, right: 7, bottom: 7),
-                          child: Text(
-                            "replied to @${_messageContent.replyedmessage?[0].sender}",
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF565656),
-                                fontWeight: FontWeight.bold),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        )
-                      ],
-                    ),
-                    Opacity(
-                      opacity: 0.6,
-                      child: _messageContent.replyedmessage?[0].isDeleted
-                              as bool
-                          ? messageDeletedItem(
-                              _messageContent.replyedmessage?[0].messageType
-                                  as String,
-                              _messageContent.sender == _currentUserID,
-                              _messageContent.replyedmessage?[0].sender ==
-                                  _currentUserID,
-                              true)
-                          : messageTypeSwitch(
-                              _messageContent.replyedmessage?[0].content
-                                  as String,
-                              _messageContent.replyedmessage?[0].messageType
-                                  as String,
-                              _messageContent.replyedmessage?[0].messageID
-                                  as String,
-                              _messageContent.sender == _currentUserID,
-                              _messageContent.replyedmessage?[0].sender ==
-                                  _currentUserID,
-                              true),
+                    Text(
+                      "...sending",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF565656),
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     )
                   ],
-                )
-              : SizedBox(
-                  height: 0,
                 ),
-          _messageContent.isDeleted as bool
-              ? messageDeletedItem(
-                  _messageContent.messageType,
-                  _messageContent.sender == _currentUserID,
-                  _messageContent.sender == _currentUserID,
-                  false)
-              : messageTypeSwitch(
-                  _messageContent.content,
-                  _messageContent.messageType,
-                  _messageContent.messageID,
-                  _messageContent.sender == _currentUserID,
-                  _messageContent.sender == _currentUserID,
-                  false)
+              )
+            ],
+          )
         ],
       ),
     );
