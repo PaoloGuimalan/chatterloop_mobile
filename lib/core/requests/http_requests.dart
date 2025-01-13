@@ -237,14 +237,14 @@ class APIRequests {
     try {
       final response = await dio.post(
           '${endpoints.apiUrl}${endpoints.seenNewMessages}',
-          data: {token: encodedPayload},
+          data: {"token": encodedPayload},
           options: Options(headers: headers));
 
       if (response.data["status"] == false) {
         return null;
       }
 
-      return EncodedResponse(response.data["result"]);
+      return EncodedResponse(response.data["message"]);
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");
