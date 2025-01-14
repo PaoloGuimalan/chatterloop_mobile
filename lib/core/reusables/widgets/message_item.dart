@@ -1,9 +1,11 @@
+import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_redux/flutter_redux.dart';
 
 class MessageItemView extends StatefulWidget {
   final MessageItem message;
@@ -30,7 +32,8 @@ class MessageItemViewState extends State<MessageItemView> {
         widget.message.sender == widget.userID ? true : false;
   }
 
-  Widget messageItemIdentified(String conversationTypeProp) {
+  Widget messageItemIdentified(
+      String conversationTypeProp, bool hasTypingActivityProp) {
     switch (conversationTypeProp) {
       case "single":
         UsersContactPreview conversationUserLead =
@@ -82,7 +85,9 @@ class MessageItemViewState extends State<MessageItemView> {
                   SizedBox(
                     width: MediaQuery.of(context).size.width,
                     child: Text(
-                      "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
+                      hasTypingActivityProp
+                          ? "is typing..."
+                          : "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
                       style: TextStyle(
                         fontSize: 14,
                         color: Color(0xFF565656),
@@ -200,7 +205,9 @@ class MessageItemViewState extends State<MessageItemView> {
                   SizedBox(
                     width: MediaQuery.of(context).size.width,
                     child: Text(
-                      "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
+                      hasTypingActivityProp
+                          ? "someone is typing..."
+                          : "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
                       style: TextStyle(
                         fontSize: 14,
                         color: Color(0xFF565656),
@@ -327,7 +334,9 @@ class MessageItemViewState extends State<MessageItemView> {
                   SizedBox(
                     width: MediaQuery.of(context).size.width,
                     child: Text(
-                      "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
+                      hasTypingActivityProp
+                          ? "someone is typing..."
+                          : "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
                       style: TextStyle(
                         fontSize: 14,
                         color: Color(0xFF565656),
@@ -386,69 +395,86 @@ class MessageItemViewState extends State<MessageItemView> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: MediaQuery.of(context).size.width,
-      child: Column(
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 600, minHeight: 85),
-            child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    padding:
-                        EdgeInsets.only(top: 5, bottom: 5, left: 0, right: 0),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(7))),
-                onPressed: () {
-                  if (_message.conversationType == "single") {
-                    UsersContactPreview conversationUserLead =
-                        _userID == _message.users[0].userID
-                            ? _message.users[1]
-                            : _message.users[0];
-                    String previewName =
-                        "${conversationUserLead.fullname.firstName}${conversationUserLead.fullname.middleName == "N/A" ? "" : " ${conversationUserLead.fullname.middleName}"} ${conversationUserLead.fullname.lastName}";
+    return StoreConnector<AppState, AppState>(builder: (context, state) {
+      bool hasConversationTypingActivity = state.isTypingList
+              .where(
+                  (typing) => typing.conversationID == _message.conversationID)
+              .toList()
+              .isNotEmpty
+          ? true
+          : false;
+      return SizedBox(
+        width: MediaQuery.of(context).size.width,
+        child: Column(
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 600, minHeight: 85),
+              child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      padding:
+                          EdgeInsets.only(top: 5, bottom: 5, left: 0, right: 0),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(7))),
+                  onPressed: () {
+                    if (_message.conversationType == "single") {
+                      UsersContactPreview conversationUserLead =
+                          _userID == _message.users[0].userID
+                              ? _message.users[1]
+                              : _message.users[0];
+                      String previewName =
+                          "${conversationUserLead.fullname.firstName}${conversationUserLead.fullname.middleName == "N/A" ? "" : " ${conversationUserLead.fullname.middleName}"} ${conversationUserLead.fullname.lastName}";
 
-                    privateNavigatorKey.currentState?.pushNamed("/conversation",
-                        arguments: ConversationViewProps(
-                            _message.conversationID,
-                            _message.conversationType,
-                            ConversationPreview(
-                                ContentValidator().validateConversationProfile(
-                                    conversationUserLead.profile,
-                                    _message.conversationType),
-                                previewName)));
-                  } else if (_message.conversationType == "group") {
-                    privateNavigatorKey.currentState?.pushNamed("/conversation",
-                        arguments: ConversationViewProps(
-                            _message.conversationID,
-                            _message.conversationType,
-                            ConversationPreview(
-                                ContentValidator().validateConversationProfile(
-                                    _message.groupdetails?.profile,
-                                    _message.conversationType),
-                                _message.groupdetails?.groupName ?? "")));
-                  }
-                },
-                child: Container(
-                  width: MediaQuery.of(context).size.width,
-                  decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      // color: Colors.white,
-                      // border: Border.all(color: Color(0xffd2d2d2), width: 1),
-                      borderRadius: BorderRadius.circular(7)),
-                  child: Center(
-                    child: Padding(
-                      padding: EdgeInsets.only(top: 6, bottom: 6, right: 4),
-                      child: messageItemIdentified(_message.conversationType),
+                      privateNavigatorKey.currentState?.pushNamed(
+                          "/conversation",
+                          arguments: ConversationViewProps(
+                              _message.conversationID,
+                              _message.conversationType,
+                              ConversationPreview(
+                                  ContentValidator()
+                                      .validateConversationProfile(
+                                          conversationUserLead.profile,
+                                          _message.conversationType),
+                                  previewName)));
+                    } else if (_message.conversationType == "group") {
+                      privateNavigatorKey.currentState?.pushNamed(
+                          "/conversation",
+                          arguments: ConversationViewProps(
+                              _message.conversationID,
+                              _message.conversationType,
+                              ConversationPreview(
+                                  ContentValidator()
+                                      .validateConversationProfile(
+                                          _message.groupdetails?.profile,
+                                          _message.conversationType),
+                                  _message.groupdetails?.groupName ?? "")));
+                    }
+                  },
+                  child: Container(
+                    key: ValueKey(hasConversationTypingActivity),
+                    width: MediaQuery.of(context).size.width,
+                    decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        // color: Colors.white,
+                        // border: Border.all(color: Color(0xffd2d2d2), width: 1),
+                        borderRadius: BorderRadius.circular(7)),
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.only(top: 6, bottom: 6, right: 4),
+                        child: messageItemIdentified(_message.conversationType,
+                            hasConversationTypingActivity),
+                      ),
                     ),
-                  ),
-                )),
-          ),
-          SizedBox(
-            height: 5,
-          )
-        ],
-      ),
-    );
+                  )),
+            ),
+            SizedBox(
+              height: 5,
+            )
+          ],
+        ),
+      );
+    }, converter: (store) {
+      return store.state;
+    });
   }
 }

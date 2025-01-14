@@ -22,3 +22,18 @@ class PendingMessages {
         json["content"], json["type"]);
   }
 }
+
+class IsTypingMetaData {
+  String userID;
+  String conversationID;
+
+  Map<String, dynamic> toJson() {
+    return {"userID": userID, "conversationID": conversationID};
+  }
+
+  IsTypingMetaData(this.userID, this.conversationID);
+
+  factory IsTypingMetaData.fromJson(Map<String, dynamic> json) {
+    return IsTypingMetaData(json["userID"], json["conversationID"]);
+  }
+}

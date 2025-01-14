@@ -12,4 +12,5 @@ class Endpoints {
   String getConversationInfo =
       '/m/conversationinfo/'; // :conversationID/:conversationType (single, group, server)
   String seenNewMessages = '/u/seenNewMessages';
+  String postIsTyping = '/m/istypingbroadcast';
 }

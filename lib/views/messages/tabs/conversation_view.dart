@@ -43,6 +43,8 @@ class ConversationStateView extends State<ConversationView> {
   IsReplying isReplying = IsReplying(false, "");
   String messageValue = "";
   int range = 20;
+  bool isTyping = false;
+  bool isTypingTimedOut = false;
 
   @override
   void initState() {
@@ -137,6 +139,40 @@ class ConversationStateView extends State<ConversationView> {
         // print(rawContactsList);
         print(getConversationInfoResponse);
       }
+    }
+  }
+
+  Future<void> isTypingProcess(IisTypingRequest payload) async {
+    if (mounted) {
+      setState(() {
+        isSeenMessageInitialized = true;
+      });
+    }
+
+    EncodedResponse? postIsTypingResponse =
+        await APIRequests().isTypingRequest(payload);
+
+    if (postIsTypingResponse != null) {
+      if (kDebugMode) {
+        // print(rawContactsList);
+        print(postIsTypingResponse);
+      }
+    }
+  }
+
+  void isTypingTimeout(String conversationID, List<String> receivers) {
+    if (!isTyping) {
+      setState(() {
+        isTyping = true;
+        isTypingTimedOut = true;
+      });
+      isTypingProcess(IisTypingRequest(conversationID, receivers));
+      Future.delayed(Duration(milliseconds: 5000), () {
+        setState(() {
+          isTyping = false;
+          isTypingTimedOut = false;
+        });
+      });
     }
   }
 
@@ -821,6 +857,18 @@ class ConversationStateView extends State<ConversationView> {
                                           if (mounted) {
                                             setState(() {
                                               messageValue = value;
+                                              if (value.trim() != "") {
+                                                if (conversationInfo != null) {
+                                                  isTypingTimeout(
+                                                      conversationMetaData
+                                                          .conversationID,
+                                                      conversationInfo!.users
+                                                          .map((user) => user
+                                                              .userID
+                                                              .toString())
+                                                          .toList());
+                                                }
+                                              }
                                             });
                                           }
                                         },

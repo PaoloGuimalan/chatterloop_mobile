@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:flutter_redux/flutter_redux.dart';
@@ -22,6 +23,27 @@ class SseEvents {
       case "notifications_reload":
         return;
       case "istyping_broadcast":
+        Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
+        bool isAuth = parsedresponse["auth"] as bool;
+        bool status = parsedresponse["status"] as bool;
+        if (isAuth) {
+          if (status) {
+            Map<String, dynamic>? decodedtyper =
+                jwt.verifyJwt(parsedresponse["result"], secretKey);
+            dynamic rawTyperData = decodedtyper?["istyping"];
+            IsTypingMetaData finalTyperData =
+                IsTypingMetaData.fromJson(rawTyperData);
+
+            StoreProvider.of<AppState>(context ?? navigatorKey.currentContext!)
+                .dispatch(DispatchModel(setIsTypingListT, finalTyperData));
+
+            Future.delayed(Duration(milliseconds: 5000), () {
+              StoreProvider.of<AppState>(
+                      context ?? navigatorKey.currentContext!)
+                  .dispatch(DispatchModel(removeIsTypingListT, finalTyperData));
+            });
+          }
+        }
         return;
       case "incomingcall":
         return;
