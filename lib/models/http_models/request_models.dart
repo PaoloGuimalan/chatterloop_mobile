@@ -22,3 +22,22 @@ class ISeenNewMessagesRequest {
             .toList());
   }
 }
+
+class IisTypingRequest {
+  String conversationID;
+  List<String> receivers;
+
+  IisTypingRequest(this.conversationID, this.receivers);
+
+  Map<String, dynamic> toJson() {
+    return {'conversationID': conversationID, 'receivers': receivers};
+  }
+
+  factory IisTypingRequest.fromJson(Map<String, dynamic> json) {
+    return IisTypingRequest(
+        json["conversationID"],
+        (json["receivers"] as List)
+            .map((receiver) => receiver.toString())
+            .toList());
+  }
+}

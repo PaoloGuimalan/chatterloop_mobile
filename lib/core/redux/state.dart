@@ -2,12 +2,14 @@ import 'package:chatterloop_app/models/messages_models/messages_list_model.dart'
 import 'package:chatterloop_app/models/post_models/user_post_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
+import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 
 class AppState {
   UserAuth userAuth;
   List<UserPost> posts;
   List<MessageItem> messages;
   List<UserContacts> contacts;
+  List<IsTypingMetaData> isTypingList;
 
   AppState(
       {this.userAuth = const UserAuth(
@@ -16,17 +18,20 @@ class AppState {
               null, null, null)),
       this.posts = const [],
       this.messages = const [],
-      this.contacts = const []});
+      this.contacts = const [],
+      this.isTypingList = const []});
 
   AppState copyWith(
       {UserAuth? authState,
       List<UserPost>? postslist,
       List<MessageItem>? messageslist,
-      List<UserContacts>? contactslist}) {
+      List<UserContacts>? contactslist,
+      List<IsTypingMetaData>? istypinglistprop}) {
     return AppState(
         userAuth: authState ?? userAuth,
         posts: postslist ?? posts,
         messages: messageslist ?? messages,
-        contacts: contactslist ?? contacts);
+        contacts: contactslist ?? contacts,
+        isTypingList: istypinglistprop ?? isTypingList);
   }
 }
