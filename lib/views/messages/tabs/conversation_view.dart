@@ -4,6 +4,7 @@ import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
+import 'package:chatterloop_app/core/reusables/loaders/typing_loader.dart';
 import 'package:chatterloop_app/core/reusables/widgets/message_content_widget.dart';
 import 'package:chatterloop_app/core/reusables/widgets/pending_content_widget.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
@@ -467,7 +468,7 @@ class ConversationStateView extends State<ConversationView> {
                         Expanded(
                           child: ListView.builder(
                             key: ValueKey(
-                                "${range}_${conversationMetaData.conversationID}_${pendingMessagesList.length}_${conversationContentList.length}"),
+                                "${range}_${conversationMetaData.conversationID}_${pendingMessagesList.length}_${conversationContentList.length}_${state.isTypingList.length}"),
                             reverse: true,
                             controller: _scrollController,
                             padding: EdgeInsets.symmetric(
@@ -475,6 +476,16 @@ class ConversationStateView extends State<ConversationView> {
                             itemCount: combinedPendingAndMessagesList
                                 .length, //conversationContentList.length
                             itemBuilder: (context, index) {
+                              bool hasConversationTypingActivity = state
+                                      .isTypingList
+                                      .where((typing) =>
+                                          typing.conversationID ==
+                                          conversationMetaData.conversationID)
+                                      .toList()
+                                      .isNotEmpty
+                                  ? true
+                                  : false;
+
                               if (combinedPendingAndMessagesList[
                                   combinedPendingAndMessagesList.length -
                                       1 -
@@ -500,22 +511,35 @@ class ConversationStateView extends State<ConversationView> {
                                         ? "start"
                                         : "end";
 
-                                return SizedBox(
-                                  width: MediaQuery.of(context).size.width,
-                                  child: MessageContentWidget(
-                                      messageContent: contentItem,
-                                      previousContentUserID:
-                                          previousContentUserID,
-                                      currentUserID: state.userAuth.user.userID,
-                                      onPressed:
-                                          (bool isReply, String replyingTo) {
-                                        if (mounted) {
-                                          setState(() {
-                                            isReplying =
-                                                IsReplying(isReply, replyingTo);
-                                          });
-                                        }
-                                      }),
+                                return Column(
+                                  children: [
+                                    SizedBox(
+                                      width: MediaQuery.of(context).size.width,
+                                      child: MessageContentWidget(
+                                          messageContent: contentItem,
+                                          previousContentUserID:
+                                              previousContentUserID,
+                                          currentUserID:
+                                              state.userAuth.user.userID,
+                                          onPressed: (bool isReply,
+                                              String replyingTo) {
+                                            if (mounted) {
+                                              setState(() {
+                                                isReplying = IsReplying(
+                                                    isReply, replyingTo);
+                                              });
+                                            }
+                                          }),
+                                    ),
+                                    index == 0
+                                        ? TypingIndicator(
+                                            isTyping:
+                                                hasConversationTypingActivity,
+                                          )
+                                        : SizedBox(
+                                            height: 0,
+                                          )
+                                  ],
                                 );
                               } else if (combinedPendingAndMessagesList[
                                   combinedPendingAndMessagesList.length -
@@ -526,13 +550,25 @@ class ConversationStateView extends State<ConversationView> {
                                         combinedPendingAndMessagesList.length -
                                             1 -
                                             index];
-                                return SizedBox(
-                                  width: MediaQuery.of(context).size.width,
-                                  child: PendingContentWidget(
-                                    messageID: contentItem.pendingID,
-                                    content: contentItem.content,
-                                    contentType: contentItem.type,
-                                  ),
+                                return Column(
+                                  children: [
+                                    SizedBox(
+                                      width: MediaQuery.of(context).size.width,
+                                      child: PendingContentWidget(
+                                        messageID: contentItem.pendingID,
+                                        content: contentItem.content,
+                                        contentType: contentItem.type,
+                                      ),
+                                    ),
+                                    index == 0
+                                        ? TypingIndicator(
+                                            isTyping:
+                                                hasConversationTypingActivity,
+                                          )
+                                        : SizedBox(
+                                            height: 0,
+                                          )
+                                  ],
                                 );
                               } else {
                                 return SizedBox();
