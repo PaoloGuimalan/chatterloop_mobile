@@ -189,7 +189,12 @@ class ConversationStateView extends State<ConversationView> {
     }
   }
 
-  void sendMessageProcess(String userID, String conversationID) {
+  void sendMessageProcess(
+      String userID,
+      String conversationID,
+      List<String> receivers,
+      String messageType,
+      String conversationType) async {
     String pendingID =
         "${userID}_${conversationID}_${pendingMessagesList.length + 1}_${ContentValidator().generateRandomNumber(10)}";
 
@@ -202,6 +207,25 @@ class ConversationStateView extends State<ConversationView> {
           PendingMessages(conversationID, pendingID, messageValue, "text"));
 
       ContentValidator().printer(messageValue.trim());
+      // ContentValidator().printer(receivers);
+
+      EncodedResponse? sendMessageResponse = await APIRequests()
+          .sendMessageRequest(ISendMessagePayload(
+              conversationID,
+              pendingID,
+              receivers,
+              messageValue,
+              isReplying.isReply,
+              isReplying.replyingTo,
+              messageType,
+              conversationType));
+
+      if (sendMessageResponse != null) {
+        if (kDebugMode) {
+          // print(rawContactsList);
+          print(sendMessageResponse);
+        }
+      }
 
       if (mounted) {
         setState(() {
@@ -531,6 +555,101 @@ class ConversationStateView extends State<ConversationView> {
                                             }
                                           }),
                                     ),
+                                    contentItem.messageType != "notif"
+                                        ? conversationInfo != null
+                                            ? contentItem.seeners.length ==
+                                                    conversationInfo
+                                                        ?.users.length
+                                                ? index -
+                                                            pendingMessagesList
+                                                                .length ==
+                                                        0
+                                                    ? Padding(
+                                                        padding:
+                                                            EdgeInsets.only(
+                                                                top: 4,
+                                                                bottom: 2,
+                                                                left: 7,
+                                                                right: 7),
+                                                        child: SizedBox(
+                                                          width:
+                                                              double.infinity,
+                                                          child: Text(
+                                                            conversationMetaData
+                                                                        .conversationType ==
+                                                                    "single"
+                                                                ? "Seen"
+                                                                : "Seen by everyone",
+                                                            textAlign: contentItem
+                                                                        .sender ==
+                                                                    state
+                                                                        .userAuth
+                                                                        .user
+                                                                        .userID
+                                                                ? TextAlign.end
+                                                                : TextAlign
+                                                                    .start,
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              color: Color(
+                                                                  0xFF565656),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      )
+                                                    : SizedBox(
+                                                        height: 0,
+                                                      )
+                                                : index -
+                                                            pendingMessagesList
+                                                                .length ==
+                                                        0
+                                                    ? conversationMetaData
+                                                                .conversationType !=
+                                                            "single"
+                                                        ? Padding(
+                                                            padding:
+                                                                EdgeInsets.only(
+                                                                    top: 4,
+                                                                    bottom: 2,
+                                                                    left: 7,
+                                                                    right: 7),
+                                                            child: SizedBox(
+                                                              width: double
+                                                                  .infinity,
+                                                              child: Text(
+                                                                "Seen by ${contentItem.seeners.join(", ")}",
+                                                                textAlign: contentItem
+                                                                            .sender ==
+                                                                        state
+                                                                            .userAuth
+                                                                            .user
+                                                                            .userID
+                                                                    ? TextAlign
+                                                                        .end
+                                                                    : TextAlign
+                                                                        .start,
+                                                                style:
+                                                                    TextStyle(
+                                                                  fontSize: 12,
+                                                                  color: Color(
+                                                                      0xFF565656),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          )
+                                                        : SizedBox(
+                                                            height: 0,
+                                                          )
+                                                    : SizedBox(
+                                                        height: 0,
+                                                      )
+                                            : SizedBox(
+                                                height: 0,
+                                              )
+                                        : SizedBox(
+                                            height: 0,
+                                          ),
                                     index == 0
                                         ? TypingIndicator(
                                             isTyping:
@@ -550,26 +669,36 @@ class ConversationStateView extends State<ConversationView> {
                                         combinedPendingAndMessagesList.length -
                                             1 -
                                             index];
-                                return Column(
-                                  children: [
-                                    SizedBox(
-                                      width: MediaQuery.of(context).size.width,
-                                      child: PendingContentWidget(
-                                        messageID: contentItem.pendingID,
-                                        content: contentItem.content,
-                                        contentType: contentItem.type,
+
+                                if (conversationContentList
+                                    .where((item) =>
+                                        item.pendingID == contentItem.pendingID)
+                                    .toList()
+                                    .isEmpty) {
+                                  return Column(
+                                    children: [
+                                      SizedBox(
+                                        width:
+                                            MediaQuery.of(context).size.width,
+                                        child: PendingContentWidget(
+                                          messageID: contentItem.pendingID,
+                                          content: contentItem.content,
+                                          contentType: contentItem.type,
+                                        ),
                                       ),
-                                    ),
-                                    index == 0
-                                        ? TypingIndicator(
-                                            isTyping:
-                                                hasConversationTypingActivity,
-                                          )
-                                        : SizedBox(
-                                            height: 0,
-                                          )
-                                  ],
-                                );
+                                      index == 0
+                                          ? TypingIndicator(
+                                              isTyping:
+                                                  hasConversationTypingActivity,
+                                            )
+                                          : SizedBox(
+                                              height: 0,
+                                            )
+                                    ],
+                                  );
+                                } else {
+                                  return SizedBox();
+                                }
                               } else {
                                 return SizedBox();
                               }
@@ -939,10 +1068,19 @@ class ConversationStateView extends State<ConversationView> {
                                                 left: 0,
                                                 right: 0)),
                                         onPressed: () {
-                                          sendMessageProcess(
-                                              state.userAuth.user.userID,
-                                              conversationMetaData
-                                                  .conversationID);
+                                          if (conversationInfo != null) {
+                                            sendMessageProcess(
+                                                state.userAuth.user.userID,
+                                                conversationMetaData
+                                                    .conversationID,
+                                                conversationInfo!.users
+                                                    .map((user) =>
+                                                        user.userID.toString())
+                                                    .toList(),
+                                                "text",
+                                                conversationInfo?.type
+                                                    as String);
+                                          }
                                         },
                                         child: Center(
                                           child: Icon(
