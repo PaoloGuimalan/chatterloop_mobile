@@ -41,3 +41,52 @@ class IisTypingRequest {
             .toList());
   }
 }
+
+class ISendMessagePayload {
+  String conversationID;
+  String pendingID;
+  List<String> receivers;
+  String content;
+  bool isReply;
+  String replyingTo;
+  String messageType;
+  String conversationType;
+
+  ISendMessagePayload(
+      this.conversationID,
+      this.pendingID,
+      this.receivers,
+      this.content,
+      this.isReply,
+      this.replyingTo,
+      this.messageType,
+      this.conversationType);
+
+  Map<String, dynamic> toJson() {
+    return {
+      'conversationID': conversationID,
+      'pendingID': pendingID,
+      'receivers': receivers,
+      'content': content,
+      'isReply': isReply,
+      'replyingTo': replyingTo,
+      'messageType': messageType,
+      'conversationType': conversationType
+    };
+  }
+
+  factory ISendMessagePayload.fromJson(Map<String, dynamic> json) {
+    return ISendMessagePayload(
+      json["conversationID"],
+      json["pendingID"],
+      (json["receivers"] as List)
+          .map((receiver) => receiver.toString())
+          .toList(),
+      json["content"],
+      json["isReply"],
+      json["replyingTo"],
+      json["messageType"],
+      json["conversationType"],
+    );
+  }
+}

@@ -285,4 +285,37 @@ class APIRequests {
       return null;
     }
   }
+
+  Future<EncodedResponse?> sendMessageRequest(
+      ISendMessagePayload payload) async {
+    String url = '${endpoints.apiUrl}${endpoints.sendNewMessage}';
+    ContentValidator().printer(url);
+    String? token = await storage.read(key: 'token');
+    String encodedPayload = jwt.createJwt(payload.toJson(), secretKey);
+
+    if (token == null) {
+      return null;
+    }
+
+    Map<String, String> headers = {
+      'x-access-token': token,
+    };
+
+    try {
+      final response = await dio.post(url,
+          data: {"token": encodedPayload}, options: Options(headers: headers));
+
+      if (response.data["status"] == false) {
+        return null;
+      }
+
+      return EncodedResponse(response.data["message"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
 }
