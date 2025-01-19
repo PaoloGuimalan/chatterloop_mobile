@@ -87,7 +87,7 @@ class MessageItemViewState extends State<MessageItemView> {
                     child: Text(
                       hasTypingActivityProp
                           ? "is typing..."
-                          : "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
+                          : "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted != null && _message.isDeleted as bool ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : _message.messageType.contains("audio") ? "Sent an audio" : "Sent a file"}",
                       style: TextStyle(
                         fontSize: 14,
                         color: Color(0xFF565656),
@@ -207,7 +207,7 @@ class MessageItemViewState extends State<MessageItemView> {
                     child: Text(
                       hasTypingActivityProp
                           ? "someone is typing..."
-                          : "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
+                          : "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted != null && _message.isDeleted as bool ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : _message.messageType.contains("audio") ? "Sent an audio" : "Sent a file"}",
                       style: TextStyle(
                         fontSize: 14,
                         color: Color(0xFF565656),
@@ -336,7 +336,7 @@ class MessageItemViewState extends State<MessageItemView> {
                     child: Text(
                       hasTypingActivityProp
                           ? "someone is typing..."
-                          : "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : "Sent a file"}",
+                          : "${_isCurrentUserSender && _message.messageType != "notif" ? "you: " : ""}${_message.isDeleted != null && _message.isDeleted as bool ? "Message deleted" : _message.messageType == "text" || _message.messageType == "notif" ? _message.content : _message.messageType == "image" ? "Sent a photo" : _message.messageType.contains("video") ? "Sent a video" : _message.messageType.contains("audio") ? "Sent an audio" : "Sent a file"}",
                       style: TextStyle(
                         fontSize: 14,
                         color: Color(0xFF565656),

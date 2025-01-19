@@ -56,7 +56,7 @@ class MessageContent {
                 .map((reaction) => ReactionItem.fromJson(reaction))
                 .toList()
             : [],
-        json["isDeleted"],
+        json["isDeleted"] ?? false,
         json["messageType"],
         json["conversationType"],
         json["replyedmessage"] != null

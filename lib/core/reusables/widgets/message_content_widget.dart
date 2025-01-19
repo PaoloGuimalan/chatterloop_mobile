@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/reusables/players/audio_player_widget.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:flutter/material.dart';
@@ -355,6 +356,120 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               color: Colors.black,
               child: VideoPlayerScreen(
                   videoUrl:
+                      content.split("%%%")[0].replaceAll("###", "%23%23%23")),
+            ),
+          ),
+          SizedBox(
+            width: 5,
+          ),
+          isParentSenderCurrentUser
+              ? SizedBox(
+                  width: 0,
+                )
+              : Expanded(
+                  child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {
+                                  _onPressed(true, messageID);
+                                },
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
+                  ],
+                ))
+        ],
+      );
+    } else if (messageType.contains("audio")) {
+      return Row(
+        mainAxisAlignment:
+            isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          !isParentSenderCurrentUser
+              ? SizedBox(
+                  width: 0,
+                )
+              : Expanded(
+                  child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.delete,
+                                    color: Color(0xFF565656),
+                                    size: 18,
+                                  ),
+                                )),
+                          ),
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {
+                                  _onPressed(true, messageID);
+                                },
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
+                  ],
+                )),
+          SizedBox(
+            width: 5,
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 270),
+            child: Container(
+              color: Colors.transparent,
+              child: AudioPlayerWidget(
+                  audioUrl:
                       content.split("%%%")[0].replaceAll("###", "%23%23%23")),
             ),
           ),
