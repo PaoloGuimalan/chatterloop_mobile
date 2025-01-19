@@ -52,7 +52,6 @@ class SseEvents {
       case "contactslist":
         return;
       case "messages_list":
-        AudioPlayer audioPlayer = AudioPlayer();
         UserAuth userAuth =
             StoreProvider.of<AppState>(context ?? navigatorKey.currentContext!)
                 .state
@@ -64,8 +63,10 @@ class SseEvents {
             // play message ringtone
             if (parsedresponse["onseen"]) {
               // play seen ringtone
+              AudioPlayer audioPlayer = AudioPlayer();
               audioPlayer.play(AssetSource('sounds/seen_alert.mp3'));
             } else {
+              AudioPlayer audioPlayer = AudioPlayer();
               audioPlayer.play(AssetSource('sounds/message_alert.mp3'));
             }
           }

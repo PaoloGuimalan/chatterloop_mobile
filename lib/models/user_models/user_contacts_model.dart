@@ -80,8 +80,8 @@ class UsersContactPreview {
         json["userID"],
         UserFullname.fromJson(json["fullname"]),
         json["profile"],
-        json["coverphoto"],
-        json["isActivated"],
-        json["isVerified"]);
+        json["coverphoto"] ?? "",
+        json["isActivated"] ?? false,
+        json["isVerified"] ?? false);
   }
 }

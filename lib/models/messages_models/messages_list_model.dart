@@ -15,7 +15,7 @@ class MessageItem {
   final bool isReply;
   final String replyingTo;
   final List<ReactionItem> reactions;
-  final bool isDeleted;
+  final bool? isDeleted;
   final String messageType;
   final String conversationType;
   final int unread;
