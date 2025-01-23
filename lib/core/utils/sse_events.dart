@@ -8,6 +8,8 @@ import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
+import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
+import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
@@ -18,9 +20,60 @@ import 'package:flutter_redux/flutter_redux.dart';
 class SseEvents {
   void listen(SSEModel event, BuildContext? context, bool mainListener) {
     switch (event.event) {
-      case "notificaions":
+      case "notifications":
+        Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
+        bool isAuth = parsedresponse["auth"] as bool;
+        bool status = parsedresponse["status"] as bool;
+
+        if (isAuth) {
+          if (status) {
+            Map<String, dynamic>? decodedResult =
+                jwt.verifyJwt(parsedresponse["result"], secretKey);
+
+            List<dynamic> rawNotificationsList =
+                decodedResult?["notifications"];
+
+            List<NotificationsItemModel> spreadedNotificationsList =
+                rawNotificationsList
+                    .map((notif) => NotificationsItemModel.fromJson(notif))
+                    .toList();
+
+            AudioPlayer audioPlayer = AudioPlayer();
+            audioPlayer.play(AssetSource('sounds/notification_alert.mp3'));
+
+            StoreProvider.of<AppState>(context ?? navigatorKey.currentContext!)
+                .dispatch(DispatchModel(
+                    setNotificationsListT,
+                    NotificationsStateModel(spreadedNotificationsList,
+                        decodedResult?["totalunread"])));
+          }
+        }
         return;
       case "notifications_reload":
+        Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
+        bool isAuth = parsedresponse["auth"] as bool;
+        bool status = parsedresponse["status"] as bool;
+
+        if (isAuth) {
+          if (status) {
+            Map<String, dynamic>? decodedResult =
+                jwt.verifyJwt(parsedresponse["result"], secretKey);
+
+            List<dynamic> rawNotificationsList =
+                decodedResult?["notifications"];
+
+            List<NotificationsItemModel> spreadedNotificationsList =
+                rawNotificationsList
+                    .map((notif) => NotificationsItemModel.fromJson(notif))
+                    .toList();
+
+            StoreProvider.of<AppState>(context ?? navigatorKey.currentContext!)
+                .dispatch(DispatchModel(
+                    setNotificationsListT,
+                    NotificationsStateModel(spreadedNotificationsList,
+                        decodedResult?["totalunread"])));
+          }
+        }
         return;
       case "istyping_broadcast":
         Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);

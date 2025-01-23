@@ -6,6 +6,8 @@ class Endpoints {
   String login = '/auth/login';
   String getPosts = '/posts/feed';
   String getContacts = '/u/getContacts';
+  String getNotifications = '/u/getNotifications';
+  String readNotifications = '/u/readnotifications';
 
   String getConversationList = '/u/initConversationList';
   String initConversation = '/u/initConversation/'; // :conversationID

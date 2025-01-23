@@ -23,6 +23,12 @@ AppState _setContactsList(AppState state, dynamic action) {
       contactslist: reducers.setContactsList(state, action).contacts);
 }
 
+AppState _setNotificationsList(AppState state, dynamic action) {
+  return state.copyWith(
+      notificationsstateprop:
+          reducers.setNotificationsList(state, action).notificationsstate);
+}
+
 AppState _setIsTypingList(AppState state, dynamic action) {
   return state.copyWith(
       istypinglistprop: reducers.setIsTypingList(state, action).isTypingList);
@@ -33,7 +39,8 @@ final appReducer = combineReducers<AppState>([
   TypedReducer<AppState, dynamic>(_setFeedPosts).call,
   TypedReducer<AppState, dynamic>(_setMessagesList).call,
   TypedReducer<AppState, dynamic>(_setContactsList).call,
-  TypedReducer<AppState, dynamic>(_setIsTypingList).call
+  TypedReducer<AppState, dynamic>(_setIsTypingList).call,
+  TypedReducer<AppState, dynamic>(_setNotificationsList).call
 ]);
 
 class StateStore {

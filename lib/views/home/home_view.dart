@@ -8,6 +8,8 @@ import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
+import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
+import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
@@ -27,6 +29,7 @@ class HomeView extends StatefulWidget {
 class HomeViewState extends State<HomeView> {
   bool isMessagesInitialized = false;
   bool isContactsInitialized = false;
+  bool isNotificationsInitialized = false;
 
   @override
   void initState() {
@@ -77,6 +80,38 @@ class HomeViewState extends State<HomeView> {
     }
   }
 
+  Future<void> getNotificationsListProcess(BuildContext context) async {
+    EncodedResponse? getNotificationsListResponse =
+        await APIRequests().getNotificationsListRequest();
+
+    if (getNotificationsListResponse != null) {
+      Map<String, dynamic>? decodedNotificationsList =
+          jwt.verifyJwt(getNotificationsListResponse.result, secretKey);
+
+      List<dynamic> rawNotificationsList =
+          decodedNotificationsList?["notifications"];
+
+      List<NotificationsItemModel> spreadedNotificationsList =
+          rawNotificationsList
+              .map((notif) => NotificationsItemModel.fromJson(notif))
+              .toList();
+
+      setState(() {
+        // messagesList = spreadedNotificationsList;
+        isNotificationsInitialized = true;
+      });
+
+      StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+          setNotificationsListT,
+          NotificationsStateModel(spreadedNotificationsList,
+              decodedNotificationsList?["totalunread"])));
+
+      if (kDebugMode) {
+        print(rawNotificationsList);
+      }
+    }
+  }
+
   Future<void> getContactsProcess(BuildContext context) async {
     EncodedResponse? getContactsResponse =
         await APIRequests().getContactsRequest();
@@ -118,6 +153,9 @@ class HomeViewState extends State<HomeView> {
       }
       if (!isContactsInitialized) {
         getContactsProcess(context);
+      }
+      if (!isNotificationsInitialized) {
+        getNotificationsListProcess(context);
       }
       return MaterialApp(
         home: Scaffold(
@@ -233,12 +271,51 @@ class HomeViewState extends State<HomeView> {
                                             privateNavigatorKey.currentState
                                                 ?.pushNamed("/notifications");
                                           },
-                                          child: Center(
-                                            child: Icon(
-                                              color: Color(0xff555555),
-                                              Icons.notifications_none,
-                                              size: 25,
-                                            ),
+                                          child: Stack(
+                                            children: [
+                                              Center(
+                                                child: Icon(
+                                                  color: Color(0xff555555),
+                                                  Icons.notifications_none,
+                                                  size: 25,
+                                                ),
+                                              ),
+                                              state.notificationsstate
+                                                          .totalunread >
+                                                      0
+                                                  ? Positioned(
+                                                      bottom: 5,
+                                                      right: 0,
+                                                      child: Container(
+                                                        decoration: BoxDecoration(
+                                                            color: Colors.red,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        10)),
+                                                        width: 22,
+                                                        height: 17,
+                                                        child: Center(
+                                                          child: Text(
+                                                            state.notificationsstate
+                                                                        .totalunread >
+                                                                    99
+                                                                ? "+99"
+                                                                : state
+                                                                    .notificationsstate
+                                                                    .totalunread
+                                                                    .toString(),
+                                                            style: TextStyle(
+                                                                fontSize: 10,
+                                                                color: Colors
+                                                                    .white),
+                                                          ),
+                                                        ),
+                                                      ))
+                                                  : SizedBox(
+                                                      height: 0,
+                                                    )
+                                            ],
                                           )),
                                     ),
                                     SizedBox(

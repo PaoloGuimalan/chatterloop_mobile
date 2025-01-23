@@ -40,6 +40,15 @@ class ReduxActions {
     }
   }
 
+  AppState setNotificationsList(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case setNotificationsListT:
+        return AppState(notificationsstate: action.payload);
+      default:
+        return state;
+    }
+  }
+
   AppState setIsTypingList(AppState state, DispatchModel action) {
     switch (action.type) {
       case setIsTypingListT:
