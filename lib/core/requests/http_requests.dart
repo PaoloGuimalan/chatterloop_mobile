@@ -153,6 +153,36 @@ class APIRequests {
     }
   }
 
+  Future<EncodedResponse?> getNotificationsListRequest() async {
+    ContentValidator()
+        .printer('${endpoints.apiUrl}${endpoints.getNotifications}');
+    String? token = await storage.read(key: 'token');
+
+    if (token == null) {
+      return null;
+    }
+
+    Map<String, String> headers = {'x-access-token': token};
+
+    try {
+      final response = await dio.get(
+          '${endpoints.apiUrl}${endpoints.getNotifications}',
+          options: Options(headers: headers));
+
+      if (response.data["status"] == false) {
+        return null;
+      }
+
+      return EncodedResponse(response.data["result"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
   Future<EncodedResponse?> initConversationRequest(
       String conversationID, int range) async {
     ContentValidator().printer(
@@ -238,6 +268,38 @@ class APIRequests {
       final response = await dio.post(
           '${endpoints.apiUrl}${endpoints.seenNewMessages}',
           data: {"token": encodedPayload},
+          options: Options(headers: headers));
+
+      if (response.data["status"] == false) {
+        return null;
+      }
+
+      return EncodedResponse(response.data["message"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
+  Future<EncodedResponse?> readNotificationsRequest() async {
+    ContentValidator()
+        .printer('${endpoints.apiUrl}${endpoints.readNotifications}');
+    String? token = await storage.read(key: 'token');
+
+    if (token == null) {
+      return null;
+    }
+
+    Map<String, String> headers = {
+      'x-access-token': token,
+    };
+
+    try {
+      final response = await dio.post(
+          '${endpoints.apiUrl}${endpoints.readNotifications}',
           options: Options(headers: headers));
 
       if (response.data["status"] == false) {
