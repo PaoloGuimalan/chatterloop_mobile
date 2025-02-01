@@ -102,7 +102,7 @@ class AppContainerState extends State<AppContainer> {
         StoreProvider.of<AppState>(context).dispatch(
             DispatchModel(setUserAuthT, UserAuth(false, userAuth.user)));
       });
-      navigatorKey.currentState?.pushNamed('/login');
+      AppRoutes.navigatorKey.currentState?.pushNamed('/login');
       return;
     }
 
@@ -130,7 +130,7 @@ class AppContainerState extends State<AppContainer> {
                     null,
                     null,
                     null))));
-        navigatorKey.currentState?.pushNamed("/home");
+        AppRoutes.navigatorKey.currentState?.pushNamed("/home");
       });
     } else {
       await storage.delete(key: 'token');
@@ -140,7 +140,7 @@ class AppContainerState extends State<AppContainer> {
               false,
               UserAccount("", UserFullname("", "", ""), "", false, false, null,
                   null, null, null))));
-      navigatorKey.currentState?.pushNamed("/login");
+      AppRoutes.navigatorKey.currentState?.pushNamed("/login");
     }
   }
 
@@ -151,7 +151,7 @@ class AppContainerState extends State<AppContainer> {
       bool? isLoggedIn = userAuth.auth;
       return isLoggedIn != null
           ? MaterialApp(
-              navigatorKey: navigatorKey,
+              navigatorKey: AppRoutes.navigatorKey,
               initialRoute: isLoggedIn ? '/home' : '/login',
               routes: AppRoutes.routes,
             )

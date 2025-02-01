@@ -43,7 +43,7 @@ class HomeViewContainerState extends State<HomeViewContainer> {
         initSSEConnection();
       }
       return MaterialApp(
-        navigatorKey: privateNavigatorKey,
+        navigatorKey: AppRoutes.privateNavigatorKey,
         initialRoute: '/main',
         routes: AppRoutes.privateroutes,
       );

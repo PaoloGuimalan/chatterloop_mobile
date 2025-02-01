@@ -88,13 +88,15 @@ class ContactsItemWidgetState extends State<ContactsItemWidget> {
                                   padding: EdgeInsets.only(
                                       top: 0, bottom: 0, left: 0, right: 0)),
                               onPressed: () {
-                                privateNavigatorKey.currentState?.pushNamed(
-                                    "/conversation",
-                                    arguments: ConversationViewProps(
-                                        _conversationMetaData.conversationID,
-                                        _conversationMetaData.conversationType,
-                                        _conversationMetaData
-                                            .conversationPreview));
+                                AppRoutes.privateNavigatorKey.currentState
+                                    ?.pushNamed("/conversation",
+                                        arguments: ConversationViewProps(
+                                            _conversationMetaData
+                                                .conversationID,
+                                            _conversationMetaData
+                                                .conversationType,
+                                            _conversationMetaData
+                                                .conversationPreview));
 
                                 if (kDebugMode) {
                                   print("Message");

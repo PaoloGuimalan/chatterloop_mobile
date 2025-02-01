@@ -47,6 +47,9 @@ dependencies:
   restart: ^1.0.0+1
   event_bus: ^2.0.1
   audioplayers: ^6.1.0
+  emoji_picker_flutter: ^4.3.0
+  flutter_reaction_button: ^3.0.0+3
+  flutter_chat_reactions: ^0.1.1
 
 dev_dependencies:
   flutter_test:

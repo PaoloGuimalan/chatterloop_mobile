@@ -29,6 +29,11 @@ class ContactsStateView extends State<ContactsView> {
     super.initState();
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   // List<UserContacts> contactsList = [];
 
   Future<void> getContactsProcess(BuildContext context) async {

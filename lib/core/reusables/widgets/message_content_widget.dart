@@ -2,6 +2,8 @@ import 'package:chatterloop_app/core/reusables/players/audio_player_widget.dart'
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_chat_reactions/flutter_chat_reactions.dart';
+import 'package:flutter_chat_reactions/utilities/hero_dialog_route.dart';
 
 class MessageContentWidget extends StatefulWidget {
   final MessageContent messageContent;
@@ -24,6 +26,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   late String _previousContentUserID;
   late String _currentUserID;
   late void Function(bool, String) _onPressed;
+
   @override
   void initState() {
     super.initState();
@@ -33,8 +36,14 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     _onPressed = widget.onPressed;
   }
 
-  Widget messageTypeSwitch(String content, String messageType, String messageID,
-      bool isParentSenderCurrentUser, bool isCurrentUser, bool isReply) {
+  Widget messageTypeSwitch(
+      String content,
+      String messageType,
+      String messageID,
+      bool isParentSenderCurrentUser,
+      bool isCurrentUser,
+      bool isReply,
+      bool isHoverPreview) {
     if (messageType == "text") {
       return Row(
         mainAxisAlignment:
@@ -102,20 +111,54 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
-            child: Container(
-              decoration: BoxDecoration(
-                  color: isCurrentUser ? Color(0xff1c7def) : Color(0xffdedede),
-                  borderRadius: BorderRadius.circular(10)),
-              child: Padding(
-                padding:
-                    EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
-                child: Text(
-                  content,
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: isCurrentUser ? Colors.white : Colors.black),
+            child: Column(
+              crossAxisAlignment: isParentSenderCurrentUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                      color:
+                          isCurrentUser ? Color(0xff1c7def) : Color(0xffdedede),
+                      borderRadius: BorderRadius.circular(10)),
+                  child: Padding(
+                    padding:
+                        EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
+                    child: Text(
+                      content,
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: isCurrentUser ? Colors.white : Colors.black),
+                    ),
+                  ),
                 ),
-              ),
+                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                    color: Color(0xffd2d2d2), width: 1),
+                                borderRadius: BorderRadius.circular(10)),
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                  top: 1, bottom: 1, left: 2, right: 2),
+                              child: Row(
+                                children: [
+                                  ..._messageContent.reactions!
+                                      .map((reaction) => Text(reaction.emoji))
+                                ],
+                              ),
+                            ),
+                          )
+                        ],
+                      )
+                    : SizedBox(
+                        height: 0,
+                      )
+              ],
             ),
           ),
           SizedBox(
@@ -225,24 +268,58 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
-            child: Center(
-              child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: double.infinity,
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                        color: Color(0xffd2d2d2),
-                        // borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Color(0xffd2d2d2), width: 1)),
-                    child: Padding(
-                      padding: EdgeInsets.all(0),
-                      child: Image.network(
-                        content,
-                        fit: BoxFit.cover,
+            child: Column(
+              crossAxisAlignment: isParentSenderCurrentUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: double.infinity,
                       ),
-                    ),
-                  )),
+                      child: Container(
+                        decoration: BoxDecoration(
+                            color: Color(0xffd2d2d2),
+                            // borderRadius: BorderRadius.circular(10),
+                            border:
+                                Border.all(color: Color(0xffd2d2d2), width: 1)),
+                        child: Padding(
+                          padding: EdgeInsets.all(0),
+                          child: Image.network(
+                            content,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      )),
+                ),
+                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                    color: Color(0xffd2d2d2), width: 1),
+                                borderRadius: BorderRadius.circular(10)),
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                  top: 1, bottom: 1, left: 2, right: 2),
+                              child: Row(
+                                children: [
+                                  ..._messageContent.reactions!
+                                      .map((reaction) => Text(reaction.emoji))
+                                ],
+                              ),
+                            ),
+                          )
+                        ],
+                      )
+                    : SizedBox(
+                        height: 0,
+                      )
+              ],
             ),
           ),
           SizedBox(
@@ -352,11 +429,45 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
-            child: Container(
-              color: Colors.black,
-              child: VideoPlayerScreen(
-                  videoUrl:
-                      content.split("%%%")[0].replaceAll("###", "%23%23%23")),
+            child: Column(
+              crossAxisAlignment: isParentSenderCurrentUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  color: Colors.black,
+                  child: VideoPlayerScreen(
+                      videoUrl: content
+                          .split("%%%")[0]
+                          .replaceAll("###", "%23%23%23")),
+                ),
+                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                    color: Color(0xffd2d2d2), width: 1),
+                                borderRadius: BorderRadius.circular(10)),
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                  top: 1, bottom: 1, left: 2, right: 2),
+                              child: Row(
+                                children: [
+                                  ..._messageContent.reactions!
+                                      .map((reaction) => Text(reaction.emoji))
+                                ],
+                              ),
+                            ),
+                          )
+                        ],
+                      )
+                    : SizedBox(
+                        height: 0,
+                      )
+              ],
             ),
           ),
           SizedBox(
@@ -466,11 +577,45 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
-            child: Container(
-              color: Colors.transparent,
-              child: AudioPlayerWidget(
-                  audioUrl:
-                      content.split("%%%")[0].replaceAll("###", "%23%23%23")),
+            child: Column(
+              crossAxisAlignment: isParentSenderCurrentUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  color: Colors.transparent,
+                  child: AudioPlayerWidget(
+                      audioUrl: content
+                          .split("%%%")[0]
+                          .replaceAll("###", "%23%23%23")),
+                ),
+                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                    color: Color(0xffd2d2d2), width: 1),
+                                borderRadius: BorderRadius.circular(10)),
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                  top: 1, bottom: 1, left: 2, right: 2),
+                              child: Row(
+                                children: [
+                                  ..._messageContent.reactions!
+                                      .map((reaction) => Text(reaction.emoji))
+                                ],
+                              ),
+                            ),
+                          )
+                        ],
+                      )
+                    : SizedBox(
+                        height: 0,
+                      )
+              ],
             ),
           ),
           SizedBox(
@@ -611,45 +756,79 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
             width: 5,
           ),
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 270, minHeight: 70),
-            child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xffe4e4e4),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                    padding:
-                        EdgeInsets.only(top: 0, bottom: 0, left: 0, right: 0)),
-                onPressed: () {},
-                child: Container(
-                  decoration:
-                      BoxDecoration(borderRadius: BorderRadius.circular(10)),
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                        top: 10, bottom: 10, left: 10, right: 10),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.max,
-                      children: [
-                        Icon(
-                          Icons.file_copy_outlined,
-                          color: Colors.black,
-                          size: 35,
+            constraints: BoxConstraints(maxWidth: 270),
+            child: Column(
+              crossAxisAlignment: isParentSenderCurrentUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Color(0xffe4e4e4),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: EdgeInsets.only(
+                            top: 0, bottom: 0, left: 0, right: 0)),
+                    onPressed: () {},
+                    child: Container(
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10)),
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                            top: 10, bottom: 10, left: 10, right: 10),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.max,
+                          children: [
+                            Icon(
+                              Icons.file_copy_outlined,
+                              color: Colors.black,
+                              size: 35,
+                            ),
+                            SizedBox(
+                              width: 10,
+                            ),
+                            Expanded(
+                                child: Text(
+                              content.split("%%%")[1],
+                              style:
+                                  TextStyle(fontSize: 14, color: Colors.black),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ))
+                          ],
                         ),
-                        SizedBox(
-                          width: 10,
-                        ),
-                        Expanded(
-                            child: Text(
-                          content.split("%%%")[1],
-                          style: TextStyle(fontSize: 14, color: Colors.black),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ))
-                      ],
-                    ),
-                  ),
-                )),
+                      ),
+                    )),
+                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                    color: Color(0xffd2d2d2), width: 1),
+                                borderRadius: BorderRadius.circular(10)),
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                  top: 1, bottom: 1, left: 2, right: 2),
+                              child: Row(
+                                children: [
+                                  ..._messageContent.reactions!
+                                      .map((reaction) => Text(reaction.emoji))
+                                ],
+                              ),
+                            ),
+                          )
+                        ],
+                      )
+                    : SizedBox(
+                        height: 0,
+                      )
+              ],
+            ),
           ),
           SizedBox(
             width: 5,
@@ -839,7 +1018,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                               _messageContent.sender == _currentUserID,
                               _messageContent.replyedmessage?[0].sender ==
                                   _currentUserID,
-                              true),
+                              true,
+                              false),
                     )
                   ],
                 )
@@ -852,13 +1032,110 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   _messageContent.sender == _currentUserID,
                   _messageContent.sender == _currentUserID,
                   false)
-              : messageTypeSwitch(
-                  _messageContent.content,
-                  _messageContent.messageType,
-                  _messageContent.messageID,
-                  _messageContent.sender == _currentUserID,
-                  _messageContent.sender == _currentUserID,
-                  false)
+              : GestureDetector(
+                  onLongPress: () async {
+                    Navigator.of(context).push(
+                      HeroDialogRoute(
+                        builder: (context) {
+                          return ReactionsDialogWidget(
+                            id: _messageContent
+                                .messageID, // unique id for message
+                            messageWidget: _messageContent.messageType
+                                    .contains("audio")
+                                ? ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                        maxWidth: 270, minHeight: 70),
+                                    child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                            backgroundColor: Color(0xffe4e4e4),
+                                            elevation: 0,
+                                            shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10)),
+                                            padding: EdgeInsets.only(
+                                                top: 0,
+                                                bottom: 0,
+                                                left: 0,
+                                                right: 0)),
+                                        onPressed: () {},
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(10)),
+                                          child: Padding(
+                                            padding: EdgeInsets.only(
+                                                top: 10,
+                                                bottom: 10,
+                                                left: 10,
+                                                right: 10),
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.max,
+                                              children: [
+                                                Icon(
+                                                  Icons.play_arrow,
+                                                  color: Colors.black,
+                                                  size: 22,
+                                                ),
+                                                SizedBox(
+                                                  width: 10,
+                                                ),
+                                                Expanded(
+                                                    child: Text(
+                                                  _messageContent.content
+                                                      .split("%%%")[1],
+                                                  style: TextStyle(
+                                                      fontSize: 14,
+                                                      color: Colors.black),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ))
+                                              ],
+                                            ),
+                                          ),
+                                        )),
+                                  )
+                                : messageTypeSwitch(
+                                    _messageContent.content,
+                                    _messageContent.messageType,
+                                    _messageContent.messageID,
+                                    _messageContent.sender == _currentUserID,
+                                    _messageContent.sender == _currentUserID,
+                                    false,
+                                    true), // message widget
+                            onReactionTap: (reaction) {
+                              print('reaction: $reaction');
+
+                              if (reaction == '➕') {
+                                // show emoji picker container
+                              } else {
+                                // add reaction to message
+                              }
+                            },
+                            onContextMenuTap: (menuItem) {
+                              if (menuItem.label == "Reply") {
+                                _onPressed(true, _messageContent.messageID);
+                              }
+                              // handle context menu item
+                            },
+                          );
+                        },
+                      ),
+                    );
+                  },
+                  child: Hero(
+                      tag: _messageContent.messageID,
+                      child: messageTypeSwitch(
+                          _messageContent.content,
+                          _messageContent.messageType,
+                          _messageContent.messageID,
+                          _messageContent.sender == _currentUserID,
+                          _messageContent.sender == _currentUserID,
+                          false,
+                          false)),
+                )
         ],
       ),
     );

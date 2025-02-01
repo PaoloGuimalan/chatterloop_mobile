@@ -36,6 +36,11 @@ class HomeViewState extends State<HomeView> {
     super.initState();
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   final storage = FlutterSecureStorage();
 
   ButtonStyle _buttonStyle(bool fromHeader) {
@@ -140,6 +145,8 @@ class HomeViewState extends State<HomeView> {
     }
   }
 
+  final GlobalKey<NavigatorState> navigatorTabKey = GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(builder: (context, state) {
@@ -206,7 +213,8 @@ class HomeViewState extends State<HomeView> {
                                                   left: 0,
                                                   right: 0)),
                                           onPressed: () {
-                                            privateNavigatorKey.currentState
+                                            AppRoutes.privateNavigatorKey
+                                                .currentState
                                                 ?.pushNamed("/messages");
                                           },
                                           child: Stack(
@@ -268,7 +276,8 @@ class HomeViewState extends State<HomeView> {
                                                   left: 0,
                                                   right: 0)),
                                           onPressed: () {
-                                            privateNavigatorKey.currentState
+                                            AppRoutes.privateNavigatorKey
+                                                .currentState
                                                 ?.pushNamed("/notifications");
                                           },
                                           child: Stack(
@@ -440,7 +449,7 @@ class HomeViewState extends State<HomeView> {
                                   )),
                               ElevatedButton(
                                   onPressed: () {
-                                    privateNavigatorKey.currentState
+                                    AppRoutes.privateNavigatorKey.currentState
                                         ?.pushNamed("/profile");
                                   },
                                   style: _buttonStyle(false),
