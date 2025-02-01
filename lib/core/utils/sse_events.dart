@@ -41,7 +41,8 @@ class SseEvents {
             AudioPlayer audioPlayer = AudioPlayer();
             audioPlayer.play(AssetSource('sounds/notification_alert.mp3'));
 
-            StoreProvider.of<AppState>(context ?? navigatorKey.currentContext!)
+            StoreProvider.of<AppState>(
+                    context ?? AppRoutes.navigatorKey.currentContext!)
                 .dispatch(DispatchModel(
                     setNotificationsListT,
                     NotificationsStateModel(spreadedNotificationsList,
@@ -67,7 +68,8 @@ class SseEvents {
                     .map((notif) => NotificationsItemModel.fromJson(notif))
                     .toList();
 
-            StoreProvider.of<AppState>(context ?? navigatorKey.currentContext!)
+            StoreProvider.of<AppState>(
+                    context ?? AppRoutes.navigatorKey.currentContext!)
                 .dispatch(DispatchModel(
                     setNotificationsListT,
                     NotificationsStateModel(spreadedNotificationsList,
@@ -87,12 +89,13 @@ class SseEvents {
             IsTypingMetaData finalTyperData =
                 IsTypingMetaData.fromJson(rawTyperData);
 
-            StoreProvider.of<AppState>(context ?? navigatorKey.currentContext!)
+            StoreProvider.of<AppState>(
+                    context ?? AppRoutes.navigatorKey.currentContext!)
                 .dispatch(DispatchModel(setIsTypingListT, finalTyperData));
 
             Future.delayed(Duration(milliseconds: 5000), () {
               StoreProvider.of<AppState>(
-                      context ?? navigatorKey.currentContext!)
+                      context ?? AppRoutes.navigatorKey.currentContext!)
                   .dispatch(DispatchModel(removeIsTypingListT, finalTyperData));
             });
           }
@@ -105,10 +108,10 @@ class SseEvents {
       case "contactslist":
         return;
       case "messages_list":
-        UserAuth userAuth =
-            StoreProvider.of<AppState>(context ?? navigatorKey.currentContext!)
-                .state
-                .userAuth;
+        UserAuth userAuth = StoreProvider.of<AppState>(
+                context ?? AppRoutes.navigatorKey.currentContext!)
+            .state
+            .userAuth;
         Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
 
         if (mainListener) {
@@ -137,7 +140,8 @@ class SseEvents {
 
         ContentValidator().printer(context);
 
-        StoreProvider.of<AppState>(context ?? navigatorKey.currentContext!)
+        StoreProvider.of<AppState>(
+                context ?? AppRoutes.navigatorKey.currentContext!)
             .dispatch(
                 DispatchModel(setMessagesListT, spreadedConversationList));
         return;

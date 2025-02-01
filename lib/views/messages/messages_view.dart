@@ -28,6 +28,11 @@ class MessagesStateView extends State<MessagesView> {
     super.initState();
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   Future<void> getConversationListProcess(BuildContext context) async {
     EncodedResponse? getConversationListResponse =
         await APIRequests().getConversationListRequest();
@@ -106,7 +111,8 @@ class MessagesStateView extends State<MessagesView> {
                                                   left: 0,
                                                   right: 0)),
                                           onPressed: () {
-                                            privateNavigatorKey.currentState
+                                            AppRoutes.privateNavigatorKey
+                                                .currentState
                                                 ?.pushNamed("/main");
                                           },
                                           child: Center(

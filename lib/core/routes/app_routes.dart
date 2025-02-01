@@ -12,6 +12,13 @@ import 'package:chatterloop_app/views/notifications/notifications_view.dart';
 import 'package:flutter/material.dart';
 
 class AppRoutes {
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> privateNavigatorKey =
+      GlobalKey<NavigatorState>();
+  // static final GlobalKey<NavigatorState> navigatorTabKey =
+  //     GlobalKey<NavigatorState>();
+
   static Map<String, WidgetBuilder> routes = {
     "/login": (context) => LoginScreen(),
     "/home": (context) => HomeViewContainer(),
@@ -42,8 +49,3 @@ class AppRoutes {
     "/servers": (context) => ServerView()
   };
 }
-
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-final GlobalKey<NavigatorState> privateNavigatorKey =
-    GlobalKey<NavigatorState>();
-final GlobalKey<NavigatorState> navigatorTabKey = GlobalKey<NavigatorState>();

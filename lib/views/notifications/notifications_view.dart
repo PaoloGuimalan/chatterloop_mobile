@@ -151,7 +151,7 @@ class NotificationsStateView extends State<NotificationsView> {
                                             left: 0,
                                             right: 0)),
                                     onPressed: () {
-                                      privateNavigatorKey.currentState
+                                      AppRoutes.privateNavigatorKey.currentState
                                           ?.pushNamed("/main");
                                     },
                                     child: Center(
