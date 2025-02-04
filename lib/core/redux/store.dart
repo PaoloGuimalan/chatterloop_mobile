@@ -34,13 +34,27 @@ AppState _setIsTypingList(AppState state, dynamic action) {
       istypinglistprop: reducers.setIsTypingList(state, action).isTypingList);
 }
 
+AppState _setIsUsingReplyAssist(AppState state, dynamic action) {
+  return state.copyWith(
+      isUsingReplyAssistProp:
+          reducers.setIsUsingReplyAssist(state, action).isUsingReplyAssist);
+}
+
+AppState _setReplyAssistContext(AppState state, dynamic action) {
+  return state.copyWith(
+      replyAssistContextProp:
+          reducers.setReplyAssistContext(state, action).replyAssistContext);
+}
+
 final appReducer = combineReducers<AppState>([
   TypedReducer<AppState, dynamic>(_setUserAuth).call,
   TypedReducer<AppState, dynamic>(_setFeedPosts).call,
   TypedReducer<AppState, dynamic>(_setMessagesList).call,
   TypedReducer<AppState, dynamic>(_setContactsList).call,
   TypedReducer<AppState, dynamic>(_setIsTypingList).call,
-  TypedReducer<AppState, dynamic>(_setNotificationsList).call
+  TypedReducer<AppState, dynamic>(_setNotificationsList).call,
+  TypedReducer<AppState, dynamic>(_setIsUsingReplyAssist).call,
+  TypedReducer<AppState, dynamic>(_setReplyAssistContext).call
 ]);
 
 class StateStore {

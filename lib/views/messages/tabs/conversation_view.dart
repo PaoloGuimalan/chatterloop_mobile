@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/loaders/spinning_loader.dart';
@@ -14,6 +15,7 @@ import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/foundation.dart';
@@ -192,6 +194,23 @@ class ConversationStateView extends State<ConversationView> {
       if (kDebugMode) {
         // print(rawContactsList);
         print(getConversationInfoResponse);
+      }
+    }
+  }
+
+  Future<void> postReplyAssistProcess(
+      String conversationID, List<ReplyAssistContext> messageIDs) async {
+    MessageBasedResponse? postReplyAssistResponse =
+        await APIRequests().postReplyAssistRequest(conversationID, messageIDs);
+
+    if (postReplyAssistResponse != null) {
+      _controller.text = postReplyAssistResponse.message;
+      setState(() {
+        messageValue = postReplyAssistResponse.message;
+      });
+      if (kDebugMode) {
+        // print(rawContactsList);
+        print(postReplyAssistResponse.message);
       }
     }
   }
@@ -638,6 +657,16 @@ class ConversationStateView extends State<ConversationView> {
                                               onPressed: (bool isReply,
                                                   String replyingTo) {
                                                 if (mounted) {
+                                                  StoreProvider.of<AppState>(
+                                                          context)
+                                                      .dispatch(DispatchModel(
+                                                          setIsUsingReplyAssistT,
+                                                          false));
+                                                  StoreProvider.of<AppState>(
+                                                          context)
+                                                      .dispatch(DispatchModel(
+                                                          clearReplyAssistContextT,
+                                                          []));
                                                   setState(() {
                                                     isReplying = IsReplying(
                                                         isReply, replyingTo);
@@ -841,6 +870,16 @@ class ConversationStateView extends State<ConversationView> {
                                             onPressed: (bool isReply,
                                                 String replyingTo) {
                                               if (mounted) {
+                                                StoreProvider.of<AppState>(
+                                                        context)
+                                                    .dispatch(DispatchModel(
+                                                        setIsUsingReplyAssistT,
+                                                        false));
+                                                StoreProvider.of<AppState>(
+                                                        context)
+                                                    .dispatch(DispatchModel(
+                                                        clearReplyAssistContextT,
+                                                        []));
                                                 setState(() {
                                                   isReplying = IsReplying(
                                                       isReply, replyingTo);
@@ -1009,7 +1048,8 @@ class ConversationStateView extends State<ConversationView> {
                           height: isReplying.isReply ? 80 : 0,
                           width: MediaQuery.of(context).size.width,
                           child: Padding(
-                            padding: EdgeInsets.all(5),
+                            padding: EdgeInsets.only(
+                                top: 5, left: 5, right: 5, bottom: 2),
                             child: Container(
                               decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(7)),
@@ -1187,6 +1227,19 @@ class ConversationStateView extends State<ConversationView> {
                                                                         false,
                                                                         "");
                                                               });
+                                                              StoreProvider.of<
+                                                                          AppState>(
+                                                                      context)
+                                                                  .dispatch(DispatchModel(
+                                                                      setIsUsingReplyAssistT,
+                                                                      false));
+                                                              StoreProvider.of<
+                                                                          AppState>(
+                                                                      context)
+                                                                  .dispatch(
+                                                                      DispatchModel(
+                                                                          clearReplyAssistContextT,
+                                                                          []));
                                                             }
                                                           },
                                                           child: SizedBox(
@@ -1225,6 +1278,190 @@ class ConversationStateView extends State<ConversationView> {
                                                     )
                                                   ],
                                                 )
+                                              ],
+                                            )
+                                          : null,
+                                    )),
+                              ),
+                            ),
+                          ),
+                        ),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 500),
+                          curve: Curves.easeInOut,
+                          height: isReplying.isReply ? 50 : 0,
+                          width: MediaQuery.of(context).size.width,
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                                top: 2, left: 5, right: 5, bottom: 5),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(7)),
+                              child: ClipRect(
+                                child: AnimatedContainer(
+                                    duration: Duration(milliseconds: 500),
+                                    decoration: BoxDecoration(
+                                        color: conversationContentList
+                                                .where((message) =>
+                                                    message.messageID ==
+                                                    isReplying.replyingTo)
+                                                .toList()
+                                                .isNotEmpty
+                                            ? conversationContentList
+                                                        .where((message) =>
+                                                            message.messageID ==
+                                                            isReplying
+                                                                .replyingTo)
+                                                        .toList()[0]
+                                                        .sender ==
+                                                    state.userAuth.user.userID
+                                                ? Color(0xff1c7def)
+                                                : Color(0xffdedede)
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(7)),
+                                    child: Padding(
+                                      padding: EdgeInsets.all(7),
+                                      child: isReplying.isReply
+                                          ? Row(
+                                              mainAxisSize: MainAxisSize.max,
+                                              children: [
+                                                Expanded(
+                                                    child: Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.center,
+                                                  mainAxisSize:
+                                                      MainAxisSize.max,
+                                                  children: [
+                                                    Row(
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .start,
+                                                        mainAxisSize:
+                                                            MainAxisSize.max,
+                                                        children: [
+                                                          Text(
+                                                            state.isUsingReplyAssist
+                                                                ? "Select messages for context"
+                                                                : "Use AI Reply Assist?",
+                                                            style: TextStyle(
+                                                                fontSize: 12,
+                                                                color: conversationContentList
+                                                                        .where((message) =>
+                                                                            message.messageID ==
+                                                                            isReplying
+                                                                                .replyingTo)
+                                                                        .toList()
+                                                                        .isNotEmpty
+                                                                    ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
+                                                                            state
+                                                                                .userAuth.user.userID
+                                                                        ? Colors
+                                                                            .white
+                                                                        : Colors
+                                                                            .black
+                                                                    : Colors
+                                                                        .transparent,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold),
+                                                            textAlign: TextAlign
+                                                                .justify,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          )
+                                                        ]),
+                                                    Expanded(
+                                                      child: SizedBox(),
+                                                    ),
+                                                    state.isUsingReplyAssist
+                                                        ? Row(
+                                                            children: [
+                                                              ElevatedButton(
+                                                                  style: ElevatedButton
+                                                                      .styleFrom(
+                                                                          backgroundColor: Colors
+                                                                              .white,
+                                                                          shape:
+                                                                              RoundedRectangleBorder(
+                                                                            borderRadius:
+                                                                                BorderRadius.circular(10), // Rounded corners if needed
+                                                                          )),
+                                                                  onPressed:
+                                                                      () => {
+                                                                            // ContentValidator().printer(jsonEncode(state.replyAssistContext.map((rac) => rac.toJson()).toList()))
+                                                                            postReplyAssistProcess(conversationMetaData.conversationID,
+                                                                                state.replyAssistContext)
+                                                                          },
+                                                                  child: Text(
+                                                                    "Generate",
+                                                                    style: TextStyle(
+                                                                        fontSize:
+                                                                            12,
+                                                                        color: Color(
+                                                                            0xFF565656)),
+                                                                  )),
+                                                              SizedBox(
+                                                                width: 5,
+                                                              ),
+                                                              ElevatedButton(
+                                                                  style: ElevatedButton
+                                                                      .styleFrom(
+                                                                          backgroundColor: Colors
+                                                                              .white,
+                                                                          shape:
+                                                                              RoundedRectangleBorder(
+                                                                            borderRadius:
+                                                                                BorderRadius.circular(10), // Rounded corners if needed
+                                                                          )),
+                                                                  onPressed:
+                                                                      () => {
+                                                                            StoreProvider.of<AppState>(context).dispatch(DispatchModel(setIsUsingReplyAssistT,
+                                                                                false)),
+                                                                            StoreProvider.of<AppState>(context).dispatch(DispatchModel(clearReplyAssistContextT,
+                                                                                []))
+                                                                          },
+                                                                  child: Text(
+                                                                    "Cancel",
+                                                                    style: TextStyle(
+                                                                        fontSize:
+                                                                            12,
+                                                                        color: Color(
+                                                                            0xFF565656)),
+                                                                  ))
+                                                            ],
+                                                          )
+                                                        : ElevatedButton(
+                                                            style: ElevatedButton
+                                                                .styleFrom(
+                                                                    backgroundColor:
+                                                                        Colors
+                                                                            .white,
+                                                                    shape:
+                                                                        RoundedRectangleBorder(
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              10), // Rounded corners if needed
+                                                                    )),
+                                                            onPressed: () => {
+                                                                  StoreProvider.of<
+                                                                              AppState>(
+                                                                          context)
+                                                                      .dispatch(DispatchModel(
+                                                                          setIsUsingReplyAssistT,
+                                                                          true))
+                                                                },
+                                                            child: Text(
+                                                              "Yes",
+                                                              style: TextStyle(
+                                                                  fontSize: 12,
+                                                                  color: Color(
+                                                                      0xFF565656)),
+                                                            )),
+                                                  ],
+                                                )),
                                               ],
                                             )
                                           : null,
@@ -1381,6 +1618,14 @@ class ConversationStateView extends State<ConversationView> {
                                                 messageValue,
                                                 isReplying.isReply,
                                                 isReplying.replyingTo);
+                                            StoreProvider.of<AppState>(context)
+                                                .dispatch(DispatchModel(
+                                                    setIsUsingReplyAssistT,
+                                                    false));
+                                            StoreProvider.of<AppState>(context)
+                                                .dispatch(DispatchModel(
+                                                    clearReplyAssistContextT,
+                                                    []));
                                           }
                                         },
                                         child: Center(

@@ -1,9 +1,14 @@
+import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/reusables/players/audio_player_widget.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_reactions/flutter_chat_reactions.dart';
 import 'package:flutter_chat_reactions/utilities/hero_dialog_route.dart';
+import 'package:flutter_redux/flutter_redux.dart';
 
 class MessageContentWidget extends StatefulWidget {
   final MessageContent messageContent;
@@ -27,6 +32,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   late String _currentUserID;
   late void Function(bool, String) _onPressed;
 
+  bool isChecked = false;
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +43,18 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     _onPressed = widget.onPressed;
   }
 
+  Color getColor(Set<WidgetState> states) {
+    const Set<WidgetState> interactiveStates = <WidgetState>{
+      WidgetState.pressed,
+      WidgetState.hovered,
+      WidgetState.focused,
+    };
+    if (states.any(interactiveStates.contains)) {
+      return Color(0xff1c7def);
+    }
+    return isChecked ? Color(0xff1c7def) : Colors.white;
+  }
+
   Widget messageTypeSwitch(
       String content,
       String messageType,
@@ -43,72 +62,126 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
       bool isParentSenderCurrentUser,
       bool isCurrentUser,
       bool isReply,
-      bool isHoverPreview) {
+      bool isHoverPreview,
+      bool isMarkingEnabled) {
     if (messageType == "text") {
       return Row(
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {},
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.delete,
+                                        color: Color(0xFF565656),
+                                        size: 18,
+                                      ),
+                                    )),
+                              ),
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
-                )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {},
-                                child: Center(
-                                  child: Icon(
-                                    Icons.delete,
-                                    color: Color(0xFF565656),
-                                    size: 18,
-                                  ),
-                                )),
-                          ),
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                )),
+                ),
           SizedBox(
             width: 5,
           ),
+          isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
             child: Column(
@@ -161,44 +234,94 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               ],
             ),
           ),
+          isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           SizedBox(
             width: 5,
           ),
-          isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
                 )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                ))
         ],
       );
     } else if (messageType == "image") {
@@ -206,66 +329,119 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {},
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.delete,
+                                        color: Color(0xFF565656),
+                                        size: 18,
+                                      ),
+                                    )),
+                              ),
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
-                )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {},
-                                child: Center(
-                                  child: Icon(
-                                    Icons.delete,
-                                    color: Color(0xFF565656),
-                                    size: 18,
-                                  ),
-                                )),
-                          ),
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                )),
+                ),
           SizedBox(
             width: 5,
           ),
+          isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
             child: Column(
@@ -322,44 +498,94 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               ],
             ),
           ),
+          isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           SizedBox(
             width: 5,
           ),
-          isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
                 )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                ))
         ],
       );
     } else if (messageType.contains("video")) {
@@ -367,66 +593,119 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {},
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.delete,
+                                        color: Color(0xFF565656),
+                                        size: 18,
+                                      ),
+                                    )),
+                              ),
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
-                )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {},
-                                child: Center(
-                                  child: Icon(
-                                    Icons.delete,
-                                    color: Color(0xFF565656),
-                                    size: 18,
-                                  ),
-                                )),
-                          ),
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                )),
+                ),
           SizedBox(
             width: 5,
           ),
+          isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
             child: Column(
@@ -470,44 +749,94 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               ],
             ),
           ),
+          isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           SizedBox(
             width: 5,
           ),
-          isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
                 )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                ))
         ],
       );
     } else if (messageType.contains("audio")) {
@@ -515,66 +844,119 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {},
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.delete,
+                                        color: Color(0xFF565656),
+                                        size: 18,
+                                      ),
+                                    )),
+                              ),
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
-                )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {},
-                                child: Center(
-                                  child: Icon(
-                                    Icons.delete,
-                                    color: Color(0xFF565656),
-                                    size: 18,
-                                  ),
-                                )),
-                          ),
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                )),
+                ),
           SizedBox(
             width: 5,
           ),
+          isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
             child: Column(
@@ -618,44 +1000,94 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               ],
             ),
           ),
+          isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           SizedBox(
             width: 5,
           ),
-          isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
                 )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                ))
         ],
       );
     } else if (messageType == "notif") {
@@ -695,66 +1127,119 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {},
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.delete,
+                                        color: Color(0xFF565656),
+                                        size: 18,
+                                      ),
+                                    )),
+                              ),
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
-                )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {},
-                                child: Center(
-                                  child: Icon(
-                                    Icons.delete,
-                                    color: Color(0xFF565656),
-                                    size: 18,
-                                  ),
-                                )),
-                          ),
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                )),
+                ),
           SizedBox(
             width: 5,
           ),
+          isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
             child: Column(
@@ -830,44 +1315,94 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               ],
             ),
           ),
+          isMarkingEnabled
+              ? !isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Checkbox(
+                      side: BorderSide(
+                        color: Color(0xff1c7def),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
+                      checkColor: Colors.white,
+                      fillColor: WidgetStateProperty.resolveWith(getColor),
+                      value: isChecked,
+                      visualDensity:
+                          const VisualDensity(horizontal: -2.0, vertical: -2.0),
+                      onChanged: (bool? value) {
+                        if (value != null) {
+                          if (value) {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    setReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          } else {
+                            StoreProvider.of<AppState>(context).dispatch(
+                                DispatchModel(
+                                    removeReplyAssistContextT,
+                                    ReplyAssistContext(
+                                        isParentSenderCurrentUser,
+                                        _messageContent.messageID)));
+                          }
+                        }
+                        setState(() {
+                          isChecked = value!;
+                        });
+                      },
+                    )
+              : SizedBox(
+                  width: 0,
+                ),
           SizedBox(
             width: 5,
           ),
-          isParentSenderCurrentUser
-              ? SizedBox(
+          !isMarkingEnabled
+              ? isParentSenderCurrentUser
+                  ? SizedBox(
+                      width: 0,
+                    )
+                  : Expanded(
+                      child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        isReply
+                            ? SizedBox(
+                                height: 0,
+                              )
+                            : ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      _onPressed(true, messageID);
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.reply,
+                                        color: Color(0xFF565656),
+                                        size: 20,
+                                      ),
+                                    )),
+                              )
+                      ],
+                    ))
+              : SizedBox(
                   width: 0,
                 )
-              : Expanded(
-                  child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    isReply
-                        ? SizedBox(
-                            height: 0,
-                          )
-                        : ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxWidth: 40, maxHeight: 40),
-                            child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.only(
-                                        top: 0, bottom: 0, left: 0, right: 0)),
-                                onPressed: () {
-                                  _onPressed(true, messageID);
-                                },
-                                child: Center(
-                                  child: Icon(
-                                    Icons.reply,
-                                    color: Color(0xFF565656),
-                                    size: 20,
-                                  ),
-                                )),
-                          )
-                  ],
-                ))
         ],
       );
     }
@@ -923,221 +1458,230 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(top: 2, bottom: 2, left: 0, right: 0),
-      child: Column(
-        children: [
-          SizedBox(
-            height: _messageContent.isReply ? 7 : 0,
-          ),
-          _previousContentUserID != _messageContent.sender ||
-                  _previousContentUserID == "end"
-              ? Column(
-                  children: [
-                    SizedBox(
-                      height: 5,
-                    ),
-                    _messageContent.conversationType != "single" &&
-                            _messageContent.messageType != "notif" &&
-                            _currentUserID != _messageContent.sender
-                        ? Row(
-                            mainAxisAlignment:
-                                _messageContent.sender == _currentUserID
-                                    ? MainAxisAlignment.end
-                                    : MainAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: EdgeInsets.only(
-                                    left: 7, right: 7, bottom: 2),
-                                child: Text(
-                                  _messageContent.sender,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF565656),
+    return StoreConnector<AppState, AppState>(builder: (context, state) {
+      return Padding(
+        padding: EdgeInsets.only(top: 2, bottom: 2, left: 0, right: 0),
+        child: Column(
+          children: [
+            SizedBox(
+              height: _messageContent.isReply ? 7 : 0,
+            ),
+            _previousContentUserID != _messageContent.sender ||
+                    _previousContentUserID == "end"
+                ? Column(
+                    children: [
+                      SizedBox(
+                        height: 5,
+                      ),
+                      _messageContent.conversationType != "single" &&
+                              _messageContent.messageType != "notif" &&
+                              _currentUserID != _messageContent.sender
+                          ? Row(
+                              mainAxisAlignment:
+                                  _messageContent.sender == _currentUserID
+                                      ? MainAxisAlignment.end
+                                      : MainAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                      left: 7, right: 7, bottom: 2),
+                                  child: Text(
+                                    _messageContent.sender,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF565656),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              )
-                            ],
+                                )
+                              ],
+                            )
+                          : SizedBox(
+                              height: 0,
+                            )
+                    ],
+                  )
+                : SizedBox(
+                    height: 0,
+                  ),
+            SizedBox(
+              height: _messageContent.isReply ? 0 : 5,
+            ),
+            _messageContent.isReply
+                ? Column(
+                    children: [
+                      SizedBox(
+                        height: 0,
+                      ),
+                      Row(
+                        mainAxisAlignment:
+                            _messageContent.sender == _currentUserID
+                                ? MainAxisAlignment.end
+                                : MainAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding:
+                                EdgeInsets.only(left: 7, right: 7, bottom: 7),
+                            child: Text(
+                              "replied to @${_messageContent.replyedmessage?[0].sender}",
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF565656),
+                                  fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           )
-                        : SizedBox(
-                            height: 0,
-                          )
-                  ],
-                )
-              : SizedBox(
-                  height: 0,
-                ),
-          SizedBox(
-            height: _messageContent.isReply ? 0 : 5,
-          ),
-          _messageContent.isReply
-              ? Column(
-                  children: [
-                    SizedBox(
-                      height: 0,
-                    ),
-                    Row(
-                      mainAxisAlignment:
-                          _messageContent.sender == _currentUserID
-                              ? MainAxisAlignment.end
-                              : MainAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding:
-                              EdgeInsets.only(left: 7, right: 7, bottom: 7),
-                          child: Text(
-                            "replied to @${_messageContent.replyedmessage?[0].sender}",
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF565656),
-                                fontWeight: FontWeight.bold),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        )
-                      ],
-                    ),
-                    Opacity(
-                      opacity: 0.6,
-                      child: _messageContent.replyedmessage?[0].isDeleted
-                              as bool
-                          ? messageDeletedItem(
-                              _messageContent.replyedmessage?[0].messageType
-                                  as String,
-                              _messageContent.sender == _currentUserID,
-                              _messageContent.replyedmessage?[0].sender ==
-                                  _currentUserID,
-                              true)
-                          : messageTypeSwitch(
-                              _messageContent.replyedmessage?[0].content
-                                  as String,
-                              _messageContent.replyedmessage?[0].messageType
-                                  as String,
-                              _messageContent.replyedmessage?[0].messageID
-                                  as String,
-                              _messageContent.sender == _currentUserID,
-                              _messageContent.replyedmessage?[0].sender ==
-                                  _currentUserID,
-                              true,
-                              false),
-                    )
-                  ],
-                )
-              : SizedBox(
-                  height: 0,
-                ),
-          _messageContent.isDeleted as bool
-              ? messageDeletedItem(
-                  _messageContent.messageType,
-                  _messageContent.sender == _currentUserID,
-                  _messageContent.sender == _currentUserID,
-                  false)
-              : GestureDetector(
-                  onLongPress: () async {
-                    Navigator.of(context).push(
-                      HeroDialogRoute(
-                        builder: (context) {
-                          return ReactionsDialogWidget(
-                            id: _messageContent
-                                .messageID, // unique id for message
-                            messageWidget: _messageContent.messageType
-                                    .contains("audio")
-                                ? ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                        maxWidth: 270, minHeight: 70),
-                                    child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor: Color(0xffe4e4e4),
-                                            elevation: 0,
-                                            shape: RoundedRectangleBorder(
+                        ],
+                      ),
+                      Opacity(
+                        opacity: 0.6,
+                        child: _messageContent.replyedmessage?[0].isDeleted
+                                as bool
+                            ? messageDeletedItem(
+                                _messageContent.replyedmessage?[0].messageType
+                                    as String,
+                                _messageContent.sender == _currentUserID,
+                                _messageContent.replyedmessage?[0].sender ==
+                                    _currentUserID,
+                                true)
+                            : messageTypeSwitch(
+                                _messageContent.replyedmessage?[0].content
+                                    as String,
+                                _messageContent.replyedmessage?[0].messageType
+                                    as String,
+                                _messageContent.replyedmessage?[0].messageID
+                                    as String,
+                                _messageContent.sender == _currentUserID,
+                                _messageContent.replyedmessage?[0].sender ==
+                                    _currentUserID,
+                                true,
+                                false,
+                                false),
+                      )
+                    ],
+                  )
+                : SizedBox(
+                    height: 0,
+                  ),
+            _messageContent.isDeleted as bool
+                ? messageDeletedItem(
+                    _messageContent.messageType,
+                    _messageContent.sender == _currentUserID,
+                    _messageContent.sender == _currentUserID,
+                    false)
+                : GestureDetector(
+                    onLongPress: () async {
+                      Navigator.of(context).push(
+                        HeroDialogRoute(
+                          builder: (context) {
+                            return ReactionsDialogWidget(
+                              id: _messageContent
+                                  .messageID, // unique id for message
+                              messageWidget: _messageContent.messageType
+                                      .contains("audio")
+                                  ? ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          maxWidth: 270, minHeight: 70),
+                                      child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Color(0xffe4e4e4),
+                                              elevation: 0,
+                                              shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          10)),
+                                              padding: EdgeInsets.only(
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  left: 0,
+                                                  right: 0)),
+                                          onPressed: () {},
+                                          child: Container(
+                                            decoration: BoxDecoration(
                                                 borderRadius:
                                                     BorderRadius.circular(10)),
-                                            padding: EdgeInsets.only(
-                                                top: 0,
-                                                bottom: 0,
-                                                left: 0,
-                                                right: 0)),
-                                        onPressed: () {},
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(10)),
-                                          child: Padding(
-                                            padding: EdgeInsets.only(
-                                                top: 10,
-                                                bottom: 10,
-                                                left: 10,
-                                                right: 10),
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.max,
-                                              children: [
-                                                Icon(
-                                                  Icons.play_arrow,
-                                                  color: Colors.black,
-                                                  size: 22,
-                                                ),
-                                                SizedBox(
-                                                  width: 10,
-                                                ),
-                                                Expanded(
-                                                    child: Text(
-                                                  _messageContent.content
-                                                      .split("%%%")[1],
-                                                  style: TextStyle(
-                                                      fontSize: 14,
-                                                      color: Colors.black),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ))
-                                              ],
+                                            child: Padding(
+                                              padding: EdgeInsets.only(
+                                                  top: 10,
+                                                  bottom: 10,
+                                                  left: 10,
+                                                  right: 10),
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.max,
+                                                children: [
+                                                  Icon(
+                                                    Icons.play_arrow,
+                                                    color: Colors.black,
+                                                    size: 22,
+                                                  ),
+                                                  SizedBox(
+                                                    width: 10,
+                                                  ),
+                                                  Expanded(
+                                                      child: Text(
+                                                    _messageContent.content
+                                                        .split("%%%")[1],
+                                                    style: TextStyle(
+                                                        fontSize: 14,
+                                                        color: Colors.black),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ))
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                        )),
-                                  )
-                                : messageTypeSwitch(
-                                    _messageContent.content,
-                                    _messageContent.messageType,
-                                    _messageContent.messageID,
-                                    _messageContent.sender == _currentUserID,
-                                    _messageContent.sender == _currentUserID,
-                                    false,
-                                    true), // message widget
-                            onReactionTap: (reaction) {
-                              print('reaction: $reaction');
+                                          )),
+                                    )
+                                  : messageTypeSwitch(
+                                      _messageContent.content,
+                                      _messageContent.messageType,
+                                      _messageContent.messageID,
+                                      _messageContent.sender == _currentUserID,
+                                      _messageContent.sender == _currentUserID,
+                                      false,
+                                      true,
+                                      false), // message widget
+                              onReactionTap: (reaction) {
+                                print('reaction: $reaction');
 
-                              if (reaction == '➕') {
-                                // show emoji picker container
-                              } else {
-                                // add reaction to message
-                              }
-                            },
-                            onContextMenuTap: (menuItem) {
-                              if (menuItem.label == "Reply") {
-                                _onPressed(true, _messageContent.messageID);
-                              }
-                              // handle context menu item
-                            },
-                          );
-                        },
-                      ),
-                    );
-                  },
-                  child: Hero(
-                      tag: _messageContent.messageID,
-                      child: messageTypeSwitch(
-                          _messageContent.content,
-                          _messageContent.messageType,
-                          _messageContent.messageID,
-                          _messageContent.sender == _currentUserID,
-                          _messageContent.sender == _currentUserID,
-                          false,
-                          false)),
-                )
-        ],
-      ),
-    );
+                                if (reaction == '➕') {
+                                  // show emoji picker container
+                                } else {
+                                  // add reaction to message
+                                }
+                              },
+                              onContextMenuTap: (menuItem) {
+                                if (menuItem.label == "Reply") {
+                                  _onPressed(true, _messageContent.messageID);
+                                }
+                                // handle context menu item
+                              },
+                            );
+                          },
+                        ),
+                      );
+                    },
+                    child: Hero(
+                        tag: _messageContent.messageID,
+                        child: messageTypeSwitch(
+                            _messageContent.content,
+                            _messageContent.messageType,
+                            _messageContent.messageID,
+                            _messageContent.sender == _currentUserID,
+                            _messageContent.sender == _currentUserID,
+                            false,
+                            false,
+                            state.isUsingReplyAssist)),
+                  )
+          ],
+        ),
+      );
+    }, converter: (store) {
+      return store.state;
+    });
   }
 }
