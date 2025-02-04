@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/core/utils/jwt_tools.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -372,6 +375,43 @@ class APIRequests {
       }
 
       return EncodedResponse(response.data["message"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
+  Future<MessageBasedResponse?> postReplyAssistRequest(
+      String conversationID, List<ReplyAssistContext> messageIDs) async {
+    String url = '${endpoints.apiUrl}${endpoints.replyAssist}';
+    ContentValidator().printer(url);
+    String? token = await storage.read(key: 'token');
+
+    if (token == null) {
+      return null;
+    }
+
+    Map<String, String> headers = {
+      'x-access-token': token,
+      'Content-Type': 'application/json'
+    };
+
+    try {
+      final response = await dio.post(url,
+          data: jsonEncode({
+            "conversationID": conversationID,
+            "messageIDs": messageIDs.map((mp) => mp.toJson()).toList()
+          }),
+          options: Options(headers: headers));
+
+      if (response.data["status"] == false) {
+        return null;
+      }
+
+      return MessageBasedResponse(response.data["message"]);
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

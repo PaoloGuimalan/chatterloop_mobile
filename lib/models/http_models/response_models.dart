@@ -33,3 +33,15 @@ class EncodedResponse {
     );
   }
 }
+
+class MessageBasedResponse {
+  String message;
+
+  MessageBasedResponse(this.message);
+
+  factory MessageBasedResponse.fromJson(Map<String, dynamic> json) {
+    return MessageBasedResponse(
+      json['message'],
+    );
+  }
+}

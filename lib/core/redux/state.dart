@@ -12,6 +12,8 @@ class AppState {
   List<UserContacts> contacts;
   NotificationsStateModel notificationsstate;
   List<IsTypingMetaData> isTypingList;
+  bool isUsingReplyAssist;
+  List<ReplyAssistContext> replyAssistContext;
 
   AppState(
       {this.userAuth = const UserAuth(
@@ -22,7 +24,9 @@ class AppState {
       this.messages = const [],
       this.contacts = const [],
       this.isTypingList = const [],
-      this.notificationsstate = const NotificationsStateModel([], 0)});
+      this.notificationsstate = const NotificationsStateModel([], 0),
+      this.isUsingReplyAssist = false,
+      this.replyAssistContext = const []});
 
   AppState copyWith(
       {UserAuth? authState,
@@ -30,13 +34,17 @@ class AppState {
       List<MessageItem>? messageslist,
       List<UserContacts>? contactslist,
       List<IsTypingMetaData>? istypinglistprop,
-      NotificationsStateModel? notificationsstateprop}) {
+      NotificationsStateModel? notificationsstateprop,
+      bool? isUsingReplyAssistProp,
+      List<ReplyAssistContext>? replyAssistContextProp}) {
     return AppState(
         userAuth: authState ?? userAuth,
         posts: postslist ?? posts,
         messages: messageslist ?? messages,
         contacts: contactslist ?? contacts,
         isTypingList: istypinglistprop ?? isTypingList,
-        notificationsstate: notificationsstateprop ?? notificationsstate);
+        notificationsstate: notificationsstateprop ?? notificationsstate,
+        isUsingReplyAssist: isUsingReplyAssistProp ?? isUsingReplyAssist,
+        replyAssistContext: replyAssistContextProp ?? replyAssistContext);
   }
 }

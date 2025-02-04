@@ -16,4 +16,5 @@ class Endpoints {
   String seenNewMessages = '/u/seenNewMessages';
   String postIsTyping = '/m/istypingbroadcast';
   String sendNewMessage = '/u/sendMessage';
+  String replyAssist = '/prompt/reply-assist';
 }

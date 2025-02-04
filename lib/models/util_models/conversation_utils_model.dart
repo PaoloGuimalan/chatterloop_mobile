@@ -37,3 +37,18 @@ class IsTypingMetaData {
     return IsTypingMetaData(json["userID"], json["conversationID"]);
   }
 }
+
+class ReplyAssistContext {
+  bool me;
+  String messageID;
+
+  ReplyAssistContext(this.me, this.messageID);
+
+  Map<String, dynamic> toJson() {
+    return {"me": me, "messageID": messageID};
+  }
+
+  factory ReplyAssistContext.fromJson(Map<String, dynamic> json) {
+    return ReplyAssistContext(json["me"], json["messageID"]);
+  }
+}

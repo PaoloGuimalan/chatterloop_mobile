@@ -71,4 +71,34 @@ class ReduxActions {
         return state;
     }
   }
+
+  AppState setIsUsingReplyAssist(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case setIsUsingReplyAssistT:
+        return AppState(isUsingReplyAssist: action.payload);
+      default:
+        return state;
+    }
+  }
+
+  AppState setReplyAssistContext(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case setReplyAssistContextT:
+        ReplyAssistContext payload = action.payload;
+        List<ReplyAssistContext> currentList = state.replyAssistContext
+            .where((replyAssist) => replyAssist.messageID != payload.messageID)
+            .toList();
+        return AppState(replyAssistContext: [...currentList, payload]);
+      case removeReplyAssistContextT:
+        ReplyAssistContext payload = action.payload;
+        List<ReplyAssistContext> currentList = state.replyAssistContext
+            .where((replyAssist) => replyAssist.messageID != payload.messageID)
+            .toList();
+        return AppState(replyAssistContext: [...currentList]);
+      case clearReplyAssistContextT:
+        return AppState(replyAssistContext: []);
+      default:
+        return state;
+    }
+  }
 }
