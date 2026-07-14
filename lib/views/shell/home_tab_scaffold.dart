@@ -6,6 +6,7 @@
 // than a third nested Navigator/MaterialApp.
 // ignore_for_file: use_build_context_synchronously
 
+import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
@@ -110,6 +111,13 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                             fontWeight: FontWeight.w800)),
                     Row(
                       children: [
+                        CLIconBtn(
+                          icon: Theme.of(context).brightness == Brightness.dark
+                              ? Icons.light_mode_outlined
+                              : Icons.dark_mode_outlined,
+                          tooltip: "Toggle theme",
+                          onPressed: () => ThemeScope.of(context).toggle(),
+                        ),
                         _badgeIconButton(
                           icon: Icons.notifications_none,
                           count: state.notificationsstate.totalunread,
