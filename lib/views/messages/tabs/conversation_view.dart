@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
@@ -68,7 +69,10 @@ class ConversationStateView extends State<ConversationView> {
         ? extra
         : ConversationViewProps(
             widget.conversationId, "single", ConversationPreview("", ""));
-    _myAccountId = StoreProvider.of<AppState>(context).state.userAuth.user.id;
+    // appStore (a plain global, not StoreProvider.of(context)) - the
+    // latter calls dependOnInheritedWidgetOfExactType, which asserts if
+    // used before initState() completes.
+    _myAccountId = appStore.state.userAuth.user.id;
     combinedPendingAndMessagesList = [
       ...conversationContentList,
       ...pendingMessagesList
