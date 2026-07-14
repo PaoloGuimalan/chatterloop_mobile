@@ -54,9 +54,21 @@ class ConversationStateView extends State<ConversationView> {
   bool isTypingTimedOut = false;
   int totalMessages = 0;
 
+  // Resolved once at mount, not recomputed per build - both feed the
+  // initial-load kickoff below, which must only ever run once per screen
+  // instance (see _startLoading's doc comment).
+  late final ConversationViewProps conversationMetaData;
+  late final String _myAccountId;
+
   @override
   void initState() {
     super.initState();
+    final extra = widget.extra;
+    conversationMetaData = extra is ConversationViewProps
+        ? extra
+        : ConversationViewProps(
+            widget.conversationId, "single", ConversationPreview("", ""));
+    _myAccountId = StoreProvider.of<AppState>(context).state.userAuth.user.id;
     combinedPendingAndMessagesList = [
       ...conversationContentList,
       ...pendingMessagesList
@@ -64,7 +76,49 @@ class ConversationStateView extends State<ConversationView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollController.addListener(_onScroll);
     });
-    // _conversationMetaData = widget.conversationMetaData;
+    _startLoading();
+  }
+
+  /// Kicks off the initial message/participant fetch and the SSE
+  /// subscription exactly once, on mount. This used to live inline in
+  /// build() guarded by `if (conversationContentList.isEmpty &&
+  /// !isInitialized)` - but StoreConnector rebuilds this widget on every
+  /// unrelated Redux change (typing, other conversations, notifications),
+  /// and a build()-time guard re-enters on every one of those rebuilds
+  /// until the async response lands, which under any rebuild pressure
+  /// (or a slow/failed response) produced a visible request loop and, for
+  /// the SSE listener specifically, re-subscribed a new listener on every
+  /// re-entry without cancelling the previous one.
+  void _startLoading() {
+    initConversationProcess(conversationMetaData.conversationID, range);
+    getConversationInfoProcess(conversationMetaData.conversationID,
+        conversationMetaData.conversationType);
+    _eventBusSubscription = eventBus.on<SSEModel>().listen((SSEModel event) {
+      if (event.event == "messages_list") {
+        if (mounted) {
+          int newRange = range + 1;
+          if (conversationInfo != null) {
+            seenMessagesProcess(
+                ISeenNewMessagesRequest(
+                    conversationMetaData.conversationID,
+                    range,
+                    conversationInfo!.users
+                        .map((user) => user.userID.toString())
+                        .toList(),
+                    _unseenMessageIDs(_myAccountId)),
+                newRange);
+          }
+          initConversationProcess(conversationMetaData.conversationID, newRange)
+              .then((_) {
+            if (mounted) {
+              setState(() {
+                range = newRange;
+              });
+            }
+          });
+        }
+      }
+    });
   }
 
   @override
@@ -184,6 +238,18 @@ class ConversationStateView extends State<ConversationView> {
         setState(() {
           conversationInfo = conversationInfoFinal;
         });
+      }
+
+      if (!isSeenMessageInitialized) {
+        seenMessagesProcess(
+            ISeenNewMessagesRequest(
+                conversationMetaData.conversationID,
+                range,
+                conversationInfoFinal.users
+                    .map((user) => user.userID.toString())
+                    .toList(),
+                _unseenMessageIDs(_myAccountId)),
+            range);
       }
 
       // if (kDebugMode) {
@@ -338,81 +404,26 @@ class ConversationStateView extends State<ConversationView> {
 
   @override
   Widget build(BuildContext context) {
-    final extra = widget.extra;
-    final ConversationViewProps conversationMetaData =
-        extra is ConversationViewProps
-            ? extra
-            : ConversationViewProps(
-                widget.conversationId, "single", ConversationPreview("", ""));
     return StoreConnector<AppState, AppState>(
       builder: (context, state) {
         final p = cl(context);
-        int unreadTotal = state.messages.isEmpty
+        final matchingMessages = state.messages
+            .where((item) =>
+                item.conversationID == conversationMetaData.conversationID)
+            .toList();
+        // Guarded on the *filtered* list being empty, not state.messages
+        // overall - this conversation legitimately has no entry yet in
+        // the conversations list right after being opened fresh (e.g.
+        // from a contact's Message button before any message exists),
+        // and .reduce()/[0] on an empty filtered list throws.
+        int unreadTotal = matchingMessages.isEmpty
             ? 0
-            : state.messages
-                .where((item) =>
-                    item.conversationID == conversationMetaData.conversationID)
+            : matchingMessages
                 .map((message) => message.unread)
                 .reduce((a, b) => a + b);
-        String newMessageIDOnTop = state.messages.isEmpty
-            ? ""
-            : state.messages
-                .where((item) =>
-                    item.conversationID == conversationMetaData.conversationID)
-                .toList()[0]
-                .messageID;
+        String newMessageIDOnTop =
+            matchingMessages.isEmpty ? "" : matchingMessages[0].messageID;
 
-        ContentValidator().printer(newMessageIDOnTop);
-
-        if (conversationContentList.isEmpty && !isInitialized) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            initConversationProcess(conversationMetaData.conversationID, range);
-            getConversationInfoProcess(conversationMetaData.conversationID,
-                conversationMetaData.conversationType);
-            _eventBusSubscription =
-                eventBus.on<SSEModel>().listen((SSEModel event) {
-              if (event.event == "messages_list") {
-                if (mounted) {
-                  int newRange = range + 1;
-                  if (conversationInfo != null) {
-                    seenMessagesProcess(
-                        ISeenNewMessagesRequest(
-                            conversationMetaData.conversationID,
-                            range,
-                            conversationInfo!.users
-                                .map((user) => user.userID.toString())
-                                .toList(),
-                            _unseenMessageIDs(state.userAuth.user.id)),
-                        newRange);
-                  }
-                  initConversationProcess(
-                          conversationMetaData.conversationID, newRange)
-                      .then((_) {
-                    setState(() {
-                      range = newRange;
-                    });
-                  });
-                }
-              }
-            });
-          });
-        }
-
-        if (!isSeenMessageInitialized) {
-          if (conversationInfo != null) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              seenMessagesProcess(
-                  ISeenNewMessagesRequest(
-                      conversationMetaData.conversationID,
-                      range,
-                      conversationInfo!.users
-                          .map((user) => user.userID.toString())
-                          .toList(),
-                      _unseenMessageIDs(state.userAuth.user.id)),
-                  range);
-            });
-          }
-        }
         return Scaffold(
           backgroundColor: p.bg,
           resizeToAvoidBottomInset: true,
