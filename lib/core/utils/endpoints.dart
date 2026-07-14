@@ -20,7 +20,11 @@ class Endpoints {
   String getNotifications = '/u/getNotifications';
   String readNotifications = '/u/readnotifications';
 
-  String getConversationList = '/u/initConversationList';
+  /// The real, live-wired conversation list endpoint (verified against
+  /// webapp/src/app/tabs/feed/Messages.tsx -> InitConversationListRequest).
+  /// The old /u/initConversationList this used to point at has zero call
+  /// sites in the current webapp - dead/legacy, do not revert to it.
+  String getConversationList = '/m/conversations';
   String initConversation = '/u/initConversation/'; // :conversationID
   String getConversationInfo =
       '/m/conversationinfo/'; // :conversationID/:conversationType (single, group, server)

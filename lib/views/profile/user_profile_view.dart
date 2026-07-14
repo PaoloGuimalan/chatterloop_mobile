@@ -1,6 +1,7 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
+import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool isLoading = true;
   bool notFound = false;
   bool isRequestingContact = false;
+  bool isOpeningMessage = false;
 
   @override
   void initState() {
@@ -44,6 +46,29 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     setState(() => isRequestingContact = false);
     if (ok) {
       await _load();
+    }
+  }
+
+  /// Mirrors webapp's Profile.tsx Message button: independent of
+  /// connection status. If already connected, jump straight to the
+  /// existing conversation; otherwise get-or-create one via /m/crtc.
+  Future<void> _openMessage() async {
+    if (profile == null) return;
+
+    if (profile!.connectionAccomplished == true &&
+        profile!.connectionId != null) {
+      context.push('/conversation/${profile!.connectionId}');
+      return;
+    }
+
+    setState(() => isOpeningMessage = true);
+    final conversationId = await ConversationsApi()
+        .createInitialConversationRequest(profile!.entityId);
+    if (!mounted) return;
+    setState(() => isOpeningMessage = false);
+
+    if (conversationId != null) {
+      context.push('/conversation/$conversationId');
     }
   }
 
@@ -80,17 +105,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       Text("@${profile!.username}",
                           style: TextStyle(color: p.text2, fontSize: 13)),
                       const SizedBox(height: 20),
-                      if (profile!.connectionAccomplished == true)
-                        CLBtn(
-                          label: "Message",
-                          size: CLBtnSize.lg,
-                          block: true,
-                          onPressed: profile!.connectionId == null
-                              ? null
-                              : () => context.push(
-                                  '/conversation/${profile!.connectionId}'),
-                        )
-                      else if (profile!.hasConnection == true)
+                      CLBtn(
+                        label: isOpeningMessage ? "Opening…" : "Message",
+                        size: CLBtnSize.lg,
+                        block: true,
+                        onPressed: isOpeningMessage ? null : _openMessage,
+                      ),
+                      const SizedBox(height: 10),
+                      if (profile!.hasConnection == true &&
+                          profile!.connectionAccomplished != true)
                         CLBtn(
                             label: "Request Pending",
                             size: CLBtnSize.lg,
@@ -104,6 +127,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 : "Add Contact",
                             size: CLBtnSize.lg,
                             block: true,
+                            variant: CLBtnVariant.outline,
                             onPressed:
                                 isRequestingContact ? null : _addContact),
                     ],

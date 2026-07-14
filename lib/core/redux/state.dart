@@ -1,15 +1,15 @@
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/post_models/user_post_model.dart';
+import 'package:chatterloop_app/models/user_models/contact_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
-import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 
 class AppState {
   UserAuth userAuth;
   List<UserPost> posts;
   List<MessageItem> messages;
-  List<UserContacts> contacts;
+  List<Contact> contacts;
   NotificationsStateModel notificationsstate;
   List<IsTypingMetaData> isTypingList;
   bool isUsingReplyAssist;
@@ -32,7 +32,7 @@ class AppState {
       {UserAuth? authState,
       List<UserPost>? postslist,
       List<MessageItem>? messageslist,
-      List<UserContacts>? contactslist,
+      List<Contact>? contactslist,
       List<IsTypingMetaData>? istypinglistprop,
       NotificationsStateModel? notificationsstateprop,
       bool? isUsingReplyAssistProp,

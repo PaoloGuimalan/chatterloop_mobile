@@ -2,14 +2,17 @@ class ISeenNewMessagesRequest {
   String conversationID;
   int range;
   List<String> receivers;
+  List<String> messageIDs;
 
-  ISeenNewMessagesRequest(this.conversationID, this.range, this.receivers);
+  ISeenNewMessagesRequest(this.conversationID, this.range, this.receivers,
+      [this.messageIDs = const []]);
 
   Map<String, dynamic> toJson() {
     return {
       'conversationID': conversationID,
       'range': range,
-      'receivers': receivers
+      'receivers': receivers,
+      'messageIDs': messageIDs,
     };
   }
 
@@ -19,6 +22,9 @@ class ISeenNewMessagesRequest {
         json["range"],
         (json["receivers"] as List)
             .map((receiver) => receiver.toString())
+            .toList(),
+        (json["messageIDs"] as List? ?? [])
+            .map((id) => id.toString())
             .toList());
   }
 }

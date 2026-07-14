@@ -118,6 +118,13 @@ class ConversationStateView extends State<ConversationView> {
     }
   }
 
+  List<String> _unseenMessageIDs(String myAccountId) {
+    return conversationContentList
+        .where((message) => !message.seeners.contains(myAccountId))
+        .map((message) => message.messageID)
+        .toList();
+  }
+
   Future<void> initConversationProcess(
       String conversationID, int rangeProp) async {
     EncodedResponse? initConversationResponse = await ConversationsApi()
@@ -369,7 +376,8 @@ class ConversationStateView extends State<ConversationView> {
                             range,
                             conversationInfo!.users
                                 .map((user) => user.userID.toString())
-                                .toList()),
+                                .toList(),
+                            _unseenMessageIDs(state.userAuth.user.id)),
                         newRange);
                   }
                   initConversationProcess(
@@ -394,7 +402,8 @@ class ConversationStateView extends State<ConversationView> {
                       range,
                       conversationInfo!.users
                           .map((user) => user.userID.toString())
-                          .toList()),
+                          .toList(),
+                      _unseenMessageIDs(state.userAuth.user.id)),
                   range);
             });
           }

@@ -1,14 +1,18 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
-import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
-import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
+/// The real /m/conversations endpoint resolves "what to display" for a
+/// conversation server-side into one `details` object regardless of type
+/// (for single: the other person; for group/channel: the group's own
+/// name/avatar) - so this widget no longer needs to branch on
+/// conversationType to pick an avatar/title the way the old, dead
+/// /u/initConversationList shape required.
 class MessageItemView extends StatelessWidget {
   final MessageItem message;
   final String userID;
@@ -18,18 +22,13 @@ class MessageItemView extends StatelessWidget {
 
   bool get _isCurrentUserSender => message.sender == userID;
 
-  UsersContactPreview get _otherParticipant =>
-      userID == message.users[0].userID ? message.users[1] : message.users[0];
-
-  /// Shared across every conversation type - was copy-pasted 3x in the
-  /// original single/group/server branches.
   String _previewText(bool isTyping) {
     if (isTyping) {
       return message.conversationType == "single"
           ? "is typing…"
           : "someone is typing…";
     }
-    if (message.isDeleted == true) return "Message deleted";
+    if (message.isDeleted) return "Message deleted";
     final prefix =
         _isCurrentUserSender && message.messageType != "notif" ? "you: " : "";
     if (message.messageType == "text" || message.messageType == "notif") {
@@ -41,89 +40,32 @@ class MessageItemView extends StatelessWidget {
     return "${prefix}Sent a file";
   }
 
-  ({String? avatarSrc, String? title, Color? titleColor, IconData? titleIcon})
-      _typeConfig() {
-    switch (message.conversationType) {
-      case "group":
-        return (
-          avatarSrc: message.groupdetails?.profile,
-          title: message.groupdetails?.groupName ?? "Group",
-          titleColor: CLColors.brand,
-          titleIcon: Icons.people_alt_outlined,
-        );
-      case "server":
-        return (
-          avatarSrc: message.serverdetails?.profile,
-          title: message.serverdetails?.serverName ?? "Server",
-          titleColor: CLColors.gold,
-          titleIcon: Icons.dataset_outlined,
-        );
-      case "single":
-        final other = _otherParticipant;
-        return (
-          avatarSrc: other.profile,
-          title: null,
-          titleColor: null,
-          titleIcon: null
-        );
-      default:
-        // Unrecognized/future conversation type (e.g. realm, conference) -
-        // degrade gracefully instead of indexing into `users`, which isn't
-        // guaranteed populated the same way single/group/server are.
-        return (
-          avatarSrc: null,
-          title: "Conversation",
-          titleColor: null,
-          titleIcon: Icons.forum_outlined,
-        );
-    }
-  }
+  IconData? get _typeIcon => switch (message.conversationType) {
+        "group" => Icons.people_alt_outlined,
+        "channel" || "server" => Icons.dataset_outlined,
+        _ => null,
+      };
 
   void _open(BuildContext context) {
-    if (message.conversationType == "single") {
-      final other = _otherParticipant;
-      final previewName = [
-        other.fullname.firstName,
-        if (other.fullname.middleName.isNotEmpty &&
-            other.fullname.middleName != "N/A")
-          other.fullname.middleName,
-        other.fullname.lastName,
-      ].where((part) => part.trim().isNotEmpty).join(" ");
-      context.push("/conversation/${message.conversationID}",
-          extra: ConversationViewProps(
-              message.conversationID,
-              message.conversationType,
-              ConversationPreview(
-                  ContentValidator().validateConversationProfile(
-                      other.profile, message.conversationType),
-                  previewName)));
-    } else if (message.conversationType == "group") {
-      context.push("/conversation/${message.conversationID}",
-          extra: ConversationViewProps(
-              message.conversationID,
-              message.conversationType,
-              ConversationPreview(
-                  ContentValidator().validateConversationProfile(
-                      message.groupdetails?.profile, message.conversationType),
-                  message.groupdetails?.groupName ?? "")));
-    }
+    context.push("/conversation/${message.conversationID}",
+        extra: ConversationViewProps(
+            message.conversationID,
+            message.conversationType,
+            ConversationPreview(
+                message.details.profile != null &&
+                        message.details.profile != "none"
+                    ? message.details.profile!
+                    : "",
+                message.details.displayName)));
   }
 
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
     return StoreConnector<AppState, bool>(builder: (context, isTyping) {
-      final config = _typeConfig();
-      final other =
-          message.conversationType == "single" ? _otherParticipant : null;
-      final titleText = config.title ??
-          [
-            other!.fullname.firstName,
-            if (other.fullname.middleName.isNotEmpty &&
-                other.fullname.middleName != "N/A")
-              other.fullname.middleName,
-            other.fullname.lastName,
-          ].where((part) => part.trim().isNotEmpty).join(" ");
+      final title = message.details.displayName.isEmpty
+          ? message.details.username
+          : message.details.displayName;
 
       return InkWell(
         onTap: () => _open(context),
@@ -133,10 +75,15 @@ class MessageItemView extends StatelessWidget {
           child: Row(
             children: [
               CLAvatar(
-                  id: message.conversationID,
-                  name: titleText,
-                  src: config.avatarSrc,
-                  size: 52),
+                id: message.details.id.isEmpty
+                    ? message.conversationID
+                    : message.details.id,
+                name: title,
+                src: message.details.profile != "none"
+                    ? message.details.profile
+                    : null,
+                size: 52,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -145,18 +92,17 @@ class MessageItemView extends StatelessWidget {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(titleText,
+                          child: Text(title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                   fontSize: 14,
-                                  color: config.titleColor ?? p.text,
+                                  color: _typeIcon != null ? p.brand : p.text,
                                   fontWeight: FontWeight.w700)),
                         ),
-                        if (config.titleIcon != null) ...[
+                        if (_typeIcon != null) ...[
                           const SizedBox(width: 4),
-                          Icon(config.titleIcon,
-                              size: 16, color: config.titleColor),
+                          Icon(_typeIcon, size: 16, color: p.brand),
                         ],
                       ],
                     ),

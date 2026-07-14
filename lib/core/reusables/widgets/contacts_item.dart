@@ -1,24 +1,36 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
-import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
-import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
+import 'package:chatterloop_app/core/requests/contacts_api.dart';
+import 'package:chatterloop_app/models/user_models/contact_model.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-class ContactsItemWidget extends StatelessWidget {
-  final UsersContactPreview contact;
-  final ConversationViewProps conversationMetaData;
+class ContactsItemWidget extends StatefulWidget {
+  final Contact contact;
+  final ContactPersonDetails other;
+  final VoidCallback? onRemoved;
 
   const ContactsItemWidget(
-      {super.key, required this.contact, required this.conversationMetaData});
+      {super.key, required this.contact, required this.other, this.onRemoved});
 
-  String get _displayName => [
-        contact.fullname.firstName,
-        if (contact.fullname.middleName.isNotEmpty &&
-            contact.fullname.middleName != "N/A")
-          contact.fullname.middleName,
-        contact.fullname.lastName,
-      ].where((part) => part.trim().isNotEmpty).join(" ");
+  @override
+  State<ContactsItemWidget> createState() => _ContactsItemWidgetState();
+}
+
+class _ContactsItemWidgetState extends State<ContactsItemWidget> {
+  bool isRemoving = false;
+
+  Future<void> _remove() async {
+    setState(() => isRemoving = true);
+    final ok = await ContactsApi().declineContactRequest(
+      connectionId: widget.contact.connectionId,
+      toUserId: widget.other.id,
+      action: "remove",
+    );
+    if (!mounted) return;
+    setState(() => isRemoving = false);
+    if (ok) widget.onRemoved?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,14 +41,17 @@ class ContactsItemWidget extends StatelessWidget {
         child: Row(
           children: [
             CLAvatar(
-              id: contact.userID,
-              name: _displayName,
-              src: contact.profile != "none" ? contact.profile : null,
+              id: widget.other.id,
+              name: widget.other.displayName,
+              src: widget.other.profile != "none" ? widget.other.profile : null,
               size: 46,
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(_displayName,
+              child: Text(
+                  widget.other.displayName.isEmpty
+                      ? widget.other.username
+                      : widget.other.displayName,
                   style: TextStyle(
                       color: p.text,
                       fontWeight: FontWeight.w700,
@@ -45,17 +60,26 @@ class ContactsItemWidget extends StatelessWidget {
             CLIconBtn(
               icon: Icons.messenger_outline_rounded,
               color: p.brand,
-              onPressed: () => context.push(
-                "/conversation/${conversationMetaData.conversationID}",
-                extra: conversationMetaData,
-              ),
+              onPressed: () =>
+                  context.push("/conversation/${widget.contact.connectionId}"),
             ),
-            CLIconBtn(
-              icon: Icons.person_remove_outlined,
-              color: p.pink,
-              tooltip: "Remove contact",
-              onPressed: null,
-            ),
+            isRemoving
+                ? SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Center(
+                        child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: p.pink))),
+                  )
+                : CLIconBtn(
+                    icon: Icons.person_remove_outlined,
+                    color: p.pink,
+                    tooltip: "Remove contact",
+                    onPressed: _remove,
+                  ),
           ],
         ),
       ),

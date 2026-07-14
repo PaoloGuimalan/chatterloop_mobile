@@ -9,6 +9,7 @@ import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -17,13 +18,38 @@ class ConversationsApi {
   final _dio = ApiClient.instance.dio;
   final _endpoints = Endpoints();
 
-  Future<EncodedResponse?> getConversationListRequest() async {
+  /// type is one of "common" | "direct" | "groups" | "servers" (matches
+  /// the tab filter on webapp's Messages screen). page/range/type are all
+  /// sent as headers, not query params - that's how the real endpoint
+  /// reads them. Response is plain JSON at response.data.result (NOT the
+  /// JWT-signed-token-wrapped shape most other /m and /u endpoints use).
+  Future<({List<MessageItem> items, int total, String? next})?>
+      getConversationListRequest(
+          {String type = "common", int page = 1, int range = 20}) async {
     ContentValidator()
         .printer('${_endpoints.apiUrl}${_endpoints.getConversationList}');
     try {
-      final response = await _dio.get(_endpoints.getConversationList);
-      if (response.data["status"] == false) return null;
-      return EncodedResponse(response.data["result"]);
+      final response = await _dio.get(_endpoints.getConversationList,
+          options: Options(headers: {
+            'type': type,
+            'page': page.toString(),
+            'range': range.toString(),
+          }));
+
+      final result = response.data["result"];
+      if (result is! Map) return null;
+      final items = result["items"];
+      if (items is! List) return null;
+
+      return (
+        items: items
+            .whereType<Map>()
+            .map(
+                (item) => MessageItem.fromJson(Map<String, dynamic>.from(item)))
+            .toList(),
+        total: _intValue(result["total"]),
+        next: result["next"]?.toString(),
+      );
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");
@@ -31,6 +57,12 @@ class ConversationsApi {
       }
       return null;
     }
+  }
+
+  int _intValue(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   Future<EncodedResponse?> initConversationRequest(
@@ -135,6 +167,25 @@ class ConversationsApi {
           }));
       if (response.data["status"] == false) return null;
       return MessageBasedResponse(response.data["message"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
+  /// Get-or-create a direct-message conversation with another entity -
+  /// matches webapp's CreateInitialConversation, used by a profile's
+  /// "Message" button when there's no existing conversation/connection to
+  /// route to yet.
+  Future<String?> createInitialConversationRequest(String otherEntityID) async {
+    try {
+      final response =
+          await _dio.post('/m/crtc', data: {'otherEntityID': otherEntityID});
+      if (response.data["status"] == false) return null;
+      return response.data["conversationID"]?.toString();
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

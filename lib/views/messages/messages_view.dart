@@ -5,9 +5,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
-import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/reusables/widgets/message_item.dart';
-import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:flutter/material.dart';
@@ -24,25 +22,14 @@ class MessagesStateView extends State<MessagesView> {
   bool isInitialized = false;
 
   Future<void> getConversationListProcess(BuildContext context) async {
-    EncodedResponse? getConversationListResponse =
-        await ConversationsApi().getConversationListRequest();
+    final res = await ConversationsApi().getConversationListRequest();
 
-    if (getConversationListResponse != null) {
-      Map<String, dynamic>? decodedConversationList =
-          JwtCodec.decode(getConversationListResponse.result);
-
-      List<dynamic> rawConversationList =
-          decodedConversationList?["conversationslist"];
-
-      List<MessageItem> spreadedConversationList = rawConversationList
-          .map((message) => MessageItem.fromJson(message))
-          .toList();
-
+    if (res != null) {
       if (!mounted) return;
       setState(() => isInitialized = true);
 
       StoreProvider.of<AppState>(context)
-          .dispatch(DispatchModel(setMessagesListT, spreadedConversationList));
+          .dispatch(DispatchModel(setMessagesListT, res.items));
     }
   }
 

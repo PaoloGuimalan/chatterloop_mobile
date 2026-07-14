@@ -16,12 +16,10 @@ import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
-import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
-import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -40,16 +38,12 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   bool isNotificationsInitialized = false;
 
   Future<void> getConversationListProcess(BuildContext context) async {
-    EncodedResponse? res =
-        await ConversationsApi().getConversationListRequest();
-    if (res == null) return;
-    Map<String, dynamic>? decoded = JwtCodec.decode(res.result);
-    List<dynamic> raw = decoded?["conversationslist"];
-    List<MessageItem> list = raw.map((m) => MessageItem.fromJson(m)).toList();
+    final res = await ConversationsApi().getConversationListRequest();
     if (!mounted) return;
     setState(() => isMessagesInitialized = true);
+    if (res == null) return;
     StoreProvider.of<AppState>(context)
-        .dispatch(DispatchModel(setMessagesListT, list));
+        .dispatch(DispatchModel(setMessagesListT, res.items));
   }
 
   Future<void> getNotificationsListProcess(BuildContext context) async {
@@ -68,15 +62,11 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   }
 
   Future<void> getContactsProcess(BuildContext context) async {
-    EncodedResponse? res = await ContactsApi().getContactsRequest();
-    if (res == null) return;
-    Map<String, dynamic>? decoded = JwtCodec.decode(res.result);
-    List<dynamic> raw = decoded?["contacts"];
-    List<UserContacts> list = raw.map((c) => UserContacts.fromJson(c)).toList();
+    final result = await ContactsApi().getContactsRequest();
     if (!mounted) return;
     setState(() => isContactsInitialized = true);
     StoreProvider.of<AppState>(context)
-        .dispatch(DispatchModel(setContactsListT, list));
+        .dispatch(DispatchModel(setContactsListT, result.results));
   }
 
   Future<void> _logout(BuildContext context) async {

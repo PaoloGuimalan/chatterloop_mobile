@@ -1,3 +1,5 @@
+import 'package:chatterloop_app/models/user_models/search_result_model.dart';
+
 class UserAuth {
   final bool? auth;
   final UserAccount user;
@@ -110,6 +112,32 @@ class UserAccount {
             ? UserBirthDate.fromJson(
                 Map<String, dynamic>.from(json["birthdate"]))
             : null,
+        allowedModules: allowedModules,
+        activeEntity: activeEntity,
+        personalEntityId: personalEntityId);
+  }
+
+  /// From the GET /api/user/auth/:username/ response (PublicProfile) -
+  /// used to refresh the current user's own profile the same way the
+  /// webapp always re-fetches via this endpoint, even for your own
+  /// profile, rather than only trusting the JWT-cached copy.
+  factory UserAccount.fromPublicProfile(PublicProfile publicProfile,
+      {List<String> allowedModules = const [],
+      ActiveEntity? activeEntity,
+      String? personalEntityId}) {
+    return UserAccount(
+        publicProfile.id,
+        publicProfile.username,
+        publicProfile.firstName,
+        publicProfile.middleName,
+        publicProfile.lastName,
+        publicProfile.email,
+        publicProfile.isActivated,
+        publicProfile.isVerified,
+        publicProfile.profile,
+        publicProfile.coverphoto,
+        publicProfile.gender,
+        null,
         allowedModules: allowedModules,
         activeEntity: activeEntity,
         personalEntityId: personalEntityId);
