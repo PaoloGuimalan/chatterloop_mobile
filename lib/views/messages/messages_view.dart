@@ -43,7 +43,6 @@ class MessagesStateView extends State<MessagesView> {
       }
       return Scaffold(
         backgroundColor: p.bg,
-        appBar: AppBar(title: const Text("Messages")),
         body: Column(
           children: [
             Padding(
@@ -53,11 +52,6 @@ class MessagesStateView extends State<MessagesView> {
                   CLChip(
                       label: "Create Group Chat",
                       icon: Icons.people_alt_outlined,
-                      onTap: null),
-                  const SizedBox(width: 8),
-                  CLChip(
-                      label: "Create Server",
-                      icon: Icons.dataset_outlined,
                       onTap: null),
                 ],
               ),

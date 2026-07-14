@@ -13,11 +13,18 @@ import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
+import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/requests/notifications_api.dart';
+import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
+import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
+
+const List<String> _tabTitles = ["Messages", "Contacts", "Search", "Profile"];
 
 class HomeTabScaffold extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -30,6 +37,7 @@ class HomeTabScaffold extends StatefulWidget {
 class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   bool isMessagesInitialized = false;
   bool isContactsInitialized = false;
+  bool isNotificationsInitialized = false;
 
   Future<void> getConversationListProcess(BuildContext context) async {
     final res = await ConversationsApi().getConversationListRequest();
@@ -48,6 +56,21 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
         .dispatch(DispatchModel(setContactsListT, result.results));
   }
 
+  Future<void> getNotificationsListProcess(BuildContext context) async {
+    EncodedResponse? res =
+        await NotificationsApi().getNotificationsListRequest();
+    if (!mounted) return;
+    setState(() => isNotificationsInitialized = true);
+    if (res == null) return;
+    Map<String, dynamic>? decoded = JwtCodec.decode(res.result);
+    List<dynamic> raw = decoded?["notifications"] ?? [];
+    List<NotificationsItemModel> list =
+        raw.map((n) => NotificationsItemModel.fromJson(n)).toList();
+    StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+        setNotificationsListT,
+        NotificationsStateModel(list, decoded?["totalunread"])));
+  }
+
   Future<void> _logout(BuildContext context) async {
     await ApiClient.instance.clearToken();
     StoreProvider.of<AppState>(context).dispatch(
@@ -64,6 +87,7 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
           : state.messages.map((m) => m.unread).reduce((a, b) => a + b);
       if (!isMessagesInitialized) getConversationListProcess(context);
       if (!isContactsInitialized) getContactsProcess(context);
+      if (!isNotificationsInitialized) getNotificationsListProcess(context);
 
       return Scaffold(
         backgroundColor: p.bg,
@@ -79,16 +103,25 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text("Chatterloop",
+                    Text(_tabTitles[widget.navigationShell.currentIndex],
                         style: TextStyle(
                             color: p.text,
                             fontSize: 20,
                             fontWeight: FontWeight.w800)),
-                    CLIconBtn(
-                      icon: Icons.logout,
-                      color: p.pink,
-                      tooltip: "Logout",
-                      onPressed: () => _logout(context),
+                    Row(
+                      children: [
+                        _badgeIconButton(
+                          icon: Icons.notifications_none,
+                          count: state.notificationsstate.totalunread,
+                          onPressed: () => context.push('/notifications'),
+                        ),
+                        CLIconBtn(
+                          icon: Icons.logout,
+                          color: p.pink,
+                          tooltip: "Logout",
+                          onPressed: () => _logout(context),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -148,6 +181,42 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
           shape: BoxShape.circle,
         ),
         child: Icon(icon, size: 24, color: active ? p.brand : p.text2),
+      ),
+    );
+  }
+
+  Widget _badgeIconButton(
+      {required IconData icon,
+      required int count,
+      required VoidCallback onPressed}) {
+    final p = cl(context);
+    return SizedBox(
+      width: 42,
+      height: 42,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Center(child: CLIconBtn(icon: icon, onPressed: onPressed)),
+          if (count > 0)
+            Positioned(
+              right: 2,
+              top: 2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                constraints: const BoxConstraints(minWidth: 16),
+                decoration: BoxDecoration(
+                    color: p.pink, borderRadius: BorderRadius.circular(10)),
+                child: Text(
+                  count > 99 ? "99+" : count.toString(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 9,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

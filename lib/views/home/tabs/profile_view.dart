@@ -59,7 +59,6 @@ class _ProfileViewState extends State<ProfileView> {
 
         return Scaffold(
           backgroundColor: p.bg,
-          appBar: AppBar(title: const Text("Profile")),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(

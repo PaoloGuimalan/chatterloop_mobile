@@ -62,7 +62,6 @@ class _SearchScreenState extends State<SearchScreen> {
     final p = cl(context);
     return Scaffold(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text("Search")),
       body: SafeArea(
         child: Column(
           children: [

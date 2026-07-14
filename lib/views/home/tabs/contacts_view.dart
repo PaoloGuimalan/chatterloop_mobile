@@ -1,7 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:chatterloop_app/core/design/tokens.dart';
-import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
@@ -10,7 +9,6 @@ import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/contact_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
-import 'package:go_router/go_router.dart';
 
 class ContactsView extends StatefulWidget {
   const ContactsView({super.key});
@@ -32,25 +30,33 @@ class ContactsStateView extends State<ContactsView> {
         .dispatch(DispatchModel(setContactsListT, result.results));
   }
 
+  /// Both sides of a contact pair are stored as separate rows sharing the
+  /// same connection_id (server_service/user/views.py's UserContacts.post -
+  /// one row per direction, so each user's own "who acted" perspective is
+  /// consistent) - the Django list endpoint returns both rows for either
+  /// party, so dedupe by connection_id here the way webapp's Contacts.tsx
+  /// implicitly assumes a single row per relationship.
+  List<Contact> _dedupedContacts(List<Contact> raw) {
+    final seen = <String>{};
+    final result = <Contact>[];
+    for (final c in raw) {
+      if (c.type != "single") continue;
+      if (!seen.add(c.connectionId)) continue;
+      result.add(c);
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
     return StoreConnector<AppState, AppState>(builder: (context, state) {
-      List<Contact> contactsList =
-          state.contacts.where((c) => c.type == "single").toList();
+      List<Contact> contactsList = _dedupedContacts(state.contacts);
       if (!isContactsInitialized) {
         getContactsProcess(context);
       }
       return Scaffold(
         backgroundColor: p.bg,
-        appBar: AppBar(
-          title: const Text("Contacts"),
-          actions: [
-            CLIconBtn(
-                icon: Icons.search, onPressed: () => context.push('/search')),
-            const SizedBox(width: 6),
-          ],
-        ),
         body: !isContactsInitialized
             ? Center(child: CircularProgressIndicator(color: p.brand))
             : contactsList.isEmpty
@@ -74,7 +80,6 @@ class ContactsStateView extends State<ContactsView> {
                       return ContactsItemWidget(
                         contact: contact,
                         other: other,
-                        onRemoved: () => getContactsProcess(context),
                       );
                     },
                   ),

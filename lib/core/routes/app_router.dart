@@ -11,6 +11,7 @@ import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
 import 'package:chatterloop_app/views/home/tabs/profile_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
 import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
+import 'package:chatterloop_app/views/notifications/notifications_view.dart';
 import 'package:chatterloop_app/views/profile/profile_edit_view.dart';
 import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/search_view.dart';
@@ -83,6 +84,9 @@ GoRouter buildAppRouter(AuthController authController) {
           GoRoute(
               path: '/profile/edit',
               builder: (c, s) => const ProfileEditScreen()),
+          GoRoute(
+              path: '/notifications',
+              builder: (c, s) => const NotificationsView()),
           GoRoute(
             path: '/user/:username',
             builder: (c, s) =>

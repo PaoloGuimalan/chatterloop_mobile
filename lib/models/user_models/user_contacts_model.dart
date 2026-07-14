@@ -38,11 +38,20 @@ class ActionDate {
     return 'ActionDate(date: $date, time; $time)';
   }
 
-  factory ActionDate.fromJson(Map<String, dynamic> json) {
-    return ActionDate(
-      json["date"],
-      json["time"],
-    );
+  /// Accepts either the {date, time} shape some endpoints format
+  /// server-side, or a raw ISO date string - which is what Mongoose Date
+  /// fields (e.g. messages.messageDate) actually serialize as when no
+  /// formatting step exists for that particular route. A Map cast here
+  /// used to throw on those routes, aborting the whole parse (e.g. a
+  /// conversation's messages silently never rendering).
+  factory ActionDate.fromJson(dynamic json) {
+    if (json is Map) {
+      return ActionDate(
+        (json["date"] ?? "").toString(),
+        (json["time"] ?? "").toString(),
+      );
+    }
+    return ActionDate(json?.toString() ?? "", "");
   }
 }
 
