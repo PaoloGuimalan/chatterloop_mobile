@@ -1,6 +1,7 @@
-// ignore_for_file: use_build_context_synchronously
-
 import 'package:chatterloop_app/core/configs/keys.dart';
+import 'package:chatterloop_app/core/design/theme_provider.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
@@ -21,250 +22,162 @@ class LoginScreen extends StatefulWidget {
 }
 
 class LoginScreenState extends State<LoginScreen> {
-  String email = "";
-  String password = "";
-  bool obscurePassword = true;
+  final _email = TextEditingController();
+  final _password = TextEditingController();
   final storage = FlutterSecureStorage();
+  bool _busy = false;
+  String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  void loginApiRequest() async {
-    APIRequests apiRequests = APIRequests();
-    LoginResponse? loginResponse =
-        await apiRequests.loginRequest(email, password);
-
-    if (loginResponse?.authtoken != null && loginResponse?.usertoken != null) {
-      await storage.write(key: 'token', value: loginResponse!.authtoken);
-      Map<String, dynamic>? userResponse =
-          JwtTools().verifyJwt(loginResponse.usertoken, secretKey);
-      StoreProvider.of<AppState>(context).dispatch(DispatchModel(
-          setUserAuthT,
-          UserAuth(
-              true,
-              UserAccount.fromDjangoJwt(userResponse ?? const {},
-                  allowedModules: loginResponse.allowedModules,
-                  activeEntity: loginResponse.activeEntity,
-                  personalEntityId: loginResponse.personalEntityId))));
-      if (context.mounted) context.go('/home');
+  Future<void> _submit() async {
+    if (_email.text.trim().isEmpty || _password.text.isEmpty) {
+      setState(() => _error = "Please complete the field.");
+      return;
     }
-  }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
 
-  @override
-  void dispose() {
-    super.dispose();
+    LoginResponse? loginResponse =
+        await APIRequests().loginRequest(_email.text.trim(), _password.text);
+
+    if (!mounted) return;
+
+    if (loginResponse?.authtoken == null || loginResponse?.usertoken == null) {
+      setState(() {
+        _busy = false;
+        _error = "Login failed. Check your credentials and try again.";
+      });
+      return;
+    }
+
+    await storage.write(key: 'token', value: loginResponse!.authtoken);
+    Map<String, dynamic>? userResponse =
+        JwtTools().verifyJwt(loginResponse.usertoken, secretKey);
+
+    if (!mounted) return;
+    StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+        setUserAuthT,
+        UserAuth(
+            true,
+            UserAccount.fromDjangoJwt(userResponse ?? const {},
+                allowedModules: loginResponse.allowedModules,
+                activeEntity: loginResponse.activeEntity,
+                personalEntityId: loginResponse.personalEntityId))));
+
+    setState(() => _busy = false);
+    if (mounted) context.go('/home');
   }
 
   @override
   Widget build(BuildContext context) {
-    return StoreConnector<AppState, AppState>(builder: (context, state) {
-      return Scaffold(
-        backgroundColor: Color(0xFF1c7def),
-        body: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints:
-                BoxConstraints(minHeight: MediaQuery.of(context).size.height),
-            child: IntrinsicHeight(
-              child: Center(
-                child: Column(
+    final p = cl(context);
+    return Scaffold(
+      backgroundColor: p.bg,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: IconButton(
+                      onPressed: () => ThemeScope.of(context).toggle(),
+                      icon: Icon(
+                        Theme.of(context).brightness == Brightness.dark
+                            ? Icons.light_mode
+                            : Icons.dark_mode,
+                        color: p.text2,
+                      ),
+                    ),
+                  ),
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      SizedBox(
-                        height: MediaQuery.of(context).size.height * 0.3,
-                        child: Transform.translate(
-                          offset: Offset(0, 0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Container(
-                                margin: EdgeInsets.only(bottom: 80),
-                                child: Text(
-                                  "Chatterloop",
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                      fontSize: 20),
-                                ),
-                              )
-                            ],
-                          ),
+                      Image.asset('assets/images/chatterloop.png',
+                          width: 38, height: 38),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Chatterloop',
+                        style: TextStyle(
+                          color: p.text,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      Expanded(
-                          child: Container(
-                        decoration: BoxDecoration(
-                            color: Color(0xFFdfdfdf),
-                            borderRadius: BorderRadius.only(
-                                topLeft: Radius.circular(20),
-                                topRight: Radius.circular(20))),
-                        width: double.infinity,
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                              top: 0, right: 10, left: 10, bottom: 10),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.max,
-                            children: [
-                              Transform.translate(
-                                offset: Offset(0, -50),
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    maxHeight: 120,
-                                    maxWidth: 120,
-                                  ),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                        border: Border.all(
-                                            color: Color(0xFF1c7def), width: 7),
-                                        borderRadius:
-                                            BorderRadius.circular(100)),
-                                    child: Image.asset(
-                                      'assets/images/chatterloop.png',
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                  child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                children: [
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: 350),
-                                    child: Container(
-                                      height: 50,
-                                      padding:
-                                          EdgeInsets.only(left: 10, right: 10),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(10),
-                                        color: Colors.white,
-                                      ),
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          TextField(
-                                            onChanged: (value) {
-                                              setState(() {
-                                                email = value;
-                                              });
-                                            },
-                                            style: TextStyle(fontSize: 14),
-                                            decoration: InputDecoration(
-                                                fillColor: Colors.white,
-                                                hintText: 'Email or Username',
-                                                border: InputBorder.none),
-                                          )
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    height: 10,
-                                  ),
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: 350),
-                                    child: Container(
-                                      height: 50,
-                                      padding:
-                                          EdgeInsets.only(left: 10, right: 10),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(10),
-                                        color: Colors.white,
-                                      ),
-                                      child: TextField(
-                                        obscureText: obscurePassword,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            password = value;
-                                          });
-                                        },
-                                        style: TextStyle(fontSize: 14),
-                                        decoration: InputDecoration(
-                                          contentPadding:
-                                              EdgeInsets.only(top: 14),
-                                          fillColor: Colors.white,
-                                          hintText: 'Password',
-                                          border: InputBorder.none,
-                                          suffixIcon: IconButton(
-                                            icon: Icon(
-                                              obscurePassword
-                                                  ? Icons.visibility_off
-                                                  : Icons.visibility,
-                                            ),
-                                            onPressed: () {
-                                              setState(() {
-                                                obscurePassword =
-                                                    !obscurePassword;
-                                              });
-                                            }, // Toggle visibility
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    height: 10,
-                                  ),
-                                  ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                          backgroundColor: Color(0xFF1c7def),
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(10))),
-                                      onPressed: () {
-                                        // if (kDebugMode) {
-                                        //   print(userAuth.auth);
-                                        // }
-                                        // StoreProvider.of<AppState>(context).dispatch(DispatchModel(
-                                        //     setUserAuthT, UserAuth(true, userAuth.user)));
-                                        // navigatorKey.currentState?.pushNamed("/");
-                                        loginApiRequest();
-                                      },
-                                      child: Text(
-                                        "Login",
-                                        style: TextStyle(
-                                            fontSize: 14, color: Colors.white),
-                                      )),
-                                  SizedBox(
-                                    height: 10,
-                                  ),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        "Don't have an account yet?",
-                                        style: TextStyle(fontSize: 14),
-                                      ),
-                                      TextButton(
-                                          onPressed: () {
-                                            context.push('/signup');
-                                          },
-                                          child: Text(
-                                            "Sign Up",
-                                            style: TextStyle(
-                                                fontSize: 14,
-                                                color: Color(0xFF1c7def),
-                                                fontWeight: FontWeight.bold),
-                                          ))
-                                    ],
-                                  )
-                                ],
-                              ))
-                            ],
-                          ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    'Welcome back',
+                    style: TextStyle(
+                      color: p.text,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Log in to jump back into your loop.',
+                    style: TextStyle(color: p.text2, fontSize: 14),
+                  ),
+                  const SizedBox(height: 22),
+                  CLField(
+                    icon: Icons.alternate_email,
+                    label: 'Email or Username',
+                    placeholder: 'you@chatterloop.app',
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                  const SizedBox(height: 13),
+                  CLField(
+                    icon: Icons.lock_outline,
+                    label: 'Password',
+                    placeholder: '••••••••',
+                    obscure: true,
+                    controller: _password,
+                  ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(_error!,
+                          style: TextStyle(color: p.pink, fontSize: 13)),
+                    ),
+                  const SizedBox(height: 4),
+                  CLBtn(
+                    label: _busy ? 'Logging in…' : 'Log In',
+                    onPressed: _busy ? null : _submit,
+                    size: CLBtnSize.lg,
+                    block: true,
+                  ),
+                  const SizedBox(height: 22),
+                  Center(
+                    child: Wrap(
+                      children: [
+                        Text("Don't have an account yet? ",
+                            style: TextStyle(color: p.text2, fontSize: 13.5)),
+                        GestureDetector(
+                          onTap: () => context.push('/signup'),
+                          child: Text('Sign Up',
+                              style: TextStyle(
+                                  color: p.brand,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700)),
                         ),
-                      ))
-                    ]),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-      );
-    }, converter: (store) {
-      return store.state;
-    });
+      ),
+    );
   }
 }

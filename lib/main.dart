@@ -1,4 +1,6 @@
 import 'package:chatterloop_app/core/auth/auth_controller.dart';
+import 'package:chatterloop_app/core/design/theme_provider.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
@@ -21,6 +23,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   late final AuthController _authController;
   late final GoRouter _router;
+  final ThemeController _themeController = ThemeController();
 
   @override
   void initState() {
@@ -34,6 +37,7 @@ class _MyAppState extends State<MyApp> {
     _authController = AuthController(appStore);
     _router = buildAppRouter(_authController);
     _authController.resolve();
+    _themeController.load();
   }
 
   @override
@@ -44,15 +48,22 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return StoreProvider<AppState>(
-      store: appStore,
-      child: MaterialApp.router(
-        title: 'Chatterloop',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
-        ),
-        routerConfig: _router,
+    return ThemeScope(
+      notifier: _themeController,
+      child: AnimatedBuilder(
+        animation: _themeController,
+        builder: (context, _) {
+          return StoreProvider<AppState>(
+            store: appStore,
+            child: MaterialApp.router(
+              title: 'Chatterloop',
+              theme: buildCLTheme(Brightness.light),
+              darkTheme: buildCLTheme(Brightness.dark),
+              themeMode: _themeController.mode,
+              routerConfig: _router,
+            ),
+          );
+        },
       ),
     );
   }

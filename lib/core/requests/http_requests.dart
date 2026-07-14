@@ -54,6 +54,9 @@ class APIRequests {
       if (kDebugMode) {
         print("ERROR");
         print(e);
+        if (e is DioException) {
+          print("Response body: ${e.response?.data}");
+        }
       }
       return null;
     }

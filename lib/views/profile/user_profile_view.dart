@@ -1,5 +1,5 @@
-import 'package:chatterloop_app/core/design/app_button.dart';
-import 'package:chatterloop_app/core/design/app_colors.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:flutter/material.dart';
@@ -48,63 +48,63 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = cl(context);
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        elevation: 0,
-        title: Text("Profile", style: TextStyle(color: AppColors.textPrimary)),
-        iconTheme: IconThemeData(color: AppColors.textPrimary),
-      ),
+      backgroundColor: p.bg,
+      appBar: AppBar(title: const Text("Profile")),
       body: isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: p.brand))
           : notFound || profile == null
               ? Center(
                   child: Text("This profile is unavailable",
-                      style: TextStyle(color: AppColors.textPrimary)))
+                      style: TextStyle(color: p.text2)))
               : SingleChildScrollView(
-                  padding: EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(20),
                   child: Column(
                     children: [
-                      ClipOval(
-                        child: Container(
-                          width: 96,
-                          height: 96,
-                          color: AppColors.border,
-                          child: profile!.profile != null &&
-                                  profile!.profile!.isNotEmpty
-                              ? Image.network(profile!.profile!,
-                                  fit: BoxFit.cover)
-                              : Icon(Icons.person,
-                                  size: 48, color: AppColors.textPrimary),
-                        ),
-                      ),
-                      SizedBox(height: 12),
+                      CLAvatar(
+                          id: profile!.id,
+                          name: profile!.displayName,
+                          src: profile!.profile,
+                          size: 96),
+                      const SizedBox(height: 12),
                       Text(
                           profile!.displayName.isEmpty
                               ? profile!.username
                               : profile!.displayName,
                           style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
+                              color: p.text,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800)),
                       Text("@${profile!.username}",
-                          style: TextStyle(
-                              color: AppColors.textPrimary, fontSize: 13)),
-                      SizedBox(height: 20),
+                          style: TextStyle(color: p.text2, fontSize: 13)),
+                      const SizedBox(height: 20),
                       if (profile!.connectionAccomplished == true)
-                        AppButton(
+                        CLBtn(
                           label: "Message",
+                          size: CLBtnSize.lg,
+                          block: true,
                           onPressed: profile!.connectionId == null
                               ? null
                               : () => context.push(
                                   '/conversation/${profile!.connectionId}'),
                         )
                       else if (profile!.hasConnection == true)
-                        AppButton(label: "Request Pending", onPressed: null)
+                        CLBtn(
+                            label: "Request Pending",
+                            size: CLBtnSize.lg,
+                            block: true,
+                            variant: CLBtnVariant.outline,
+                            onPressed: null)
                       else if (profile!.hasConnection == false)
-                        AppButton(
-                            label: "Add Contact",
-                            onPressed: _addContact,
-                            loading: isRequestingContact),
+                        CLBtn(
+                            label: isRequestingContact
+                                ? "Sending…"
+                                : "Add Contact",
+                            size: CLBtnSize.lg,
+                            block: true,
+                            onPressed:
+                                isRequestingContact ? null : _addContact),
                     ],
                   ),
                 ),

@@ -1,6 +1,5 @@
-import 'package:chatterloop_app/core/design/app_button.dart';
-import 'package:chatterloop_app/core/design/app_colors.dart';
-import 'package:chatterloop_app/core/design/app_text_field.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
@@ -20,10 +19,10 @@ class ProfileEditScreen extends StatefulWidget {
 
 class _ProfileEditScreenState extends State<ProfileEditScreen> {
   late UserAccount _original;
-  late String firstName;
-  late String middleName;
-  late String lastName;
-  late String username;
+  final _firstController = TextEditingController();
+  final _middleController = TextEditingController();
+  final _lastController = TextEditingController();
+  final _usernameController = TextEditingController();
   String? gender;
   bool _initialized = false;
 
@@ -36,15 +35,20 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   void _initFrom(UserAccount user) {
     if (_initialized) return;
     _original = user;
-    firstName = user.firstname;
-    middleName = user.middlename;
-    lastName = user.lastname;
-    username = user.username;
+    _firstController.text = user.firstname;
+    _middleController.text = user.middlename == "N/A" ? "" : user.middlename;
+    _lastController.text = user.lastname;
+    _usernameController.text = user.username;
     gender = user.gender;
     _initialized = true;
   }
 
   Future<void> _save() async {
+    final firstName = _firstController.text;
+    final middleName = _middleController.text;
+    final lastName = _lastController.text;
+    final username = _usernameController.text;
+
     if (firstName.trim().isEmpty || lastName.trim().isEmpty) {
       setState(() => errorMessage = "First and last name are required");
       return;
@@ -176,123 +180,144 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = cl(context);
     return StoreConnector<AppState, AppState>(
       builder: (context, state) {
         _initFrom(state.userAuth.user);
 
         return Scaffold(
-          backgroundColor: AppColors.surface,
-          appBar: AppBar(
-            backgroundColor: AppColors.white,
-            elevation: 0,
-            title: Text("Edit Profile",
-                style: TextStyle(color: AppColors.textPrimary)),
-            iconTheme: IconThemeData(color: AppColors.textPrimary),
-          ),
+          backgroundColor: p.bg,
+          appBar: AppBar(title: const Text("Edit Profile")),
           body: SingleChildScrollView(
-            padding: EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
             child: Column(
               children: [
+                CLAvatar(
+                  id: _original.id,
+                  name: _original.username,
+                  src: _original.profile != "none" ? _original.profile : null,
+                  size: 84,
+                ),
+                const SizedBox(height: 12),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _photoButton(
-                        label: "Change photo",
-                        loading: isUploadingAvatar,
-                        onPressed: () => _pickAndUpload(false)),
-                    SizedBox(width: 10),
-                    _photoButton(
-                        label: "Change cover",
-                        loading: isUploadingCover,
-                        onPressed: () => _pickAndUpload(true)),
+                    Expanded(
+                      child: CLBtn(
+                          label: "Change photo",
+                          variant: CLBtnVariant.outline,
+                          size: CLBtnSize.sm,
+                          onPressed: isUploadingAvatar
+                              ? null
+                              : () => _pickAndUpload(false),
+                          block: true),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: CLBtn(
+                          label: "Change cover",
+                          variant: CLBtnVariant.outline,
+                          size: CLBtnSize.sm,
+                          onPressed: isUploadingCover
+                              ? null
+                              : () => _pickAndUpload(true),
+                          block: true),
+                    ),
                   ],
                 ),
                 if (infoMessage != null)
                   Padding(
-                    padding: EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.only(top: 8),
                     child: Text(infoMessage!,
-                        style: TextStyle(color: AppColors.brand, fontSize: 12)),
+                        style: TextStyle(color: p.brand, fontSize: 12)),
                   ),
-                SizedBox(height: 16),
-                AppTextField(
-                    hint: "First name",
-                    onChanged: (v) => firstName = v,
-                    obscureText: false),
-                SizedBox(height: 10),
-                AppTextField(
-                    hint: "Middle name", onChanged: (v) => middleName = v),
-                SizedBox(height: 10),
-                AppTextField(hint: "Last name", onChanged: (v) => lastName = v),
-                SizedBox(height: 10),
-                AppTextField(hint: "Username", onChanged: (v) => username = v),
-                SizedBox(height: 10),
-                Container(
-                  constraints: BoxConstraints(minHeight: 50),
-                  padding: EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(10)),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      isExpanded: true,
-                      hint: Text("Gender"),
-                      value: gender,
-                      items: ["male", "female", "other"]
-                          .map(
-                              (g) => DropdownMenuItem(value: g, child: Text(g)))
-                          .toList(),
-                      onChanged: (v) => setState(() => gender = v),
-                    ),
-                  ),
+                const SizedBox(height: 20),
+                CLField(
+                    icon: Icons.person_outline,
+                    label: "First name",
+                    controller: _firstController),
+                const SizedBox(height: 13),
+                CLField(label: "Middle name", controller: _middleController),
+                const SizedBox(height: 13),
+                CLField(
+                    icon: Icons.badge_outlined,
+                    label: "Last name",
+                    controller: _lastController),
+                const SizedBox(height: 13),
+                CLField(
+                    icon: Icons.alternate_email,
+                    label: "Username",
+                    controller: _usernameController),
+                const SizedBox(height: 13),
+                Text('Gender',
+                    style: TextStyle(
+                        color: p.text2,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Row(
+                  children: ["male", "female", "other"].map((g) {
+                    final active = gender == g;
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: InkWell(
+                          onTap: () => setState(() => gender = g),
+                          borderRadius: BorderRadius.circular(CLRadii.sm),
+                          child: Container(
+                            height: 40,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: active ? p.brand : p.surface,
+                              border: Border.all(
+                                  color:
+                                      active ? Colors.transparent : p.border2),
+                              borderRadius: BorderRadius.circular(CLRadii.sm),
+                            ),
+                            child: Text(g,
+                                style: TextStyle(
+                                    color: active ? Colors.white : p.text2,
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 13),
                 Container(
-                  constraints: BoxConstraints(minHeight: 50),
-                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  constraints: const BoxConstraints(minHeight: 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                   alignment: Alignment.centerLeft,
                   decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(10)),
+                      color: p.surface3,
+                      borderRadius: BorderRadius.circular(CLRadii.sm)),
                   child: Text(
                     (_original.email == null || _original.email!.isEmpty)
                         ? "No email on file"
                         : "${_original.email} (changing email is temporarily disabled)",
-                    style:
-                        TextStyle(color: AppColors.textPrimary, fontSize: 12),
+                    style: TextStyle(color: p.text3, fontSize: 12),
                   ),
                 ),
                 if (errorMessage != null)
                   Padding(
-                    padding: EdgeInsets.only(top: 10),
+                    padding: const EdgeInsets.only(top: 10),
                     child: Text(errorMessage!,
-                        style:
-                            TextStyle(color: AppColors.danger, fontSize: 13)),
+                        style: TextStyle(color: p.pink, fontSize: 13)),
                   ),
-                SizedBox(height: 16),
-                AppButton(label: "Save", onPressed: _save, loading: isSaving),
+                const SizedBox(height: 18),
+                CLBtn(
+                  label: isSaving ? "Saving…" : "Save",
+                  size: CLBtnSize.lg,
+                  block: true,
+                  onPressed: isSaving ? null : _save,
+                ),
               ],
             ),
           ),
         );
       },
       converter: (store) => store.state,
-    );
-  }
-
-  Widget _photoButton(
-      {required String label,
-      required bool loading,
-      required VoidCallback onPressed}) {
-    return Expanded(
-      child: OutlinedButton(
-        onPressed: loading ? null : onPressed,
-        child: loading
-            ? SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2))
-            : Text(label, style: TextStyle(fontSize: 12)),
-      ),
     );
   }
 }

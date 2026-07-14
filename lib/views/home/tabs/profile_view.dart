@@ -1,5 +1,5 @@
-import 'package:chatterloop_app/core/design/app_button.dart';
-import 'package:chatterloop_app/core/design/app_colors.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
@@ -10,6 +10,7 @@ class ProfileView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = cl(context);
     return StoreConnector<AppState, AppState>(
       builder: (context, state) {
         final user = state.userAuth.user;
@@ -21,49 +22,37 @@ class ProfileView extends StatelessWidget {
         ].where((part) => part.trim().isNotEmpty).join(" ");
 
         return Scaffold(
-          backgroundColor: AppColors.surface,
-          appBar: AppBar(
-            backgroundColor: AppColors.white,
-            elevation: 0,
-            title:
-                Text("Profile", style: TextStyle(color: AppColors.textPrimary)),
-            iconTheme: IconThemeData(color: AppColors.textPrimary),
-          ),
+          backgroundColor: p.bg,
+          appBar: AppBar(title: const Text("Profile")),
           body: SingleChildScrollView(
-            padding: EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                ClipOval(
-                  child: Container(
-                    width: 96,
-                    height: 96,
-                    color: AppColors.border,
-                    child: user.profile != null &&
-                            user.profile!.isNotEmpty &&
-                            user.profile != "none"
-                        ? Image.network(user.profile!, fit: BoxFit.cover)
-                        : Icon(Icons.person,
-                            size: 48, color: AppColors.textPrimary),
-                  ),
+                CLAvatar(
+                  id: user.id,
+                  name: displayName.isEmpty ? user.username : displayName,
+                  src: user.profile != "none" ? user.profile : null,
+                  size: 96,
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 Text(displayName.isEmpty ? user.username : displayName,
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        color: p.text,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800)),
                 Text("@${user.username}",
-                    style:
-                        TextStyle(color: AppColors.textPrimary, fontSize: 13)),
-                SizedBox(height: 4),
+                    style: TextStyle(color: p.text2, fontSize: 13)),
                 if (!user.isVerified)
                   Padding(
-                    padding: EdgeInsets.only(top: 4),
-                    child: Text("Email not verified",
-                        style:
-                            TextStyle(color: AppColors.danger, fontSize: 12)),
+                    padding: const EdgeInsets.only(top: 8),
+                    child: CLBadge(
+                        label: "Email not verified", tone: CLBadgeTone.pink),
                   ),
-                SizedBox(height: 20),
-                AppButton(
+                const SizedBox(height: 20),
+                CLBtn(
                   label: "Edit Profile",
+                  size: CLBtnSize.lg,
+                  block: true,
                   onPressed: () => context.push('/profile/edit'),
                 ),
               ],
