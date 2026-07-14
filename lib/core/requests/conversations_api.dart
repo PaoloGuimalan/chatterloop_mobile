@@ -87,14 +87,25 @@ class ConversationsApi {
     }
   }
 
+  /// page is required, not optional - routes/users/index.js's
+  /// GET /initConversation/:conversationID does
+  /// `$skip: (parseInt(page) - 1) * parseInt(range)` with no fallback.
+  /// Without a page header that's NaN, the Mongo aggregation rejects, and
+  /// the route responds {status:false} - silently, no thrown exception on
+  /// this end, which is why this returned null with nothing printed.
+  /// Matches webapp's InitConversationRequest (page: page || 1).
   Future<EncodedResponse?> initConversationRequest(
-      String conversationID, int range) async {
+      String conversationID, int range,
+      {int page = 1}) async {
     ContentValidator().printer(
         '${_endpoints.apiUrl}${_endpoints.initConversation}$conversationID');
     try {
-      final response = await _dio.get(
-          '${_endpoints.initConversation}$conversationID',
-          options: Options(headers: {'range': range.toString()}));
+      final response =
+          await _dio.get('${_endpoints.initConversation}$conversationID',
+              options: Options(headers: {
+                'page': page.toString(),
+                'range': range.toString(),
+              }));
       if (response.data["status"] == false) return null;
       return EncodedResponse(response.data["result"]);
     } catch (e) {
