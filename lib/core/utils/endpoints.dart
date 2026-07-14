@@ -11,6 +11,10 @@ class Endpoints {
   String login = '/api/user/auth';
   String signup = '/api/user/me';
   String verifyEmail = '/api/user/verification';
+  String updateProfile = '/api/user/me';
+  String search = '/api/user/search/'; // :query
+  String publicProfile = '/api/user/auth/'; // :username
+  String contacts = '/api/user/contacts';
   String getPosts = '/posts/feed';
   String getContacts = '/u/getContacts';
   String getNotifications = '/u/getNotifications';

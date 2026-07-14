@@ -15,6 +15,9 @@ import 'package:chatterloop_app/views/home/tabs/server_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
 import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
 import 'package:chatterloop_app/views/notifications/notifications_view.dart';
+import 'package:chatterloop_app/views/profile/profile_edit_view.dart';
+import 'package:chatterloop_app/views/profile/user_profile_view.dart';
+import 'package:chatterloop_app/views/search/search_view.dart';
 import 'package:chatterloop_app/views/shell/authenticated_shell.dart';
 import 'package:chatterloop_app/views/shell/home_tab_scaffold.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
@@ -83,6 +86,15 @@ GoRouter buildAppRouter(AuthController authController) {
               path: '/notifications',
               builder: (c, s) => const NotificationsView()),
           GoRoute(path: '/profile', builder: (c, s) => const ProfileView()),
+          GoRoute(
+              path: '/profile/edit',
+              builder: (c, s) => const ProfileEditScreen()),
+          GoRoute(path: '/search', builder: (c, s) => const SearchScreen()),
+          GoRoute(
+            path: '/user/:username',
+            builder: (c, s) =>
+                UserProfileScreen(username: s.pathParameters['username']!),
+          ),
         ],
       ),
     ],

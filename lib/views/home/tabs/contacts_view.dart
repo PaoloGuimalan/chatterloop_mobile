@@ -13,6 +13,7 @@ import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:go_router/go_router.dart';
 
 class ContactsView extends StatefulWidget {
   const ContactsView({super.key});
@@ -84,21 +85,29 @@ class ContactsStateView extends State<ContactsView> {
                   width: MediaQuery.of(context).size.width,
                   height: 50,
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(
-                        Icons.contact_page_sharp,
-                        size: 30,
-                        color: Color(0xffff7043),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.contact_page_sharp,
+                            size: 30,
+                            color: Color(0xffff7043),
+                          ),
+                          SizedBox(
+                            width: 5,
+                          ),
+                          Text("Contacts",
+                              style: TextStyle(
+                                  fontSize: 17,
+                                  color: Color(0xFF565656),
+                                  fontWeight: FontWeight.bold)),
+                        ],
                       ),
-                      SizedBox(
-                        width: 5,
+                      IconButton(
+                        icon: Icon(Icons.search, color: Color(0xFF565656)),
+                        onPressed: () => context.push('/search'),
                       ),
-                      Text("Contacts",
-                          style: TextStyle(
-                              fontSize: 17,
-                              color: Color(0xFF565656),
-                              fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
