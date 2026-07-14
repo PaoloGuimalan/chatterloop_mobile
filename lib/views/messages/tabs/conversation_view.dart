@@ -120,7 +120,15 @@ class ConversationStateView extends State<ConversationView> {
       isSettingUp = false;
     });
 
-    initConversationProcess(conversationMetaData.conversationID, range);
+    final loadedMessages = await initConversationProcess(
+        conversationMetaData.conversationID, range);
+    if (!mounted) return;
+    if (!loadedMessages) {
+      setState(() {
+        conversationLoadError = "This conversation could not be loaded.";
+      });
+      return;
+    }
     getConversationInfoProcess(conversationMetaData.conversationID,
         conversationMetaData.conversationType);
     _eventBusSubscription = eventBus.on<SSEModel>().listen((SSEModel event) {
@@ -209,20 +217,30 @@ class ConversationStateView extends State<ConversationView> {
         .toList();
   }
 
-  Future<void> initConversationProcess(
+  /// Returns whether messages actually loaded - used by _startLoading to
+  /// tell "failed" apart from "still in flight" so a failure on the first
+  /// call surfaces an error instead of leaving the screen spinning forever
+  /// with no explanation (the exact bug already found and fixed once for
+  /// getConversationSetupRequest - this closes the same gap here, since a
+  /// thrown/malformed response previously left isInitialized stuck false
+  /// with nothing catching it).
+  Future<bool> initConversationProcess(
       String conversationID, int rangeProp) async {
-    EncodedResponse? initConversationResponse = await ConversationsApi()
-        .initConversationRequest(conversationID, rangeProp);
+    try {
+      EncodedResponse? initConversationResponse = await ConversationsApi()
+          .initConversationRequest(conversationID, rangeProp);
+      if (initConversationResponse == null) return false;
 
-    if (initConversationResponse != null) {
       Map<String, dynamic>? decodedInitConversation =
           JwtCodec.decode(initConversationResponse.result);
 
-      List<dynamic> rawInitConversation = decodedInitConversation?["messages"];
-      int totalMessagesResponse = decodedInitConversation?["total"];
+      final rawMessages = decodedInitConversation?["messages"];
+      if (rawMessages is! List) return false;
 
-      List<MessageContent> messageContentList = rawInitConversation
-          .map((message) => MessageContent.fromJson(message))
+      List<MessageContent> messageContentList = rawMessages
+          .whereType<Map>()
+          .map((message) =>
+              MessageContent.fromJson(Map<String, dynamic>.from(message)))
           .toList();
 
       if (mounted) {
@@ -233,15 +251,23 @@ class ConversationStateView extends State<ConversationView> {
             ...pendingMessagesList
           ];
           isInitialized = true;
-          totalMessages = totalMessagesResponse;
+          totalMessages = _intValue(decodedInitConversation?["total"]);
         });
       }
-
-      // if (kDebugMode) {
-      //   // print(rawContactsList);
-      //   print(messageContentList);
-      // }
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR parsing conversation messages");
+        print(e);
+      }
+      return false;
     }
+  }
+
+  int _intValue(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   Future<void> getConversationInfoProcess(
@@ -1570,11 +1596,11 @@ class ConversationStateView extends State<ConversationView> {
                         ),
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: p.surface,
                             border: Border(
                               top: BorderSide(
                                 width: 0.5,
-                                color: Color(0xffd2d2d2),
+                                color: p.border,
                               ),
                             ),
                           ),
@@ -1670,15 +1696,17 @@ class ConversationStateView extends State<ConversationView> {
                                             });
                                           }
                                         },
-                                        style: TextStyle(fontSize: 12),
+                                        style: TextStyle(
+                                            fontSize: 12, color: p.text),
                                         decoration: InputDecoration(
                                             contentPadding: EdgeInsets.only(
                                                 top: 6,
                                                 bottom: 6,
                                                 left: 8,
                                                 right: 8),
-                                            fillColor: Colors.white,
                                             hintText: 'Write a message....',
+                                            hintStyle:
+                                                TextStyle(color: p.text3),
                                             border: InputBorder.none),
                                       ),
                                     ),
