@@ -37,37 +37,53 @@ class MessageContent {
       this.replyedmessage,
       this.reactionsWithInfo);
 
+  /// Every field is defensive - a real persisted message threw here (Null
+  /// is not a subtype of String) despite matching the Mongoose schema on
+  /// paper, so something about the actual data doesn't match the fields
+  /// this assumed were always present. Degrading missing fields to sane
+  /// defaults beats losing the whole conversation to one malformed message.
   factory MessageContent.fromJson(Map<String, dynamic> json) {
     return MessageContent(
-        json["messageID"],
-        json["conversationID"],
-        json["pendingID"] ?? "",
-        json["sender"],
-        (json["receivers"] as List)
-            .map((receiver) => receiver.toString())
-            .toList(),
-        (json["seeners"] as List).map((seener) => seener.toString()).toList(),
-        json["content"],
+        (json["messageID"] ?? "").toString(),
+        (json["conversationID"] ?? "").toString(),
+        json["pendingID"]?.toString() ?? "",
+        (json["sender"] ?? "").toString(),
+        json["receivers"] is List
+            ? (json["receivers"] as List)
+                .map((receiver) => receiver.toString())
+                .toList()
+            : [],
+        json["seeners"] is List
+            ? (json["seeners"] as List)
+                .map((seener) => seener.toString())
+                .toList()
+            : [],
+        (json["content"] ?? "").toString(),
         ActionDate.fromJson(json["messageDate"]),
-        json["isReply"],
-        json["replyingTo"] ?? "",
-        json["reactions"] != null
+        json["isReply"] == true,
+        json["replyingTo"]?.toString() ?? "",
+        json["reactions"] is List
             ? (json["reactions"] as List)
-                .map((reaction) => ReactionItem.fromJson(reaction))
+                .whereType<Map>()
+                .map((reaction) =>
+                    ReactionItem.fromJson(Map<String, dynamic>.from(reaction)))
                 .toList()
             : [],
         json["isDeleted"] ?? false,
-        json["messageType"],
-        json["conversationType"],
-        json["replyedmessage"] != null
+        (json["messageType"] ?? "text").toString(),
+        (json["conversationType"] ?? "single").toString(),
+        json["replyedmessage"] is List
             ? (json["replyedmessage"] as List)
-                .map((reply) => MessageContent.fromJson(reply))
+                .whereType<Map>()
+                .map((reply) =>
+                    MessageContent.fromJson(Map<String, dynamic>.from(reply)))
                 .toList()
             : [],
-        json["reactionWithInfo"] != null
+        json["reactionsWithInfo"] is List
             ? (json["reactionsWithInfo"] as List)
-                .map((reactionInfo) =>
-                    UsersContactPreview.fromJson(reactionInfo))
+                .whereType<Map>()
+                .map((reactionInfo) => UsersContactPreview.fromJson(
+                    Map<String, dynamic>.from(reactionInfo)))
                 .toList()
             : []);
   }
