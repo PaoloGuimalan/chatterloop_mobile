@@ -112,8 +112,9 @@ class NotificationsStateView extends State<NotificationsView> {
                           CLAvatar(
                             id: notif.fromUserID,
                             name: notif.content.headline,
-                            src: notif.fromUser.profile != "none"
-                                ? notif.fromUser.profile
+                            src: notif.fromUser?.profile != null &&
+                                    notif.fromUser!.profile != "none"
+                                ? notif.fromUser!.profile
                                 : null,
                             size: 46,
                           ),
