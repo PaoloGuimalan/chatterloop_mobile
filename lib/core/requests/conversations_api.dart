@@ -65,6 +65,28 @@ class ConversationsApi {
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
+  /// Must resolve before initConversationRequest/getConversationInfoRequest
+  /// are called - see the doc comment on Endpoints.getConversationSetup.
+  /// Unlike those two, the response here is plain JSON, not a signed JWT.
+  Future<Map<String, dynamic>?> getConversationSetupRequest(
+      String conversationID) async {
+    ContentValidator().printer(
+        '${_endpoints.apiUrl}${_endpoints.getConversationSetup}$conversationID');
+    try {
+      final response =
+          await _dio.get('${_endpoints.getConversationSetup}$conversationID');
+      if (response.data["status"] != true) return null;
+      final result = response.data["result"];
+      return result is Map ? Map<String, dynamic>.from(result) : null;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
   Future<EncodedResponse?> initConversationRequest(
       String conversationID, int range) async {
     ContentValidator().printer(

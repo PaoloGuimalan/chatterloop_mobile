@@ -25,6 +25,18 @@ class Endpoints {
   /// The old /u/initConversationList this used to point at has zero call
   /// sites in the current webapp - dead/legacy, do not revert to it.
   String getConversationList = '/m/conversations';
+
+  /// Resolves a conversation's setup/details (participants, display name,
+  /// avatar) before anything else is fetched - critically, unlike
+  /// initConversation/getConversationInfo below, this one synthesizes a
+  /// valid response for a brand-new single conversation that has no Mongo
+  /// Conversations doc yet (e.g. opened via a contact's Message button
+  /// before any message was ever sent). Verified against webapp's
+  /// InitConversationInfoRequest / ConversationV2.tsx, which gates its
+  /// entire message-fetch effect on this resolving first - without it,
+  /// that exact scenario left the screen spinning forever, per webapp's
+  /// own comment on the same code path.
+  String getConversationSetup = '/m/conversation/'; // :conversationID
   String initConversation = '/u/initConversation/'; // :conversationID
   String getConversationInfo =
       '/m/conversationinfo/'; // :conversationID/:conversationType (single, group, server)
