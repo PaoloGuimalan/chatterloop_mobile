@@ -13,13 +13,15 @@ class ReactionItem {
 
   factory ReactionItem.fromJson(Map<String, dynamic> json) {
     return ReactionItem(
-        json["userID"],
-        json["activeSkinTone"],
+        (json["userID"] ?? "").toString(),
+        (json["activeSkinTone"] ?? "").toString(),
         json["emoji"],
-        json["imageUrl"],
-        json["isCustom"],
-        (json["names"] as List).map((name) => name.toString()).toList(),
-        json["unified"],
-        json["unifiedWithoutSkinTone"]);
+        (json["imageUrl"] ?? "").toString(),
+        json["isCustom"] == true,
+        json["names"] is List
+            ? (json["names"] as List).map((name) => name.toString()).toList()
+            : [],
+        (json["unified"] ?? "").toString(),
+        (json["unifiedWithoutSkinTone"] ?? "").toString());
   }
 }

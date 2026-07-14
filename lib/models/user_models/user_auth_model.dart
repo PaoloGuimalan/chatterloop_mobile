@@ -224,9 +224,9 @@ class UserFullname {
 
   factory UserFullname.fromJson(Map<String, dynamic> json) {
     return UserFullname(
-      json["firstName"],
-      json["middleName"],
-      json["lastName"],
+      (json["firstName"] ?? "").toString(),
+      (json["middleName"] ?? "").toString(),
+      (json["lastName"] ?? "").toString(),
     );
   }
 }

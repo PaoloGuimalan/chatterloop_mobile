@@ -86,10 +86,12 @@ class UsersContactPreview {
 
   factory UsersContactPreview.fromJson(Map<String, dynamic> json) {
     return UsersContactPreview(
-        json["userID"],
-        UserFullname.fromJson(json["fullname"]),
-        json["profile"],
-        json["coverphoto"] ?? "",
+        (json["userID"] ?? "").toString(),
+        json["fullname"] is Map
+            ? UserFullname.fromJson(Map<String, dynamic>.from(json["fullname"]))
+            : const UserFullname("", "", ""),
+        (json["profile"] ?? "none").toString(),
+        json["coverphoto"]?.toString() ?? "",
         json["isActivated"] ?? false,
         json["isVerified"] ?? false);
   }

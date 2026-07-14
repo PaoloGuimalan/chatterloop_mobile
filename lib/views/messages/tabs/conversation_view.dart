@@ -255,10 +255,11 @@ class ConversationStateView extends State<ConversationView> {
         });
       }
       return true;
-    } catch (e) {
+    } catch (e, stack) {
       if (kDebugMode) {
         print("ERROR parsing conversation messages");
         print(e);
+        print(stack);
       }
       return false;
     }
