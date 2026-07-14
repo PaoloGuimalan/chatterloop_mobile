@@ -625,166 +625,352 @@ class ConversationStateView extends State<ConversationView> {
                           ),
                         ),
                         Expanded(
-                          child: ListView.builder(
-                            key: ValueKey(
-                                "${pendingMessagesList.length}_${state.isTypingList.length}_${unreadTotal}_${newMessageIDOnTop}_${conversationContentList.isEmpty ? "" : conversationContentList[conversationContentList.length - 1].messageID}"),
-                            // key: ValueKey(
-                            //     "${range}_${conversationMetaData.conversationID}_${pendingMessagesList.length}_${conversationContentList.length}_${state.isTypingList.length}"),
-                            reverse: true,
-                            controller: _scrollController,
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 5),
-                            itemCount: combinedPendingAndMessagesList
-                                .length, //conversationContentList.length
-                            itemBuilder: (context, index) {
-                              bool hasConversationTypingActivity = state
-                                      .isTypingList
-                                      .where((typing) =>
-                                          typing.conversationID ==
-                                          conversationMetaData.conversationID)
-                                      .toList()
-                                      .isNotEmpty
-                                  ? true
-                                  : false;
-
-                              if (index ==
-                                  combinedPendingAndMessagesList.length - 1) {
-                                return Column(
-                                  children: [
-                                    // MessageContent item
-                                    if (!(range >= totalMessages))
-                                      Padding(
-                                        padding: EdgeInsets.only(top: 10),
-                                        child: SpinningLoaderWidget(
-                                            isLoading: true,
-                                            isFromServer: false),
+                          child: !isInitialized
+                              ? Center(
+                                  child:
+                                      CircularProgressIndicator(color: p.brand))
+                              : combinedPendingAndMessagesList.isEmpty
+                                  ? Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(24),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.chat_bubble_outline,
+                                                size: 40, color: p.text3),
+                                            const SizedBox(height: 10),
+                                            Text("No messages yet",
+                                                style: TextStyle(
+                                                    color: p.text,
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 15)),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                                "Say hello to start the conversation.",
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                    color: p.text2,
+                                                    fontSize: 13)),
+                                          ],
+                                        ),
                                       ),
-                                    if (combinedPendingAndMessagesList[
-                                        combinedPendingAndMessagesList.length -
-                                            1 -
-                                            index] is MessageContent)
-                                      Column(
-                                        children: [
-                                          SizedBox(
-                                            width: MediaQuery.of(context)
-                                                .size
-                                                .width,
-                                            child: MessageContentWidget(
-                                              messageContent:
-                                                  combinedPendingAndMessagesList[
-                                                      combinedPendingAndMessagesList
-                                                              .length -
-                                                          1 -
-                                                          index] as MessageContent,
-                                              previousContentUserID: index >
-                                                          0 &&
-                                                      index <
-                                                          combinedPendingAndMessagesList
-                                                                  .length -
-                                                              1
-                                                  ? combinedPendingAndMessagesList[
-                                                          combinedPendingAndMessagesList
-                                                                  .length -
-                                                              1 -
-                                                              index -
-                                                              1]
-                                                      .sender
-                                                  : index == 0
-                                                      ? "start"
-                                                      : "end",
-                                              currentUserID:
-                                                  state.userAuth.user.id,
-                                              onPressed: (bool isReply,
-                                                  String replyingTo) {
-                                                if (mounted) {
-                                                  StoreProvider.of<AppState>(
-                                                          context)
-                                                      .dispatch(DispatchModel(
-                                                          setIsUsingReplyAssistT,
-                                                          false));
-                                                  StoreProvider.of<AppState>(
-                                                          context)
-                                                      .dispatch(DispatchModel(
-                                                          clearReplyAssistContextT,
-                                                          []));
-                                                  setState(() {
-                                                    isReplying = IsReplying(
-                                                        isReply, replyingTo);
-                                                  });
-                                                }
-                                              },
-                                            ),
-                                          ),
+                                    )
+                                  : ListView.builder(
+                                      key: ValueKey(
+                                          "${pendingMessagesList.length}_${state.isTypingList.length}_${unreadTotal}_${newMessageIDOnTop}_${conversationContentList.isEmpty ? "" : conversationContentList[conversationContentList.length - 1].messageID}"),
+                                      // key: ValueKey(
+                                      //     "${range}_${conversationMetaData.conversationID}_${pendingMessagesList.length}_${conversationContentList.length}_${state.isTypingList.length}"),
+                                      reverse: true,
+                                      controller: _scrollController,
+                                      padding: EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 5),
+                                      itemCount: combinedPendingAndMessagesList
+                                          .length, //conversationContentList.length
+                                      itemBuilder: (context, index) {
+                                        bool hasConversationTypingActivity =
+                                            state.isTypingList
+                                                    .where((typing) =>
+                                                        typing.conversationID ==
+                                                        conversationMetaData
+                                                            .conversationID)
+                                                    .toList()
+                                                    .isNotEmpty
+                                                ? true
+                                                : false;
+
+                                        if (index ==
+                                            combinedPendingAndMessagesList
+                                                    .length -
+                                                1) {
+                                          return Column(
+                                            children: [
+                                              // MessageContent item
+                                              if (!(range >= totalMessages))
+                                                Padding(
+                                                  padding:
+                                                      EdgeInsets.only(top: 10),
+                                                  child: SpinningLoaderWidget(
+                                                      isLoading: true,
+                                                      isFromServer: false),
+                                                ),
+                                              if (combinedPendingAndMessagesList[
+                                                  combinedPendingAndMessagesList
+                                                          .length -
+                                                      1 -
+                                                      index] is MessageContent)
+                                                Column(
+                                                  children: [
+                                                    SizedBox(
+                                                      width:
+                                                          MediaQuery.of(context)
+                                                              .size
+                                                              .width,
+                                                      child:
+                                                          MessageContentWidget(
+                                                        messageContent:
+                                                            combinedPendingAndMessagesList[
+                                                                    combinedPendingAndMessagesList
+                                                                            .length -
+                                                                        1 -
+                                                                        index]
+                                                                as MessageContent,
+                                                        previousContentUserID: index >
+                                                                    0 &&
+                                                                index <
+                                                                    combinedPendingAndMessagesList
+                                                                            .length -
+                                                                        1
+                                                            ? combinedPendingAndMessagesList[
+                                                                    combinedPendingAndMessagesList
+                                                                            .length -
+                                                                        1 -
+                                                                        index -
+                                                                        1]
+                                                                .sender
+                                                            : index == 0
+                                                                ? "start"
+                                                                : "end",
+                                                        currentUserID: state
+                                                            .userAuth.user.id,
+                                                        onPressed: (bool
+                                                                isReply,
+                                                            String replyingTo) {
+                                                          if (mounted) {
+                                                            StoreProvider.of<
+                                                                        AppState>(
+                                                                    context)
+                                                                .dispatch(
+                                                                    DispatchModel(
+                                                                        setIsUsingReplyAssistT,
+                                                                        false));
+                                                            StoreProvider.of<
+                                                                        AppState>(
+                                                                    context)
+                                                                .dispatch(
+                                                                    DispatchModel(
+                                                                        clearReplyAssistContextT,
+                                                                        []));
+                                                            setState(() {
+                                                              isReplying =
+                                                                  IsReplying(
+                                                                      isReply,
+                                                                      replyingTo);
+                                                            });
+                                                          }
+                                                        },
+                                                      ),
+                                                    ),
+                                                    if (combinedPendingAndMessagesList[
+                                                            combinedPendingAndMessagesList
+                                                                    .length -
+                                                                1 -
+                                                                index]
+                                                        is MessageContent)
+                                                      (combinedPendingAndMessagesList[combinedPendingAndMessagesList
+                                                                              .length -
+                                                                          1 -
+                                                                          index]
+                                                                      as MessageContent)
+                                                                  .messageType !=
+                                                              "notif"
+                                                          ? conversationInfo !=
+                                                                  null
+                                                              ? (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index]
+                                                                              as MessageContent)
+                                                                          .seeners
+                                                                          .length ==
+                                                                      conversationInfo
+                                                                          ?.users
+                                                                          .length
+                                                                  ? index - pendingMessagesList.length ==
+                                                                          0
+                                                                      ? Padding(
+                                                                          padding: EdgeInsets.symmetric(
+                                                                              vertical: 4,
+                                                                              horizontal: 7),
+                                                                          child:
+                                                                              SizedBox(
+                                                                            width:
+                                                                                double.infinity,
+                                                                            child:
+                                                                                Text(
+                                                                              conversationMetaData.conversationType == "single" ? "Seen" : "Seen by everyone",
+                                                                              textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.id ? TextAlign.end : TextAlign.start,
+                                                                              style: TextStyle(
+                                                                                fontSize: 12,
+                                                                                color: Color(0xFF565656),
+                                                                              ),
+                                                                            ),
+                                                                          ),
+                                                                        )
+                                                                      : SizedBox
+                                                                          .shrink()
+                                                                  : index - pendingMessagesList.length ==
+                                                                          0
+                                                                      ? conversationMetaData.conversationType !=
+                                                                              "single"
+                                                                          ? Padding(
+                                                                              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 7),
+                                                                              child: SizedBox(
+                                                                                width: double.infinity,
+                                                                                child: Text(
+                                                                                  "Seen by ${(combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners.join(", ").replaceAll(state.userAuth.user.id, "you")}",
+                                                                                  textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.id ? TextAlign.end : TextAlign.start,
+                                                                                  style: TextStyle(
+                                                                                    fontSize: 12,
+                                                                                    color: Color(0xFF565656),
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            )
+                                                                          : SizedBox.shrink()
+                                                                      : SizedBox.shrink()
+                                                              : SizedBox.shrink()
+                                                          : SizedBox.shrink(),
+                                                    if (index == 0)
+                                                      TypingIndicator(
+                                                          isTyping:
+                                                              hasConversationTypingActivity)
+                                                    else
+                                                      SizedBox.shrink(),
+                                                  ],
+                                                ),
+
+                                              // PendingMessages item
+                                              if (combinedPendingAndMessagesList[
+                                                  combinedPendingAndMessagesList
+                                                          .length -
+                                                      1 -
+                                                      index] is PendingMessages)
+                                                Column(
+                                                  children: [
+                                                    SizedBox(
+                                                      width:
+                                                          MediaQuery.of(context)
+                                                              .size
+                                                              .width,
+                                                      child:
+                                                          PendingContentWidget(
+                                                        messageID: (combinedPendingAndMessagesList[
+                                                                    combinedPendingAndMessagesList
+                                                                            .length -
+                                                                        1 -
+                                                                        index]
+                                                                as PendingMessages)
+                                                            .pendingID,
+                                                        content: (combinedPendingAndMessagesList[
+                                                                    combinedPendingAndMessagesList
+                                                                            .length -
+                                                                        1 -
+                                                                        index]
+                                                                as PendingMessages)
+                                                            .content,
+                                                        contentType: (combinedPendingAndMessagesList[
+                                                                    combinedPendingAndMessagesList
+                                                                            .length -
+                                                                        1 -
+                                                                        index]
+                                                                as PendingMessages)
+                                                            .type,
+                                                      ),
+                                                    ),
+                                                    if (index == 0)
+                                                      TypingIndicator(
+                                                          isTyping:
+                                                              hasConversationTypingActivity)
+                                                    else
+                                                      SizedBox.shrink(),
+                                                  ],
+                                                ),
+                                            ],
+                                          );
+                                        } else {
                                           if (combinedPendingAndMessagesList[
-                                              combinedPendingAndMessagesList.length -
+                                              combinedPendingAndMessagesList
+                                                      .length -
                                                   1 -
-                                                  index] is MessageContent)
-                                            (combinedPendingAndMessagesList[
-                                                                combinedPendingAndMessagesList.length -
-                                                                    1 -
-                                                                    index]
-                                                            as MessageContent)
-                                                        .messageType !=
-                                                    "notif"
-                                                ? conversationInfo != null
-                                                    ? (combinedPendingAndMessagesList[
-                                                                        combinedPendingAndMessagesList.length -
-                                                                            1 -
-                                                                            index]
-                                                                    as MessageContent)
-                                                                .seeners
-                                                                .length ==
-                                                            conversationInfo
-                                                                ?.users.length
-                                                        ? index -
-                                                                    pendingMessagesList
-                                                                        .length ==
-                                                                0
-                                                            ? Padding(
-                                                                padding: EdgeInsets
-                                                                    .symmetric(
-                                                                        vertical:
-                                                                            4,
-                                                                        horizontal:
-                                                                            7),
-                                                                child: SizedBox(
-                                                                  width: double
-                                                                      .infinity,
-                                                                  child: Text(
-                                                                    conversationMetaData.conversationType ==
-                                                                            "single"
-                                                                        ? "Seen"
-                                                                        : "Seen by everyone",
-                                                                    textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender ==
-                                                                            state
-                                                                                .userAuth.user.id
-                                                                        ? TextAlign
-                                                                            .end
-                                                                        : TextAlign
-                                                                            .start,
-                                                                    style:
-                                                                        TextStyle(
-                                                                      fontSize:
-                                                                          12,
-                                                                      color: Color(
-                                                                          0xFF565656),
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              )
-                                                            : SizedBox.shrink()
-                                                        : index -
-                                                                    pendingMessagesList
-                                                                        .length ==
-                                                                0
-                                                            ? conversationMetaData
-                                                                        .conversationType !=
-                                                                    "single"
+                                                  index] is MessageContent) {
+                                            MessageContent contentItem =
+                                                combinedPendingAndMessagesList[
+                                                    combinedPendingAndMessagesList
+                                                            .length -
+                                                        1 -
+                                                        index];
+                                            String previousContentUserID = index >
+                                                        0 &&
+                                                    index <
+                                                        combinedPendingAndMessagesList
+                                                                .length -
+                                                            1
+                                                ? combinedPendingAndMessagesList[
+                                                        combinedPendingAndMessagesList
+                                                                .length -
+                                                            1 -
+                                                            index -
+                                                            1]
+                                                    .sender
+                                                : index == 0
+                                                    ? "start"
+                                                    : "end";
+
+                                            return Column(
+                                              children: [
+                                                SizedBox(
+                                                  width: MediaQuery.of(context)
+                                                      .size
+                                                      .width,
+                                                  child: MessageContentWidget(
+                                                      messageContent:
+                                                          contentItem,
+                                                      previousContentUserID:
+                                                          previousContentUserID,
+                                                      currentUserID: state
+                                                          .userAuth.user.id,
+                                                      onPressed: (bool isReply,
+                                                          String replyingTo) {
+                                                        if (mounted) {
+                                                          StoreProvider.of<
+                                                                      AppState>(
+                                                                  context)
+                                                              .dispatch(
+                                                                  DispatchModel(
+                                                                      setIsUsingReplyAssistT,
+                                                                      false));
+                                                          StoreProvider.of<
+                                                                      AppState>(
+                                                                  context)
+                                                              .dispatch(
+                                                                  DispatchModel(
+                                                                      clearReplyAssistContextT,
+                                                                      []));
+                                                          setState(() {
+                                                            isReplying =
+                                                                IsReplying(
+                                                                    isReply,
+                                                                    replyingTo);
+                                                          });
+                                                        }
+                                                      }),
+                                                ),
+                                                contentItem.messageType !=
+                                                        "notif"
+                                                    ? conversationInfo != null
+                                                        ? contentItem.seeners
+                                                                    .length ==
+                                                                conversationInfo
+                                                                    ?.users
+                                                                    .length
+                                                            ? index -
+                                                                        pendingMessagesList
+                                                                            .length ==
+                                                                    0
                                                                 ? Padding(
-                                                                    padding: EdgeInsets.symmetric(
-                                                                        vertical:
-                                                                            4,
-                                                                        horizontal:
+                                                                    padding: EdgeInsets.only(
+                                                                        top: 4,
+                                                                        bottom:
+                                                                            2,
+                                                                        left: 7,
+                                                                        right:
                                                                             7),
                                                                     child:
                                                                         SizedBox(
@@ -792,8 +978,11 @@ class ConversationStateView extends State<ConversationView> {
                                                                           .infinity,
                                                                       child:
                                                                           Text(
-                                                                        "Seen by ${(combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners.join(", ").replaceAll(state.userAuth.user.id, "you")}",
-                                                                        textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender ==
+                                                                        conversationMetaData.conversationType ==
+                                                                                "single"
+                                                                            ? "Seen"
+                                                                            : "Seen by everyone",
+                                                                        textAlign: contentItem.sender ==
                                                                                 state.userAuth.user.id
                                                                             ? TextAlign.end
                                                                             : TextAlign.start,
@@ -807,280 +996,120 @@ class ConversationStateView extends State<ConversationView> {
                                                                       ),
                                                                     ),
                                                                   )
-                                                                : SizedBox
-                                                                    .shrink()
-                                                            : SizedBox.shrink()
-                                                    : SizedBox.shrink()
-                                                : SizedBox.shrink(),
-                                          if (index == 0)
-                                            TypingIndicator(
-                                                isTyping:
-                                                    hasConversationTypingActivity)
-                                          else
-                                            SizedBox.shrink(),
-                                        ],
-                                      ),
-
-                                    // PendingMessages item
-                                    if (combinedPendingAndMessagesList[
-                                        combinedPendingAndMessagesList.length -
-                                            1 -
-                                            index] is PendingMessages)
-                                      Column(
-                                        children: [
-                                          SizedBox(
-                                            width: MediaQuery.of(context)
-                                                .size
-                                                .width,
-                                            child: PendingContentWidget(
-                                              messageID:
-                                                  (combinedPendingAndMessagesList[
-                                                              combinedPendingAndMessagesList
-                                                                      .length -
-                                                                  1 -
-                                                                  index]
-                                                          as PendingMessages)
-                                                      .pendingID,
-                                              content:
-                                                  (combinedPendingAndMessagesList[
-                                                              combinedPendingAndMessagesList
-                                                                      .length -
-                                                                  1 -
-                                                                  index]
-                                                          as PendingMessages)
-                                                      .content,
-                                              contentType:
-                                                  (combinedPendingAndMessagesList[
-                                                              combinedPendingAndMessagesList
-                                                                      .length -
-                                                                  1 -
-                                                                  index]
-                                                          as PendingMessages)
-                                                      .type,
-                                            ),
-                                          ),
-                                          if (index == 0)
-                                            TypingIndicator(
-                                                isTyping:
-                                                    hasConversationTypingActivity)
-                                          else
-                                            SizedBox.shrink(),
-                                        ],
-                                      ),
-                                  ],
-                                );
-                              } else {
-                                if (combinedPendingAndMessagesList[
-                                    combinedPendingAndMessagesList.length -
-                                        1 -
-                                        index] is MessageContent) {
-                                  MessageContent contentItem =
-                                      combinedPendingAndMessagesList[
-                                          combinedPendingAndMessagesList
-                                                  .length -
-                                              1 -
-                                              index];
-                                  String previousContentUserID = index > 0 &&
-                                          index <
-                                              combinedPendingAndMessagesList
-                                                      .length -
-                                                  1
-                                      ? combinedPendingAndMessagesList[
+                                                                : SizedBox(
+                                                                    height: 0,
+                                                                  )
+                                                            : index -
+                                                                        pendingMessagesList
+                                                                            .length ==
+                                                                    0
+                                                                ? conversationMetaData
+                                                                            .conversationType !=
+                                                                        "single"
+                                                                    ? Padding(
+                                                                        padding: EdgeInsets.only(
+                                                                            top:
+                                                                                4,
+                                                                            bottom:
+                                                                                2,
+                                                                            left:
+                                                                                7,
+                                                                            right:
+                                                                                7),
+                                                                        child:
+                                                                            SizedBox(
+                                                                          width:
+                                                                              double.infinity,
+                                                                          child:
+                                                                              Text(
+                                                                            "Seen by ${contentItem.seeners.join(", ").replaceAll(state.userAuth.user.id, "you")}",
+                                                                            textAlign: contentItem.sender == state.userAuth.user.id
+                                                                                ? TextAlign.end
+                                                                                : TextAlign.start,
+                                                                            style:
+                                                                                TextStyle(
+                                                                              fontSize: 12,
+                                                                              color: Color(0xFF565656),
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                      )
+                                                                    : SizedBox(
+                                                                        height:
+                                                                            0,
+                                                                      )
+                                                                : SizedBox(
+                                                                    height: 0,
+                                                                  )
+                                                        : SizedBox(
+                                                            height: 0,
+                                                          )
+                                                    : SizedBox(
+                                                        height: 0,
+                                                      ),
+                                                index == 0
+                                                    ? TypingIndicator(
+                                                        isTyping:
+                                                            hasConversationTypingActivity,
+                                                      )
+                                                    : SizedBox(
+                                                        height: 0,
+                                                      )
+                                              ],
+                                            );
+                                          } else if (combinedPendingAndMessagesList[
                                               combinedPendingAndMessagesList
                                                       .length -
                                                   1 -
-                                                  index -
-                                                  1]
-                                          .sender
-                                      : index == 0
-                                          ? "start"
-                                          : "end";
+                                                  index] is PendingMessages) {
+                                            PendingMessages contentItem =
+                                                combinedPendingAndMessagesList[
+                                                    combinedPendingAndMessagesList
+                                                            .length -
+                                                        1 -
+                                                        index];
 
-                                  return Column(
-                                    children: [
-                                      SizedBox(
-                                        width:
-                                            MediaQuery.of(context).size.width,
-                                        child: MessageContentWidget(
-                                            messageContent: contentItem,
-                                            previousContentUserID:
-                                                previousContentUserID,
-                                            currentUserID:
-                                                state.userAuth.user.id,
-                                            onPressed: (bool isReply,
-                                                String replyingTo) {
-                                              if (mounted) {
-                                                StoreProvider.of<AppState>(
-                                                        context)
-                                                    .dispatch(DispatchModel(
-                                                        setIsUsingReplyAssistT,
-                                                        false));
-                                                StoreProvider.of<AppState>(
-                                                        context)
-                                                    .dispatch(DispatchModel(
-                                                        clearReplyAssistContextT,
-                                                        []));
-                                                setState(() {
-                                                  isReplying = IsReplying(
-                                                      isReply, replyingTo);
-                                                });
-                                              }
-                                            }),
-                                      ),
-                                      contentItem.messageType != "notif"
-                                          ? conversationInfo != null
-                                              ? contentItem.seeners.length ==
-                                                      conversationInfo
-                                                          ?.users.length
-                                                  ? index -
-                                                              pendingMessagesList
-                                                                  .length ==
-                                                          0
-                                                      ? Padding(
-                                                          padding:
-                                                              EdgeInsets.only(
-                                                                  top: 4,
-                                                                  bottom: 2,
-                                                                  left: 7,
-                                                                  right: 7),
-                                                          child: SizedBox(
-                                                            width:
-                                                                double.infinity,
-                                                            child: Text(
-                                                              conversationMetaData
-                                                                          .conversationType ==
-                                                                      "single"
-                                                                  ? "Seen"
-                                                                  : "Seen by everyone",
-                                                              textAlign: contentItem
-                                                                          .sender ==
-                                                                      state
-                                                                          .userAuth
-                                                                          .user
-                                                                          .id
-                                                                  ? TextAlign
-                                                                      .end
-                                                                  : TextAlign
-                                                                      .start,
-                                                              style: TextStyle(
-                                                                fontSize: 12,
-                                                                color: Color(
-                                                                    0xFF565656),
-                                                              ),
-                                                            ),
-                                                          ),
+                                            if (conversationContentList
+                                                .where((item) =>
+                                                    item.pendingID ==
+                                                    contentItem.pendingID)
+                                                .toList()
+                                                .isEmpty) {
+                                              return Column(
+                                                children: [
+                                                  SizedBox(
+                                                    width:
+                                                        MediaQuery.of(context)
+                                                            .size
+                                                            .width,
+                                                    child: PendingContentWidget(
+                                                      messageID:
+                                                          contentItem.pendingID,
+                                                      content:
+                                                          contentItem.content,
+                                                      contentType:
+                                                          contentItem.type,
+                                                    ),
+                                                  ),
+                                                  index == 0
+                                                      ? TypingIndicator(
+                                                          isTyping:
+                                                              hasConversationTypingActivity,
                                                         )
                                                       : SizedBox(
                                                           height: 0,
                                                         )
-                                                  : index -
-                                                              pendingMessagesList
-                                                                  .length ==
-                                                          0
-                                                      ? conversationMetaData
-                                                                  .conversationType !=
-                                                              "single"
-                                                          ? Padding(
-                                                              padding: EdgeInsets
-                                                                  .only(
-                                                                      top: 4,
-                                                                      bottom: 2,
-                                                                      left: 7,
-                                                                      right: 7),
-                                                              child: SizedBox(
-                                                                width: double
-                                                                    .infinity,
-                                                                child: Text(
-                                                                  "Seen by ${contentItem.seeners.join(", ").replaceAll(state.userAuth.user.id, "you")}",
-                                                                  textAlign: contentItem
-                                                                              .sender ==
-                                                                          state
-                                                                              .userAuth
-                                                                              .user
-                                                                              .id
-                                                                      ? TextAlign
-                                                                          .end
-                                                                      : TextAlign
-                                                                          .start,
-                                                                  style:
-                                                                      TextStyle(
-                                                                    fontSize:
-                                                                        12,
-                                                                    color: Color(
-                                                                        0xFF565656),
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            )
-                                                          : SizedBox(
-                                                              height: 0,
-                                                            )
-                                                      : SizedBox(
-                                                          height: 0,
-                                                        )
-                                              : SizedBox(
-                                                  height: 0,
-                                                )
-                                          : SizedBox(
-                                              height: 0,
-                                            ),
-                                      index == 0
-                                          ? TypingIndicator(
-                                              isTyping:
-                                                  hasConversationTypingActivity,
-                                            )
-                                          : SizedBox(
-                                              height: 0,
-                                            )
-                                    ],
-                                  );
-                                } else if (combinedPendingAndMessagesList[
-                                    combinedPendingAndMessagesList.length -
-                                        1 -
-                                        index] is PendingMessages) {
-                                  PendingMessages contentItem =
-                                      combinedPendingAndMessagesList[
-                                          combinedPendingAndMessagesList
-                                                  .length -
-                                              1 -
-                                              index];
-
-                                  if (conversationContentList
-                                      .where((item) =>
-                                          item.pendingID ==
-                                          contentItem.pendingID)
-                                      .toList()
-                                      .isEmpty) {
-                                    return Column(
-                                      children: [
-                                        SizedBox(
-                                          width:
-                                              MediaQuery.of(context).size.width,
-                                          child: PendingContentWidget(
-                                            messageID: contentItem.pendingID,
-                                            content: contentItem.content,
-                                            contentType: contentItem.type,
-                                          ),
-                                        ),
-                                        index == 0
-                                            ? TypingIndicator(
-                                                isTyping:
-                                                    hasConversationTypingActivity,
-                                              )
-                                            : SizedBox(
-                                                height: 0,
-                                              )
-                                      ],
-                                    );
-                                  } else {
-                                    return SizedBox();
-                                  }
-                                } else {
-                                  return SizedBox();
-                                }
-                              }
-                            },
-                          ),
+                                                ],
+                                              );
+                                            } else {
+                                              return SizedBox();
+                                            }
+                                          } else {
+                                            return SizedBox();
+                                          }
+                                        }
+                                      },
+                                    ),
                         ),
                         AnimatedContainer(
                           duration: const Duration(milliseconds: 500),
