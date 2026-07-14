@@ -2,7 +2,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
@@ -82,7 +82,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       errorMessage = null;
     });
 
-    final data = await APIRequests().updateProfileRequest(fieldsToUpdate);
+    final data = await ProfileApi().updateProfileRequest(fieldsToUpdate);
 
     if (!mounted) return;
     if (data == null) {
@@ -128,7 +128,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     });
 
     final uploaded =
-        await APIRequests().uploadMediaRequest(picked.path, 'image/jpeg');
+        await ProfileApi().uploadMediaRequest(picked.path, 'image/jpeg');
     if (uploaded == null) {
       if (!mounted) return;
       setState(() {
@@ -139,7 +139,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       return;
     }
 
-    final ok = await APIRequests().setProfileOrCoverMediaRequest(
+    final ok = await ProfileApi().setProfileOrCoverMediaRequest(
       url: uploaded.url,
       mediaType: uploaded.mediaType,
       fileName: uploaded.fileName,

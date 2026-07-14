@@ -1,17 +1,16 @@
-import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
-import 'package:chatterloop_app/core/utils/jwt_tools.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/requests/auth_api.dart';
+import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
 const _months = [
@@ -27,8 +26,6 @@ class SignupScreen extends StatefulWidget {
 }
 
 class _SignupScreenState extends State<SignupScreen> {
-  final storage = FlutterSecureStorage();
-
   final _first = TextEditingController();
   final _middle = TextEditingController();
   final _last = TextEditingController();
@@ -68,7 +65,7 @@ class _SignupScreenState extends State<SignupScreen> {
       _error = null;
     });
 
-    LoginResponse? response = await APIRequests().signupRequest(
+    LoginResponse? response = await AuthApi().signupRequest(
       firstName: _first.text.trim(),
       middleName: _middle.text.trim().isEmpty ? null : _middle.text.trim(),
       lastName: _last.text.trim(),
@@ -91,9 +88,8 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    await storage.write(key: 'token', value: response!.authtoken);
-    Map<String, dynamic>? userResponse =
-        JwtTools().verifyJwt(response.usertoken, secretKey);
+    await ApiClient.instance.writeToken(response!.authtoken);
+    Map<String, dynamic>? userResponse = JwtCodec.decode(response.usertoken);
 
     if (!mounted) return;
     StoreProvider.of<AppState>(context).dispatch(DispatchModel(

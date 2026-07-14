@@ -1,11 +1,10 @@
 // ignore_for_file: use_build_context_synchronously
 
-import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/feed_api.dart';
+import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_item_widget.dart';
-import 'package:chatterloop_app/core/utils/jwt_tools.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/post_models/user_post_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -37,15 +36,12 @@ class FeedStateView extends State<FeedView> {
   }
 
   Future<void> getPostsProcess(BuildContext context, int postLengthProp) async {
-    APIRequests apiRequests = APIRequests();
-    JwtTools jwt = JwtTools();
-
     EncodedResponse? postsResponse =
-        await apiRequests.getPostsRequest(postLengthProp.toString());
+        await FeedApi().getPostsRequest(postLengthProp.toString());
 
     if (postsResponse != null) {
       Map<String, dynamic>? decodedPostResponse =
-          jwt.verifyJwt(postsResponse.result, secretKey);
+          JwtCodec.decode(postsResponse.result);
 
       List<dynamic> postsInJson = decodedPostResponse?["data"]["posts"];
 

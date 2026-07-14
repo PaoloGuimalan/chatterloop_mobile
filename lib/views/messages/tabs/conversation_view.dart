@@ -1,9 +1,10 @@
 import 'dart:async';
 
-import 'package:chatterloop_app/core/configs/keys.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/conversations_api.dart';
+import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/loaders/spinning_loader.dart';
 import 'package:chatterloop_app/core/reusables/loaders/typing_loader.dart';
@@ -119,12 +120,12 @@ class ConversationStateView extends State<ConversationView> {
 
   Future<void> initConversationProcess(
       String conversationID, int rangeProp) async {
-    EncodedResponse? initConversationResponse =
-        await APIRequests().initConversationRequest(conversationID, rangeProp);
+    EncodedResponse? initConversationResponse = await ConversationsApi()
+        .initConversationRequest(conversationID, rangeProp);
 
     if (initConversationResponse != null) {
       Map<String, dynamic>? decodedInitConversation =
-          jwt.verifyJwt(initConversationResponse.result, secretKey);
+          JwtCodec.decode(initConversationResponse.result);
 
       List<dynamic> rawInitConversation = decodedInitConversation?["messages"];
       int totalMessagesResponse = decodedInitConversation?["total"];
@@ -154,12 +155,12 @@ class ConversationStateView extends State<ConversationView> {
 
   Future<void> getConversationInfoProcess(
       String conversationID, String conversationType) async {
-    EncodedResponse? getConversationInfoResponse = await APIRequests()
+    EncodedResponse? getConversationInfoResponse = await ConversationsApi()
         .getConversationInfoRequest(conversationID, conversationType);
 
     if (getConversationInfoResponse != null) {
       Map<String, dynamic>? decodedGetConversationInfo =
-          jwt.verifyJwt(getConversationInfoResponse.result, secretKey);
+          JwtCodec.decode(getConversationInfoResponse.result);
 
       dynamic rawGetConversationInfo =
           decodedGetConversationInfo?["data"]["data"];
@@ -189,7 +190,7 @@ class ConversationStateView extends State<ConversationView> {
     }
 
     EncodedResponse? getConversationInfoResponse =
-        await APIRequests().seenNewMessagesRequest(payload, rangeProp);
+        await ConversationsApi().seenNewMessagesRequest(payload, rangeProp);
 
     if (getConversationInfoResponse != null) {
       if (kDebugMode) {
@@ -201,8 +202,8 @@ class ConversationStateView extends State<ConversationView> {
 
   Future<void> postReplyAssistProcess(
       String conversationID, List<ReplyAssistContext> messageIDs) async {
-    MessageBasedResponse? postReplyAssistResponse =
-        await APIRequests().postReplyAssistRequest(conversationID, messageIDs);
+    MessageBasedResponse? postReplyAssistResponse = await ConversationsApi()
+        .postReplyAssistRequest(conversationID, messageIDs);
 
     if (postReplyAssistResponse != null) {
       _controller.text = postReplyAssistResponse.message;
@@ -224,7 +225,7 @@ class ConversationStateView extends State<ConversationView> {
     }
 
     EncodedResponse? postIsTypingResponse =
-        await APIRequests().isTypingRequest(payload);
+        await ConversationsApi().isTypingRequest(payload);
 
     if (postIsTypingResponse != null) {
       if (kDebugMode) {
@@ -303,7 +304,7 @@ class ConversationStateView extends State<ConversationView> {
         });
       }
 
-      EncodedResponse? sendMessageResponse = await APIRequests()
+      EncodedResponse? sendMessageResponse = await ConversationsApi()
           .sendMessageRequest(ISendMessagePayload(
               conversationID,
               pendingID,
@@ -333,6 +334,7 @@ class ConversationStateView extends State<ConversationView> {
                 widget.conversationId, "single", ConversationPreview("", ""));
     return StoreConnector<AppState, AppState>(
       builder: (context, state) {
+        final p = cl(context);
         int unreadTotal = state.messages.isEmpty
             ? 0
             : state.messages
@@ -398,9 +400,10 @@ class ConversationStateView extends State<ConversationView> {
           }
         }
         return Scaffold(
+          backgroundColor: p.bg,
           body: Center(
             child: Container(
-              color: Colors.white,
+              color: p.surface,
               width: MediaQuery.of(context).size.width,
               child: Stack(
                 children: [
@@ -410,11 +413,11 @@ class ConversationStateView extends State<ConversationView> {
                       Container(
                         height: 90,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: p.surface,
                           border: Border(
                             bottom: BorderSide(
                               width: 0.5,
-                              color: Color(0xffd2d2d2),
+                              color: p.border,
                             ),
                           ),
                         ),
@@ -441,7 +444,7 @@ class ConversationStateView extends State<ConversationView> {
                                     child: Center(
                                       child: Icon(
                                         Icons.arrow_back_ios_new_rounded,
-                                        color: Color(0xff555555),
+                                        color: p.text2,
                                         size: 20,
                                       ),
                                     )),
@@ -454,9 +457,9 @@ class ConversationStateView extends State<ConversationView> {
                                 ),
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: Color(0xffd2d2d2),
+                                    color: p.border,
                                     border: Border.all(
-                                      color: Color(0xffd2d2d2),
+                                      color: p.border,
                                       width: 1,
                                     ),
                                     borderRadius: BorderRadius.circular(50),
@@ -482,7 +485,7 @@ class ConversationStateView extends State<ConversationView> {
                                           .conversationPreview.previewName,
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: Color(0xFF565656),
+                                        color: p.text,
                                         fontWeight: FontWeight.bold,
                                       ),
                                       maxLines: 1,
@@ -495,7 +498,7 @@ class ConversationStateView extends State<ConversationView> {
                                           : "Members are Active",
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Color(0xFF565656),
+                                        color: p.text2,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -522,7 +525,7 @@ class ConversationStateView extends State<ConversationView> {
                                         child: Center(
                                           child: Icon(
                                             Icons.call,
-                                            color: Color(0xff4994ec),
+                                            color: p.brand,
                                             size: 24,
                                           ),
                                         )),
@@ -546,7 +549,7 @@ class ConversationStateView extends State<ConversationView> {
                                         child: Center(
                                           child: Icon(
                                             Icons.videocam_rounded,
-                                            color: Color(0xff4caf50),
+                                            color: p.green,
                                             size: 24,
                                           ),
                                         )),
@@ -1503,7 +1506,7 @@ class ConversationStateView extends State<ConversationView> {
                                           child: Center(
                                             child: Icon(
                                               Icons.add_circle_rounded,
-                                              color: Color(0xff90caf9),
+                                              color: CLColors.brand300,
                                               size: 22,
                                             ),
                                           )),
@@ -1525,7 +1528,7 @@ class ConversationStateView extends State<ConversationView> {
                                           child: Center(
                                             child: Icon(
                                               Icons.add_photo_alternate_rounded,
-                                              color: Color(0xff8cbcd6),
+                                              color: CLColors.brand300,
                                               size: 24,
                                             ),
                                           )),
@@ -1541,7 +1544,7 @@ class ConversationStateView extends State<ConversationView> {
                                   child: Container(
                                     height: 45,
                                     decoration: BoxDecoration(
-                                        color: Color(0xfff6f6f6),
+                                        color: p.input,
                                         borderRadius:
                                             BorderRadius.circular(10)),
                                     child: TextField(

@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/contacts_api.dart';
+import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -35,7 +36,7 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
     setState(() => isSearching = true);
-    final found = await APIRequests().searchUsersRequest(query);
+    final found = await SearchApi().searchUsersRequest(query);
     if (!mounted) return;
     setState(() {
       results = found;
@@ -157,7 +158,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _requestContact(SearchResultUser user) async {
-    final ok = await APIRequests().requestContactRequest(user.id);
+    final ok = await ContactsApi().requestContactRequest(user.id);
     if (!ok || !mounted) return;
     setState(() {
       results = results

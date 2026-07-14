@@ -1,6 +1,7 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/contacts_api.dart';
+import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -26,7 +27,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Future<void> _load() async {
-    final result = await APIRequests().getPublicProfileRequest(widget.username);
+    final result = await ProfileApi().getPublicProfileRequest(widget.username);
     if (!mounted) return;
     setState(() {
       profile = result;
@@ -38,7 +39,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<void> _addContact() async {
     if (profile == null) return;
     setState(() => isRequestingContact = true);
-    final ok = await APIRequests().requestContactRequest(profile!.id);
+    final ok = await ContactsApi().requestContactRequest(profile!.id);
     if (!mounted) return;
     setState(() => isRequestingContact = false);
     if (ok) {

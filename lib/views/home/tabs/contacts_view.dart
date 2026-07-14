@@ -1,9 +1,11 @@
 // ignore_for_file: use_build_context_synchronously
 
-import 'package:chatterloop_app/core/configs/keys.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/contacts_api.dart';
+import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/reusables/widgets/contacts_item.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
@@ -25,25 +27,13 @@ class ContactsView extends StatefulWidget {
 class ContactsStateView extends State<ContactsView> {
   bool isContactsInitialized = false;
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  // List<UserContacts> contactsList = [];
-
   Future<void> getContactsProcess(BuildContext context) async {
     EncodedResponse? getContactsResponse =
-        await APIRequests().getContactsRequest();
+        await ContactsApi().getContactsRequest();
 
     if (getContactsResponse != null) {
       Map<String, dynamic>? decodedContactsList =
-          jwt.verifyJwt(getContactsResponse.result, secretKey);
+          JwtCodec.decode(getContactsResponse.result);
 
       List<dynamic> rawContactsList = decodedContactsList?["contacts"];
 
@@ -51,10 +41,8 @@ class ContactsStateView extends State<ContactsView> {
           .map((contact) => UserContacts.fromJson(contact))
           .toList();
 
-      setState(() {
-        // contactsList = spreadedContactsList;
-        isContactsInitialized = true;
-      });
+      if (!mounted) return;
+      setState(() => isContactsInitialized = true);
 
       StoreProvider.of<AppState>(context)
           .dispatch(DispatchModel(setContactsListT, spreadedContactsList));
@@ -67,108 +55,69 @@ class ContactsStateView extends State<ContactsView> {
 
   @override
   Widget build(BuildContext context) {
+    final p = cl(context);
     return StoreConnector<AppState, AppState>(builder: (context, state) {
       List<UserContacts> contactsList = state.contacts;
       if (!isContactsInitialized) {
         getContactsProcess(context);
       }
       return Scaffold(
-        body: Center(
-            child: Container(
-          color: Color(0xfff0f2f5),
-          width: MediaQuery.of(context).size.width,
-          child: Padding(
-            padding: EdgeInsets.only(top: 5, left: 5, right: 5),
-            child: Column(
-              children: [
-                SizedBox(
-                  width: MediaQuery.of(context).size.width,
-                  height: 50,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.contact_page_sharp,
-                            size: 30,
-                            color: Color(0xffff7043),
-                          ),
-                          SizedBox(
-                            width: 5,
-                          ),
-                          Text("Contacts",
-                              style: TextStyle(
-                                  fontSize: 17,
-                                  color: Color(0xFF565656),
-                                  fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.search, color: Color(0xFF565656)),
-                        onPressed: () => context.push('/search'),
-                      ),
-                    ],
+        backgroundColor: p.bg,
+        appBar: AppBar(
+          title: const Text("Contacts"),
+          actions: [
+            CLIconBtn(
+                icon: Icons.search, onPressed: () => context.push('/search')),
+            const SizedBox(width: 6),
+          ],
+        ),
+        body: contactsList.isEmpty
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    "No contacts yet - use search to find people and send a contact request.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: p.text2),
                   ),
                 ),
-                Expanded(
-                  child: ListView.builder(
-                      padding: EdgeInsets.only(
-                          top: 0, bottom: 10, left: 10, right: 10),
-                      shrinkWrap: true,
-                      // controller: _scrollController,
-                      itemCount: contactsList.length,
-                      itemBuilder: (context, index) {
-                        if (contactsList[index].type == "single") {
-                          if (contactsList[index].userdetails.userone.userID ==
-                              state.userAuth.user.id) {
-                            String previewName =
-                                "${contactsList[index].userdetails.usertwo!.fullname.firstName} ${contactsList[index].userdetails.usertwo!.fullname.middleName == "N/A" ? " " : "${contactsList[index].userdetails.usertwo!.fullname.middleName} "}${contactsList[index].userdetails.usertwo!.fullname.lastName}";
-                            String previewProfile = ContentValidator()
-                                .validateConversationProfile(
-                                    contactsList[index]
-                                        .userdetails
-                                        .usertwo!
-                                        .profile,
-                                    contactsList[index].type);
-                            return ContactsItemWidget(
-                              contact: contactsList[index].userdetails.usertwo!,
-                              conversationMetaData: ConversationViewProps(
-                                  contactsList[index].contactID,
-                                  contactsList[index].type,
-                                  ConversationPreview(
-                                      previewProfile, previewName)),
-                            );
-                          } else {
-                            String previewName =
-                                "${contactsList[index].userdetails.userone.fullname.firstName} ${contactsList[index].userdetails.userone.fullname.middleName == "N/A" ? " " : "${contactsList[index].userdetails.userone.fullname.middleName} "}${contactsList[index].userdetails.userone.fullname.lastName}";
-                            String previewProfile = ContentValidator()
-                                .validateConversationProfile(
-                                    contactsList[index]
-                                        .userdetails
-                                        .userone
-                                        .profile,
-                                    contactsList[index].type);
-                            return ContactsItemWidget(
-                              contact: contactsList[index].userdetails.userone,
-                              conversationMetaData: ConversationViewProps(
-                                  contactsList[index].contactID,
-                                  contactsList[index].type,
-                                  ConversationPreview(
-                                      previewProfile, previewName)),
-                            );
-                          }
-                        }
+              )
+            : ListView.builder(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                itemCount: contactsList.length,
+                itemBuilder: (context, index) {
+                  if (contactsList[index].type != "single") {
+                    return const SizedBox(height: 0);
+                  }
 
-                        return SizedBox(
-                          height: 0,
-                        );
-                      }),
-                )
-              ],
-            ),
-          ),
-        )),
+                  final isUserOne =
+                      contactsList[index].userdetails.userone.userID ==
+                          state.userAuth.user.id;
+                  final other = isUserOne
+                      ? contactsList[index].userdetails.usertwo!
+                      : contactsList[index].userdetails.userone;
+                  final previewName = [
+                    other.fullname.firstName,
+                    if (other.fullname.middleName.isNotEmpty &&
+                        other.fullname.middleName != "N/A")
+                      other.fullname.middleName,
+                    other.fullname.lastName,
+                  ].where((part) => part.trim().isNotEmpty).join(" ");
+                  final previewProfile = ContentValidator()
+                      .validateConversationProfile(
+                          other.profile, contactsList[index].type);
+
+                  return ContactsItemWidget(
+                    contact: other,
+                    conversationMetaData: ConversationViewProps(
+                      contactsList[index].contactID,
+                      contactsList[index].type,
+                      ConversationPreview(previewProfile, previewName),
+                    ),
+                  );
+                },
+              ),
       );
     }, converter: (store) {
       return store.state;

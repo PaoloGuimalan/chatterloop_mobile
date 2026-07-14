@@ -1,10 +1,9 @@
 import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
@@ -24,7 +23,7 @@ class SseEvents {
         if (isAuth) {
           if (status) {
             Map<String, dynamic>? decodedResult =
-                jwt.verifyJwt(parsedresponse["result"], secretKey);
+                JwtCodec.decode(parsedresponse["result"]);
 
             List<dynamic> rawNotificationsList =
                 decodedResult?["notifications"];
@@ -52,7 +51,7 @@ class SseEvents {
         if (isAuth) {
           if (status) {
             Map<String, dynamic>? decodedResult =
-                jwt.verifyJwt(parsedresponse["result"], secretKey);
+                JwtCodec.decode(parsedresponse["result"]);
 
             List<dynamic> rawNotificationsList =
                 decodedResult?["notifications"];
@@ -76,7 +75,7 @@ class SseEvents {
         if (isAuth) {
           if (status) {
             Map<String, dynamic>? decodedtyper =
-                jwt.verifyJwt(parsedresponse["result"], secretKey);
+                JwtCodec.decode(parsedresponse["result"]);
             dynamic rawTyperData = decodedtyper?["istyping"];
             IsTypingMetaData finalTyperData =
                 IsTypingMetaData.fromJson(rawTyperData);
@@ -115,7 +114,7 @@ class SseEvents {
         }
 
         Map<String, dynamic>? decodedmessageslist =
-            jwt.verifyJwt(parsedresponse["result"], secretKey);
+            JwtCodec.decode(parsedresponse["result"]);
 
         List<dynamic> rawConversationList =
             decodedmessageslist?["conversationslist"];

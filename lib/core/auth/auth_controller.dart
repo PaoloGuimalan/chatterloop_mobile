@@ -5,16 +5,15 @@
 
 import 'dart:async';
 
-import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
-import 'package:chatterloop_app/core/utils/jwt_tools.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/requests/auth_api.dart';
+import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:redux/redux.dart';
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
@@ -25,7 +24,6 @@ class AuthController extends ChangeNotifier {
   }
 
   final Store<AppState> _store;
-  final _storage = const FlutterSecureStorage();
   late final StreamSubscription<AppState> _storeSubscription;
 
   AuthStatus status = AuthStatus.unknown;
@@ -45,7 +43,7 @@ class AuthController extends ChangeNotifier {
   /// Runs once at app start. No artificial delay - the splash route stays
   /// up for however long the network call actually takes.
   Future<void> resolve() async {
-    final token = await _storage.read(key: 'token');
+    final token = await ApiClient.instance.readToken();
     if (token == null) {
       _store.dispatch(
           DispatchModel(setUserAuthT, UserAuth(false, UserAccount.empty)));
@@ -54,20 +52,20 @@ class AuthController extends ChangeNotifier {
 
     JWTCheckerResponse? response;
     try {
-      response = await APIRequests().jwtCheckerRequest();
+      response = await AuthApi().jwtCheckerRequest();
     } catch (_) {
       response = null;
     }
 
     if (response == null) {
-      await _storage.delete(key: 'token');
+      await ApiClient.instance.clearToken();
       _store.dispatch(
           DispatchModel(setUserAuthT, UserAuth(false, UserAccount.empty)));
       return;
     }
 
     try {
-      final payload = JwtTools().verifyJwt(response.usertoken, secretKey);
+      final payload = JwtCodec.decode(response.usertoken);
       final account = UserAccount.fromNodeJwt(payload ?? const {},
           allowedModules: response.allowedModules,
           activeEntity: response.activeEntity,
@@ -76,7 +74,7 @@ class AuthController extends ChangeNotifier {
     } catch (_) {
       // A malformed/expired token throws rather than returning null - fall
       // back to signed-out instead of crashing the auth guard.
-      await _storage.delete(key: 'token');
+      await ApiClient.instance.clearToken();
       _store.dispatch(
           DispatchModel(setUserAuthT, UserAuth(false, UserAccount.empty)));
     }

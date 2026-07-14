@@ -1,17 +1,16 @@
-import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
-import 'package:chatterloop_app/core/utils/jwt_tools.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/requests/auth_api.dart';
+import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -24,7 +23,6 @@ class LoginScreen extends StatefulWidget {
 class LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
-  final storage = FlutterSecureStorage();
   bool _busy = false;
   String? _error;
 
@@ -39,7 +37,7 @@ class LoginScreenState extends State<LoginScreen> {
     });
 
     LoginResponse? loginResponse =
-        await APIRequests().loginRequest(_email.text.trim(), _password.text);
+        await AuthApi().loginRequest(_email.text.trim(), _password.text);
 
     if (!mounted) return;
 
@@ -51,9 +49,9 @@ class LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await storage.write(key: 'token', value: loginResponse!.authtoken);
+    await ApiClient.instance.writeToken(loginResponse!.authtoken);
     Map<String, dynamic>? userResponse =
-        JwtTools().verifyJwt(loginResponse.usertoken, secretKey);
+        JwtCodec.decode(loginResponse.usertoken);
 
     if (!mounted) return;
     StoreProvider.of<AppState>(context).dispatch(DispatchModel(

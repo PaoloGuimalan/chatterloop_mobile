@@ -3,13 +3,13 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/http_requests.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/requests/auth_api.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_redux/flutter_redux.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
@@ -23,7 +23,6 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   final _digits =
       List<TextEditingController>.generate(6, (_) => TextEditingController());
   final _focus = List<FocusNode>.generate(6, (_) => FocusNode());
-  final storage = FlutterSecureStorage();
   bool _busy = false;
   String? _error;
 
@@ -31,7 +30,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   bool get _full => _code.length == 6;
 
   Future<void> _logout() async {
-    await storage.delete(key: 'token');
+    await ApiClient.instance.clearToken();
     if (!mounted) return;
     StoreProvider.of<AppState>(context).dispatch(
         DispatchModel(setUserAuthT, UserAuth(false, UserAccount.empty)));
@@ -45,7 +44,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       _error = null;
     });
 
-    final ok = await APIRequests().verifyEmailRequest(_code);
+    final ok = await AuthApi().verifyEmailRequest(_code);
 
     if (!mounted) return;
     if (!ok) {
