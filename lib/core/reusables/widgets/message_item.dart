@@ -1,11 +1,11 @@
 import 'package:chatterloop_app/core/redux/state.dart';
-import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:go_router/go_router.dart';
 
 class MessageItemView extends StatefulWidget {
   final MessageItem message;
@@ -425,9 +425,8 @@ class MessageItemViewState extends State<MessageItemView> {
                       String previewName =
                           "${conversationUserLead.fullname.firstName}${conversationUserLead.fullname.middleName == "N/A" ? "" : " ${conversationUserLead.fullname.middleName}"} ${conversationUserLead.fullname.lastName}";
 
-                      AppRoutes.privateNavigatorKey.currentState?.pushNamed(
-                          "/conversation",
-                          arguments: ConversationViewProps(
+                      context.push("/conversation/${_message.conversationID}",
+                          extra: ConversationViewProps(
                               _message.conversationID,
                               _message.conversationType,
                               ConversationPreview(
@@ -437,9 +436,8 @@ class MessageItemViewState extends State<MessageItemView> {
                                           _message.conversationType),
                                   previewName)));
                     } else if (_message.conversationType == "group") {
-                      AppRoutes.privateNavigatorKey.currentState?.pushNamed(
-                          "/conversation",
-                          arguments: ConversationViewProps(
+                      context.push("/conversation/${_message.conversationID}",
+                          extra: ConversationViewProps(
                               _message.conversationID,
                               _message.conversationType,
                               ConversationPreview(

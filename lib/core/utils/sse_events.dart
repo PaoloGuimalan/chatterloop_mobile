@@ -2,23 +2,19 @@ import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:chatterloop_app/core/configs/keys.dart';
-import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/http_requests.dart';
-import 'package:chatterloop_app/core/routes/app_routes.dart';
-import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 
 class SseEvents {
-  void listen(SSEModel event, BuildContext? context, bool mainListener) {
+  void listen(SSEModel event, bool mainListener) {
     switch (event.event) {
       case "notifications":
         Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
@@ -41,12 +37,10 @@ class SseEvents {
             AudioPlayer audioPlayer = AudioPlayer();
             audioPlayer.play(AssetSource('sounds/notification_alert.mp3'));
 
-            StoreProvider.of<AppState>(
-                    context ?? AppRoutes.navigatorKey.currentContext!)
-                .dispatch(DispatchModel(
-                    setNotificationsListT,
-                    NotificationsStateModel(spreadedNotificationsList,
-                        decodedResult?["totalunread"])));
+            appStore.dispatch(DispatchModel(
+                setNotificationsListT,
+                NotificationsStateModel(
+                    spreadedNotificationsList, decodedResult?["totalunread"])));
           }
         }
         return;
@@ -68,12 +62,10 @@ class SseEvents {
                     .map((notif) => NotificationsItemModel.fromJson(notif))
                     .toList();
 
-            StoreProvider.of<AppState>(
-                    context ?? AppRoutes.navigatorKey.currentContext!)
-                .dispatch(DispatchModel(
-                    setNotificationsListT,
-                    NotificationsStateModel(spreadedNotificationsList,
-                        decodedResult?["totalunread"])));
+            appStore.dispatch(DispatchModel(
+                setNotificationsListT,
+                NotificationsStateModel(
+                    spreadedNotificationsList, decodedResult?["totalunread"])));
           }
         }
         return;
@@ -89,13 +81,10 @@ class SseEvents {
             IsTypingMetaData finalTyperData =
                 IsTypingMetaData.fromJson(rawTyperData);
 
-            StoreProvider.of<AppState>(
-                    context ?? AppRoutes.navigatorKey.currentContext!)
-                .dispatch(DispatchModel(setIsTypingListT, finalTyperData));
+            appStore.dispatch(DispatchModel(setIsTypingListT, finalTyperData));
 
             Future.delayed(Duration(milliseconds: 5000), () {
-              StoreProvider.of<AppState>(
-                      context ?? AppRoutes.navigatorKey.currentContext!)
+              appStore
                   .dispatch(DispatchModel(removeIsTypingListT, finalTyperData));
             });
           }
@@ -108,14 +97,11 @@ class SseEvents {
       case "contactslist":
         return;
       case "messages_list":
-        UserAuth userAuth = StoreProvider.of<AppState>(
-                context ?? AppRoutes.navigatorKey.currentContext!)
-            .state
-            .userAuth;
+        UserAuth userAuth = appStore.state.userAuth;
         Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
 
         if (mainListener) {
-          if (parsedresponse["message"] != userAuth.user.username) {
+          if (parsedresponse["message"] != userAuth.user.id) {
             // play message ringtone
             if (parsedresponse["onseen"]) {
               // play seen ringtone
@@ -138,12 +124,8 @@ class SseEvents {
             .map((message) => MessageItem.fromJson(message))
             .toList();
 
-        ContentValidator().printer(context);
-
-        StoreProvider.of<AppState>(
-                context ?? AppRoutes.navigatorKey.currentContext!)
-            .dispatch(
-                DispatchModel(setMessagesListT, spreadedConversationList));
+        appStore.dispatch(
+            DispatchModel(setMessagesListT, spreadedConversationList));
         return;
       case "active_users":
         return;

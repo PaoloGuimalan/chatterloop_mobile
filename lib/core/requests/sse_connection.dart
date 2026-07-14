@@ -1,6 +1,7 @@
 // ignore_for_file: use_build_context_synchronously
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
+import 'package:chatterloop_app/core/utils/device_token.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/core/utils/jwt_tools.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
@@ -18,21 +19,20 @@ class SseConnection {
   void initializeConnection() async {
     SSEClient.unsubscribeFromSSE();
     String? token = await storage.read(key: 'token');
-    String ssetoken = JwtTools()
-        .createJwt({"token": token, "type": "notifications"}, secretKey);
+    String deviceToken = await resolveDeviceToken();
+    String ssetoken = JwtTools().createJwt(
+        {"token": token, "deviceToken": deviceToken, "type": "notifications"},
+        secretKey);
     String url = '${Endpoints().apiUrl}${Endpoints().sseRoute}$ssetoken';
 
     ContentValidator().printer(url);
 
-    SSEClient.subscribeToSSE(
-        method: SSERequestType.GET,
-        url: url,
-        header: {
-          "Accept": "text/event-stream",
-          "origin": "https://chatterloop.app",
-        }).listen((event) {
+    SSEClient.subscribeToSSE(method: SSERequestType.GET, url: url, header: {
+      "Accept": "text/event-stream",
+      "origin": Endpoints.origin,
+    }).listen((event) {
       eventBus.fire(event);
-      SseEvents().listen(event, null, true);
+      SseEvents().listen(event, true);
       // ContentValidator().printer({"event": event.event, "data": event.data});
     });
   }

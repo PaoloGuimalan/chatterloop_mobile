@@ -84,22 +84,20 @@ class FeedStateView extends State<FeedView> {
       if (state.posts.isEmpty) {
         getPostsProcess(context, postLength);
       }
-      return MaterialApp(
-        home: Scaffold(
-          body: Container(
-            width: MediaQuery.of(context).size.width,
-            color: Color(0xfff0f2f5),
-            child: Padding(
-              padding: EdgeInsets.only(top: 5),
-              child: ListView.builder(
-                  padding: EdgeInsets.only(top: 0, bottom: 10),
-                  shrinkWrap: true,
-                  controller: _scrollController,
-                  itemCount: state.posts.length,
-                  itemBuilder: (context, index) {
-                    return PostItemWidget(post: state.posts[index]);
-                  }),
-            ),
+      return Scaffold(
+        body: Container(
+          width: MediaQuery.of(context).size.width,
+          color: Color(0xfff0f2f5),
+          child: Padding(
+            padding: EdgeInsets.only(top: 5),
+            child: ListView.builder(
+                padding: EdgeInsets.only(top: 0, bottom: 10),
+                shrinkWrap: true,
+                controller: _scrollController,
+                itemCount: state.posts.length,
+                itemBuilder: (context, index) {
+                  return PostItemWidget(post: state.posts[index]);
+                }),
           ),
         ),
       );

@@ -24,6 +24,15 @@ class UserAccount {
   final String? gender;
   final UserBirthDate? birthdate;
 
+  /// Permission codenames for the currently active entity. Populated from
+  /// the sibling `allowed_modules` field returned alongside `usertoken` by
+  /// both Node's /auth/jwtchecker and Django's /api/user/auth - not part of
+  /// the JWT payload itself. No entity-switcher UI consumes this yet; it's
+  /// stored now so the shape doesn't need re-migrating later.
+  final List<String> allowedModules;
+  final ActiveEntity? activeEntity;
+  final String? personalEntityId;
+
   const UserAccount(
       this.id,
       this.username,
@@ -36,11 +45,74 @@ class UserAccount {
       this.profile,
       this.coverphoto,
       this.gender,
-      this.birthdate);
+      this.birthdate,
+      {this.allowedModules = const [],
+      this.activeEntity,
+      this.personalEntityId});
+
+  static const empty =
+      UserAccount("", "", "", "", "", "", false, false, null, null, null, null);
 
   @override
   String toString() {
     return 'UserAccount(id: $id, username: $username, firstname: $firstname, middlename: $middlename, lastname: $lastname, email: $email, isActivated: $isActivated, isVerified: $isVerified)';
+  }
+
+  /// Decodes the nested-camelCase `usertoken` shape returned by Node's
+  /// GET /auth/jwtchecker (`{_id, userID, fullname:{firstName,...}, ...}`).
+  factory UserAccount.fromNodeJwt(Map<String, dynamic> json,
+      {List<String> allowedModules = const [],
+      ActiveEntity? activeEntity,
+      String? personalEntityId}) {
+    Map<String, dynamic> fullname = json["fullname"] is Map
+        ? Map<String, dynamic>.from(json["fullname"])
+        : const {};
+    return UserAccount(
+        (json["_id"] ?? json["userID"] ?? "").toString(),
+        (json["userID"] ?? "").toString(),
+        (fullname["firstName"] ?? "").toString(),
+        (fullname["middleName"] ?? "").toString(),
+        (fullname["lastName"] ?? "").toString(),
+        json["email"]?.toString(),
+        json["isActivated"] == true,
+        json["isVerified"] == true,
+        json["profile"]?.toString(),
+        json["coverphoto"]?.toString(),
+        json["gender"]?.toString(),
+        json["birthdate"] is Map
+            ? UserBirthDate.fromJson(
+                Map<String, dynamic>.from(json["birthdate"]))
+            : null,
+        allowedModules: allowedModules,
+        activeEntity: activeEntity,
+        personalEntityId: personalEntityId);
+  }
+
+  /// Decodes the flat snake_case `usertoken` shape returned by Django's
+  /// POST /api/user/auth and POST /api/user/me (AccountSerializer output).
+  factory UserAccount.fromDjangoJwt(Map<String, dynamic> json,
+      {List<String> allowedModules = const [],
+      ActiveEntity? activeEntity,
+      String? personalEntityId}) {
+    return UserAccount(
+        (json["id"] ?? "").toString(),
+        (json["username"] ?? "").toString(),
+        (json["first_name"] ?? "").toString(),
+        (json["middle_name"] ?? "").toString(),
+        (json["last_name"] ?? "").toString(),
+        json["email"]?.toString(),
+        json["is_active"] == true,
+        json["is_verified"] == true,
+        json["profile"]?.toString(),
+        json["coverphoto"]?.toString(),
+        json["gender"]?.toString(),
+        json["birthdate"] is Map
+            ? UserBirthDate.fromJson(
+                Map<String, dynamic>.from(json["birthdate"]))
+            : null,
+        allowedModules: allowedModules,
+        activeEntity: activeEntity,
+        personalEntityId: personalEntityId);
   }
 
   factory UserAccount.fromJson(Map<String, dynamic> json) {
@@ -56,7 +128,41 @@ class UserAccount {
         json["profile"],
         json["coverphoto"],
         json["gender"],
-        UserBirthDate.fromJson(json["birthdate"]));
+        json["birthdate"] is Map
+            ? UserBirthDate.fromJson(
+                Map<String, dynamic>.from(json["birthdate"]))
+            : null);
+  }
+}
+
+class ActiveEntity {
+  final String id;
+  final String type;
+  final String? realmType;
+  final String? realmId;
+  final String? name;
+  final String? slug;
+  final String? profile;
+
+  const ActiveEntity(
+      {required this.id,
+      required this.type,
+      this.realmType,
+      this.realmId,
+      this.name,
+      this.slug,
+      this.profile});
+
+  factory ActiveEntity.fromJson(Map<String, dynamic> json) {
+    return ActiveEntity(
+      id: (json["id"] ?? "").toString(),
+      type: (json["type"] ?? "user").toString(),
+      realmType: json["realm_type"]?.toString(),
+      realmId: json["realm_id"]?.toString(),
+      name: json["name"]?.toString(),
+      slug: json["slug"]?.toString(),
+      profile: json["profile"]?.toString(),
+    );
   }
 }
 

@@ -9,7 +9,6 @@ import 'package:chatterloop_app/core/reusables/loaders/spinning_loader.dart';
 import 'package:chatterloop_app/core/reusables/loaders/typing_loader.dart';
 import 'package:chatterloop_app/core/reusables/widgets/message_content_widget.dart';
 import 'package:chatterloop_app/core/reusables/widgets/pending_content_widget.dart';
-import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
@@ -22,11 +21,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:go_router/go_router.dart';
 
 class ConversationView extends StatefulWidget {
-  // final MessageItem conversationMetaData;
+  final String conversationId;
+  final Object? extra;
 
-  const ConversationView({super.key});
+  const ConversationView({super.key, required this.conversationId, this.extra});
 
   @override
   ConversationStateView createState() => ConversationStateView();
@@ -324,8 +325,12 @@ class ConversationStateView extends State<ConversationView> {
 
   @override
   Widget build(BuildContext context) {
+    final extra = widget.extra;
     final ConversationViewProps conversationMetaData =
-        ModalRoute.of(context)?.settings.arguments as ConversationViewProps;
+        extra is ConversationViewProps
+            ? extra
+            : ConversationViewProps(
+                widget.conversationId, "single", ConversationPreview("", ""));
     return StoreConnector<AppState, AppState>(
       builder: (context, state) {
         int unreadTotal = state.messages.isEmpty
@@ -361,7 +366,7 @@ class ConversationStateView extends State<ConversationView> {
                             conversationMetaData.conversationID,
                             range,
                             conversationInfo!.users
-                                .map((user) => user.username.toString())
+                                .map((user) => user.userID.toString())
                                 .toList()),
                         newRange);
                   }
@@ -386,485 +391,261 @@ class ConversationStateView extends State<ConversationView> {
                       conversationMetaData.conversationID,
                       range,
                       conversationInfo!.users
-                          .map((user) => user.username.toString())
+                          .map((user) => user.userID.toString())
                           .toList()),
                   range);
             });
           }
         }
-        return MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: Container(
-                color: Colors.white,
-                width: MediaQuery.of(context).size.width,
-                child: Stack(
-                  children: [
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          height: 90,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border(
-                              bottom: BorderSide(
-                                width: 0.5,
-                                color: Color(0xffd2d2d2),
-                              ),
-                            ),
-                          ),
-                          child: Padding(
-                            padding:
-                                EdgeInsets.only(top: 30, left: 5, right: 10),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                      maxWidth: 40, maxHeight: 40),
-                                  child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.transparent,
-                                          elevation: 0,
-                                          padding: EdgeInsets.only(
-                                              top: 0,
-                                              bottom: 0,
-                                              left: 0,
-                                              right: 0)),
-                                      onPressed: () {
-                                        AppRoutes
-                                            .privateNavigatorKey.currentState
-                                            ?.popAndPushNamed("/messages");
-                                      },
-                                      child: Center(
-                                        child: Icon(
-                                          Icons.arrow_back_ios_new_rounded,
-                                          color: Color(0xff555555),
-                                          size: 20,
-                                        ),
-                                      )),
-                                ),
-                                SizedBox(width: 2),
-                                ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    maxHeight: 40,
-                                    maxWidth: 40,
-                                  ),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Color(0xffd2d2d2),
-                                      border: Border.all(
-                                        color: Color(0xffd2d2d2),
-                                        width: 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(50),
-                                    ),
-                                    child: Padding(
-                                      padding: EdgeInsets.all(10),
-                                      child: Image.network(
-                                        conversationMetaData
-                                            .conversationPreview.profile,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(width: 15),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        conversationMetaData
-                                            .conversationPreview.previewName,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Color(0xFF565656),
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      Text(
-                                        conversationMetaData.conversationType ==
-                                                "single"
-                                            ? "Recently Active"
-                                            : "Members are Active",
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Color(0xFF565656),
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                          maxWidth: 40, maxHeight: 40),
-                                      child: ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  Colors.transparent,
-                                              elevation: 0,
-                                              padding: EdgeInsets.only(
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  left: 0,
-                                                  right: 0)),
-                                          onPressed: () {},
-                                          child: Center(
-                                            child: Icon(
-                                              Icons.call,
-                                              color: Color(0xff4994ec),
-                                              size: 24,
-                                            ),
-                                          )),
-                                    ),
-                                    SizedBox(
-                                      width: 2,
-                                    ),
-                                    ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                          maxWidth: 40, maxHeight: 40),
-                                      child: ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  Colors.transparent,
-                                              elevation: 0,
-                                              padding: EdgeInsets.only(
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  left: 0,
-                                                  right: 0)),
-                                          onPressed: () {},
-                                          child: Center(
-                                            child: Icon(
-                                              Icons.videocam_rounded,
-                                              color: Color(0xff4caf50),
-                                              size: 24,
-                                            ),
-                                          )),
-                                    ),
-                                    SizedBox(
-                                      width: 2,
-                                    ),
-                                    ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                          maxWidth: 40, maxHeight: 40),
-                                      child: ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  Colors.transparent,
-                                              elevation: 0,
-                                              padding: EdgeInsets.only(
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  left: 0,
-                                                  right: 0)),
-                                          onPressed: () {},
-                                          child: Center(
-                                            child: Icon(
-                                              Icons.info,
-                                              color: Color(0xff1c7def),
-                                              size: 24,
-                                            ),
-                                          )),
-                                    )
-                                  ],
-                                )
-                              ],
+        return Scaffold(
+          body: Center(
+            child: Container(
+              color: Colors.white,
+              width: MediaQuery.of(context).size.width,
+              child: Stack(
+                children: [
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        height: 90,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border(
+                            bottom: BorderSide(
+                              width: 0.5,
+                              color: Color(0xffd2d2d2),
                             ),
                           ),
                         ),
-                        Expanded(
-                          child: ListView.builder(
-                            key: ValueKey(
-                                "${pendingMessagesList.length}_${state.isTypingList.length}_${unreadTotal}_${newMessageIDOnTop}_${conversationContentList.isEmpty ? "" : conversationContentList[conversationContentList.length - 1].messageID}"),
-                            // key: ValueKey(
-                            //     "${range}_${conversationMetaData.conversationID}_${pendingMessagesList.length}_${conversationContentList.length}_${state.isTypingList.length}"),
-                            reverse: true,
-                            controller: _scrollController,
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 5),
-                            itemCount: combinedPendingAndMessagesList
-                                .length, //conversationContentList.length
-                            itemBuilder: (context, index) {
-                              bool hasConversationTypingActivity = state
-                                      .isTypingList
-                                      .where((typing) =>
-                                          typing.conversationID ==
-                                          conversationMetaData.conversationID)
-                                      .toList()
-                                      .isNotEmpty
-                                  ? true
-                                  : false;
-
-                              if (index ==
-                                  combinedPendingAndMessagesList.length - 1) {
-                                return Column(
+                        child: Padding(
+                          padding: EdgeInsets.only(top: 30, left: 5, right: 10),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: 40, maxHeight: 40),
+                                child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        elevation: 0,
+                                        padding: EdgeInsets.only(
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0)),
+                                    onPressed: () {
+                                      context.pop();
+                                    },
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.arrow_back_ios_new_rounded,
+                                        color: Color(0xff555555),
+                                        size: 20,
+                                      ),
+                                    )),
+                              ),
+                              SizedBox(width: 2),
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxHeight: 40,
+                                  maxWidth: 40,
+                                ),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Color(0xffd2d2d2),
+                                    border: Border.all(
+                                      color: Color(0xffd2d2d2),
+                                      width: 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(50),
+                                  ),
+                                  child: Padding(
+                                    padding: EdgeInsets.all(10),
+                                    child: Image.network(
+                                      conversationMetaData
+                                          .conversationPreview.profile,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 15),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    // MessageContent item
-                                    if (!(range >= totalMessages))
-                                      Padding(
-                                        padding: EdgeInsets.only(top: 10),
-                                        child: SpinningLoaderWidget(
-                                            isLoading: true,
-                                            isFromServer: false),
+                                    Text(
+                                      conversationMetaData
+                                          .conversationPreview.previewName,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Color(0xFF565656),
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                    if (combinedPendingAndMessagesList[
-                                        combinedPendingAndMessagesList.length -
-                                            1 -
-                                            index] is MessageContent)
-                                      Column(
-                                        children: [
-                                          SizedBox(
-                                            width: MediaQuery.of(context)
-                                                .size
-                                                .width,
-                                            child: MessageContentWidget(
-                                              messageContent:
-                                                  combinedPendingAndMessagesList[
-                                                      combinedPendingAndMessagesList
-                                                              .length -
-                                                          1 -
-                                                          index] as MessageContent,
-                                              previousContentUserID: index >
-                                                          0 &&
-                                                      index <
-                                                          combinedPendingAndMessagesList
-                                                                  .length -
-                                                              1
-                                                  ? combinedPendingAndMessagesList[
-                                                          combinedPendingAndMessagesList
-                                                                  .length -
-                                                              1 -
-                                                              index -
-                                                              1]
-                                                      .sender
-                                                  : index == 0
-                                                      ? "start"
-                                                      : "end",
-                                              currentUserID:
-                                                  state.userAuth.user.username,
-                                              onPressed: (bool isReply,
-                                                  String replyingTo) {
-                                                if (mounted) {
-                                                  StoreProvider.of<AppState>(
-                                                          context)
-                                                      .dispatch(DispatchModel(
-                                                          setIsUsingReplyAssistT,
-                                                          false));
-                                                  StoreProvider.of<AppState>(
-                                                          context)
-                                                      .dispatch(DispatchModel(
-                                                          clearReplyAssistContextT,
-                                                          []));
-                                                  setState(() {
-                                                    isReplying = IsReplying(
-                                                        isReply, replyingTo);
-                                                  });
-                                                }
-                                              },
-                                            ),
-                                          ),
-                                          if (combinedPendingAndMessagesList[
-                                              combinedPendingAndMessagesList.length -
-                                                  1 -
-                                                  index] is MessageContent)
-                                            (combinedPendingAndMessagesList[
-                                                                combinedPendingAndMessagesList.length -
-                                                                    1 -
-                                                                    index]
-                                                            as MessageContent)
-                                                        .messageType !=
-                                                    "notif"
-                                                ? conversationInfo != null
-                                                    ? (combinedPendingAndMessagesList[
-                                                                        combinedPendingAndMessagesList.length -
-                                                                            1 -
-                                                                            index]
-                                                                    as MessageContent)
-                                                                .seeners
-                                                                .length ==
-                                                            conversationInfo
-                                                                ?.users.length
-                                                        ? index -
-                                                                    pendingMessagesList
-                                                                        .length ==
-                                                                0
-                                                            ? Padding(
-                                                                padding: EdgeInsets
-                                                                    .symmetric(
-                                                                        vertical:
-                                                                            4,
-                                                                        horizontal:
-                                                                            7),
-                                                                child: SizedBox(
-                                                                  width: double
-                                                                      .infinity,
-                                                                  child: Text(
-                                                                    conversationMetaData.conversationType ==
-                                                                            "single"
-                                                                        ? "Seen"
-                                                                        : "Seen by everyone",
-                                                                    textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender ==
-                                                                            state
-                                                                                .userAuth.user.username
-                                                                        ? TextAlign
-                                                                            .end
-                                                                        : TextAlign
-                                                                            .start,
-                                                                    style:
-                                                                        TextStyle(
-                                                                      fontSize:
-                                                                          12,
-                                                                      color: Color(
-                                                                          0xFF565656),
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              )
-                                                            : SizedBox.shrink()
-                                                        : index -
-                                                                    pendingMessagesList
-                                                                        .length ==
-                                                                0
-                                                            ? conversationMetaData
-                                                                        .conversationType !=
-                                                                    "single"
-                                                                ? Padding(
-                                                                    padding: EdgeInsets.symmetric(
-                                                                        vertical:
-                                                                            4,
-                                                                        horizontal:
-                                                                            7),
-                                                                    child:
-                                                                        SizedBox(
-                                                                      width: double
-                                                                          .infinity,
-                                                                      child:
-                                                                          Text(
-                                                                        "Seen by ${(combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners.join(", ").replaceAll(state.userAuth.user.username, "you")}",
-                                                                        textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender ==
-                                                                                state.userAuth.user.username
-                                                                            ? TextAlign.end
-                                                                            : TextAlign.start,
-                                                                        style:
-                                                                            TextStyle(
-                                                                          fontSize:
-                                                                              12,
-                                                                          color:
-                                                                              Color(0xFF565656),
-                                                                        ),
-                                                                      ),
-                                                                    ),
-                                                                  )
-                                                                : SizedBox
-                                                                    .shrink()
-                                                            : SizedBox.shrink()
-                                                    : SizedBox.shrink()
-                                                : SizedBox.shrink(),
-                                          if (index == 0)
-                                            TypingIndicator(
-                                                isTyping:
-                                                    hasConversationTypingActivity)
-                                          else
-                                            SizedBox.shrink(),
-                                        ],
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      conversationMetaData.conversationType ==
+                                              "single"
+                                          ? "Recently Active"
+                                          : "Members are Active",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF565656),
                                       ),
-
-                                    // PendingMessages item
-                                    if (combinedPendingAndMessagesList[
-                                        combinedPendingAndMessagesList.length -
-                                            1 -
-                                            index] is PendingMessages)
-                                      Column(
-                                        children: [
-                                          SizedBox(
-                                            width: MediaQuery.of(context)
-                                                .size
-                                                .width,
-                                            child: PendingContentWidget(
-                                              messageID:
-                                                  (combinedPendingAndMessagesList[
-                                                              combinedPendingAndMessagesList
-                                                                      .length -
-                                                                  1 -
-                                                                  index]
-                                                          as PendingMessages)
-                                                      .pendingID,
-                                              content:
-                                                  (combinedPendingAndMessagesList[
-                                                              combinedPendingAndMessagesList
-                                                                      .length -
-                                                                  1 -
-                                                                  index]
-                                                          as PendingMessages)
-                                                      .content,
-                                              contentType:
-                                                  (combinedPendingAndMessagesList[
-                                                              combinedPendingAndMessagesList
-                                                                      .length -
-                                                                  1 -
-                                                                  index]
-                                                          as PendingMessages)
-                                                      .type,
-                                            ),
-                                          ),
-                                          if (index == 0)
-                                            TypingIndicator(
-                                                isTyping:
-                                                    hasConversationTypingActivity)
-                                          else
-                                            SizedBox.shrink(),
-                                        ],
-                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ],
-                                );
-                              } else {
-                                if (combinedPendingAndMessagesList[
-                                    combinedPendingAndMessagesList.length -
-                                        1 -
-                                        index] is MessageContent) {
-                                  MessageContent contentItem =
-                                      combinedPendingAndMessagesList[
-                                          combinedPendingAndMessagesList
-                                                  .length -
-                                              1 -
-                                              index];
-                                  String previousContentUserID = index > 0 &&
-                                          index <
-                                              combinedPendingAndMessagesList
-                                                      .length -
-                                                  1
-                                      ? combinedPendingAndMessagesList[
-                                              combinedPendingAndMessagesList
-                                                      .length -
-                                                  1 -
-                                                  index -
-                                                  1]
-                                          .sender
-                                      : index == 0
-                                          ? "start"
-                                          : "end";
+                                ),
+                              ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                        maxWidth: 40, maxHeight: 40),
+                                    child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.transparent,
+                                            elevation: 0,
+                                            padding: EdgeInsets.only(
+                                                top: 0,
+                                                bottom: 0,
+                                                left: 0,
+                                                right: 0)),
+                                        onPressed: () {},
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.call,
+                                            color: Color(0xff4994ec),
+                                            size: 24,
+                                          ),
+                                        )),
+                                  ),
+                                  SizedBox(
+                                    width: 2,
+                                  ),
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                        maxWidth: 40, maxHeight: 40),
+                                    child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.transparent,
+                                            elevation: 0,
+                                            padding: EdgeInsets.only(
+                                                top: 0,
+                                                bottom: 0,
+                                                left: 0,
+                                                right: 0)),
+                                        onPressed: () {},
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.videocam_rounded,
+                                            color: Color(0xff4caf50),
+                                            size: 24,
+                                          ),
+                                        )),
+                                  ),
+                                  SizedBox(
+                                    width: 2,
+                                  ),
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                        maxWidth: 40, maxHeight: 40),
+                                    child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.transparent,
+                                            elevation: 0,
+                                            padding: EdgeInsets.only(
+                                                top: 0,
+                                                bottom: 0,
+                                                left: 0,
+                                                right: 0)),
+                                        onPressed: () {},
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.info,
+                                            color: Color(0xff1c7def),
+                                            size: 24,
+                                          ),
+                                        )),
+                                  )
+                                ],
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          key: ValueKey(
+                              "${pendingMessagesList.length}_${state.isTypingList.length}_${unreadTotal}_${newMessageIDOnTop}_${conversationContentList.isEmpty ? "" : conversationContentList[conversationContentList.length - 1].messageID}"),
+                          // key: ValueKey(
+                          //     "${range}_${conversationMetaData.conversationID}_${pendingMessagesList.length}_${conversationContentList.length}_${state.isTypingList.length}"),
+                          reverse: true,
+                          controller: _scrollController,
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          itemCount: combinedPendingAndMessagesList
+                              .length, //conversationContentList.length
+                          itemBuilder: (context, index) {
+                            bool hasConversationTypingActivity = state
+                                    .isTypingList
+                                    .where((typing) =>
+                                        typing.conversationID ==
+                                        conversationMetaData.conversationID)
+                                    .toList()
+                                    .isNotEmpty
+                                ? true
+                                : false;
 
-                                  return Column(
-                                    children: [
-                                      SizedBox(
-                                        width:
-                                            MediaQuery.of(context).size.width,
-                                        child: MessageContentWidget(
-                                            messageContent: contentItem,
-                                            previousContentUserID:
-                                                previousContentUserID,
+                            if (index ==
+                                combinedPendingAndMessagesList.length - 1) {
+                              return Column(
+                                children: [
+                                  // MessageContent item
+                                  if (!(range >= totalMessages))
+                                    Padding(
+                                      padding: EdgeInsets.only(top: 10),
+                                      child: SpinningLoaderWidget(
+                                          isLoading: true, isFromServer: false),
+                                    ),
+                                  if (combinedPendingAndMessagesList[
+                                      combinedPendingAndMessagesList.length -
+                                          1 -
+                                          index] is MessageContent)
+                                    Column(
+                                      children: [
+                                        SizedBox(
+                                          width:
+                                              MediaQuery.of(context).size.width,
+                                          child: MessageContentWidget(
+                                            messageContent:
+                                                combinedPendingAndMessagesList[
+                                                    combinedPendingAndMessagesList
+                                                            .length -
+                                                        1 -
+                                                        index] as MessageContent,
+                                            previousContentUserID: index > 0 &&
+                                                    index <
+                                                        combinedPendingAndMessagesList
+                                                                .length -
+                                                            1
+                                                ? combinedPendingAndMessagesList[
+                                                        combinedPendingAndMessagesList
+                                                                .length -
+                                                            1 -
+                                                            index -
+                                                            1]
+                                                    .sender
+                                                : index == 0
+                                                    ? "start"
+                                                    : "end",
                                             currentUserID:
                                                 state.userAuth.user.username,
                                             onPressed: (bool isReply,
@@ -885,74 +666,52 @@ class ConversationStateView extends State<ConversationView> {
                                                       isReply, replyingTo);
                                                 });
                                               }
-                                            }),
-                                      ),
-                                      contentItem.messageType != "notif"
-                                          ? conversationInfo != null
-                                              ? contentItem.seeners.length ==
-                                                      conversationInfo
-                                                          ?.users.length
-                                                  ? index -
-                                                              pendingMessagesList
-                                                                  .length ==
-                                                          0
-                                                      ? Padding(
-                                                          padding:
-                                                              EdgeInsets.only(
-                                                                  top: 4,
-                                                                  bottom: 2,
-                                                                  left: 7,
-                                                                  right: 7),
-                                                          child: SizedBox(
-                                                            width:
-                                                                double.infinity,
-                                                            child: Text(
-                                                              conversationMetaData
-                                                                          .conversationType ==
-                                                                      "single"
-                                                                  ? "Seen"
-                                                                  : "Seen by everyone",
-                                                              textAlign: contentItem
-                                                                          .sender ==
-                                                                      state
-                                                                          .userAuth
-                                                                          .user
-                                                                          .username
-                                                                  ? TextAlign
-                                                                      .end
-                                                                  : TextAlign
-                                                                      .start,
-                                                              style: TextStyle(
-                                                                fontSize: 12,
-                                                                color: Color(
-                                                                    0xFF565656),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        )
-                                                      : SizedBox(
-                                                          height: 0,
-                                                        )
-                                                  : index -
-                                                              pendingMessagesList
-                                                                  .length ==
-                                                          0
-                                                      ? conversationMetaData
-                                                                  .conversationType !=
-                                                              "single"
+                                            },
+                                          ),
+                                        ),
+                                        if (combinedPendingAndMessagesList[
+                                            combinedPendingAndMessagesList.length -
+                                                1 -
+                                                index] is MessageContent)
+                                          (combinedPendingAndMessagesList[combinedPendingAndMessagesList
+                                                                  .length -
+                                                              1 -
+                                                              index]
+                                                          as MessageContent)
+                                                      .messageType !=
+                                                  "notif"
+                                              ? conversationInfo != null
+                                                  ? (combinedPendingAndMessagesList[
+                                                                      combinedPendingAndMessagesList
+                                                                              .length -
+                                                                          1 -
+                                                                          index]
+                                                                  as MessageContent)
+                                                              .seeners
+                                                              .length ==
+                                                          conversationInfo
+                                                              ?.users.length
+                                                      ? index -
+                                                                  pendingMessagesList
+                                                                      .length ==
+                                                              0
                                                           ? Padding(
                                                               padding: EdgeInsets
-                                                                  .only(
-                                                                      top: 4,
-                                                                      bottom: 2,
-                                                                      left: 7,
-                                                                      right: 7),
+                                                                  .symmetric(
+                                                                      vertical:
+                                                                          4,
+                                                                      horizontal:
+                                                                          7),
                                                               child: SizedBox(
                                                                 width: double
                                                                     .infinity,
                                                                 child: Text(
-                                                                  "Seen by ${contentItem.seeners.join(", ").replaceAll(state.userAuth.user.username, "you")}",
-                                                                  textAlign: contentItem
+                                                                  conversationMetaData
+                                                                              .conversationType ==
+                                                                          "single"
+                                                                      ? "Seen"
+                                                                      : "Seen by everyone",
+                                                                  textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent)
                                                                               .sender ==
                                                                           state
                                                                               .userAuth
@@ -972,18 +731,290 @@ class ConversationStateView extends State<ConversationView> {
                                                                 ),
                                                               ),
                                                             )
-                                                          : SizedBox(
-                                                              height: 0,
-                                                            )
-                                                      : SizedBox(
-                                                          height: 0,
-                                                        )
-                                              : SizedBox(
-                                                  height: 0,
-                                                )
-                                          : SizedBox(
-                                              height: 0,
-                                            ),
+                                                          : SizedBox.shrink()
+                                                      : index -
+                                                                  pendingMessagesList
+                                                                      .length ==
+                                                              0
+                                                          ? conversationMetaData
+                                                                      .conversationType !=
+                                                                  "single"
+                                                              ? Padding(
+                                                                  padding: EdgeInsets
+                                                                      .symmetric(
+                                                                          vertical:
+                                                                              4,
+                                                                          horizontal:
+                                                                              7),
+                                                                  child:
+                                                                      SizedBox(
+                                                                    width: double
+                                                                        .infinity,
+                                                                    child: Text(
+                                                                      "Seen by ${(combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners.join(", ").replaceAll(state.userAuth.user.username, "you")}",
+                                                                      textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender ==
+                                                                              state
+                                                                                  .userAuth.user.username
+                                                                          ? TextAlign
+                                                                              .end
+                                                                          : TextAlign
+                                                                              .start,
+                                                                      style:
+                                                                          TextStyle(
+                                                                        fontSize:
+                                                                            12,
+                                                                        color: Color(
+                                                                            0xFF565656),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                )
+                                                              : SizedBox
+                                                                  .shrink()
+                                                          : SizedBox.shrink()
+                                                  : SizedBox.shrink()
+                                              : SizedBox.shrink(),
+                                        if (index == 0)
+                                          TypingIndicator(
+                                              isTyping:
+                                                  hasConversationTypingActivity)
+                                        else
+                                          SizedBox.shrink(),
+                                      ],
+                                    ),
+
+                                  // PendingMessages item
+                                  if (combinedPendingAndMessagesList[
+                                      combinedPendingAndMessagesList.length -
+                                          1 -
+                                          index] is PendingMessages)
+                                    Column(
+                                      children: [
+                                        SizedBox(
+                                          width:
+                                              MediaQuery.of(context).size.width,
+                                          child: PendingContentWidget(
+                                            messageID:
+                                                (combinedPendingAndMessagesList[
+                                                            combinedPendingAndMessagesList
+                                                                    .length -
+                                                                1 -
+                                                                index]
+                                                        as PendingMessages)
+                                                    .pendingID,
+                                            content: (combinedPendingAndMessagesList[
+                                                    combinedPendingAndMessagesList
+                                                            .length -
+                                                        1 -
+                                                        index] as PendingMessages)
+                                                .content,
+                                            contentType:
+                                                (combinedPendingAndMessagesList[
+                                                            combinedPendingAndMessagesList
+                                                                    .length -
+                                                                1 -
+                                                                index]
+                                                        as PendingMessages)
+                                                    .type,
+                                          ),
+                                        ),
+                                        if (index == 0)
+                                          TypingIndicator(
+                                              isTyping:
+                                                  hasConversationTypingActivity)
+                                        else
+                                          SizedBox.shrink(),
+                                      ],
+                                    ),
+                                ],
+                              );
+                            } else {
+                              if (combinedPendingAndMessagesList[
+                                  combinedPendingAndMessagesList.length -
+                                      1 -
+                                      index] is MessageContent) {
+                                MessageContent contentItem =
+                                    combinedPendingAndMessagesList[
+                                        combinedPendingAndMessagesList.length -
+                                            1 -
+                                            index];
+                                String previousContentUserID = index > 0 &&
+                                        index <
+                                            combinedPendingAndMessagesList
+                                                    .length -
+                                                1
+                                    ? combinedPendingAndMessagesList[
+                                            combinedPendingAndMessagesList
+                                                    .length -
+                                                1 -
+                                                index -
+                                                1]
+                                        .sender
+                                    : index == 0
+                                        ? "start"
+                                        : "end";
+
+                                return Column(
+                                  children: [
+                                    SizedBox(
+                                      width: MediaQuery.of(context).size.width,
+                                      child: MessageContentWidget(
+                                          messageContent: contentItem,
+                                          previousContentUserID:
+                                              previousContentUserID,
+                                          currentUserID:
+                                              state.userAuth.user.username,
+                                          onPressed: (bool isReply,
+                                              String replyingTo) {
+                                            if (mounted) {
+                                              StoreProvider.of<AppState>(
+                                                      context)
+                                                  .dispatch(DispatchModel(
+                                                      setIsUsingReplyAssistT,
+                                                      false));
+                                              StoreProvider.of<AppState>(
+                                                      context)
+                                                  .dispatch(DispatchModel(
+                                                      clearReplyAssistContextT,
+                                                      []));
+                                              setState(() {
+                                                isReplying = IsReplying(
+                                                    isReply, replyingTo);
+                                              });
+                                            }
+                                          }),
+                                    ),
+                                    contentItem.messageType != "notif"
+                                        ? conversationInfo != null
+                                            ? contentItem.seeners.length ==
+                                                    conversationInfo
+                                                        ?.users.length
+                                                ? index -
+                                                            pendingMessagesList
+                                                                .length ==
+                                                        0
+                                                    ? Padding(
+                                                        padding:
+                                                            EdgeInsets.only(
+                                                                top: 4,
+                                                                bottom: 2,
+                                                                left: 7,
+                                                                right: 7),
+                                                        child: SizedBox(
+                                                          width:
+                                                              double.infinity,
+                                                          child: Text(
+                                                            conversationMetaData
+                                                                        .conversationType ==
+                                                                    "single"
+                                                                ? "Seen"
+                                                                : "Seen by everyone",
+                                                            textAlign: contentItem
+                                                                        .sender ==
+                                                                    state
+                                                                        .userAuth
+                                                                        .user
+                                                                        .username
+                                                                ? TextAlign.end
+                                                                : TextAlign
+                                                                    .start,
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              color: Color(
+                                                                  0xFF565656),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      )
+                                                    : SizedBox(
+                                                        height: 0,
+                                                      )
+                                                : index -
+                                                            pendingMessagesList
+                                                                .length ==
+                                                        0
+                                                    ? conversationMetaData
+                                                                .conversationType !=
+                                                            "single"
+                                                        ? Padding(
+                                                            padding:
+                                                                EdgeInsets.only(
+                                                                    top: 4,
+                                                                    bottom: 2,
+                                                                    left: 7,
+                                                                    right: 7),
+                                                            child: SizedBox(
+                                                              width: double
+                                                                  .infinity,
+                                                              child: Text(
+                                                                "Seen by ${contentItem.seeners.join(", ").replaceAll(state.userAuth.user.username, "you")}",
+                                                                textAlign: contentItem
+                                                                            .sender ==
+                                                                        state
+                                                                            .userAuth
+                                                                            .user
+                                                                            .username
+                                                                    ? TextAlign
+                                                                        .end
+                                                                    : TextAlign
+                                                                        .start,
+                                                                style:
+                                                                    TextStyle(
+                                                                  fontSize: 12,
+                                                                  color: Color(
+                                                                      0xFF565656),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          )
+                                                        : SizedBox(
+                                                            height: 0,
+                                                          )
+                                                    : SizedBox(
+                                                        height: 0,
+                                                      )
+                                            : SizedBox(
+                                                height: 0,
+                                              )
+                                        : SizedBox(
+                                            height: 0,
+                                          ),
+                                    index == 0
+                                        ? TypingIndicator(
+                                            isTyping:
+                                                hasConversationTypingActivity,
+                                          )
+                                        : SizedBox(
+                                            height: 0,
+                                          )
+                                  ],
+                                );
+                              } else if (combinedPendingAndMessagesList[
+                                  combinedPendingAndMessagesList.length -
+                                      1 -
+                                      index] is PendingMessages) {
+                                PendingMessages contentItem =
+                                    combinedPendingAndMessagesList[
+                                        combinedPendingAndMessagesList.length -
+                                            1 -
+                                            index];
+
+                                if (conversationContentList
+                                    .where((item) =>
+                                        item.pendingID == contentItem.pendingID)
+                                    .toList()
+                                    .isEmpty) {
+                                  return Column(
+                                    children: [
+                                      SizedBox(
+                                        width:
+                                            MediaQuery.of(context).size.width,
+                                        child: PendingContentWidget(
+                                          messageID: contentItem.pendingID,
+                                          content: contentItem.content,
+                                          contentType: contentItem.type,
+                                        ),
+                                      ),
                                       index == 0
                                           ? TypingIndicator(
                                               isTyping:
@@ -994,144 +1025,134 @@ class ConversationStateView extends State<ConversationView> {
                                             )
                                     ],
                                   );
-                                } else if (combinedPendingAndMessagesList[
-                                    combinedPendingAndMessagesList.length -
-                                        1 -
-                                        index] is PendingMessages) {
-                                  PendingMessages contentItem =
-                                      combinedPendingAndMessagesList[
-                                          combinedPendingAndMessagesList
-                                                  .length -
-                                              1 -
-                                              index];
-
-                                  if (conversationContentList
-                                      .where((item) =>
-                                          item.pendingID ==
-                                          contentItem.pendingID)
-                                      .toList()
-                                      .isEmpty) {
-                                    return Column(
-                                      children: [
-                                        SizedBox(
-                                          width:
-                                              MediaQuery.of(context).size.width,
-                                          child: PendingContentWidget(
-                                            messageID: contentItem.pendingID,
-                                            content: contentItem.content,
-                                            contentType: contentItem.type,
-                                          ),
-                                        ),
-                                        index == 0
-                                            ? TypingIndicator(
-                                                isTyping:
-                                                    hasConversationTypingActivity,
-                                              )
-                                            : SizedBox(
-                                                height: 0,
-                                              )
-                                      ],
-                                    );
-                                  } else {
-                                    return SizedBox();
-                                  }
                                 } else {
                                   return SizedBox();
                                 }
+                              } else {
+                                return SizedBox();
                               }
-                            },
-                          ),
+                            }
+                          },
                         ),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 500),
-                          curve: Curves.easeInOut,
-                          height: isReplying.isReply ? 80 : 0,
-                          width: MediaQuery.of(context).size.width,
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                                top: 5, left: 5, right: 5, bottom: 2),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(7)),
-                              child: ClipRect(
-                                child: AnimatedContainer(
-                                    duration: Duration(milliseconds: 500),
-                                    decoration: BoxDecoration(
-                                        color: conversationContentList
-                                                .where((message) =>
-                                                    message.messageID ==
-                                                    isReplying.replyingTo)
-                                                .toList()
-                                                .isNotEmpty
-                                            ? conversationContentList
-                                                        .where((message) =>
-                                                            message.messageID ==
-                                                            isReplying
-                                                                .replyingTo)
-                                                        .toList()[0]
-                                                        .sender ==
-                                                    state.userAuth.user.username
-                                                ? Color(0xff1c7def)
-                                                : Color(0xffdedede)
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(7)),
-                                    child: Padding(
-                                      padding: EdgeInsets.all(7),
-                                      child: isReplying.isReply
-                                          ? Row(
-                                              mainAxisSize: MainAxisSize.max,
-                                              children: [
-                                                Expanded(
-                                                    child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.start,
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  mainAxisSize:
-                                                      MainAxisSize.max,
-                                                  children: [
-                                                    Row(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .start,
-                                                        mainAxisSize:
-                                                            MainAxisSize.max,
-                                                        children: [
-                                                          Text(
-                                                            "Replying to ${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList().isNotEmpty ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender == state.userAuth.user.username ? "your message" : "@${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender}" : ""}",
-                                                            style: TextStyle(
-                                                                fontSize: 12,
-                                                                color: conversationContentList
-                                                                        .where((message) =>
-                                                                            message.messageID ==
-                                                                            isReplying
-                                                                                .replyingTo)
-                                                                        .toList()
-                                                                        .isNotEmpty
-                                                                    ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
-                                                                            state
-                                                                                .userAuth.user.username
-                                                                        ? Colors
-                                                                            .white
-                                                                        : Colors
-                                                                            .black
-                                                                    : Colors
-                                                                        .transparent,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold),
-                                                            textAlign: TextAlign
-                                                                .justify,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                          )
-                                                        ]),
-                                                    Expanded(
-                                                      child: SizedBox(),
-                                                    ),
-                                                    Text(
-                                                      conversationContentList
+                      ),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.easeInOut,
+                        height: isReplying.isReply ? 80 : 0,
+                        width: MediaQuery.of(context).size.width,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                              top: 5, left: 5, right: 5, bottom: 2),
+                          child: Container(
+                            decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(7)),
+                            child: ClipRect(
+                              child: AnimatedContainer(
+                                  duration: Duration(milliseconds: 500),
+                                  decoration: BoxDecoration(
+                                      color: conversationContentList
+                                              .where((message) =>
+                                                  message.messageID ==
+                                                  isReplying.replyingTo)
+                                              .toList()
+                                              .isNotEmpty
+                                          ? conversationContentList
+                                                      .where((message) =>
+                                                          message.messageID ==
+                                                          isReplying.replyingTo)
+                                                      .toList()[0]
+                                                      .sender ==
+                                                  state.userAuth.user.username
+                                              ? Color(0xff1c7def)
+                                              : Color(0xffdedede)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(7)),
+                                  child: Padding(
+                                    padding: EdgeInsets.all(7),
+                                    child: isReplying.isReply
+                                        ? Row(
+                                            mainAxisSize: MainAxisSize.max,
+                                            children: [
+                                              Expanded(
+                                                  child: Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.start,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.max,
+                                                children: [
+                                                  Row(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .start,
+                                                      mainAxisSize:
+                                                          MainAxisSize.max,
+                                                      children: [
+                                                        Text(
+                                                          "Replying to ${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList().isNotEmpty ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender == state.userAuth.user.username ? "your message" : "@${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender}" : ""}",
+                                                          style: TextStyle(
+                                                              fontSize: 12,
+                                                              color: conversationContentList
+                                                                      .where((message) =>
+                                                                          message
+                                                                              .messageID ==
+                                                                          isReplying
+                                                                              .replyingTo)
+                                                                      .toList()
+                                                                      .isNotEmpty
+                                                                  ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
+                                                                          state
+                                                                              .userAuth
+                                                                              .user
+                                                                              .username
+                                                                      ? Colors
+                                                                          .white
+                                                                      : Colors
+                                                                          .black
+                                                                  : Colors
+                                                                      .transparent,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold),
+                                                          textAlign:
+                                                              TextAlign.justify,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                        )
+                                                      ]),
+                                                  Expanded(
+                                                    child: SizedBox(),
+                                                  ),
+                                                  Text(
+                                                    conversationContentList
+                                                            .where((message) =>
+                                                                message
+                                                                    .messageID ==
+                                                                isReplying
+                                                                    .replyingTo)
+                                                            .toList()
+                                                            .isNotEmpty
+                                                        ? messageReplyIdentifier(
+                                                            conversationContentList
+                                                                .where((message) =>
+                                                                    message
+                                                                        .messageID ==
+                                                                    isReplying
+                                                                        .replyingTo)
+                                                                .toList()[0]
+                                                                .messageType,
+                                                            conversationContentList
+                                                                .where((message) =>
+                                                                    message
+                                                                        .messageID ==
+                                                                    isReplying
+                                                                        .replyingTo)
+                                                                .toList()[0]
+                                                                .content)
+                                                        : "",
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: conversationContentList
                                                               .where((message) =>
                                                                   message
                                                                       .messageID ==
@@ -1139,512 +1160,485 @@ class ConversationStateView extends State<ConversationView> {
                                                                       .replyingTo)
                                                               .toList()
                                                               .isNotEmpty
-                                                          ? messageReplyIdentifier(
-                                                              conversationContentList
-                                                                  .where((message) =>
-                                                                      message
-                                                                          .messageID ==
-                                                                      isReplying
-                                                                          .replyingTo)
-                                                                  .toList()[0]
-                                                                  .messageType,
-                                                              conversationContentList
-                                                                  .where((message) =>
-                                                                      message
-                                                                          .messageID ==
-                                                                      isReplying
-                                                                          .replyingTo)
-                                                                  .toList()[0]
-                                                                  .content)
-                                                          : "",
-                                                      style: TextStyle(
-                                                        fontSize: 12,
-                                                        color: conversationContentList
-                                                                .where((message) =>
-                                                                    message
-                                                                        .messageID ==
-                                                                    isReplying
-                                                                        .replyingTo)
-                                                                .toList()
-                                                                .isNotEmpty
-                                                            ? conversationContentList
-                                                                        .where((message) =>
-                                                                            message.messageID ==
-                                                                            isReplying
-                                                                                .replyingTo)
-                                                                        .toList()[
-                                                                            0]
-                                                                        .sender ==
-                                                                    state
-                                                                        .userAuth
-                                                                        .user
-                                                                        .username
-                                                                ? Colors.white
-                                                                : Colors.black
-                                                            : Colors
-                                                                .transparent,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                      ),
-                                                      maxLines: 2,
-                                                      textAlign:
-                                                          TextAlign.justify,
+                                                          ? conversationContentList
+                                                                      .where((message) =>
+                                                                          message
+                                                                              .messageID ==
+                                                                          isReplying
+                                                                              .replyingTo)
+                                                                      .toList()[
+                                                                          0]
+                                                                      .sender ==
+                                                                  state
+                                                                      .userAuth
+                                                                      .user
+                                                                      .username
+                                                              ? Colors.white
+                                                              : Colors.black
+                                                          : Colors.transparent,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                     ),
-                                                    Expanded(
-                                                      child: SizedBox(),
-                                                    ),
-                                                  ],
-                                                )),
-                                                Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.start,
-                                                  mainAxisSize:
-                                                      MainAxisSize.max,
-                                                  children: [
-                                                    ConstrainedBox(
-                                                      constraints:
-                                                          BoxConstraints(
-                                                              maxHeight: 22,
-                                                              maxWidth: 22),
-                                                      child: ElevatedButton(
-                                                          style: ElevatedButton.styleFrom(
-                                                              backgroundColor:
-                                                                  Color(
-                                                                      0xffdedede),
-                                                              elevation: 0,
-                                                              padding: EdgeInsets
-                                                                  .only(
-                                                                      top: 0,
-                                                                      bottom: 0,
-                                                                      left: 0,
-                                                                      right:
-                                                                          0)),
-                                                          onPressed: () {
-                                                            if (mounted) {
-                                                              setState(() {
-                                                                isReplying =
-                                                                    IsReplying(
-                                                                        false,
-                                                                        "");
-                                                              });
-                                                              StoreProvider.of<
-                                                                          AppState>(
-                                                                      context)
-                                                                  .dispatch(DispatchModel(
-                                                                      setIsUsingReplyAssistT,
-                                                                      false));
-                                                              StoreProvider.of<
-                                                                          AppState>(
-                                                                      context)
-                                                                  .dispatch(
-                                                                      DispatchModel(
-                                                                          clearReplyAssistContextT,
-                                                                          []));
-                                                            }
-                                                          },
-                                                          child: SizedBox(
-                                                            width: 22,
-                                                            height: 22,
-                                                            child: Column(
-                                                              mainAxisAlignment:
-                                                                  MainAxisAlignment
-                                                                      .start,
-                                                              crossAxisAlignment:
-                                                                  CrossAxisAlignment
-                                                                      .center,
-                                                              children: [
-                                                                Container(
-                                                                  decoration: BoxDecoration(
-                                                                      color: Colors
-                                                                          .transparent,
-                                                                      borderRadius:
-                                                                          BorderRadius.circular(
-                                                                              22)),
-                                                                  width: 22,
-                                                                  height: 22,
-                                                                  child: Center(
-                                                                    child: Icon(
-                                                                      color: Colors
-                                                                          .white,
-                                                                      Icons
-                                                                          .close,
-                                                                      size: 12,
-                                                                    ),
+                                                    maxLines: 2,
+                                                    textAlign:
+                                                        TextAlign.justify,
+                                                  ),
+                                                  Expanded(
+                                                    child: SizedBox(),
+                                                  ),
+                                                ],
+                                              )),
+                                              Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.max,
+                                                children: [
+                                                  ConstrainedBox(
+                                                    constraints: BoxConstraints(
+                                                        maxHeight: 22,
+                                                        maxWidth: 22),
+                                                    child: ElevatedButton(
+                                                        style: ElevatedButton
+                                                            .styleFrom(
+                                                                backgroundColor:
+                                                                    Color(
+                                                                        0xffdedede),
+                                                                elevation: 0,
+                                                                padding: EdgeInsets
+                                                                    .only(
+                                                                        top: 0,
+                                                                        bottom:
+                                                                            0,
+                                                                        left: 0,
+                                                                        right:
+                                                                            0)),
+                                                        onPressed: () {
+                                                          if (mounted) {
+                                                            setState(() {
+                                                              isReplying =
+                                                                  IsReplying(
+                                                                      false,
+                                                                      "");
+                                                            });
+                                                            StoreProvider.of<
+                                                                        AppState>(
+                                                                    context)
+                                                                .dispatch(
+                                                                    DispatchModel(
+                                                                        setIsUsingReplyAssistT,
+                                                                        false));
+                                                            StoreProvider.of<
+                                                                        AppState>(
+                                                                    context)
+                                                                .dispatch(
+                                                                    DispatchModel(
+                                                                        clearReplyAssistContextT,
+                                                                        []));
+                                                          }
+                                                        },
+                                                        child: SizedBox(
+                                                          width: 22,
+                                                          height: 22,
+                                                          child: Column(
+                                                            mainAxisAlignment:
+                                                                MainAxisAlignment
+                                                                    .start,
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .center,
+                                                            children: [
+                                                              Container(
+                                                                decoration: BoxDecoration(
+                                                                    color: Colors
+                                                                        .transparent,
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                            22)),
+                                                                width: 22,
+                                                                height: 22,
+                                                                child: Center(
+                                                                  child: Icon(
+                                                                    color: Colors
+                                                                        .white,
+                                                                    Icons.close,
+                                                                    size: 12,
                                                                   ),
-                                                                )
-                                                              ],
-                                                            ),
-                                                          )),
-                                                    )
-                                                  ],
-                                                )
-                                              ],
-                                            )
-                                          : null,
-                                    )),
-                              ),
+                                                                ),
+                                                              )
+                                                            ],
+                                                          ),
+                                                        )),
+                                                  )
+                                                ],
+                                              )
+                                            ],
+                                          )
+                                        : null,
+                                  )),
                             ),
                           ),
                         ),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 500),
-                          curve: Curves.easeInOut,
-                          height: isReplying.isReply ? 50 : 0,
-                          width: MediaQuery.of(context).size.width,
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                                top: 2, left: 5, right: 5, bottom: 5),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(7)),
-                              child: ClipRect(
-                                child: AnimatedContainer(
-                                    duration: Duration(milliseconds: 500),
-                                    decoration: BoxDecoration(
-                                        color: conversationContentList
-                                                .where((message) =>
-                                                    message.messageID ==
-                                                    isReplying.replyingTo)
-                                                .toList()
-                                                .isNotEmpty
-                                            ? conversationContentList
-                                                        .where((message) =>
-                                                            message.messageID ==
-                                                            isReplying
-                                                                .replyingTo)
-                                                        .toList()[0]
-                                                        .sender ==
-                                                    state.userAuth.user.username
-                                                ? Color(0xff1c7def)
-                                                : Color(0xffdedede)
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(7)),
-                                    child: Padding(
-                                      padding: EdgeInsets.all(7),
-                                      child: isReplying.isReply
-                                          ? Row(
-                                              mainAxisSize: MainAxisSize.max,
-                                              children: [
-                                                Expanded(
-                                                    child: Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.center,
-                                                  mainAxisSize:
-                                                      MainAxisSize.max,
-                                                  children: [
-                                                    Row(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .start,
-                                                        mainAxisSize:
-                                                            MainAxisSize.max,
-                                                        children: [
-                                                          Text(
-                                                            state.isUsingReplyAssist
-                                                                ? "Select messages for context"
-                                                                : "Use AI Reply Assist?",
+                      ),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.easeInOut,
+                        height: isReplying.isReply ? 50 : 0,
+                        width: MediaQuery.of(context).size.width,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                              top: 2, left: 5, right: 5, bottom: 5),
+                          child: Container(
+                            decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(7)),
+                            child: ClipRect(
+                              child: AnimatedContainer(
+                                  duration: Duration(milliseconds: 500),
+                                  decoration: BoxDecoration(
+                                      color: conversationContentList
+                                              .where((message) =>
+                                                  message.messageID ==
+                                                  isReplying.replyingTo)
+                                              .toList()
+                                              .isNotEmpty
+                                          ? conversationContentList
+                                                      .where((message) =>
+                                                          message.messageID ==
+                                                          isReplying.replyingTo)
+                                                      .toList()[0]
+                                                      .sender ==
+                                                  state.userAuth.user.username
+                                              ? Color(0xff1c7def)
+                                              : Color(0xffdedede)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(7)),
+                                  child: Padding(
+                                    padding: EdgeInsets.all(7),
+                                    child: isReplying.isReply
+                                        ? Row(
+                                            mainAxisSize: MainAxisSize.max,
+                                            children: [
+                                              Expanded(
+                                                  child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                mainAxisSize: MainAxisSize.max,
+                                                children: [
+                                                  Row(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .start,
+                                                      mainAxisSize:
+                                                          MainAxisSize.max,
+                                                      children: [
+                                                        Text(
+                                                          state.isUsingReplyAssist
+                                                              ? "Select messages for context"
+                                                              : "Use AI Reply Assist?",
+                                                          style: TextStyle(
+                                                              fontSize: 12,
+                                                              color: conversationContentList
+                                                                      .where((message) =>
+                                                                          message
+                                                                              .messageID ==
+                                                                          isReplying
+                                                                              .replyingTo)
+                                                                      .toList()
+                                                                      .isNotEmpty
+                                                                  ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
+                                                                          state
+                                                                              .userAuth
+                                                                              .user
+                                                                              .username
+                                                                      ? Colors
+                                                                          .white
+                                                                      : Colors
+                                                                          .black
+                                                                  : Colors
+                                                                      .transparent,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold),
+                                                          textAlign:
+                                                              TextAlign.justify,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                        )
+                                                      ]),
+                                                  Expanded(
+                                                    child: SizedBox(),
+                                                  ),
+                                                  state.isUsingReplyAssist
+                                                      ? Row(
+                                                          children: [
+                                                            ElevatedButton(
+                                                                style: ElevatedButton
+                                                                    .styleFrom(
+                                                                        backgroundColor:
+                                                                            Colors
+                                                                                .white,
+                                                                        shape:
+                                                                            RoundedRectangleBorder(
+                                                                          borderRadius:
+                                                                              BorderRadius.circular(10), // Rounded corners if needed
+                                                                        )),
+                                                                onPressed:
+                                                                    () => {
+                                                                          // ContentValidator().printer(jsonEncode(state.replyAssistContext.map((rac) => rac.toJson()).toList()))
+                                                                          postReplyAssistProcess(
+                                                                              conversationMetaData.conversationID,
+                                                                              state.replyAssistContext)
+                                                                        },
+                                                                child: Text(
+                                                                  "Generate",
+                                                                  style: TextStyle(
+                                                                      fontSize:
+                                                                          12,
+                                                                      color: Color(
+                                                                          0xFF565656)),
+                                                                )),
+                                                            SizedBox(
+                                                              width: 5,
+                                                            ),
+                                                            ElevatedButton(
+                                                                style: ElevatedButton
+                                                                    .styleFrom(
+                                                                        backgroundColor:
+                                                                            Colors
+                                                                                .white,
+                                                                        shape:
+                                                                            RoundedRectangleBorder(
+                                                                          borderRadius:
+                                                                              BorderRadius.circular(10), // Rounded corners if needed
+                                                                        )),
+                                                                onPressed:
+                                                                    () => {
+                                                                          StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+                                                                              setIsUsingReplyAssistT,
+                                                                              false)),
+                                                                          StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+                                                                              clearReplyAssistContextT,
+                                                                              []))
+                                                                        },
+                                                                child: Text(
+                                                                  "Cancel",
+                                                                  style: TextStyle(
+                                                                      fontSize:
+                                                                          12,
+                                                                      color: Color(
+                                                                          0xFF565656)),
+                                                                ))
+                                                          ],
+                                                        )
+                                                      : ElevatedButton(
+                                                          style: ElevatedButton
+                                                              .styleFrom(
+                                                                  backgroundColor:
+                                                                      Colors
+                                                                          .white,
+                                                                  shape:
+                                                                      RoundedRectangleBorder(
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                            10), // Rounded corners if needed
+                                                                  )),
+                                                          onPressed: () => {
+                                                                StoreProvider.of<
+                                                                            AppState>(
+                                                                        context)
+                                                                    .dispatch(DispatchModel(
+                                                                        setIsUsingReplyAssistT,
+                                                                        true))
+                                                              },
+                                                          child: Text(
+                                                            "Yes",
                                                             style: TextStyle(
                                                                 fontSize: 12,
-                                                                color: conversationContentList
-                                                                        .where((message) =>
-                                                                            message.messageID ==
-                                                                            isReplying
-                                                                                .replyingTo)
-                                                                        .toList()
-                                                                        .isNotEmpty
-                                                                    ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
-                                                                            state
-                                                                                .userAuth.user.username
-                                                                        ? Colors
-                                                                            .white
-                                                                        : Colors
-                                                                            .black
-                                                                    : Colors
-                                                                        .transparent,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold),
-                                                            textAlign: TextAlign
-                                                                .justify,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                          )
-                                                        ]),
-                                                    Expanded(
-                                                      child: SizedBox(),
-                                                    ),
-                                                    state.isUsingReplyAssist
-                                                        ? Row(
-                                                            children: [
-                                                              ElevatedButton(
-                                                                  style: ElevatedButton
-                                                                      .styleFrom(
-                                                                          backgroundColor: Colors
-                                                                              .white,
-                                                                          shape:
-                                                                              RoundedRectangleBorder(
-                                                                            borderRadius:
-                                                                                BorderRadius.circular(10), // Rounded corners if needed
-                                                                          )),
-                                                                  onPressed:
-                                                                      () => {
-                                                                            // ContentValidator().printer(jsonEncode(state.replyAssistContext.map((rac) => rac.toJson()).toList()))
-                                                                            postReplyAssistProcess(conversationMetaData.conversationID,
-                                                                                state.replyAssistContext)
-                                                                          },
-                                                                  child: Text(
-                                                                    "Generate",
-                                                                    style: TextStyle(
-                                                                        fontSize:
-                                                                            12,
-                                                                        color: Color(
-                                                                            0xFF565656)),
-                                                                  )),
-                                                              SizedBox(
-                                                                width: 5,
-                                                              ),
-                                                              ElevatedButton(
-                                                                  style: ElevatedButton
-                                                                      .styleFrom(
-                                                                          backgroundColor: Colors
-                                                                              .white,
-                                                                          shape:
-                                                                              RoundedRectangleBorder(
-                                                                            borderRadius:
-                                                                                BorderRadius.circular(10), // Rounded corners if needed
-                                                                          )),
-                                                                  onPressed:
-                                                                      () => {
-                                                                            StoreProvider.of<AppState>(context).dispatch(DispatchModel(setIsUsingReplyAssistT,
-                                                                                false)),
-                                                                            StoreProvider.of<AppState>(context).dispatch(DispatchModel(clearReplyAssistContextT,
-                                                                                []))
-                                                                          },
-                                                                  child: Text(
-                                                                    "Cancel",
-                                                                    style: TextStyle(
-                                                                        fontSize:
-                                                                            12,
-                                                                        color: Color(
-                                                                            0xFF565656)),
-                                                                  ))
-                                                            ],
-                                                          )
-                                                        : ElevatedButton(
-                                                            style: ElevatedButton
-                                                                .styleFrom(
-                                                                    backgroundColor:
-                                                                        Colors
-                                                                            .white,
-                                                                    shape:
-                                                                        RoundedRectangleBorder(
-                                                                      borderRadius:
-                                                                          BorderRadius.circular(
-                                                                              10), // Rounded corners if needed
-                                                                    )),
-                                                            onPressed: () => {
-                                                                  StoreProvider.of<
-                                                                              AppState>(
-                                                                          context)
-                                                                      .dispatch(DispatchModel(
-                                                                          setIsUsingReplyAssistT,
-                                                                          true))
-                                                                },
-                                                            child: Text(
-                                                              "Yes",
-                                                              style: TextStyle(
-                                                                  fontSize: 12,
-                                                                  color: Color(
-                                                                      0xFF565656)),
-                                                            )),
-                                                  ],
-                                                )),
-                                              ],
-                                            )
-                                          : null,
-                                    )),
-                              ),
+                                                                color: Color(
+                                                                    0xFF565656)),
+                                                          )),
+                                                ],
+                                              )),
+                                            ],
+                                          )
+                                        : null,
+                                  )),
                             ),
                           ),
                         ),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border(
-                              top: BorderSide(
-                                width: 0.5,
-                                color: Color(0xffd2d2d2),
-                              ),
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border(
+                            top: BorderSide(
+                              width: 0.5,
+                              color: Color(0xffd2d2d2),
                             ),
                           ),
-                          width: MediaQuery.of(context).size.width,
-                          height: 55,
-                          child: Padding(
-                            padding: EdgeInsets.only(left: 5, right: 2),
-                            child: Center(
-                              child: Row(
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      ConstrainedBox(
-                                        constraints: BoxConstraints(
-                                            maxWidth: 40, maxHeight: 40),
-                                        child: ElevatedButton(
-                                            style: ElevatedButton.styleFrom(
-                                                backgroundColor:
-                                                    Colors.transparent,
-                                                elevation: 0,
-                                                padding: EdgeInsets.only(
-                                                    top: 0,
-                                                    bottom: 0,
-                                                    left: 0,
-                                                    right: 0)),
-                                            onPressed: () {},
-                                            child: Center(
-                                              child: Icon(
-                                                Icons.add_circle_rounded,
-                                                color: Color(0xff90caf9),
-                                                size: 22,
-                                              ),
-                                            )),
-                                      ),
-                                      ConstrainedBox(
-                                        constraints: BoxConstraints(
-                                            maxWidth: 40, maxHeight: 40),
-                                        child: ElevatedButton(
-                                            style: ElevatedButton.styleFrom(
-                                                backgroundColor:
-                                                    Colors.transparent,
-                                                elevation: 0,
-                                                padding: EdgeInsets.only(
-                                                    top: 0,
-                                                    bottom: 0,
-                                                    left: 0,
-                                                    right: 0)),
-                                            onPressed: () {},
-                                            child: Center(
-                                              child: Icon(
-                                                Icons
-                                                    .add_photo_alternate_rounded,
-                                                color: Color(0xff8cbcd6),
-                                                size: 24,
-                                              ),
-                                            )),
-                                      )
-                                    ],
-                                  ),
-                                  SizedBox(
-                                    width: 0,
-                                  ),
-                                  Expanded(
-                                      child: Padding(
-                                    padding: EdgeInsets.all(5),
-                                    child: Container(
-                                      height: 45,
-                                      decoration: BoxDecoration(
-                                          color: Color(0xfff6f6f6),
-                                          borderRadius:
-                                              BorderRadius.circular(10)),
-                                      child: TextField(
-                                        controller: _controller,
-                                        onChanged: (value) {
-                                          if (mounted) {
-                                            setState(() {
-                                              messageValue = value;
-                                              if (value.trim() != "") {
-                                                if (conversationInfo != null) {
-                                                  isTypingTimeout(
-                                                      conversationMetaData
-                                                          .conversationID,
-                                                      conversationInfo!.users
-                                                          .map((user) => user
-                                                              .username
-                                                              .toString())
-                                                          .toList());
-                                                }
-                                              }
-                                            });
-                                          }
-                                        },
-                                        style: TextStyle(fontSize: 12),
-                                        decoration: InputDecoration(
-                                            contentPadding: EdgeInsets.only(
-                                                top: 6,
-                                                bottom: 6,
-                                                left: 8,
-                                                right: 8),
-                                            fillColor: Colors.white,
-                                            hintText: 'Write a message....',
-                                            border: InputBorder.none),
-                                      ),
+                        ),
+                        width: MediaQuery.of(context).size.width,
+                        height: 55,
+                        child: Padding(
+                          padding: EdgeInsets.only(left: 5, right: 2),
+                          child: Center(
+                            child: Row(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          maxWidth: 40, maxHeight: 40),
+                                      child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              elevation: 0,
+                                              padding: EdgeInsets.only(
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  left: 0,
+                                                  right: 0)),
+                                          onPressed: () {},
+                                          child: Center(
+                                            child: Icon(
+                                              Icons.add_circle_rounded,
+                                              color: Color(0xff90caf9),
+                                              size: 22,
+                                            ),
+                                          )),
                                     ),
-                                  )),
-                                  SizedBox(
-                                    width: 0,
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          maxWidth: 40, maxHeight: 40),
+                                      child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              elevation: 0,
+                                              padding: EdgeInsets.only(
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  left: 0,
+                                                  right: 0)),
+                                          onPressed: () {},
+                                          child: Center(
+                                            child: Icon(
+                                              Icons.add_photo_alternate_rounded,
+                                              color: Color(0xff8cbcd6),
+                                              size: 24,
+                                            ),
+                                          )),
+                                    )
+                                  ],
+                                ),
+                                SizedBox(
+                                  width: 0,
+                                ),
+                                Expanded(
+                                    child: Padding(
+                                  padding: EdgeInsets.all(5),
+                                  child: Container(
+                                    height: 45,
+                                    decoration: BoxDecoration(
+                                        color: Color(0xfff6f6f6),
+                                        borderRadius:
+                                            BorderRadius.circular(10)),
+                                    child: TextField(
+                                      controller: _controller,
+                                      onChanged: (value) {
+                                        if (mounted) {
+                                          setState(() {
+                                            messageValue = value;
+                                            if (value.trim() != "") {
+                                              if (conversationInfo != null) {
+                                                isTypingTimeout(
+                                                    conversationMetaData
+                                                        .conversationID,
+                                                    conversationInfo!.users
+                                                        .map((user) => user
+                                                            .userID
+                                                            .toString())
+                                                        .toList());
+                                              }
+                                            }
+                                          });
+                                        }
+                                      },
+                                      style: TextStyle(fontSize: 12),
+                                      decoration: InputDecoration(
+                                          contentPadding: EdgeInsets.only(
+                                              top: 6,
+                                              bottom: 6,
+                                              left: 8,
+                                              right: 8),
+                                          fillColor: Colors.white,
+                                          hintText: 'Write a message....',
+                                          border: InputBorder.none),
+                                    ),
                                   ),
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                        maxWidth: 45, maxHeight: 40),
-                                    child: ElevatedButton(
-                                        key: ValueKey(
-                                            "${combinedPendingAndMessagesList.length}_${pendingMessagesList.length}_${conversationContentList.length}"),
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.transparent,
-                                            elevation: 0,
-                                            padding: EdgeInsets.only(
-                                                top: 0,
-                                                bottom: 0,
-                                                left: 0,
-                                                right: 0)),
-                                        onPressed: () {
-                                          if (conversationInfo != null) {
-                                            sendMessageProcess(
-                                                state.userAuth.user.username,
-                                                conversationMetaData
-                                                    .conversationID,
-                                                conversationInfo!.users
-                                                    .map((user) => user.username
-                                                        .toString())
-                                                    .toList(),
-                                                "text",
-                                                conversationInfo?.type
-                                                    as String,
-                                                messageValue,
-                                                isReplying.isReply,
-                                                isReplying.replyingTo);
-                                            StoreProvider.of<AppState>(context)
-                                                .dispatch(DispatchModel(
-                                                    setIsUsingReplyAssistT,
-                                                    false));
-                                            StoreProvider.of<AppState>(context)
-                                                .dispatch(DispatchModel(
-                                                    clearReplyAssistContextT,
-                                                    []));
-                                          }
-                                        },
-                                        child: Center(
-                                          child: Icon(
-                                            Icons.send_rounded,
-                                            color: Color(0xff1c7def),
-                                            size: 24,
-                                          ),
-                                        )),
-                                  )
-                                ],
-                              ),
+                                )),
+                                SizedBox(
+                                  width: 0,
+                                ),
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                      maxWidth: 45, maxHeight: 40),
+                                  child: ElevatedButton(
+                                      key: ValueKey(
+                                          "${combinedPendingAndMessagesList.length}_${pendingMessagesList.length}_${conversationContentList.length}"),
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.transparent,
+                                          elevation: 0,
+                                          padding: EdgeInsets.only(
+                                              top: 0,
+                                              bottom: 0,
+                                              left: 0,
+                                              right: 0)),
+                                      onPressed: () {
+                                        if (conversationInfo != null) {
+                                          sendMessageProcess(
+                                              state.userAuth.user.username,
+                                              conversationMetaData
+                                                  .conversationID,
+                                              conversationInfo!.users
+                                                  .map((user) =>
+                                                      user.userID.toString())
+                                                  .toList(),
+                                              "text",
+                                              conversationInfo?.type as String,
+                                              messageValue,
+                                              isReplying.isReply,
+                                              isReplying.replyingTo);
+                                          StoreProvider.of<AppState>(context)
+                                              .dispatch(DispatchModel(
+                                                  setIsUsingReplyAssistT,
+                                                  false));
+                                          StoreProvider.of<AppState>(context)
+                                              .dispatch(DispatchModel(
+                                                  clearReplyAssistContextT,
+                                                  []));
+                                        }
+                                      },
+                                      child: Center(
+                                        child: Icon(
+                                          Icons.send_rounded,
+                                          color: Color(0xff1c7def),
+                                          size: 24,
+                                        ),
+                                      )),
+                                )
+                              ],
                             ),
                           ),
-                        )
-                      ],
-                    ),
-                  ],
-                ),
+                        ),
+                      )
+                    ],
+                  ),
+                ],
               ),
             ),
           ),

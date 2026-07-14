@@ -61,3 +61,8 @@ class StateStore {
   final Store<AppState> store =
       Store<AppState>(appReducer, initialState: AppState());
 }
+
+/// Single app-wide store instance, accessible without a BuildContext - used
+/// by code that runs outside the widget tree (SSE event handling) instead
+/// of the old AppRoutes.navigatorKey.currentContext! fallback pattern.
+final Store<AppState> appStore = StateStore().store;

@@ -20,11 +20,9 @@ class MapStateView extends State<MapView> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text("Map"),
-        ),
+    return Scaffold(
+      body: Center(
+        child: Text("Map"),
       ),
     );
   }

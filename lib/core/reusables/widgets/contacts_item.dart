@@ -1,8 +1,8 @@
-import 'package:chatterloop_app/core/routes/app_routes.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class ContactsItemWidget extends StatefulWidget {
   final UsersContactPreview contact;
@@ -88,15 +88,13 @@ class ContactsItemWidgetState extends State<ContactsItemWidget> {
                                   padding: EdgeInsets.only(
                                       top: 0, bottom: 0, left: 0, right: 0)),
                               onPressed: () {
-                                AppRoutes.privateNavigatorKey.currentState
-                                    ?.pushNamed("/conversation",
-                                        arguments: ConversationViewProps(
-                                            _conversationMetaData
-                                                .conversationID,
-                                            _conversationMetaData
-                                                .conversationType,
-                                            _conversationMetaData
-                                                .conversationPreview));
+                                context.push(
+                                    "/conversation/${_conversationMetaData.conversationID}",
+                                    extra: ConversationViewProps(
+                                        _conversationMetaData.conversationID,
+                                        _conversationMetaData.conversationType,
+                                        _conversationMetaData
+                                            .conversationPreview));
 
                                 if (kDebugMode) {
                                   print("Message");

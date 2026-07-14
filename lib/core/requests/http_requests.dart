@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
+import 'package:chatterloop_app/core/utils/device_token.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/core/utils/jwt_tools.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
@@ -12,7 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 final dio = Dio(BaseOptions(
-  headers: {'origin': 'https://chatterloop.app'},
+  headers: {'origin': Endpoints.origin},
 ));
 final storage = FlutterSecureStorage();
 Endpoints endpoints = Endpoints();
@@ -25,8 +26,9 @@ class APIRequests {
     if (_interceptorInitialized) return;
     _interceptorInitialized = true;
     dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
-        options.headers['origin'] = 'https://chatterloop.app';
+      onRequest: (options, handler) async {
+        options.headers['origin'] = Endpoints.origin;
+        options.headers['device-token'] = await resolveDeviceToken();
         handler.next(options);
       },
     ));
@@ -53,6 +55,75 @@ class APIRequests {
         print(e);
       }
       return null;
+    }
+  }
+
+  /// Note: unlike loginRequest, the registration response is NOT nested
+  /// under "result" - status/message/authtoken/usertoken/allowed_modules
+  /// are all top-level fields (confirmed by reading
+  /// UserAccountManagement.post in user_service/user/views.py).
+  Future<LoginResponse?> signupRequest({
+    required String firstName,
+    String? middleName,
+    required String lastName,
+    required String email,
+    required String password,
+    required String gender,
+    required bool agreedToTerms,
+    required int birthday,
+    required int birthmonth,
+    required int birthyear,
+  }) async {
+    ContentValidator().printer('${endpoints.userApiUrl}${endpoints.signup}');
+
+    try {
+      final response =
+          await dio.post('${endpoints.userApiUrl}${endpoints.signup}', data: {
+        'firstName': firstName,
+        'middleName': middleName,
+        'lastName': lastName,
+        'email': email,
+        'password': password,
+        'gender': gender,
+        'agreedToTerms': agreedToTerms,
+        'birthday': birthday,
+        'birthmonth': birthmonth,
+        'birthyear': birthyear,
+      });
+
+      if (response.data["status"] == false) {
+        return null;
+      }
+
+      return LoginResponse.fromJson(response.data);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
+  /// Requires the caller to already hold an authtoken (issued by signup or
+  /// login) - CodeVerification is IsAuthenticated-gated on the Django side.
+  Future<bool> verifyEmailRequest(String code) async {
+    String? token = await storage.read(key: 'token');
+    if (token == null) return false;
+
+    try {
+      final response = await dio.post(
+          '${endpoints.userApiUrl}${endpoints.verifyEmail}',
+          data: {'code': code},
+          options: Options(headers: {'x-access-token': token}));
+
+      return response.data["status"] == true;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
     }
   }
 

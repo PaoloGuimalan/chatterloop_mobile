@@ -40,12 +40,15 @@ class ConversationInfoModel {
   }
 }
 
+/// Conversation membership is keyed by entity/account ID in Postgres/Mongo,
+/// not username - this field must stay ID-based to match sender/receivers
+/// on messages and participant_ids on the conversation itself.
 class UserIDObject {
-  String username;
+  String userID;
 
-  UserIDObject(this.username);
+  UserIDObject(this.userID);
 
   factory UserIDObject.fromJson(Map<String, dynamic> json) {
-    return UserIDObject(json["username"]);
+    return UserIDObject(json["userID"]);
   }
 }

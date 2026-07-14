@@ -20,11 +20,9 @@ class ServerStateView extends State<ServerView> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text("Server"),
-        ),
+    return Scaffold(
+      body: Center(
+        child: Text("Server"),
       ),
     );
   }
