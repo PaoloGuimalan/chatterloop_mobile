@@ -51,10 +51,10 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  String _statusLabel(SearchResultUser user) {
-    if (user.connectionAccomplished) return "Message";
-    if (user.hasConnection) return "Pending";
-    return "Add";
+  (String, CLBadgeTone) _status(SearchResultUser user) {
+    if (user.connectionAccomplished) return ("Connected", CLBadgeTone.green);
+    if (user.hasConnection) return ("Pending", CLBadgeTone.gold);
+    return ("New", CLBadgeTone.grey);
   }
 
   @override
@@ -62,7 +62,11 @@ class _SearchScreenState extends State<SearchScreen> {
     final p = cl(context);
     return Scaffold(
       backgroundColor: p.bg,
+      // top: false - the shell's global header already reserves the status
+      // bar; a second SafeArea here duplicated that inset and produced a
+      // large gap under the header.
       body: SafeArea(
+        top: false,
         child: Column(
           children: [
             Padding(
@@ -86,70 +90,89 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                 itemCount: results.length,
-                itemBuilder: (context, index) {
-                  final user = results[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: CLCard(
-                      child: Row(
-                        children: [
-                          CLAvatar(
-                              id: user.id,
-                              name: user.displayName,
-                              src: user.profile,
-                              size: 44),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                    user.displayName.isEmpty
-                                        ? user.username
-                                        : user.displayName,
-                                    style: TextStyle(
-                                        color: p.text,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14)),
-                                Text("@${user.username}",
-                                    style: TextStyle(
-                                        color: p.text2, fontSize: 12)),
-                              ],
-                            ),
-                          ),
-                          CLBtn(
-                            label: _statusLabel(user),
-                            size: CLBtnSize.sm,
-                            variant: user.connectionAccomplished
-                                ? CLBtnVariant.primary
-                                : user.hasConnection
-                                    ? CLBtnVariant.outline
-                                    : CLBtnVariant.soft,
-                            onPressed: user.connectionAccomplished
-                                ? () {
-                                    if (user.connectionId != null) {
-                                      context.push(
-                                          '/conversation/${user.connectionId}');
-                                    }
-                                  }
-                                : user.hasConnection
-                                    ? null
-                                    : () => _requestContact(user),
-                          ),
-                          CLIconBtn(
-                            icon: Icons.chevron_right,
-                            onPressed: () =>
-                                context.push('/user/${user.username}'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+                itemBuilder: (context, index) =>
+                    _resultCard(context, results[index]),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _resultCard(BuildContext context, SearchResultUser user) {
+    final p = cl(context);
+    final (statusLabel, statusTone) = _status(user);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: CLCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(CLRadii.pill),
+              onTap: () => context.push('/user/${user.username}'),
+              child: CLAvatar(
+                  id: user.id,
+                  name: user.displayName,
+                  src: user.profile,
+                  size: 52),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: InkWell(
+                onTap: () => context.push('/user/${user.username}'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                              user.displayName.isEmpty
+                                  ? user.username
+                                  : user.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: p.text,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15)),
+                        ),
+                        const SizedBox(width: 8),
+                        CLBadge(label: statusLabel, tone: statusTone),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text("@${user.username}",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: p.text2, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            if (user.connectionAccomplished)
+              CLBtn(
+                label: "Message",
+                size: CLBtnSize.sm,
+                variant: CLBtnVariant.outline,
+                onPressed: user.connectionId != null
+                    ? () => context.push('/conversation/${user.connectionId}')
+                    : null,
+              )
+            else if (!user.hasConnection)
+              CLBtn(
+                label: "Add",
+                iconL: Icons.person_add_alt,
+                size: CLBtnSize.sm,
+                variant: CLBtnVariant.soft,
+                onPressed: () => _requestContact(user),
+              ),
           ],
         ),
       ),

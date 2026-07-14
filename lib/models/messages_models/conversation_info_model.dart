@@ -21,22 +21,41 @@ class ConversationInfoModel {
       this.usersWithInfo,
       this.conversationfiles);
 
+  /// The server can legitimately return an empty/near-empty object here -
+  /// e.g. opening a conversation that has no backing user_connection row
+  /// yet (a fresh single conversation with no message sent, so
+  /// formatConnectionData(rows) short-circuits on an empty rows array).
+  /// Every field is defensive so that edge case degrades to an "unknown
+  /// participants" conversation instead of throwing and leaving
+  /// conversationInfo permanently unset.
   factory ConversationInfoModel.fromJson(Map<String, dynamic> json) {
     return ConversationInfoModel(
-        json["contactID"],
-        json["actionBy"],
+        (json["contactID"] ?? "").toString(),
+        (json["actionBy"] ?? "").toString(),
         ActionDate.fromJson(json["actionDate"]),
-        json["status"],
-        (json["users"] as List)
-            .map((user) => UserIDObject.fromJson(user))
-            .toList(),
-        json["type"],
-        (json["usersWithInfo"] as List)
-            .map((user) => UsersContactPreview.fromJson(user))
-            .toList(),
-        (json["conversationfiles"] as List)
-            .map((file) => ConversationFilesModel.fromJson(file))
-            .toList());
+        json["status"] == true,
+        json["users"] is List
+            ? (json["users"] as List)
+                .whereType<Map>()
+                .map((user) =>
+                    UserIDObject.fromJson(Map<String, dynamic>.from(user)))
+                .toList()
+            : [],
+        (json["type"] ?? "single").toString(),
+        json["usersWithInfo"] is List
+            ? (json["usersWithInfo"] as List)
+                .whereType<Map>()
+                .map((user) => UsersContactPreview.fromJson(
+                    Map<String, dynamic>.from(user)))
+                .toList()
+            : [],
+        json["conversationfiles"] is List
+            ? (json["conversationfiles"] as List)
+                .whereType<Map>()
+                .map((file) => ConversationFilesModel.fromJson(
+                    Map<String, dynamic>.from(file)))
+                .toList()
+            : []);
   }
 }
 

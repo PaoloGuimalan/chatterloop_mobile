@@ -70,18 +70,30 @@ class ContactsStateView extends State<ContactsView> {
                       ),
                     ),
                   )
-                : ListView.builder(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    itemCount: contactsList.length,
-                    itemBuilder: (context, index) {
-                      final contact = contactsList[index];
-                      final other = contact.other(state.userAuth.user.id);
-                      return ContactsItemWidget(
-                        contact: contact,
-                        other: other,
-                      );
-                    },
+                : Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: p.surface,
+                        border: Border.all(color: p.border),
+                        borderRadius: BorderRadius.circular(CLRadii.md),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: contactsList.length,
+                        separatorBuilder: (context, index) =>
+                            Divider(height: 1, color: p.border),
+                        itemBuilder: (context, index) {
+                          final contact = contactsList[index];
+                          final other = contact.other(state.userAuth.user.id);
+                          return ContactsItemWidget(
+                            contact: contact,
+                            other: other,
+                          );
+                        },
+                      ),
+                    ),
                   ),
       );
     }, converter: (store) {
