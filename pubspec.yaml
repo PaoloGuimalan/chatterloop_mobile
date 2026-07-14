@@ -38,6 +38,7 @@ dependencies:
   redux: ^5.0.0
   dio: ^5.7.0
   crypto: ^3.0.6
+  cryptography: ^2.7.0
   dart_jsonwebtoken: ^2.14.2
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.3
