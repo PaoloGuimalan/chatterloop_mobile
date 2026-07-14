@@ -8,13 +8,9 @@ import 'package:chatterloop_app/views/auth/login_view.dart';
 import 'package:chatterloop_app/views/auth/signup_view.dart';
 import 'package:chatterloop_app/views/auth/verify_email_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
-import 'package:chatterloop_app/views/home/tabs/feed_view.dart';
-import 'package:chatterloop_app/views/home/tabs/map_view.dart';
 import 'package:chatterloop_app/views/home/tabs/profile_view.dart';
-import 'package:chatterloop_app/views/home/tabs/server_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
 import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
-import 'package:chatterloop_app/views/notifications/notifications_view.dart';
 import 'package:chatterloop_app/views/profile/profile_edit_view.dart';
 import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/search_view.dart';
@@ -39,7 +35,7 @@ GoRouter buildAppRouter(AuthController authController) {
           return path == '/login' || path == '/signup' ? null : '/login';
         case AuthStatus.authenticated:
           return path == '/login' || path == '/signup' || path == '/splash'
-              ? '/home'
+              ? '/messages'
               : null;
       }
     },
@@ -60,21 +56,23 @@ GoRouter buildAppRouter(AuthController authController) {
                 HomeTabScaffold(navigationShell: navigationShell),
             branches: [
               StatefulShellBranch(routes: [
-                GoRoute(path: '/home', builder: (c, s) => const FeedView())
-              ]),
-              StatefulShellBranch(routes: [
-                GoRoute(path: '/map', builder: (c, s) => const MapView())
+                GoRoute(
+                    path: '/messages', builder: (c, s) => const MessagesView())
               ]),
               StatefulShellBranch(routes: [
                 GoRoute(
                     path: '/contacts', builder: (c, s) => const ContactsView())
               ]),
               StatefulShellBranch(routes: [
-                GoRoute(path: '/servers', builder: (c, s) => const ServerView())
+                GoRoute(
+                    path: '/search', builder: (c, s) => const SearchScreen())
+              ]),
+              StatefulShellBranch(routes: [
+                GoRoute(
+                    path: '/profile', builder: (c, s) => const ProfileView())
               ]),
             ],
           ),
-          GoRoute(path: '/messages', builder: (c, s) => const MessagesView()),
           GoRoute(
             path: '/conversation/:conversationId',
             builder: (c, s) => ConversationView(
@@ -83,13 +81,8 @@ GoRouter buildAppRouter(AuthController authController) {
             ),
           ),
           GoRoute(
-              path: '/notifications',
-              builder: (c, s) => const NotificationsView()),
-          GoRoute(path: '/profile', builder: (c, s) => const ProfileView()),
-          GoRoute(
               path: '/profile/edit',
               builder: (c, s) => const ProfileEditScreen()),
-          GoRoute(path: '/search', builder: (c, s) => const SearchScreen()),
           GoRoute(
             path: '/user/:username',
             builder: (c, s) =>

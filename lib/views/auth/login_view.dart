@@ -64,7 +64,7 @@ class LoginScreenState extends State<LoginScreen> {
                 personalEntityId: loginResponse.personalEntityId))));
 
     setState(() => _busy = false);
-    if (mounted) context.go('/home');
+    if (mounted) context.go('/messages');
   }
 
   @override

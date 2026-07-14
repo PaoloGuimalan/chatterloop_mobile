@@ -56,7 +56,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     }
 
     setState(() => _busy = false);
-    context.go('/home');
+    context.go('/messages');
   }
 
   @override
