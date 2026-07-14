@@ -11,8 +11,11 @@ class UserAuth {
 }
 
 class UserAccount {
-  final String userID;
-  final UserFullname fullName;
+  final String id;
+  final String username;
+  final String firstname;
+  final String middlename;
+  final String lastname;
   final String? email;
   final bool isActivated;
   final bool isVerified;
@@ -22,8 +25,11 @@ class UserAccount {
   final UserBirthDate? birthdate;
 
   const UserAccount(
-      this.userID,
-      this.fullName,
+      this.id,
+      this.username,
+      this.firstname,
+      this.middlename,
+      this.lastname,
       this.email,
       this.isActivated,
       this.isVerified,
@@ -34,13 +40,16 @@ class UserAccount {
 
   @override
   String toString() {
-    return 'UserAccount(userID: $userID, fullname: $fullName, email: $email, isActivated: $isActivated, isVerified: $isVerified)';
+    return 'UserAccount(id: $id, username: $username, firstname: $firstname, middlename: $middlename, lastname: $lastname, email: $email, isActivated: $isActivated, isVerified: $isVerified)';
   }
 
   factory UserAccount.fromJson(Map<String, dynamic> json) {
     return UserAccount(
-        json["userID"],
-        UserFullname.fromJson(json["fullName"] ?? json["fullname"]),
+        json["id"],
+        json["username"],
+        json["firstname"],
+        json["middlename"],
+        json["lastname"],
         json["email"],
         json["isActivated"],
         json["isVerified"],

@@ -116,7 +116,7 @@ class ContactsStateView extends State<ContactsView> {
                                     .userdetails
                                     .userone
                                     .userID ==
-                                state.userAuth.user.userID) {
+                                state.userAuth.user.username) {
                               String previewName =
                                   "${contactsList[index].userdetails.usertwo!.fullname.firstName} ${contactsList[index].userdetails.usertwo!.fullname.middleName == "N/A" ? " " : "${contactsList[index].userdetails.usertwo!.fullname.middleName} "}${contactsList[index].userdetails.usertwo!.fullname.lastName}";
                               String previewProfile = ContentValidator()

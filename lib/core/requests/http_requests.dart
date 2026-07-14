@@ -11,20 +11,36 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-final dio = Dio();
+final dio = Dio(BaseOptions(
+  headers: {'origin': 'https://chatterloop.app'},
+));
 final storage = FlutterSecureStorage();
 Endpoints endpoints = Endpoints();
 JwtTools jwt = JwtTools();
 
 class APIRequests {
+  static bool _interceptorInitialized = false;
+
+  APIRequests() {
+    if (_interceptorInitialized) return;
+    _interceptorInitialized = true;
+    dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        options.headers['origin'] = 'https://chatterloop.app';
+        handler.next(options);
+      },
+    ));
+  }
+
   Future<LoginResponse?> loginRequest(String email, String password) async {
-    ContentValidator().printer('${endpoints.apiUrl}${endpoints.login}');
-    String token = jwt
-        .createJwt({'email_username': email, 'password': password}, secretKey);
+    ContentValidator().printer('${endpoints.userApiUrl}${endpoints.login}');
+    // String token = jwt
+    //     .createJwt({'email_username': email, 'password': password}, secretKey);
 
     try {
-      final response = await dio.post('${endpoints.apiUrl}${endpoints.login}',
-          data: {'token': token});
+      final response = await dio.post(
+          '${endpoints.userApiUrl}${endpoints.login}',
+          data: {'email_username': email, 'password': password});
 
       if (response.data["status"] == false) {
         return null;

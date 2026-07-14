@@ -118,11 +118,11 @@ class AppContainerState extends State<AppContainer> {
             UserAuth(
                 true,
                 UserAccount(
+                    userResponse?["_id"],
                     userResponse?["userID"],
-                    UserFullname(
-                        userResponse?["fullname"]["firstName"],
-                        userResponse?["fullname"]["middleName"],
-                        userResponse?["fullname"]["lastName"]),
+                    userResponse?["fullname"]["firstName"],
+                    userResponse?["fullname"]["middleName"],
+                    userResponse?["fullname"]["lastName"],
                     userResponse?["email"],
                     userResponse?["isActivated"],
                     userResponse?["isVerified"],
@@ -138,8 +138,8 @@ class AppContainerState extends State<AppContainer> {
           setUserAuthT,
           UserAuth(
               false,
-              UserAccount("", UserFullname("", "", ""), "", false, false, null,
-                  null, null, null))));
+              UserAccount("", "", "", "", "", "", false, false, null, null,
+                  null, null))));
       AppRoutes.navigatorKey.currentState?.pushNamed("/login");
     }
   }

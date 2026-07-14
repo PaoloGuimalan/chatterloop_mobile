@@ -352,8 +352,10 @@ class HomeViewState extends State<HomeView> {
                                                         false,
                                                         UserAccount(
                                                             "",
-                                                            UserFullname(
-                                                                "", "", ""),
+                                                            "",
+                                                            "",
+                                                            "",
+                                                            "",
                                                             "",
                                                             false,
                                                             false,

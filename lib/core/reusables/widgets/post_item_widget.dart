@@ -84,7 +84,7 @@ class PostItemWidgetState extends State<PostItemWidget> {
                             crossAxisAlignment: WrapCrossAlignment.start,
                             children: [
                               Text(
-                                  "${_post.postOwner.fullName.firstName}${_post.postOwner.fullName.middleName == "N/A" ? "" : " ${_post.postOwner.fullName.middleName}"} ${_post.postOwner.fullName.lastName}",
+                                  "${_post.postOwner.firstname}${_post.postOwner.middlename == "N/A" ? "" : " ${_post.postOwner.middlename}"} ${_post.postOwner.lastname}",
                                   style: TextStyle(
                                       fontSize: 14,
                                       color: Color(0xFF565656),
@@ -99,7 +99,7 @@ class PostItemWidgetState extends State<PostItemWidget> {
                                       height: 0,
                                     ),
                               ..._post.taggedUsers.map((tagged) => Text(
-                                  " ${tagged.fullName.firstName}${tagged.fullName.middleName == "N/A" ? "" : " ${tagged.fullName.middleName}"} ${tagged.fullName.lastName}",
+                                  " ${tagged.firstname}${tagged.middlename == "N/A" ? "" : " ${tagged.middlename}"} ${tagged.lastname}",
                                   style: TextStyle(
                                       fontSize: 14,
                                       color: Color(0xFF565656),

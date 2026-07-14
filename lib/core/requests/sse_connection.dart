@@ -27,7 +27,10 @@ class SseConnection {
     SSEClient.subscribeToSSE(
         method: SSERequestType.GET,
         url: url,
-        header: {"Accept": "text/event-stream"}).listen((event) {
+        header: {
+          "Accept": "text/event-stream",
+          "origin": "https://chatterloop.app",
+        }).listen((event) {
       eventBus.fire(event);
       SseEvents().listen(event, null, true);
       // ContentValidator().printer({"event": event.event, "data": event.data});

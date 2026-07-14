@@ -41,11 +41,11 @@ class ConversationInfoModel {
 }
 
 class UserIDObject {
-  String userID;
+  String username;
 
-  UserIDObject(this.userID);
+  UserIDObject(this.username);
 
   factory UserIDObject.fromJson(Map<String, dynamic> json) {
-    return UserIDObject(json["userID"]);
+    return UserIDObject(json["username"]);
   }
 }

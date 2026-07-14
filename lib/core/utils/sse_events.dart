@@ -115,7 +115,7 @@ class SseEvents {
         Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
 
         if (mainListener) {
-          if (parsedresponse["message"] != userAuth.user.userID) {
+          if (parsedresponse["message"] != userAuth.user.username) {
             // play message ringtone
             if (parsedresponse["onseen"]) {
               // play seen ringtone

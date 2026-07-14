@@ -272,7 +272,7 @@ class MessagesStateView extends State<MessagesView> {
                                   // adjust loop by index minus 1 one rendering the list
                                   return MessageItemView(
                                       message: messagesList[index - 1],
-                                      userID: state.userAuth.user.userID);
+                                      userID: state.userAuth.user.username);
                                 }))
                       ]),
                 ],

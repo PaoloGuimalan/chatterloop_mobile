@@ -46,14 +46,14 @@ class LoginScreenState extends State<LoginScreen> {
           UserAuth(
               true,
               UserAccount(
-                  userResponse?["userID"],
-                  UserFullname(
-                      userResponse?["fullname"]["firstName"],
-                      userResponse?["fullname"]["middleName"],
-                      userResponse?["fullname"]["lastName"]),
+                  userResponse?["id"],
+                  userResponse?["username"],
+                  userResponse?["first_name"],
+                  userResponse?["middle_name"],
+                  userResponse?["last_name"],
                   userResponse?["email"],
-                  userResponse?["isActivated"],
-                  userResponse?["isVerified"],
+                  userResponse?["is_active"],
+                  userResponse?["is_verified"],
                   null,
                   null,
                   null,

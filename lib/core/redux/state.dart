@@ -18,8 +18,8 @@ class AppState {
   AppState(
       {this.userAuth = const UserAuth(
           null,
-          UserAccount("", UserFullname("", "", ""), "", false, false, null,
-              null, null, null)),
+          UserAccount(
+              "", "", "", "", "", "", false, false, null, null, null, null)),
       this.posts = const [],
       this.messages = const [],
       this.contacts = const [],

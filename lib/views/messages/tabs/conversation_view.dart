@@ -361,7 +361,7 @@ class ConversationStateView extends State<ConversationView> {
                             conversationMetaData.conversationID,
                             range,
                             conversationInfo!.users
-                                .map((user) => user.userID.toString())
+                                .map((user) => user.username.toString())
                                 .toList()),
                         newRange);
                   }
@@ -386,7 +386,7 @@ class ConversationStateView extends State<ConversationView> {
                       conversationMetaData.conversationID,
                       range,
                       conversationInfo!.users
-                          .map((user) => user.userID.toString())
+                          .map((user) => user.username.toString())
                           .toList()),
                   range);
             });
@@ -653,7 +653,7 @@ class ConversationStateView extends State<ConversationView> {
                                                       ? "start"
                                                       : "end",
                                               currentUserID:
-                                                  state.userAuth.user.userID,
+                                                  state.userAuth.user.username,
                                               onPressed: (bool isReply,
                                                   String replyingTo) {
                                                 if (mounted) {
@@ -717,7 +717,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                         : "Seen by everyone",
                                                                     textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender ==
                                                                             state
-                                                                                .userAuth.user.userID
+                                                                                .userAuth.user.username
                                                                         ? TextAlign
                                                                             .end
                                                                         : TextAlign
@@ -752,9 +752,9 @@ class ConversationStateView extends State<ConversationView> {
                                                                           .infinity,
                                                                       child:
                                                                           Text(
-                                                                        "Seen by ${(combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners.join(", ").replaceAll(state.userAuth.user.userID, "you")}",
+                                                                        "Seen by ${(combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners.join(", ").replaceAll(state.userAuth.user.username, "you")}",
                                                                         textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender ==
-                                                                                state.userAuth.user.userID
+                                                                                state.userAuth.user.username
                                                                             ? TextAlign.end
                                                                             : TextAlign.start,
                                                                         style:
@@ -866,7 +866,7 @@ class ConversationStateView extends State<ConversationView> {
                                             previousContentUserID:
                                                 previousContentUserID,
                                             currentUserID:
-                                                state.userAuth.user.userID,
+                                                state.userAuth.user.username,
                                             onPressed: (bool isReply,
                                                 String replyingTo) {
                                               if (mounted) {
@@ -917,7 +917,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                       state
                                                                           .userAuth
                                                                           .user
-                                                                          .userID
+                                                                          .username
                                                                   ? TextAlign
                                                                       .end
                                                                   : TextAlign
@@ -951,13 +951,13 @@ class ConversationStateView extends State<ConversationView> {
                                                                 width: double
                                                                     .infinity,
                                                                 child: Text(
-                                                                  "Seen by ${contentItem.seeners.join(", ").replaceAll(state.userAuth.user.userID, "you")}",
+                                                                  "Seen by ${contentItem.seeners.join(", ").replaceAll(state.userAuth.user.username, "you")}",
                                                                   textAlign: contentItem
                                                                               .sender ==
                                                                           state
                                                                               .userAuth
                                                                               .user
-                                                                              .userID
+                                                                              .username
                                                                       ? TextAlign
                                                                           .end
                                                                       : TextAlign
@@ -1070,7 +1070,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                 .replyingTo)
                                                         .toList()[0]
                                                         .sender ==
-                                                    state.userAuth.user.userID
+                                                    state.userAuth.user.username
                                                 ? Color(0xff1c7def)
                                                 : Color(0xffdedede)
                                             : Colors.transparent,
@@ -1098,7 +1098,7 @@ class ConversationStateView extends State<ConversationView> {
                                                             MainAxisSize.max,
                                                         children: [
                                                           Text(
-                                                            "Replying to ${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList().isNotEmpty ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender == state.userAuth.user.userID ? "your message" : "@${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender}" : ""}",
+                                                            "Replying to ${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList().isNotEmpty ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender == state.userAuth.user.username ? "your message" : "@${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender}" : ""}",
                                                             style: TextStyle(
                                                                 fontSize: 12,
                                                                 color: conversationContentList
@@ -1110,7 +1110,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                         .isNotEmpty
                                                                     ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
                                                                             state
-                                                                                .userAuth.user.userID
+                                                                                .userAuth.user.username
                                                                         ? Colors
                                                                             .white
                                                                         : Colors
@@ -1178,7 +1178,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                     state
                                                                         .userAuth
                                                                         .user
-                                                                        .userID
+                                                                        .username
                                                                 ? Colors.white
                                                                 : Colors.black
                                                             : Colors
@@ -1314,7 +1314,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                 .replyingTo)
                                                         .toList()[0]
                                                         .sender ==
-                                                    state.userAuth.user.userID
+                                                    state.userAuth.user.username
                                                 ? Color(0xff1c7def)
                                                 : Color(0xffdedede)
                                             : Colors.transparent,
@@ -1356,7 +1356,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                         .isNotEmpty
                                                                     ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
                                                                             state
-                                                                                .userAuth.user.userID
+                                                                                .userAuth.user.username
                                                                         ? Colors
                                                                             .white
                                                                         : Colors
@@ -1564,7 +1564,7 @@ class ConversationStateView extends State<ConversationView> {
                                                           .conversationID,
                                                       conversationInfo!.users
                                                           .map((user) => user
-                                                              .userID
+                                                              .username
                                                               .toString())
                                                           .toList());
                                                 }
@@ -1605,12 +1605,12 @@ class ConversationStateView extends State<ConversationView> {
                                         onPressed: () {
                                           if (conversationInfo != null) {
                                             sendMessageProcess(
-                                                state.userAuth.user.userID,
+                                                state.userAuth.user.username,
                                                 conversationMetaData
                                                     .conversationID,
                                                 conversationInfo!.users
-                                                    .map((user) =>
-                                                        user.userID.toString())
+                                                    .map((user) => user.username
+                                                        .toString())
                                                     .toList(),
                                                 "text",
                                                 conversationInfo?.type
