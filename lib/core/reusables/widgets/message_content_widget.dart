@@ -43,6 +43,22 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     _onPressed = widget.onPressed;
   }
 
+  /// Shared reply-assist checkbox handler - was copy-pasted near-identically
+  /// across every content-type branch (text/image/video/audio/file/etc.)
+  /// in this widget's build method.
+  void _handleReplyAssistToggle(bool? value, bool isParentSenderCurrentUser) {
+    if (value != null) {
+      final replyContext = ReplyAssistContext(
+          isParentSenderCurrentUser, _messageContent.messageID);
+      StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+          value ? setReplyAssistContextT : removeReplyAssistContextT,
+          replyContext));
+    }
+    setState(() {
+      isChecked = value!;
+    });
+  }
+
   Color getColor(Set<WidgetState> states) {
     const Set<WidgetState> interactiveStates = <WidgetState>{
       WidgetState.pressed,
@@ -156,28 +172,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,
@@ -251,28 +247,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,
@@ -416,28 +392,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,
@@ -515,28 +471,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,
@@ -680,28 +616,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,
@@ -766,28 +682,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,
@@ -931,28 +827,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,
@@ -1017,28 +893,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,
@@ -1214,28 +1070,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,
@@ -1332,28 +1168,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       value: isChecked,
                       visualDensity:
                           const VisualDensity(horizontal: -2.0, vertical: -2.0),
-                      onChanged: (bool? value) {
-                        if (value != null) {
-                          if (value) {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    setReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          } else {
-                            StoreProvider.of<AppState>(context).dispatch(
-                                DispatchModel(
-                                    removeReplyAssistContextT,
-                                    ReplyAssistContext(
-                                        isParentSenderCurrentUser,
-                                        _messageContent.messageID)));
-                          }
-                        }
-                        setState(() {
-                          isChecked = value!;
-                        });
-                      },
+                      onChanged: (bool? value) => _handleReplyAssistToggle(
+                          value, isParentSenderCurrentUser),
                     )
               : SizedBox(
                   width: 0,

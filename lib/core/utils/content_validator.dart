@@ -25,7 +25,10 @@ class ContentValidator {
         profile == "" ||
         profile == "N/A" ||
         profile == "none") {
-      return conversationTypeImage[conversationType] as String;
+      // Falls back to the single-chat placeholder for any conversation type
+      // not yet in the map (e.g. a future realm/conference type) instead of
+      // throwing on the null cast.
+      return conversationTypeImage[conversationType] ?? singleChatPreviewImage;
     } else {
       return profile;
     }
