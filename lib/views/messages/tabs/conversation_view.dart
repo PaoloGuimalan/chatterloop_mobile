@@ -545,23 +545,6 @@ class ConversationStateView extends State<ConversationView> {
     return StoreConnector<AppState, AppState>(
       builder: (context, state) {
         final p = cl(context);
-        final matchingMessages = state.messages
-            .where((item) =>
-                item.conversationID == conversationMetaData.conversationID)
-            .toList();
-        // Guarded on the *filtered* list being empty, not state.messages
-        // overall - this conversation legitimately has no entry yet in
-        // the conversations list right after being opened fresh (e.g.
-        // from a contact's Message button before any message exists),
-        // and .reduce()/[0] on an empty filtered list throws.
-        int unreadTotal = matchingMessages.isEmpty
-            ? 0
-            : matchingMessages
-                .map((message) => message.unread)
-                .reduce((a, b) => a + b);
-        String newMessageIDOnTop =
-            matchingMessages.isEmpty ? "" : matchingMessages[0].messageID;
-
         return Scaffold(
           backgroundColor: p.bg,
           resizeToAvoidBottomInset: true,
@@ -802,10 +785,28 @@ class ConversationStateView extends State<ConversationView> {
                                           ),
                                         )
                                       : ListView.builder(
-                                          key: ValueKey(
-                                              "${pendingMessagesList.length}_${state.isTypingList.length}_${unreadTotal}_${newMessageIDOnTop}_${conversationContentList.isEmpty ? "" : conversationContentList[conversationContentList.length - 1].messageID}"),
-                                          // key: ValueKey(
-                                          //     "${range}_${conversationMetaData.conversationID}_${pendingMessagesList.length}_${conversationContentList.length}_${state.isTypingList.length}"),
+                                          // No ValueKey here on purpose - it
+                                          // used to be recomputed from
+                                          // unreadTotal/newMessageIDOnTop,
+                                          // which change from unrelated
+                                          // Redux activity (typing, other
+                                          // conversations) independent of
+                                          // this list's own content. A
+                                          // changing key forces Flutter to
+                                          // discard and rebuild the whole
+                                          // Viewport/Scrollable as a brand
+                                          // new widget; if that happened
+                                          // mid-drag it desynced the active
+                                          // scroll gesture from the new
+                                          // Scrollable, throwing a
+                                          // RangeError - reproduced by a
+                                          // long scroll in a group
+                                          // conversation. itemBuilder
+                                          // already re-runs with fresh
+                                          // state/conversationInfo on every
+                                          // rebuild regardless of key, so
+                                          // nothing here depended on it to
+                                          // stay current.
                                           reverse: true,
                                           controller: _scrollController,
                                           padding: EdgeInsets.symmetric(
