@@ -59,15 +59,21 @@ class ConversationInfoModel {
   }
 }
 
-/// Conversation membership is keyed by entity/account ID in Postgres/Mongo,
-/// not username - this field must stay ID-based to match sender/receivers
-/// on messages and participant_ids on the conversation itself.
+/// Conversation membership is keyed by entity id in Postgres/Mongo, not
+/// username - matching messages.sender/receivers/seeners and
+/// Conversations.participant_ids. Despite the name, `userID` here is
+/// actually the username (server's transformers.js's
+/// formatConnectionData/formatToDesiredStructure both populate
+/// `users.push({userID: row.username, _id: row.involved_entity_id})`) -
+/// entityID is the real id and is what receivers/seen-tracking must use.
 class UserIDObject {
   String userID;
+  String entityID;
 
-  UserIDObject(this.userID);
+  UserIDObject(this.userID, this.entityID);
 
   factory UserIDObject.fromJson(Map<String, dynamic> json) {
-    return UserIDObject(json["userID"]);
+    return UserIDObject((json["userID"] ?? "").toString(),
+        (json["entityID"] ?? json["_id"] ?? "").toString());
   }
 }

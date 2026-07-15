@@ -15,12 +15,22 @@ class MessageContentWidget extends StatefulWidget {
   final String previousContentUserID;
   final String currentUserID;
   final void Function(bool, String) onPressed;
+
+  /// Resolves an entity id (message.sender) to a display name - "You" for
+  /// the current user, otherwise looked up from conversationInfo.usersWithInfo,
+  /// falling back to the raw id if that hasn't loaded yet/has no match.
+  /// Read directly from widget.* at build time rather than cached in
+  /// initState, since conversationInfo only arrives after messages already
+  /// have (see conversation_view.dart's _startLoading sequencing).
+  final String Function(String entityId) resolveSenderName;
+
   const MessageContentWidget(
       {super.key,
       required this.messageContent,
       required this.previousContentUserID,
       required this.currentUserID,
-      required this.onPressed});
+      required this.onPressed,
+      required this.resolveSenderName});
 
   @override
   MessageContentWidgetState createState() => MessageContentWidgetState();
@@ -37,6 +47,17 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   @override
   void initState() {
     super.initState();
+    _messageContent = widget.messageContent;
+    _previousContentUserID = widget.previousContentUserID;
+    _currentUserID = widget.currentUserID;
+    _onPressed = widget.onPressed;
+  }
+
+  @override
+  void didUpdateWidget(MessageContentWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The cached fields above go stale on rebuild otherwise - ListView.builder
+    // can reuse this State for a different index's message content.
     _messageContent = widget.messageContent;
     _previousContentUserID = widget.previousContentUserID;
     _currentUserID = widget.currentUserID;
@@ -1302,7 +1323,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                   padding: EdgeInsets.only(
                                       left: 7, right: 7, bottom: 2),
                                   child: Text(
-                                    _messageContent.sender,
+                                    widget.resolveSenderName(
+                                        _messageContent.sender),
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: Color(0xFF565656),
@@ -1339,7 +1361,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             padding:
                                 EdgeInsets.only(left: 7, right: 7, bottom: 7),
                             child: Text(
-                              "replied to @${_messageContent.replyedmessage?[0].sender}",
+                              _messageContent.replyedmessage?[0].sender == null
+                                  ? "replied to a message"
+                                  : "replied to ${widget.resolveSenderName(_messageContent.replyedmessage![0].sender)}",
                               style: TextStyle(
                                   fontSize: 12,
                                   color: Color(0xFF565656),

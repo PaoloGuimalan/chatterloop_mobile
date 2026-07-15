@@ -55,6 +55,13 @@ class UserAccount {
   static const empty =
       UserAccount("", "", "", "", "", "", false, false, null, null, null, null);
 
+  /// The entity id messages.sender/receivers/seeners are actually keyed by
+  /// - distinct from `id`, which is the Django Account row's id. Both
+  /// backends' jwtchecker middleware resolves entity_id from the acting
+  /// entity (decode.entity / active_entity), never from the account id, so
+  /// comparing message ownership against `id` never matches.
+  String get entityId => activeEntity?.id ?? personalEntityId ?? id;
+
   @override
   String toString() {
     return 'UserAccount(id: $id, username: $username, firstname: $firstname, middlename: $middlename, lastname: $lastname, email: $email, isActivated: $isActivated, isVerified: $isVerified)';

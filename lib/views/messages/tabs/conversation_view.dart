@@ -75,7 +75,7 @@ class ConversationStateView extends State<ConversationView> {
     // appStore (a plain global, not StoreProvider.of(context)) - the
     // latter calls dependOnInheritedWidgetOfExactType, which asserts if
     // used before initState() completes.
-    _myAccountId = appStore.state.userAuth.user.id;
+    _myAccountId = appStore.state.userAuth.user.entityId;
     combinedPendingAndMessagesList = [
       ...conversationContentList,
       ...pendingMessagesList
@@ -141,7 +141,7 @@ class ConversationStateView extends State<ConversationView> {
                     conversationMetaData.conversationID,
                     range,
                     conversationInfo!.users
-                        .map((user) => user.userID.toString())
+                        .map((user) => user.entityID)
                         .toList(),
                     _unseenMessageIDs(_myAccountId)),
                 newRange);
@@ -209,6 +209,22 @@ class ConversationStateView extends State<ConversationView> {
       }
     }
   }
+
+  /// Resolves message.sender (an entity id) to something worth showing a
+  /// human - "You" for the current account, else the matching participant's
+  /// name from conversationInfo.usersWithInfo, falling back to the raw id
+  /// only if neither is available yet (e.g. conversationInfo hasn't loaded).
+  String _resolveSenderName(String entityId) {
+    if (entityId == _myAccountId) return "You";
+    final matches = conversationInfo?.usersWithInfo
+        .where((u) => u.entityID == entityId)
+        .toList();
+    if (matches != null && matches.isNotEmpty) return matches.first.displayName;
+    return entityId;
+  }
+
+  String _seenersLabel(List<String> seeners) =>
+      seeners.map(_resolveSenderName).join(", ");
 
   List<String> _unseenMessageIDs(String myAccountId) {
     return conversationContentList
@@ -303,7 +319,7 @@ class ConversationStateView extends State<ConversationView> {
                 conversationMetaData.conversationID,
                 range,
                 conversationInfoFinal.users
-                    .map((user) => user.userID.toString())
+                    .map((user) => user.entityID)
                     .toList(),
                 _unseenMessageIDs(_myAccountId)),
             range);
@@ -806,7 +822,9 @@ class ConversationStateView extends State<ConversationView> {
                                                             currentUserID: state
                                                                 .userAuth
                                                                 .user
-                                                                .id,
+                                                                .entityId,
+                                                            resolveSenderName:
+                                                                _resolveSenderName,
                                                             onPressed: (bool
                                                                     isReply,
                                                                 String
@@ -862,7 +880,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                                 width: double.infinity,
                                                                                 child: Text(
                                                                                   conversationMetaData.conversationType == "single" ? "Seen" : "Seen by everyone",
-                                                                                  textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.id ? TextAlign.end : TextAlign.start,
+                                                                                  textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
                                                                                   style: TextStyle(
                                                                                     fontSize: 12,
                                                                                     color: Color(0xFF565656),
@@ -880,8 +898,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                                   child: SizedBox(
                                                                                     width: double.infinity,
                                                                                     child: Text(
-                                                                                      "Seen by ${(combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners.join(", ").replaceAll(state.userAuth.user.id, "you")}",
-                                                                                      textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.id ? TextAlign.end : TextAlign.start,
+                                                                                      "Seen by ${_seenersLabel((combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners)}",
+                                                                                      textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
                                                                                       style: TextStyle(
                                                                                         fontSize: 12,
                                                                                         color: Color(0xFF565656),
@@ -991,8 +1009,12 @@ class ConversationStateView extends State<ConversationView> {
                                                               previousContentUserID:
                                                                   previousContentUserID,
                                                               currentUserID:
-                                                                  state.userAuth
-                                                                      .user.id,
+                                                                  state
+                                                                      .userAuth
+                                                                      .user
+                                                                      .entityId,
+                                                              resolveSenderName:
+                                                                  _resolveSenderName,
                                                               onPressed: (bool
                                                                       isReply,
                                                                   String
@@ -1050,7 +1072,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                             conversationMetaData.conversationType == "single"
                                                                                 ? "Seen"
                                                                                 : "Seen by everyone",
-                                                                            textAlign: contentItem.sender == state.userAuth.user.id
+                                                                            textAlign: contentItem.sender == state.userAuth.user.entityId
                                                                                 ? TextAlign.end
                                                                                 : TextAlign.start,
                                                                             style:
@@ -1079,8 +1101,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                                 SizedBox(
                                                                               width: double.infinity,
                                                                               child: Text(
-                                                                                "Seen by ${contentItem.seeners.join(", ").replaceAll(state.userAuth.user.id, "you")}",
-                                                                                textAlign: contentItem.sender == state.userAuth.user.id ? TextAlign.end : TextAlign.start,
+                                                                                "Seen by ${_seenersLabel(contentItem.seeners)}",
+                                                                                textAlign: contentItem.sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
                                                                                 style: TextStyle(
                                                                                   fontSize: 12,
                                                                                   color: Color(0xFF565656),
@@ -1195,7 +1217,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                 .replyingTo)
                                                         .toList()[0]
                                                         .sender ==
-                                                    state.userAuth.user.id
+                                                    state.userAuth.user.entityId
                                                 ? Color(0xff1c7def)
                                                 : Color(0xffdedede)
                                             : Colors.transparent,
@@ -1223,7 +1245,7 @@ class ConversationStateView extends State<ConversationView> {
                                                             MainAxisSize.max,
                                                         children: [
                                                           Text(
-                                                            "Replying to ${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList().isNotEmpty ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender == state.userAuth.user.id ? "your message" : "@${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender}" : ""}",
+                                                            "Replying to ${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList().isNotEmpty ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender == state.userAuth.user.entityId ? "your message" : "@${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender}" : ""}",
                                                             style: TextStyle(
                                                                 fontSize: 12,
                                                                 color: conversationContentList
@@ -1235,7 +1257,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                         .isNotEmpty
                                                                     ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
                                                                             state
-                                                                                .userAuth.user.id
+                                                                                .userAuth.user.entityId
                                                                         ? Colors
                                                                             .white
                                                                         : Colors
@@ -1439,7 +1461,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                 .replyingTo)
                                                         .toList()[0]
                                                         .sender ==
-                                                    state.userAuth.user.id
+                                                    state.userAuth.user.entityId
                                                 ? Color(0xff1c7def)
                                                 : Color(0xffdedede)
                                             : Colors.transparent,
@@ -1481,7 +1503,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                         .isNotEmpty
                                                                     ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
                                                                             state
-                                                                                .userAuth.user.id
+                                                                                .userAuth.user.entityId
                                                                         ? Colors
                                                                             .white
                                                                         : Colors
@@ -1689,7 +1711,7 @@ class ConversationStateView extends State<ConversationView> {
                                                           .conversationID,
                                                       conversationInfo!.users
                                                           .map((user) => user
-                                                              .userID
+                                                              .entityID
                                                               .toString())
                                                           .toList());
                                                 }
@@ -1732,12 +1754,12 @@ class ConversationStateView extends State<ConversationView> {
                                         onPressed: () {
                                           if (conversationInfo != null) {
                                             sendMessageProcess(
-                                                state.userAuth.user.id,
+                                                state.userAuth.user.entityId,
                                                 conversationMetaData
                                                     .conversationID,
                                                 conversationInfo!.users
-                                                    .map((user) =>
-                                                        user.userID.toString())
+                                                    .map(
+                                                        (user) => user.entityID)
                                                     .toList(),
                                                 "text",
                                                 conversationInfo?.type

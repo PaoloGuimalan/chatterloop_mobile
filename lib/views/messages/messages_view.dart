@@ -73,7 +73,7 @@ class MessagesStateView extends State<MessagesView> {
                       itemBuilder: (context, index) {
                         return MessageItemView(
                             message: messagesList[index],
-                            userID: state.userAuth.user.id);
+                            userID: state.userAuth.user.entityId);
                       },
                     ),
             ),

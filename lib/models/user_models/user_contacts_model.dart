@@ -74,19 +74,33 @@ class UserDetails {
 }
 
 class UsersContactPreview {
+  /// Despite the name, this is the username, not an id - the server
+  /// (transformers.js's formatConnectionData/formatToDesiredStructure)
+  /// populates it from row.username. entityID below is the real entity
+  /// id, which is what messages.sender/receivers/seeners are actually
+  /// keyed by - use entityID to match a message to this person, not this.
   final String userID;
+  final String entityID;
   final UserFullname fullname;
   final String profile;
   final String? coverphoto;
   final bool? isActivated;
   final bool? isVerified;
 
-  const UsersContactPreview(this.userID, this.fullname, this.profile,
-      this.coverphoto, this.isActivated, this.isVerified);
+  const UsersContactPreview(this.userID, this.entityID, this.fullname,
+      this.profile, this.coverphoto, this.isActivated, this.isVerified);
+
+  String get displayName {
+    final full = [fullname.firstName, fullname.lastName]
+        .where((p) => p.trim().isNotEmpty)
+        .join(" ");
+    return full.isNotEmpty ? full : userID;
+  }
 
   factory UsersContactPreview.fromJson(Map<String, dynamic> json) {
     return UsersContactPreview(
         (json["userID"] ?? "").toString(),
+        (json["entityID"] ?? json["_id"] ?? "").toString(),
         json["fullname"] is Map
             ? UserFullname.fromJson(Map<String, dynamic>.from(json["fullname"]))
             : const UserFullname("", "", ""),
