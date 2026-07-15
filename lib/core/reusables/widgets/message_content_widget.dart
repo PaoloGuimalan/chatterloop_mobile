@@ -24,13 +24,21 @@ class MessageContentWidget extends StatefulWidget {
   /// have (see conversation_view.dart's _startLoading sequencing).
   final String Function(String entityId) resolveSenderName;
 
+  /// The conversation's actual type, from conversationMetaData - not
+  /// messageContent.conversationType, which is set per-message by whichever
+  /// client/code path created it and isn't reliably "single" even for a
+  /// single/DM conversation (was letting the sender-name header row below
+  /// render for DMs when it should only show in group/channel threads).
+  final bool isSingleConversation;
+
   const MessageContentWidget(
       {super.key,
       required this.messageContent,
       required this.previousContentUserID,
       required this.currentUserID,
       required this.onPressed,
-      required this.resolveSenderName});
+      required this.resolveSenderName,
+      required this.isSingleConversation});
 
   @override
   MessageContentWidgetState createState() => MessageContentWidgetState();
@@ -1310,7 +1318,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       SizedBox(
                         height: 5,
                       ),
-                      _messageContent.conversationType != "single" &&
+                      !widget.isSingleConversation &&
                               _messageContent.messageType != "notif" &&
                               _currentUserID != _messageContent.sender
                           ? Row(

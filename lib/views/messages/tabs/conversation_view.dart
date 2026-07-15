@@ -173,39 +173,35 @@ class ConversationStateView extends State<ConversationView> {
 
       if (currentScroll >= minScroll - 20) {
         if (!(range >= totalMessages)) {
-          // setState(() {
-          //   int newPostLength = postLength + 10;
-          //   postLength = newPostLength;
-
-          //   getPostsProcess(context, newPostLength);
-          // });
           if (mounted) {
+            // Was gated on conversationInfo != null - conversationInfo is
+            // participant info, unrelated to whether more messages can be
+            // fetched, and stays null for longer than expected on some
+            // conversations (see getConversationInfoRequest's fallback
+            // handling), which silently blocked load-more entirely.
+            // conversationMetaData is resolved once at mount and always
+            // available, matching every other initConversationProcess call
+            // site in this file.
             if (!isRefreshed) {
               int oldRangeAdd = range + 20;
 
-              if (conversationInfo != null) {
-                initConversationProcess(
-                    conversationInfo!.contactID, oldRangeAdd);
-                setState(() {
-                  range = oldRangeAdd;
-                  isRefreshed = true;
-                });
+              initConversationProcess(
+                  conversationMetaData.conversationID, oldRangeAdd);
+              setState(() {
+                range = oldRangeAdd;
+                isRefreshed = true;
+              });
 
-                ContentValidator().printer('$currentScroll | $minScroll');
-                if (kDebugMode) {
-                  print('Triggered 20 pixels before top!');
-                }
-
-                Future.delayed(Duration(milliseconds: 2500), () {
+              Future.delayed(Duration(milliseconds: 2500), () {
+                if (mounted) {
                   setState(() {
                     isRefreshed = false;
                   });
-                });
-              }
+                }
+              });
             }
           }
         }
-        // You can load more items here or perform any action.
       }
     }
   }
@@ -216,6 +212,32 @@ class ConversationStateView extends State<ConversationView> {
   /// only if neither is available yet (e.g. conversationInfo hasn't loaded).
   String _resolveSenderName(String entityId) {
     if (entityId == _myAccountId) return "You";
+
+    // Single conversations only ever have two participants - if it isn't
+    // "me", it's the other person already named in conversationMetaData's
+    // preview (resolved at navigation time from contacts/search/the
+    // conversations list). Reliable regardless of whether
+    // conversationSetup/conversationInfo have finished loading, or
+    // whether their id fields actually match this message's sender.
+    if (conversationMetaData.conversationType == "single" &&
+        conversationMetaData.conversationPreview.previewName.isNotEmpty) {
+      return conversationMetaData.conversationPreview.previewName;
+    }
+
+    // GET /m/conversation/:id (conversationSetup) is the endpoint
+    // confirmed working for this exact screen (see _startLoading) - try it
+    // before the older conversationInfo.usersWithInfo, which comes back
+    // empty/mismatched more often (e.g. the connection-less-conversation
+    // edge case documented on ConversationInfoModel.fromJson).
+    final setupDetails = conversationSetup?['details'];
+    if (setupDetails is Map &&
+        setupDetails['entity_id']?.toString() == entityId) {
+      final name = setupDetails['display_name']?.toString();
+      if (name != null && name.isNotEmpty && name != "Unknown User") {
+        return name;
+      }
+    }
+
     final matches = conversationInfo?.usersWithInfo
         .where((u) => u.entityID == entityId)
         .toList();
@@ -825,6 +847,10 @@ class ConversationStateView extends State<ConversationView> {
                                                                 .entityId,
                                                             resolveSenderName:
                                                                 _resolveSenderName,
+                                                            isSingleConversation:
+                                                                conversationMetaData
+                                                                        .conversationType ==
+                                                                    "single",
                                                             onPressed: (bool
                                                                     isReply,
                                                                 String
@@ -1015,6 +1041,10 @@ class ConversationStateView extends State<ConversationView> {
                                                                       .entityId,
                                                               resolveSenderName:
                                                                   _resolveSenderName,
+                                                              isSingleConversation:
+                                                                  conversationMetaData
+                                                                          .conversationType ==
+                                                                      "single",
                                                               onPressed: (bool
                                                                       isReply,
                                                                   String
