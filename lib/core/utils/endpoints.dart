@@ -15,8 +15,10 @@ class Endpoints {
   String search = '/api/user/search/'; // :query
   String publicProfile = '/api/user/auth/'; // :username
   String contacts = '/api/user/contacts';
+  String poke = '/api/user/poke';
   String getPosts = '/posts/feed';
   String getContacts = '/u/getContacts';
+  String activeContacts = '/u/activecontacts';
   String getNotifications = '/u/getNotifications';
   String readNotifications = '/u/readnotifications';
 
@@ -44,4 +46,9 @@ class Endpoints {
   String postIsTyping = '/m/istypingbroadcast';
   String sendNewMessage = '/u/sendMessage';
   String replyAssist = '/prompt/reply-assist';
+
+  /// Only mounted under the Messages router (server/index.js: app.use("/m",
+  /// Messages)) - there is no /u/addreaction, unlike seenNewMessages/
+  /// sendNewMessage above which happen to live under both routers.
+  String addReaction = '/m/addreaction';
 }

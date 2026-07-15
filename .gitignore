@@ -43,3 +43,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets - never commit real values. env.example.json documents the
+# expected shape; copy it to env.json (gitignored) and fill in real values,
+# then run/build with --dart-define-from-file=env.json.
+env.json
+*.env
+.env
+.env.*

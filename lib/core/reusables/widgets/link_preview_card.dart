@@ -8,6 +8,7 @@
 // just an <a> there.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
 import 'package:flutter/material.dart';
@@ -130,11 +131,10 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                       fit: StackFit.expand,
                       children: [
                         if (imageSrc != null)
-                          Image.network(
-                            imageSrc,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                Container(color: Colors.black),
+                          CLNetworkImage(
+                            src: imageSrc,
+                            placeholderHeight: mediaHeight ?? 160,
+                            errorBuilder: (_) => Container(color: Colors.black),
                           )
                         else
                           Container(color: Colors.black),
@@ -156,12 +156,11 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
               if (imageSrc != null) {
                 return InkWell(
                   onTap: _openExternally,
-                  child: Image.network(
-                    imageSrc,
+                  child: CLNetworkImage(
+                    src: imageSrc,
                     width: double.infinity,
                     height: 160,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    errorBuilder: (_) => const SizedBox.shrink(),
                   ),
                 );
               }

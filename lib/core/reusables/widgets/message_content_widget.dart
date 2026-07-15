@@ -1,15 +1,82 @@
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
+import 'package:chatterloop_app/core/utils/linkify_text.dart';
+import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
+import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_reactions/flutter_chat_reactions.dart';
+import 'package:flutter_chat_reactions/model/menu_item.dart';
+import 'package:flutter_chat_reactions/utilities/default_data.dart';
 import 'package:flutter_chat_reactions/utilities/hero_dialog_route.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+
+/// Mirrors webapp's EmojiPickerHandler.tsx QUICK_REACTIONS exactly. The
+/// "more emojis" affordance is NOT in this list - the package renders every
+/// entry here as plain emoji-sized Text, so a "➕" character here always
+/// reads as a mismatched, low-res emoji rather than an app icon. It lives
+/// instead as a real Material icon in the context-menu row below (see
+/// _reactionMenuItems), which the package renders as an actual Icon widget.
+const List<String> _quickReactions = ['👍', '❤️', '😆', '😮', '😢', '😡'];
+
+/// Default Reply/Copy/Delete plus a "React" entry that opens the full emoji
+/// picker - real Icon(Icons.add_reaction_outlined), not an emoji character.
+final List<MenuItem> _reactionMenuItems = [
+  ...DefaultData.menuItems,
+  const MenuItem(label: 'React', icon: Icons.add_reaction_outlined),
+];
+
+/// Mirrors webapp's cl-message-reaction-pill exactly: a 20px-tall fully
+/// rounded pill, the emoji row clipped to 100px wide, and a "+N" overflow
+/// badge past 4 reactions - webapp doesn't slice the list either, it just
+/// clips it visually and shows the count alongside.
+Widget buildReactionPill(List<ReactionItem> reactions) {
+  return Container(
+    height: 20,
+    constraints: const BoxConstraints(maxWidth: 100),
+    padding: const EdgeInsets.symmetric(horizontal: 6),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      border: Border.all(color: const Color(0xffd2d2d2), width: 1),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: ClipRect(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: reactions
+                  .map((reaction) => Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 1),
+                        child: Text(reaction.emoji.toString(),
+                            style: const TextStyle(fontSize: 12)),
+                      ))
+                  .toList(),
+            ),
+          ),
+        ),
+        if (reactions.length > 4)
+          Padding(
+            padding: const EdgeInsets.only(left: 3),
+            child: Text(
+              "+${reactions.length - 4}",
+              style: const TextStyle(fontSize: 10, color: Color(0xFF565656)),
+            ),
+          ),
+      ],
+    ),
+  );
+}
 
 class MessageContentWidget extends StatefulWidget {
   final MessageContent messageContent;
@@ -32,6 +99,10 @@ class MessageContentWidget extends StatefulWidget {
   /// render for DMs when it should only show in group/channel threads).
   final bool isSingleConversation;
 
+  /// Needed to submit reactions (POST /m/addreaction requires it alongside
+  /// the messageID) - not used for anything else in this widget.
+  final String conversationID;
+
   const MessageContentWidget(
       {super.key,
       required this.messageContent,
@@ -39,7 +110,8 @@ class MessageContentWidget extends StatefulWidget {
       required this.currentUserID,
       required this.onPressed,
       required this.resolveSenderName,
-      required this.isSingleConversation});
+      required this.isSingleConversation,
+      required this.conversationID});
 
   @override
   MessageContentWidgetState createState() => MessageContentWidgetState();
@@ -117,6 +189,52 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     setState(() {
       isChecked = value!;
     });
+  }
+
+  /// Matches webapp's EmojiPickerHandler.tsx applyReaction: optimistically
+  /// appends locally, then fires the request - no rollback on failure there
+  /// either, just a console.log, so this doesn't roll back locally on error.
+  void _submitReaction(String emoji) {
+    final userAuth = StoreProvider.of<AppState>(context).state.userAuth.user;
+    // userID here means the user_account row id, NOT the entity id and NOT
+    // the username, despite how easy it is to assume otherwise - confirmed
+    // against server/routes/users/index.js's reactionsWithInfo query, which
+    // does `id AS "userID"` (id is user_account's primary key), and against
+    // webapp's ContentHandler.tsx, which joins raw reactions to that lookup
+    // by `t2.userID === t1.userID`. Sending the username or entity id here
+    // silently breaks that join server-side, so webapp can never resolve
+    // the reactor's name/avatar even though the emoji itself still shows.
+    setState(() {
+      _messageContent.reactions = [
+        ...?_messageContent.reactions,
+        ReactionItem(
+            userAuth.id, "", emoji, "", false, [], "", "", userAuth.entityId),
+      ];
+    });
+    ConversationsApi().reactToMessageRequest(IReactToMessageRequest(
+        widget.conversationID,
+        _messageContent.messageID,
+        userAuth.id,
+        userAuth.entityId,
+        emoji));
+  }
+
+  /// Triggered from the context menu's "React" item (a real Icon, not an
+  /// emoji character) - matches webapp's EmojiPickerHandler switching from
+  /// its quick-reaction bar to a full emoji picker.
+  void _showFullEmojiPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SizedBox(
+        height: 380,
+        child: EmojiPicker(
+          onEmojiSelected: (category, emoji) {
+            Navigator.of(context).pop();
+            _submitReaction(emoji.emoji);
+          },
+        ),
+      ),
+    );
   }
 
   Color getColor(Set<WidgetState> states) {
@@ -253,11 +371,16 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   child: Padding(
                     padding:
                         EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
-                    child: Text(
-                      content,
-                      style: TextStyle(
-                          fontSize: 14,
-                          color: isCurrentUser ? Colors.white : Colors.black),
+                    child: Text.rich(
+                      TextSpan(
+                        children: linkifySpans(
+                          content,
+                          TextStyle(
+                              fontSize: 14,
+                              color:
+                                  isCurrentUser ? Colors.white : Colors.black),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -269,27 +392,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 if (!isReply && _messageContent.linkPreview != null)
                   LinkPreviewCard(preview: _messageContent.linkPreview),
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                    color: Color(0xffd2d2d2), width: 1),
-                                borderRadius: BorderRadius.circular(10)),
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                  top: 1, bottom: 1, left: 2, right: 2),
-                              child: Row(
-                                children: [
-                                  ..._messageContent.reactions!
-                                      .map((reaction) => Text(reaction.emoji))
-                                ],
-                              ),
-                            ),
-                          )
-                        ],
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: buildReactionPill(_messageContent.reactions!),
                       )
                     : SizedBox(
                         height: 0,
@@ -485,35 +590,16 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                 Border.all(color: Color(0xffd2d2d2), width: 1)),
                         child: Padding(
                           padding: EdgeInsets.all(0),
-                          child: Image.network(
-                            content,
-                            fit: BoxFit.cover,
+                          child: CLNetworkImage(
+                            src: content,
                           ),
                         ),
                       )),
                 ),
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                    color: Color(0xffd2d2d2), width: 1),
-                                borderRadius: BorderRadius.circular(10)),
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                  top: 1, bottom: 1, left: 2, right: 2),
-                              child: Row(
-                                children: [
-                                  ..._messageContent.reactions!
-                                      .map((reaction) => Text(reaction.emoji))
-                                ],
-                              ),
-                            ),
-                          )
-                        ],
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: buildReactionPill(_messageContent.reactions!),
                       )
                     : SizedBox(
                         height: 0,
@@ -704,27 +790,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                           .replaceAll("###", "%23%23%23")),
                 ),
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                    color: Color(0xffd2d2d2), width: 1),
-                                borderRadius: BorderRadius.circular(10)),
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                  top: 1, bottom: 1, left: 2, right: 2),
-                              child: Row(
-                                children: [
-                                  ..._messageContent.reactions!
-                                      .map((reaction) => Text(reaction.emoji))
-                                ],
-                              ),
-                            ),
-                          )
-                        ],
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: buildReactionPill(_messageContent.reactions!),
                       )
                     : SizedBox(
                         height: 0,
@@ -912,27 +980,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   isSender: isCurrentUser,
                 ),
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                    color: Color(0xffd2d2d2), width: 1),
-                                borderRadius: BorderRadius.circular(10)),
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                  top: 1, bottom: 1, left: 2, right: 2),
-                              child: Row(
-                                children: [
-                                  ..._messageContent.reactions!
-                                      .map((reaction) => Text(reaction.emoji))
-                                ],
-                              ),
-                            ),
-                          )
-                        ],
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: buildReactionPill(_messageContent.reactions!),
                       )
                     : SizedBox(
                         height: 0,
@@ -1187,27 +1237,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       ),
                     )),
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                    color: Color(0xffd2d2d2), width: 1),
-                                borderRadius: BorderRadius.circular(10)),
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                  top: 1, bottom: 1, left: 2, right: 2),
-                              child: Row(
-                                children: [
-                                  ..._messageContent.reactions!
-                                      .map((reaction) => Text(reaction.emoji))
-                                ],
-                              ),
-                            ),
-                          )
-                        ],
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: buildReactionPill(_messageContent.reactions!),
                       )
                     : SizedBox(
                         height: 0,
@@ -1451,6 +1483,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             return ReactionsDialogWidget(
                               id: _messageContent
                                   .messageID, // unique id for message
+                              reactions: _quickReactions,
+                              menuItems: _reactionMenuItems,
                               messageWidget: _messageContent.messageType
                                       .contains("audio")
                                   ? ConstrainedBox(
@@ -1521,17 +1555,13 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                       true,
                                       false), // message widget
                               onReactionTap: (reaction) {
-                                print('reaction: $reaction');
-
-                                if (reaction == '➕') {
-                                  // show emoji picker container
-                                } else {
-                                  // add reaction to message
-                                }
+                                _submitReaction(reaction);
                               },
                               onContextMenuTap: (menuItem) {
                                 if (menuItem.label == "Reply") {
                                   _onPressed(true, _messageContent.messageID);
+                                } else if (menuItem.label == "React") {
+                                  _showFullEmojiPicker(context);
                                 }
                                 // handle context menu item
                               },

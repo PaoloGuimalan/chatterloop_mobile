@@ -94,65 +94,78 @@ class NotificationsStateView extends State<NotificationsView> {
       return Scaffold(
         backgroundColor: p.bg,
         appBar: AppBar(title: const Text("Notifications")),
-        body: notificationslist.isEmpty
-            ? Center(
-                child: Text("No notifications yet",
-                    style: TextStyle(color: p.text2)))
-            : ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: notificationslist.length,
-                itemBuilder: (context, index) {
-                  final notif = notificationslist[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: CLCard(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          CLAvatar(
-                            id: notif.fromUserID,
-                            name: notif.content.headline,
-                            src: notif.fromUser?.profile != null &&
-                                    notif.fromUser!.profile != "none"
-                                ? notif.fromUser!.profile
-                                : null,
-                            size: 46,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
+        body: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: !isNotificationsInitialized
+              ? const Padding(
+                  key: ValueKey('loading'),
+                  padding: EdgeInsets.all(12),
+                  child: CLListSkeleton(),
+                )
+              : notificationslist.isEmpty
+                  ? Center(
+                      key: const ValueKey('empty'),
+                      child: Text("No notifications yet",
+                          style: TextStyle(color: p.text2)))
+                  : ListView.builder(
+                      key: const ValueKey('list'),
+                      padding: const EdgeInsets.all(12),
+                      itemCount: notificationslist.length,
+                      itemBuilder: (context, index) {
+                        final notif = notificationslist[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: CLCard(
+                            child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(notif.content.headline,
-                                    style: TextStyle(
-                                        color: p.text,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14)),
-                                const SizedBox(height: 3),
-                                Text(notif.content.details,
-                                    style: TextStyle(
-                                        color: p.text2, fontSize: 13)),
-                                const SizedBox(height: 4),
-                                Text("${notif.date.date} · ${notif.date.time}",
-                                    style: TextStyle(
-                                        color: p.text3, fontSize: 11)),
+                                CLAvatar(
+                                  id: notif.fromUserID,
+                                  name: notif.content.headline,
+                                  src: notif.fromUser?.profile != null &&
+                                          notif.fromUser!.profile != "none"
+                                      ? notif.fromUser!.profile
+                                      : null,
+                                  size: 46,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(notif.content.headline,
+                                          style: TextStyle(
+                                              color: p.text,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 14)),
+                                      const SizedBox(height: 3),
+                                      Text(notif.content.details,
+                                          style: TextStyle(
+                                              color: p.text2, fontSize: 13)),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                          "${notif.date.date} · ${notif.date.time}",
+                                          style: TextStyle(
+                                              color: p.text3, fontSize: 11)),
+                                    ],
+                                  ),
+                                ),
+                                if (!notif.isRead)
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    margin: const EdgeInsets.only(top: 4),
+                                    decoration: BoxDecoration(
+                                        shape: BoxShape.circle, color: p.brand),
+                                  ),
                               ],
                             ),
                           ),
-                          if (!notif.isRead)
-                            Container(
-                              width: 8,
-                              height: 8,
-                              margin: const EdgeInsets.only(top: 4),
-                              decoration: BoxDecoration(
-                                  shape: BoxShape.circle, color: p.brand),
-                            ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
+        ),
       );
     }, converter: (store) {
       return store.state;

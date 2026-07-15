@@ -78,6 +78,18 @@ class PublicProfile {
   final String? connectionId;
   final bool? isConnectionInitiator;
 
+  /// Raw parts from the response's "birthdate": {month, day, year} - month
+  /// is already a full name (Django's birthdate.strftime("%B")), not a
+  /// number, unlike joinedDate below. Null when the account has none set.
+  final String? birthMonth;
+  final String? birthDay;
+  final String? birthYear;
+
+  /// "dateCreated.date" as sent by the server, "MM/DD/YYYY" - matches
+  /// webapp's Profile.tsx, which feeds this exact string into
+  /// formattedDateToWords for the "Joined" line.
+  final String? joinedDate;
+
   const PublicProfile({
     required this.id,
     required this.entityId,
@@ -96,6 +108,10 @@ class PublicProfile {
     this.connectionAccomplished,
     this.connectionId,
     this.isConnectionInitiator,
+    this.birthMonth,
+    this.birthDay,
+    this.birthYear,
+    this.joinedDate,
   });
 
   String get displayName => [
@@ -110,6 +126,12 @@ class PublicProfile {
         : const <String, dynamic>{};
     final connection = json["connection"] is Map
         ? Map<String, dynamic>.from(json["connection"])
+        : const <String, dynamic>{};
+    final birthdate = json["birthdate"] is Map
+        ? Map<String, dynamic>.from(json["birthdate"])
+        : null;
+    final dateCreated = json["dateCreated"] is Map
+        ? Map<String, dynamic>.from(json["dateCreated"])
         : const <String, dynamic>{};
     return PublicProfile(
       id: (json["id"] ?? "").toString(),
@@ -130,6 +152,10 @@ class PublicProfile {
       connectionId: connection["connection_id"]?.toString(),
       isConnectionInitiator:
           connection["is_user_connection_initiator"] as bool?,
+      birthMonth: birthdate?["month"]?.toString(),
+      birthDay: birthdate?["day"]?.toString(),
+      birthYear: birthdate?["year"]?.toString(),
+      joinedDate: dateCreated["date"]?.toString(),
     );
   }
 }

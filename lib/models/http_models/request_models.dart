@@ -48,6 +48,31 @@ class IisTypingRequest {
   }
 }
 
+/// Mirrors webapp's EmojiPickerHandler.tsx -> ReactToMessageRequest payload
+/// exactly: {conversationID, messageID, newreaction: {userID, entityID, emoji}}.
+class IReactToMessageRequest {
+  String conversationID;
+  String messageID;
+  String userID;
+  String entityID;
+  String emoji;
+
+  IReactToMessageRequest(this.conversationID, this.messageID, this.userID,
+      this.entityID, this.emoji);
+
+  Map<String, dynamic> toJson() {
+    return {
+      'conversationID': conversationID,
+      'messageID': messageID,
+      'newreaction': {
+        'userID': userID,
+        'entityID': entityID,
+        'emoji': emoji,
+      },
+    };
+  }
+}
+
 class ISendMessagePayload {
   String conversationID;
   String pendingID;

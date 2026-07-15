@@ -91,6 +91,12 @@ class Contact {
           ? involvedEntity.details
           : actionBy.details;
 
+  /// Same "other party" logic as other() above, but the entity id (needed
+  /// to look someone up in AppState.presence, which is keyed by
+  /// entity id, not account id) rather than their account-level details.
+  String otherEntityId(String myAccountId) =>
+      actionBy.details.id == myAccountId ? involvedEntity.id : actionBy.id;
+
   factory Contact.fromJson(Map<String, dynamic> json) {
     return Contact(
       id: (json["id"] ?? "").toString(),

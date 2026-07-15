@@ -78,7 +78,6 @@ GoRouter buildAppRouter(AuthController authController) {
             path: '/conversation/:conversationId',
             builder: (c, s) => ConversationView(
               conversationId: s.pathParameters['conversationId']!,
-              extra: s.extra,
             ),
           ),
           GoRoute(

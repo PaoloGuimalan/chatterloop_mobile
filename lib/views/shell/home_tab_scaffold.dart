@@ -39,6 +39,7 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   bool isMessagesInitialized = false;
   bool isContactsInitialized = false;
   bool isNotificationsInitialized = false;
+  bool isActiveUsersInitialized = false;
 
   Future<void> getConversationListProcess(BuildContext context) async {
     final res = await ConversationsApi().getConversationListRequest();
@@ -72,6 +73,18 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
         NotificationsStateModel(list, decoded?["totalunread"])));
   }
 
+  /// One-time online-status snapshot for contacts - live updates after
+  /// this land via SSE ("active_users" events, see sse_events.dart), which
+  /// this app's already-open SSE connection receives regardless of which
+  /// tab/screen is showing.
+  Future<void> getActiveUsersProcess(BuildContext context) async {
+    final result = await ConversationsApi().getActiveContactsRequest();
+    if (!mounted) return;
+    setState(() => isActiveUsersInitialized = true);
+    StoreProvider.of<AppState>(context)
+        .dispatch(DispatchModel(setActiveUsersListT, result));
+  }
+
   Future<void> _logout(BuildContext context) async {
     await ApiClient.instance.clearToken();
     StoreProvider.of<AppState>(context).dispatch(
@@ -89,6 +102,7 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
       if (!isMessagesInitialized) getConversationListProcess(context);
       if (!isContactsInitialized) getContactsProcess(context);
       if (!isNotificationsInitialized) getNotificationsListProcess(context);
+      if (!isActiveUsersInitialized) getActiveUsersProcess(context);
 
       return Scaffold(
         backgroundColor: p.bg,

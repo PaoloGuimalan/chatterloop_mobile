@@ -45,37 +45,48 @@ class MessagesStateView extends State<MessagesView> {
         backgroundColor: p.bg,
         body: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-              child: Row(
-                children: [
-                  CLChip(
-                      label: "Create Group Chat",
-                      icon: Icons.people_alt_outlined,
-                      onTap: null),
-                ],
-              ),
-            ),
+            // Create Group Chat is not functional yet (no group-creation
+            // flow/screen exists) - commented out rather than left visible
+            // and disabled, until that flow is built.
+            // Padding(
+            //   padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+            //   child: Row(
+            //     children: [
+            //       CLChip(
+            //           label: "Create Group Chat",
+            //           icon: Icons.people_alt_outlined,
+            //           onTap: null),
+            //     ],
+            //   ),
+            // ),
+            const SizedBox(height: 12),
             Expanded(
-              child: messagesList.isEmpty
-                  ? Center(
-                      child: Text(
-                          "No conversations yet - search for people to start one.",
-                          style: TextStyle(color: p.text2)))
-                  : ListView.builder(
-                      key: ValueKey(messagesList.isEmpty
-                          ? 0
-                          : state.messages
-                              .map((message) => message.unread)
-                              .reduce((a, b) => a + b)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      itemCount: messagesList.length,
-                      itemBuilder: (context, index) {
-                        return MessageItemView(
-                            message: messagesList[index],
-                            userID: state.userAuth.user.entityId);
-                      },
-                    ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: !isInitialized
+                    ? const Padding(
+                        key: ValueKey('loading'),
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: CLListSkeleton(),
+                      )
+                    : messagesList.isEmpty
+                        ? Center(
+                            key: const ValueKey('empty'),
+                            child: Text(
+                                "No conversations yet - search for people to start one.",
+                                style: TextStyle(color: p.text2)))
+                        : ListView.builder(
+                            key: ValueKey(
+                                'list-${state.messages.map((message) => message.unread).fold(0, (a, b) => a + b)}'),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            itemCount: messagesList.length,
+                            itemBuilder: (context, index) {
+                              return MessageItemView(
+                                  message: messagesList[index],
+                                  userID: state.userAuth.user.entityId);
+                            },
+                          ),
+              ),
             ),
           ],
         ),

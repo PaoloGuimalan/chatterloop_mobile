@@ -2,7 +2,6 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
-import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -47,22 +46,17 @@ class MessageItemView extends StatelessWidget {
       };
 
   void _open(BuildContext context) {
-    context.push("/conversation/${message.conversationID}",
-        extra: ConversationViewProps(
-            message.conversationID,
-            message.conversationType,
-            ConversationPreview(
-                message.details.profile != null &&
-                        message.details.profile != "none"
-                    ? message.details.profile!
-                    : "",
-                message.details.displayName)));
+    // ConversationView only needs the id - it resolves the header name/
+    // avatar itself via GET /m/conversation/:id, same as every other entry
+    // point (Contacts, Profile, Search).
+    context.push("/conversation/${message.conversationID}");
   }
 
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, bool>(builder: (context, isTyping) {
+    return StoreConnector<AppState, ({bool isTyping, bool online})>(
+        builder: (context, data) {
       final title = message.details.displayName.isEmpty
           ? message.details.username
           : message.details.displayName;
@@ -83,6 +77,7 @@ class MessageItemView extends StatelessWidget {
                     ? message.details.profile
                     : null,
                 size: 52,
+                online: data.online,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -107,7 +102,7 @@ class MessageItemView extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Text(_previewText(isTyping),
+                    Text(_previewText(data.isTyping),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 13, color: p.text2)),
@@ -134,8 +129,15 @@ class MessageItemView extends StatelessWidget {
         ),
       );
     }, converter: (store) {
-      return store.state.isTypingList
-          .any((typing) => typing.conversationID == message.conversationID);
+      return (
+        isTyping: store.state.isTypingList
+            .any((typing) => typing.conversationID == message.conversationID),
+        // Only single conversations map to one actual person - a group's
+        // avatar has no single "online" state to show, matches webapp's
+        // activeuserSpecific gating on conversationType === "single".
+        online: message.conversationType == "single" &&
+            (store.state.presence[message.details.entityId]?.online ?? false),
+      );
     });
   }
 }

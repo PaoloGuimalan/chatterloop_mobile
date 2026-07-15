@@ -78,22 +78,31 @@ class _SearchScreenState extends State<SearchScreen> {
                 onChanged: _onQueryChanged,
               ),
             ),
-            if (isSearching)
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: CircularProgressIndicator(color: p.brand),
-              ),
-            if (!isSearching && hasSearched && results.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text("No users found", style: TextStyle(color: p.text2)),
-              ),
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                itemCount: results.length,
-                itemBuilder: (context, index) =>
-                    _resultCard(context, results[index]),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                // Results from the previous query would otherwise stay on
+                // screen (stale) while a new search is in flight - showing
+                // the skeleton in their place instead makes it clear a
+                // fresh search is happening, not that nothing changed.
+                child: isSearching
+                    ? const Padding(
+                        key: ValueKey('loading'),
+                        padding: EdgeInsets.symmetric(horizontal: 14),
+                        child: CLListSkeleton(avatarSize: 52, count: 4),
+                      )
+                    : (hasSearched && results.isEmpty)
+                        ? Center(
+                            key: const ValueKey('empty'),
+                            child: Text("No users found",
+                                style: TextStyle(color: p.text2)))
+                        : ListView.builder(
+                            key: const ValueKey('list'),
+                            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                            itemCount: results.length,
+                            itemBuilder: (context, index) =>
+                                _resultCard(context, results[index]),
+                          ),
               ),
             ),
           ],

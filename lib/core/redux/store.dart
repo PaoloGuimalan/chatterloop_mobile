@@ -34,6 +34,16 @@ AppState _setIsTypingList(AppState state, dynamic action) {
       istypinglistprop: reducers.setIsTypingList(state, action).isTypingList);
 }
 
+AppState _setActiveUsersList(AppState state, dynamic action) {
+  return state.copyWith(
+      presenceProp: reducers.setActiveUsersList(state, action).presence);
+}
+
+AppState _updateActiveUser(AppState state, dynamic action) {
+  return state.copyWith(
+      presenceProp: reducers.updateActiveUser(state, action).presence);
+}
+
 AppState _setIsUsingReplyAssist(AppState state, dynamic action) {
   return state.copyWith(
       isUsingReplyAssistProp:
@@ -53,6 +63,8 @@ final appReducer = combineReducers<AppState>([
   TypedReducer<AppState, dynamic>(_setContactsList).call,
   TypedReducer<AppState, dynamic>(_setIsTypingList).call,
   TypedReducer<AppState, dynamic>(_setNotificationsList).call,
+  TypedReducer<AppState, dynamic>(_setActiveUsersList).call,
+  TypedReducer<AppState, dynamic>(_updateActiveUser).call,
   TypedReducer<AppState, dynamic>(_setIsUsingReplyAssist).call,
   TypedReducer<AppState, dynamic>(_setReplyAssistContext).call
 ]);

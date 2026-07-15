@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
+import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
@@ -56,6 +57,43 @@ class ConversationsApi {
         print(e);
       }
       return null;
+    }
+  }
+
+  /// One-time snapshot of which contacts are currently online, plus a
+  /// last-seen timestamp for the rest (GET /u/activecontacts) - matches
+  /// webapp's ActiveContactsRequest, called once on app init. Live changes
+  /// after that arrive via individual "active_users" SSE events instead
+  /// (see sse_events.dart), since this snapshot alone would go stale the
+  /// moment anyone connects/disconnects. Plain {status, result: [{_id,
+  /// sessionStatus, sessiondate}]} JSON, not JWT-signed.
+  Future<Map<String, PresenceInfo>> getActiveContactsRequest() async {
+    try {
+      final response = await _dio.get(_endpoints.activeContacts);
+      if (response.data["status"] != true) return {};
+      final result = response.data["result"];
+      if (result is! List) return {};
+      final presence = <String, PresenceInfo>{};
+      for (final row in result.whereType<Map>()) {
+        final entityId = row["_id"]?.toString();
+        if (entityId == null || entityId.isEmpty) continue;
+        final online = row["sessionStatus"] == true;
+        final sessiondate =
+            row["sessiondate"] is Map ? row["sessiondate"] as Map : null;
+        presence[entityId] = PresenceInfo(
+          online: online,
+          lastSeen: online
+              ? null
+              : parseServerTimestamp(sessiondate?["date"]?.toString()),
+        );
+      }
+      return presence;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return {};
     }
   }
 
@@ -186,6 +224,26 @@ class ConversationsApi {
         print(e);
       }
       return null;
+    }
+  }
+
+  /// Matches webapp's ReactToMessageRequest (POST /m/addreaction, JWT-signed
+  /// body, x-access-token auth via ApiClient's interceptor) - server just
+  /// pushes newreaction onto the message's reactions array and broadcasts a
+  /// bare SSE signal (routes/messages/index.js), no data comes back in the
+  /// response worth reading, hence the bool return.
+  Future<bool> reactToMessageRequest(IReactToMessageRequest payload) async {
+    ContentValidator().printer('${_endpoints.apiUrl}${_endpoints.addReaction}');
+    try {
+      final response = await _dio.post(_endpoints.addReaction,
+          data: {"token": JwtCodec.sign(payload.toJson())});
+      return response.data["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
     }
   }
 

@@ -15,6 +15,12 @@ class AppState {
   bool isUsingReplyAssist;
   List<ReplyAssistContext> replyAssistContext;
 
+  /// Online status + last-seen time per entity id, among contacts only -
+  /// matches the server's own scope (UpdateContactswSessionStatus only
+  /// ever notifies confirmed contacts of a session change), so this never
+  /// needs filtering by relationship on the read side.
+  Map<String, PresenceInfo> presence;
+
   AppState(
       {this.userAuth = const UserAuth(
           null,
@@ -26,7 +32,8 @@ class AppState {
       this.isTypingList = const [],
       this.notificationsstate = const NotificationsStateModel([], 0),
       this.isUsingReplyAssist = false,
-      this.replyAssistContext = const []});
+      this.replyAssistContext = const [],
+      this.presence = const {}});
 
   AppState copyWith(
       {UserAuth? authState,
@@ -36,7 +43,8 @@ class AppState {
       List<IsTypingMetaData>? istypinglistprop,
       NotificationsStateModel? notificationsstateprop,
       bool? isUsingReplyAssistProp,
-      List<ReplyAssistContext>? replyAssistContextProp}) {
+      List<ReplyAssistContext>? replyAssistContextProp,
+      Map<String, PresenceInfo>? presenceProp}) {
     return AppState(
         userAuth: authState ?? userAuth,
         posts: postslist ?? posts,
@@ -45,6 +53,7 @@ class AppState {
         isTypingList: istypinglistprop ?? isTypingList,
         notificationsstate: notificationsstateprop ?? notificationsstate,
         isUsingReplyAssist: isUsingReplyAssistProp ?? isUsingReplyAssist,
-        replyAssistContext: replyAssistContextProp ?? replyAssistContext);
+        replyAssistContext: replyAssistContextProp ?? replyAssistContext,
+        presence: presenceProp ?? presence);
   }
 }

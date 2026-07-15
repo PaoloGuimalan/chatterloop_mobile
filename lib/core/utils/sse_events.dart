@@ -6,6 +6,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -160,6 +161,38 @@ class SseEvents {
         }
         return;
       case "active_users":
+        // server/reusables/hooks/sse.js's UpdateContactswSessionStatus -
+        // fired at every contact of whoever just connected/disconnected
+        // their SSE stream. JWT-wrapped as {user: {_id, sessionStatus,
+        // sessiondate}}, matches the /u/activecontacts snapshot's row
+        // shape (see ConversationsApi.getActiveContactsRequest) other
+        // than arriving one entity at a time instead of as a full list.
+        Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
+        bool isAuth = parsedresponse["auth"] as bool? ?? false;
+        bool status = parsedresponse["status"] as bool? ?? false;
+        if (isAuth && status) {
+          Map<String, dynamic>? decodedResult =
+              JwtCodec.decode(parsedresponse["result"]);
+          final rawUser = decodedResult?["user"];
+          if (rawUser is Map) {
+            final entityId = rawUser["_id"]?.toString();
+            final isOnline = rawUser["sessionStatus"] == true;
+            if (entityId != null && entityId.isNotEmpty) {
+              final sessiondate = rawUser["sessiondate"] is Map
+                  ? rawUser["sessiondate"] as Map
+                  : null;
+              // A disconnect event's own arrival time is a reasonable
+              // "last seen" fallback on the rare chance the date string
+              // doesn't parse - better than showing no time at all.
+              final lastSeen = isOnline
+                  ? null
+                  : (parseServerTimestamp(sessiondate?["date"]?.toString()) ??
+                      DateTime.now());
+              appStore.dispatch(DispatchModel(updateActiveUserT,
+                  ActiveUserUpdate(entityId, isOnline, lastSeen)));
+            }
+          }
+        }
         return;
       default:
         break;

@@ -8,6 +8,14 @@ const String setNotificationsListT = "SET_NOTIFICATIONS_LIST";
 const String setIsTypingListT = "SET_ISTYPING_LIST";
 const String removeIsTypingListT = "REMOVE_ISTYPING_LIST";
 
+/// Bulk-replace, from the one-time GET /u/activecontacts snapshot on app
+/// init. Live changes after that come from individual "active_users" SSE
+/// events instead (updateActiveUserT) - the snapshot alone would go stale
+/// the moment a contact connects/disconnects after this app's own session
+/// started.
+const String setActiveUsersListT = "SET_ACTIVE_USERS_LIST";
+const String updateActiveUserT = "UPDATE_ACTIVE_USER";
+
 const String setIsUsingReplyAssistT = "SET_IS_USING_REPLY_ASSIST";
 
 const String setReplyAssistContextT = "SET_REPLY_ASSIST_CONTEXT";

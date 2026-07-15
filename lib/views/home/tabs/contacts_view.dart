@@ -1,6 +1,7 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
@@ -57,44 +58,57 @@ class ContactsStateView extends State<ContactsView> {
       }
       return Scaffold(
         backgroundColor: p.bg,
-        body: !isContactsInitialized
-            ? Center(child: CircularProgressIndicator(color: p.brand))
-            : contactsList.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        "No contacts yet - use search to find people and send a contact request.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: p.text2),
+        body: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: !isContactsInitialized
+              ? const Padding(
+                  key: ValueKey('loading'),
+                  padding: EdgeInsets.all(12),
+                  child: CLListSkeleton(),
+                )
+              : contactsList.isEmpty
+                  ? Center(
+                      key: const ValueKey('empty'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          "No contacts yet - use search to find people and send a contact request.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: p.text2),
+                        ),
+                      ),
+                    )
+                  : Padding(
+                      key: const ValueKey('list'),
+                      padding: const EdgeInsets.all(12),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: p.surface,
+                          border: Border.all(color: p.border),
+                          borderRadius: BorderRadius.circular(CLRadii.md),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: ListView.separated(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          itemCount: contactsList.length,
+                          separatorBuilder: (context, index) =>
+                              Divider(height: 1, color: p.border),
+                          itemBuilder: (context, index) {
+                            final contact = contactsList[index];
+                            final other = contact.other(state.userAuth.user.id);
+                            final otherEntityId =
+                                contact.otherEntityId(state.userAuth.user.id);
+                            return ContactsItemWidget(
+                              contact: contact,
+                              other: other,
+                              online: state.presence[otherEntityId]?.online ??
+                                  false,
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: p.surface,
-                        border: Border.all(color: p.border),
-                        borderRadius: BorderRadius.circular(CLRadii.md),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        itemCount: contactsList.length,
-                        separatorBuilder: (context, index) =>
-                            Divider(height: 1, color: p.border),
-                        itemBuilder: (context, index) {
-                          final contact = contactsList[index];
-                          final other = contact.other(state.userAuth.user.id);
-                          return ContactsItemWidget(
-                            contact: contact,
-                            other: other,
-                          );
-                        },
-                      ),
-                    ),
-                  ),
+        ),
       );
     }, converter: (store) {
       return store.state;

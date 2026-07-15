@@ -85,7 +85,23 @@ class CLAvatar extends StatelessWidget {
               width: size,
               height: size,
               fit: BoxFit.cover,
+              // Same gradient+initials placeholder for "still downloading"
+              // as for "failed to load" - previously there was no
+              // loadingBuilder at all, so the circle was simply blank
+              // (transparent) for however long the request took, which
+              // read as a rendering bug rather than a photo on its way in.
+              loadingBuilder: (context, child, progress) =>
+                  progress == null ? child : placeholder,
               errorBuilder: (_, __, ___) => placeholder,
+              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                if (wasSynchronouslyLoaded) return child;
+                return AnimatedOpacity(
+                  opacity: frame == null ? 0 : 1,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  child: child,
+                );
+              },
             ),
           )
         : placeholder;
@@ -125,6 +141,244 @@ class CLAvatar extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+// -------- Skeleton -------------------------------------------------------------
+
+/// A pulsing placeholder box - use in place of an avatar/text while its real
+/// data hasn't loaded yet, instead of rendering the real widget against
+/// empty strings (a blank-initialed avatar, an empty text line), which
+/// reads as broken rather than as "still loading". Mirrors webapp's
+/// react-loading-skeleton usage on the profile page.
+class CLSkeleton extends StatefulWidget {
+  final double width;
+  final double height;
+  final BorderRadiusGeometry borderRadius;
+
+  const CLSkeleton({
+    super.key,
+    required this.width,
+    required this.height,
+    this.borderRadius = const BorderRadius.all(Radius.circular(6)),
+  });
+
+  @override
+  State<CLSkeleton> createState() => _CLSkeletonState();
+}
+
+class _CLSkeletonState extends State<CLSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 900))
+      ..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            color: Color.lerp(p.surface3, p.surfaceHover, _controller.value),
+            borderRadius: widget.borderRadius,
+          ),
+        );
+      },
+    );
+  }
+}
+
+// -------- Network image --------------------------------------------------------
+
+/// Image.network wrapped with a pulsing skeleton while bytes are still
+/// downloading (instead of a blank gap that pops in once loaded), a fade-in
+/// once the first frame decodes, a static neutral placeholder on failure
+/// (not a forever-pulsing skeleton, which would misleadingly imply it's
+/// still loading), and an AnimatedSize so the swap between skeleton and
+/// real content doesn't jump instantly when no explicit height is given
+/// (e.g. message/link-preview images, whose real aspect ratio isn't known
+/// until the bytes actually arrive).
+class CLNetworkImage extends StatelessWidget {
+  final String src;
+  final double? width;
+  final double? height;
+  final BoxFit fit;
+  final BorderRadiusGeometry? borderRadius;
+  final double placeholderHeight;
+  final WidgetBuilder? errorBuilder;
+
+  const CLNetworkImage({
+    super.key,
+    required this.src,
+    this.width,
+    this.height,
+    this.fit = BoxFit.cover,
+    this.borderRadius,
+    this.placeholderHeight = 160,
+    this.errorBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final resolvedPlaceholderHeight = height ?? placeholderHeight;
+
+    final image = Image.network(
+      src,
+      width: width,
+      height: height,
+      fit: fit,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return CLSkeleton(
+          width: width ?? double.infinity,
+          height: resolvedPlaceholderHeight,
+          borderRadius: borderRadius ?? BorderRadius.zero,
+        );
+      },
+      errorBuilder: (context, error, stack) =>
+          errorBuilder?.call(context) ??
+          Container(
+            width: width,
+            height: resolvedPlaceholderHeight,
+            color: p.surface3,
+            alignment: Alignment.center,
+            child: Icon(Icons.image_not_supported_outlined,
+                color: p.text3, size: 22),
+          ),
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded) return child;
+        return AnimatedOpacity(
+          opacity: frame == null ? 0 : 1,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          child: child,
+        );
+      },
+    );
+
+    final clipped = borderRadius != null
+        ? ClipRRect(borderRadius: borderRadius!, child: image)
+        : image;
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      alignment: Alignment.topCenter,
+      child: clipped,
+    );
+  }
+}
+
+/// One skeleton row shaped like an avatar-list-item (Messages/Contacts/
+/// Notifications/Search) - avatar circle + two text bars.
+class CLListRowSkeleton extends StatelessWidget {
+  final double avatarSize;
+  final EdgeInsetsGeometry padding;
+
+  const CLListRowSkeleton({
+    super.key,
+    this.avatarSize = 46,
+    this.padding = const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: padding,
+      child: Row(
+        children: [
+          CLSkeleton(
+            width: avatarSize,
+            height: avatarSize,
+            borderRadius: BorderRadius.circular(avatarSize / 2),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CLSkeleton(width: 140, height: 13),
+                const SizedBox(height: 7),
+                const CLSkeleton(width: 90, height: 11),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A handful of CLListRowSkeleton rows, standing in for a list that hasn't
+/// loaded yet - use instead of a bare spinner/blank space so the screen
+/// reads as "content is on its way" rather than "empty" or "broken".
+class CLListSkeleton extends StatelessWidget {
+  final int count;
+  final double avatarSize;
+
+  const CLListSkeleton({super.key, this.count = 6, this.avatarSize = 46});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        count,
+        (_) => CLListRowSkeleton(avatarSize: avatarSize),
+      ),
+    );
+  }
+}
+
+/// Alternating left/right pulsing bubble shapes, standing in for a
+/// conversation's messages while the initial fetch is still in flight -
+/// closer to what's about to render than a plain centered spinner.
+class CLMessageListSkeleton extends StatelessWidget {
+  const CLMessageListSkeleton({super.key});
+
+  static const _widths = [190.0, 130.0, 220.0, 150.0, 170.0, 120.0];
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _widths.length,
+      itemBuilder: (context, index) {
+        final isSender = index.isOdd;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            mainAxisAlignment:
+                isSender ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              CLSkeleton(
+                width: _widths[index],
+                height: 34,
+                borderRadius: BorderRadius.circular(CLRadii.md),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -57,6 +57,29 @@ class ContactsApi {
     }
   }
 
+  /// POST /api/user/poke - only succeeds between already-connected accounts
+  /// (server 403s otherwise); the message is a user-facing toast either
+  /// way ("You poked @username" on success, a reason on failure), matches
+  /// webapp's PokeUserRequest showing response.data.message regardless of
+  /// status.
+  Future<({bool success, String? message})> pokeUserRequest(
+      String targetId) async {
+    try {
+      final response =
+          await _dio.post(_endpoints.poke, data: {'target_id': targetId});
+      return (
+        success: response.data["status"] == true,
+        message: response.data["message"]?.toString(),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return (success: false, message: null);
+    }
+  }
+
   Future<bool> acceptContactRequest(
       {required String connectionId, required String toUserId}) async {
     try {

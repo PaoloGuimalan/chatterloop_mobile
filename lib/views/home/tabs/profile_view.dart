@@ -5,8 +5,10 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -60,35 +62,40 @@ class _ProfileViewState extends State<ProfileView> {
         return Scaffold(
           backgroundColor: p.bg,
           body: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                CLAvatar(
+                ProfileHeader(
                   id: user.id,
-                  name: displayName.isEmpty ? user.username : displayName,
-                  src: user.profile != "none" ? user.profile : null,
-                  size: 96,
-                ),
-                const SizedBox(height: 12),
-                Text(displayName.isEmpty ? user.username : displayName,
-                    style: TextStyle(
-                        color: p.text,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800)),
-                Text("@${user.username}",
-                    style: TextStyle(color: p.text2, fontSize: 13)),
-                if (!user.isVerified)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: CLBadge(
-                        label: "Email not verified", tone: CLBadgeTone.pink),
+                  displayName: displayName,
+                  username: user.username,
+                  email: user.email,
+                  avatarSrc: user.profile != "none" ? user.profile : null,
+                  coverSrc: user.coverphoto,
+                  isBadged: user.isBadged,
+                  gender: user.gender,
+                  joinedLabel: formattedDateToWords(user.joinedDate),
+                  birthdateLabel: formattedBirthdate(user.birthdate?.month,
+                      user.birthdate?.day, user.birthdate?.year),
+                  actions: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      children: [
+                        if (!user.isVerified)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: CLBadge(
+                                label: "Email not verified",
+                                tone: CLBadgeTone.pink),
+                          ),
+                        CLBtn(
+                          label: "Edit Profile",
+                          size: CLBtnSize.lg,
+                          block: true,
+                          onPressed: () => context.push('/profile/edit'),
+                        ),
+                      ],
+                    ),
                   ),
-                const SizedBox(height: 20),
-                CLBtn(
-                  label: "Edit Profile",
-                  size: CLBtnSize.lg,
-                  block: true,
-                  onPressed: () => context.push('/profile/edit'),
                 ),
               ],
             ),

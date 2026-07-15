@@ -72,6 +72,30 @@ class ReduxActions {
     }
   }
 
+  AppState setActiveUsersList(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case setActiveUsersListT:
+        return AppState(presence: action.payload);
+      default:
+        return state;
+    }
+  }
+
+  AppState updateActiveUser(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case updateActiveUserT:
+        ActiveUserUpdate payload = action.payload;
+        Map<String, PresenceInfo> updated =
+            Map<String, PresenceInfo>.from(state.presence);
+        updated[payload.entityId] = PresenceInfo(
+            online: payload.isOnline,
+            lastSeen: payload.isOnline ? null : payload.lastSeen);
+        return AppState(presence: updated);
+      default:
+        return state;
+    }
+  }
+
   AppState setIsUsingReplyAssist(AppState state, DispatchModel action) {
     switch (action.type) {
       case setIsUsingReplyAssistT:

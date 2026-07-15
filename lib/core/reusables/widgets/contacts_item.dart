@@ -1,7 +1,6 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/models/user_models/contact_model.dart';
-import 'package:chatterloop_app/models/view_prop_models/conversation_view_props.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,26 +10,23 @@ import 'package:go_router/go_router.dart';
 class ContactsItemWidget extends StatelessWidget {
   final Contact contact;
   final ContactPersonDetails other;
+  final bool online;
 
   const ContactsItemWidget(
-      {super.key, required this.contact, required this.other});
+      {super.key,
+      required this.contact,
+      required this.other,
+      this.online = false});
 
   void _openProfile(BuildContext context) {
     context.push('/user/${other.username}');
   }
 
   void _openMessage(BuildContext context) {
-    context.push("/conversation/${contact.connectionId}",
-        extra: ConversationViewProps(
-            contact.connectionId,
-            "single",
-            ConversationPreview(
-                other.profile != null && other.profile != "none"
-                    ? other.profile!
-                    : "",
-                other.displayName.isEmpty
-                    ? other.username
-                    : other.displayName)));
+    // ConversationView only needs the id - it resolves the header name/
+    // avatar itself via GET /m/conversation/:id, same as every other entry
+    // point (Messages list, Profile, Search).
+    context.push("/conversation/${contact.connectionId}");
   }
 
   @override
@@ -58,6 +54,7 @@ class ContactsItemWidget extends StatelessWidget {
                     name: other.displayName,
                     src: other.profile != "none" ? other.profile : null,
                     size: 46,
+                    online: online,
                   ),
                   const SizedBox(width: 12),
                   Expanded(

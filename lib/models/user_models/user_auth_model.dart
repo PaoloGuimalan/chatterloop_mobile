@@ -26,6 +26,15 @@ class UserAccount {
   final String? gender;
   final UserBirthDate? birthdate;
 
+  /// "MM/DD/YYYY", only ever populated via fromPublicProfile - the JWT
+  /// payloads (fromNodeJwt/fromDjangoJwt) don't carry a join date, only
+  /// GET /api/user/auth/:username/ does, which profile_view.dart already
+  /// round-trips through on every mount to refresh this same object.
+  final String? joinedDate;
+
+  /// Same story as joinedDate - only fromPublicProfile populates this.
+  final bool isBadged;
+
   /// Permission codenames for the currently active entity. Populated from
   /// the sibling `allowed_modules` field returned alongside `usertoken` by
   /// both Node's /auth/jwtchecker and Django's /api/user/auth - not part of
@@ -50,7 +59,9 @@ class UserAccount {
       this.birthdate,
       {this.allowedModules = const [],
       this.activeEntity,
-      this.personalEntityId});
+      this.personalEntityId,
+      this.joinedDate,
+      this.isBadged = false});
 
   static const empty =
       UserAccount("", "", "", "", "", "", false, false, null, null, null, null);
@@ -144,10 +155,15 @@ class UserAccount {
         publicProfile.profile,
         publicProfile.coverphoto,
         publicProfile.gender,
-        null,
+        publicProfile.birthDay != null
+            ? UserBirthDate(publicProfile.birthMonth ?? "",
+                publicProfile.birthDay ?? "", publicProfile.birthYear ?? "")
+            : null,
         allowedModules: allowedModules,
         activeEntity: activeEntity,
-        personalEntityId: personalEntityId);
+        personalEntityId: personalEntityId,
+        joinedDate: publicProfile.joinedDate,
+        isBadged: publicProfile.isBadged);
   }
 
   factory UserAccount.fromJson(Map<String, dynamic> json) {
