@@ -27,6 +27,14 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
     _contentType = widget.contentType;
   }
 
+  /// File/voice-note content is encoded as "url%%%filename". A bare
+  /// .split("%%%")[1] throws RangeError (only index 0 exists) whenever
+  /// content doesn't actually contain that delimiter.
+  String _fileNamePart(String content) {
+    final parts = content.split("%%%");
+    return parts.length > 1 ? parts[1] : "File";
+  }
+
   Widget messageTypeSwitch(String content, String messageType, String messageID,
       bool isParentSenderCurrentUser, bool isCurrentUser, bool isReply) {
     if (messageType == "text") {
@@ -507,7 +515,7 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                         ),
                         Expanded(
                             child: Text(
-                          content.split("%%%")[1],
+                          _fileNamePart(content),
                           style: TextStyle(fontSize: 14, color: Colors.black),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

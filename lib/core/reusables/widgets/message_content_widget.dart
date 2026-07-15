@@ -83,6 +83,16 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     _onPressed = widget.onPressed;
   }
 
+  /// File/voice-note content is encoded as "url%%%filename". A bare
+  /// .split("%%%")[1] throws RangeError (only index 0 exists) whenever a
+  /// message's content doesn't actually contain that delimiter - confirmed
+  /// live as the cause of a group-conversation crash right at a file
+  /// message.
+  String _fileNamePart(String content) {
+    final parts = content.split("%%%");
+    return parts.length > 1 ? parts[1] : "File";
+  }
+
   /// Shared reply-assist checkbox handler - was copy-pasted near-identically
   /// across every content-type branch (text/image/video/audio/file/etc.)
   /// in this widget's build method.
@@ -1152,7 +1162,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             ),
                             Expanded(
                                 child: Text(
-                              content.split("%%%")[1],
+                              _fileNamePart(content),
                               style:
                                   TextStyle(fontSize: 14, color: Colors.black),
                               maxLines: 1,
@@ -1472,8 +1482,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                                   ),
                                                   Expanded(
                                                       child: Text(
-                                                    _messageContent.content
-                                                        .split("%%%")[1],
+                                                    _fileNamePart(
+                                                        _messageContent
+                                                            .content),
                                                     style: TextStyle(
                                                         fontSize: 14,
                                                         color: Colors.black),
