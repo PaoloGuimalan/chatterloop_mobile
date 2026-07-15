@@ -16,6 +16,11 @@ import 'package:chatterloop_app/core/reusables/widgets/message_content_widget.da
 import 'package:chatterloop_app/core/reusables/widgets/pending_content_widget.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/core/calls/call_controller.dart';
+import 'package:chatterloop_app/core/requests/call_api.dart';
+import 'package:chatterloop_app/models/call_models/call_session_model.dart';
+import 'package:chatterloop_app/models/call_models/call_signed_payloads_model.dart';
+import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
@@ -312,6 +317,86 @@ class ConversationStateView extends State<ConversationView> {
     return (profile != null && profile.isNotEmpty && profile != "none")
         ? profile
         : "";
+  }
+
+  /// Every other participant's entityID to ring - mirrors webapp's
+  /// ConversationV2.tsx initializeCall's own fallback chain exactly:
+  /// conversationSetup.details.entity_id for a single conversation (the
+  /// one source confirmed to resolve even before conversationInfo has
+  /// loaded), else conversationInfo.users (excluding self), else
+  /// conversationSetup's raw participant_ids as a last resort.
+  List<String> get _callRecipients {
+    if (_conversationType == "single") {
+      final other = _headerEntityId;
+      return other != null && other.isNotEmpty ? [other] : [];
+    }
+    final myEntityId = appStore.state.userAuth.user.entityId;
+    final fromInfo = (conversationInfo?.users ?? [])
+        .map((u) => u.entityID)
+        .where((id) => id.isNotEmpty && id != myEntityId)
+        .toSet()
+        .toList();
+    if (fromInfo.isNotEmpty) return fromInfo;
+    final rawParticipantIds = conversationSetup?['participant_ids'];
+    if (rawParticipantIds is List) {
+      return rawParticipantIds
+          .map((id) => id.toString())
+          .where((id) => id.isNotEmpty && id != myEntityId)
+          .toList();
+    }
+    return [];
+  }
+
+  /// Caller-side entry point for both call buttons - mirrors webapp's
+  /// initializeCall: fire the ring signal (CallRequest), then immediately
+  /// join our own mediasoup room without waiting for the callee to answer
+  /// (an SFU room supports joining before anyone else has). callType is
+  /// "audio" or "video" - video capture/rendering itself is M7's concern,
+  /// this always produces mic-only for now regardless of which button was
+  /// tapped, same limitation the M1-M4 milestones already carried.
+  Future<void> _initiateCall(String callType) async {
+    if (_conversationType != "single" && _conversationType != "group") return;
+    if (appStore.state.currentCall != null) return; // already on a call
+    final recipients = _callRecipients;
+    if (recipients.isEmpty) return;
+
+    final me = appStore.state.userAuth.user;
+    final caller = CallerInfo(name: me.firstname, entityId: me.entityId);
+    final callDisplayName = _conversationType == "single"
+        ? me.firstname
+        : "$_headerDisplayName (Group)";
+
+    // Fire-and-forget - the callee's incoming-call screen is driven by the
+    // "incomingcall" SSE event this triggers, not by anything in this
+    // response.
+    CallApi().callRequest(ICallRequest(
+      callType: callType,
+      callDisplayName: callDisplayName,
+      conversationType: _conversationType,
+      conversationID: widget.conversationId,
+      caller: caller,
+      recepients: recipients,
+      displayImage: _conversationType == "single" ? _headerAvatarSrc : "none",
+    ));
+
+    final joined = await CallController.instance.joinCall(
+      conversationID: widget.conversationId,
+      conversationType: _conversationType,
+      callType: callType,
+      startCameraOff: true,
+    );
+    if (!joined) return;
+
+    appStore.dispatch(DispatchModel(
+        setCurrentCallT,
+        CallSession(
+            conversationID: widget.conversationId,
+            conversationType: _conversationType,
+            callType: callType,
+            isOutgoing: true,
+            recepients: recipients)));
+
+    if (mounted) context.push('/call/active');
   }
 
   /// The other participant's entity id, single conversations only - a
@@ -1056,7 +1141,7 @@ class ConversationStateView extends State<ConversationView> {
                                                     bottom: 0,
                                                     left: 0,
                                                     right: 0)),
-                                            onPressed: () {},
+                                            onPressed: () => _initiateCall("audio"),
                                             child: Center(
                                               child: Icon(
                                                 Icons.call,
@@ -1081,7 +1166,7 @@ class ConversationStateView extends State<ConversationView> {
                                                     bottom: 0,
                                                     left: 0,
                                                     right: 0)),
-                                            onPressed: () {},
+                                            onPressed: () => _initiateCall("video"),
                                             child: Center(
                                               child: Icon(
                                                 Icons.videocam_rounded,

@@ -60,6 +60,27 @@ dependencies:
   path_provider: ^2.1.4
   visibility_detector: ^0.4.0+2
 
+  # Calling feature (M0 viability spike) - webapp's calls_v2 is built on
+  # mediasoup (an SFU), not plain WebRTC offer/answer, and the server's
+  # /webrtc/* endpoints only speak mediasoup's protocol - so a generic
+  # flutter_webrtc-only client can't interop with it. mediasoup_client_flutter
+  # pins flutter_webrtc ^0.9.33 (five majors behind current 1.5.2); pinned
+  # here to match until this spike proves whether that's actually viable.
+  flutter_webrtc: ^0.9.33
+  mediasoup_client_flutter: ^0.8.5
+
+dependency_overrides:
+  # CONFIRMED FIX (M0): mediasoup_client_flutter-0.8.5's RtpEncodingParameters
+  # (Priority?) doesn't type-match the RTCRtpEncoding interface in
+  # webrtc_interface 1.5.1 (which the unpinned range would otherwise
+  # resolve to - it uses RTCPriorityType instead), plus a handful of
+  # nullable-String errors in its SDP handlers - a real breaking change in a
+  # transitive dependency, not a lint false-positive: `flutter build apk`
+  # failed outright without this override. Pinning to flutter_webrtc's own
+  # floor constraint (webrtc_interface ^1.1.2) resolves it - a full debug
+  # APK builds clean with this in place. No fork/vendor patch needed.
+  webrtc_interface: 1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

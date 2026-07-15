@@ -29,3 +29,11 @@ const String setIsUsingReplyAssistT = "SET_IS_USING_REPLY_ASSIST";
 const String setReplyAssistContextT = "SET_REPLY_ASSIST_CONTEXT";
 const String removeReplyAssistContextT = "REMOVE_REPLY_ASSIST_CONTEXT";
 const String clearReplyAssistContextT = "CLEAR_REPLY_ASSIST_CONTEXT";
+
+/// Cross-screen "is there a call happening" signal - see AppState.
+/// currentCall's doc comment for why this is separate from CallController.
+const String setCurrentCallT = "SET_CURRENT_CALL";
+const String clearCurrentCallT = "CLEAR_CURRENT_CALL";
+
+const String setPendingIncomingCallT = "SET_PENDING_INCOMING_CALL";
+const String clearPendingIncomingCallT = "CLEAR_PENDING_INCOMING_CALL";

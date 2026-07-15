@@ -4,7 +4,10 @@
 // navigatorTabKey local to home_view.dart for the bottom tab bar).
 
 import 'package:chatterloop_app/core/auth/auth_controller.dart';
+import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/views/auth/login_view.dart';
+import 'package:chatterloop_app/views/calls/active_call_view.dart';
+import 'package:chatterloop_app/views/calls/incoming_call_view.dart';
 import 'package:chatterloop_app/views/auth/signup_view.dart';
 import 'package:chatterloop_app/views/auth/verify_email_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
@@ -54,8 +57,16 @@ CustomTransitionPage<void> _clPage(GoRouterState state, Widget child) {
   );
 }
 
+/// Set once by buildAppRouter, readable from anywhere - needed so
+/// sse_events.dart can push the incoming-call screen (M5) in response to
+/// an `incomingcall` SSE event, which arrives outside any widget's
+/// BuildContext. Same "single instance, no BuildContext needed" pattern as
+/// appStore in redux/store.dart.
+GoRouter? _appRouter;
+GoRouter get appRouter => _appRouter!;
+
 GoRouter buildAppRouter(AuthController authController) {
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/splash',
     refreshListenable: authController,
     redirect: (context, state) {
@@ -95,6 +106,18 @@ GoRouter buildAppRouter(AuthController authController) {
         path: '/switching',
         pageBuilder: (c, s) => _clPage(
             s, SwitchingScreen(perform: s.extra as Future<bool> Function())),
+      ),
+      // Both top-level (outside the shell) for the same reason as
+      // /switching above - a call is a full-screen, no-bottom-nav
+      // experience regardless of which tab it was started from.
+      GoRoute(
+        path: '/call/incoming',
+        pageBuilder: (c, s) =>
+            _clPage(s, IncomingCallView(alert: s.extra as IncomingCallAlert)),
+      ),
+      GoRoute(
+        path: '/call/active',
+        pageBuilder: (c, s) => _clPage(s, const ActiveCallView()),
       ),
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
@@ -156,4 +179,6 @@ GoRouter buildAppRouter(AuthController authController) {
       ),
     ],
   );
+  _appRouter = router;
+  return router;
 }

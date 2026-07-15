@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -112,8 +115,66 @@ class SseEvents {
         }
         return;
       case "incomingcall":
+        // JWT-wrapped like notifications/active_users - decodedResult's
+        // `callmetadata` field is exactly whatever the caller's device
+        // signed into its own /u/call token (server/reusables/hooks/
+        // sse.js's ReachCallRecepients relays it through unchanged), so
+        // IncomingCallAlert.fromJson doubles as both the outgoing request
+        // shape and this incoming decode.
+        Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
+        bool isAuth = parsedresponse["auth"] as bool? ?? false;
+        bool status = parsedresponse["status"] as bool? ?? false;
+        if (isAuth && status) {
+          Map<String, dynamic>? decodedResult =
+              JwtCodec.decode(parsedresponse["result"]);
+          final rawCallMetadata = decodedResult?["callmetadata"];
+          if (rawCallMetadata is Map) {
+            final alert = IncomingCallAlert.fromJson(
+                Map<String, dynamic>.from(rawCallMetadata));
+            // Busy-handling (auto-decline while already in a call) lives in
+            // IncomingCallView's initState, not here - this just surfaces
+            // the ring signal into Redux and pushes the full-screen alert.
+            // appRouter (not a BuildContext) since this fires outside any
+            // widget's tree.
+            appStore.dispatch(DispatchModel(setPendingIncomingCallT, alert));
+            appRouter.push('/call/incoming', extra: alert);
+          }
+        }
         return;
       case "callreject":
+        // Two different decodedToken shapes arrive on this same event,
+        // both wrapped as {rejectdata: decodedToken} (server/reusables/
+        // hooks/sse.js's CallRejectNotif):
+        //   - from /rejectcall: {conversationID, rejectedBy} - the callee
+        //     (single calls only) declined our outgoing call.
+        //   - from /endcall: {conversationID, endedBy} - the caller ended
+        //     the call for everyone else.
+        // Both mean the same thing from this device's perspective: the
+        // call for that conversationID is over - dismiss any still-ringing
+        // alert AND tear down an active call, whichever applies.
+        Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
+        bool isAuth = parsedresponse["auth"] as bool? ?? false;
+        bool status = parsedresponse["status"] as bool? ?? false;
+        if (isAuth && status) {
+          Map<String, dynamic>? decodedResult =
+              JwtCodec.decode(parsedresponse["result"]);
+          final rawRejectData = decodedResult?["rejectdata"];
+          if (rawRejectData is Map) {
+            final conversationID = rawRejectData["conversationID"]?.toString();
+            if (conversationID != null) {
+              final pending = appStore.state.pendingIncomingCall;
+              if (pending != null && pending.conversationID == conversationID) {
+                appStore
+                    .dispatch(DispatchModel(clearPendingIncomingCallT, null));
+              }
+              final current = appStore.state.currentCall;
+              if (current != null && current.conversationID == conversationID) {
+                await CallController.instance.leaveCall();
+                appStore.dispatch(DispatchModel(clearCurrentCallT, null));
+              }
+            }
+          }
+        }
         return;
       case "contactslist":
         return;

@@ -1,5 +1,7 @@
 import 'package:chatterloop_app/core/redux/actions.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:redux/redux.dart';
 
 ReduxActions reducers = ReduxActions();
@@ -65,6 +67,44 @@ AppState _setReplyAssistContext(AppState state, dynamic action) {
           reducers.setReplyAssistContext(state, action).replyAssistContext);
 }
 
+AppState _setCurrentCall(AppState state, dynamic action) {
+  return state.copyWith(
+      currentCallProp: reducers.setCurrentCall(state, action).currentCall);
+}
+
+/// Nullable-field clear - see AppState.copyWith's clearCurrentCallProp and
+/// ReduxActions.setCurrentCall's doc comment for why this bypasses
+/// reducers.dart entirely instead of following the usual extraction
+/// pattern. Every wrapper in this file is registered as a TypedReducer
+/// parameterized on AppState and dynamic, so combineReducers invokes ALL of them
+/// on EVERY dispatch regardless of action.type (dynamic matches
+/// everything) - the other wrappers stay safe by delegating to a
+/// reducers.xyz method that internally switches on action.type and
+/// no-ops (returns state unchanged) for anything else. This one has no
+/// such method to delegate to, so it must do that action.type check
+/// itself - skipping it would clear currentCall on literally every
+/// Redux dispatch in the app, not just this action.
+AppState _clearCurrentCall(AppState state, dynamic action) {
+  if (action is DispatchModel && action.type == clearCurrentCallT) {
+    return state.copyWith(clearCurrentCallProp: true);
+  }
+  return state;
+}
+
+AppState _setPendingIncomingCall(AppState state, dynamic action) {
+  return state.copyWith(
+      pendingIncomingCallProp:
+          reducers.setPendingIncomingCall(state, action).pendingIncomingCall);
+}
+
+/// Same reasoning as _clearCurrentCall above.
+AppState _clearPendingIncomingCall(AppState state, dynamic action) {
+  if (action is DispatchModel && action.type == clearPendingIncomingCallT) {
+    return state.copyWith(clearPendingIncomingCallProp: true);
+  }
+  return state;
+}
+
 final appReducer = combineReducers<AppState>([
   TypedReducer<AppState, dynamic>(_setUserAuth).call,
   TypedReducer<AppState, dynamic>(_resetAppState).call,
@@ -76,7 +116,11 @@ final appReducer = combineReducers<AppState>([
   TypedReducer<AppState, dynamic>(_setActiveUsersList).call,
   TypedReducer<AppState, dynamic>(_updateActiveUser).call,
   TypedReducer<AppState, dynamic>(_setIsUsingReplyAssist).call,
-  TypedReducer<AppState, dynamic>(_setReplyAssistContext).call
+  TypedReducer<AppState, dynamic>(_setReplyAssistContext).call,
+  TypedReducer<AppState, dynamic>(_setCurrentCall).call,
+  TypedReducer<AppState, dynamic>(_clearCurrentCall).call,
+  TypedReducer<AppState, dynamic>(_setPendingIncomingCall).call,
+  TypedReducer<AppState, dynamic>(_clearPendingIncomingCall).call,
 ]);
 
 class StateStore {

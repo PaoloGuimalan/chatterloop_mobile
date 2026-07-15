@@ -78,4 +78,28 @@ class Endpoints {
   /// Switches back to the account's own personal entity - 400s if already
   /// acting as yourself.
   String entitySwitchBack = '/api/user/entity/switch-back';
+
+  // ─── Calling (Node backend) ──────────────────────────────────────────────
+  // /u/call*: JWT-signed {token} bodies (see CallApi) - relay a signaling
+  // event to the other participant(s) over their existing SSE connection.
+  // /webrtc/*: plain JSON bodies (see WebrtcApi) - the mediasoup REST half
+  // of the join-room -> create-transport -> produce/consume sequence; the
+  // actual response data for each of these arrives asynchronously over SSE,
+  // not in the HTTP response (server/routes/webrtc/index.js).
+
+  /// Rings every other participant's device (JWT relay only - no mediasoup
+  /// room is touched here).
+  String call = '/u/call';
+  String rejectCall = '/u/rejectcall';
+  String endCall = '/u/endcall';
+
+  String webrtcJoinRoom = '/webrtc/join-room';
+  String webrtcCreateTransport = '/webrtc/create-transport';
+  String webrtcTransportConnect = '/webrtc/transport-connect';
+  String webrtcProduce = '/webrtc/produce';
+  String webrtcConsume = '/webrtc/consume';
+  String webrtcCloseProducer = '/webrtc/close-producer';
+  String webrtcLeaveRoom = '/webrtc/leave-room';
+  String webrtcParticipantStatus = '/webrtc/participant-status';
+  String webrtcReconnect = '/webrtc/reconnect';
 }

@@ -3,6 +3,10 @@ import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 
+// call_session_model.dart/incoming_call_alert_model.dart types flow through
+// as action.payload (dynamic) below - no direct import needed here, same as
+// every other reducer method in this file.
+
 class ReduxActions {
   AppState setUserAuth(AppState state, DispatchModel action) {
     switch (action.type) {
@@ -130,6 +134,32 @@ class ReduxActions {
         return AppState(replyAssistContext: [...currentList]);
       case clearReplyAssistContextT:
         return AppState(replyAssistContext: []);
+      default:
+        return state;
+    }
+  }
+
+  /// clearCurrentCallT is handled directly in store.dart's wrapper (via
+  /// AppState.copyWith's clearCurrentCallProp flag) instead of here -
+  /// currentCall is nullable, so "clear" can't be expressed by returning
+  /// AppState(currentCall: null) and extracting it the way every other
+  /// slice above does (copyWith's `?? currentCall` fallback would just
+  /// treat that null as "no change").
+  AppState setCurrentCall(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case setCurrentCallT:
+        return AppState(currentCall: action.payload);
+      default:
+        return state;
+    }
+  }
+
+  /// Same nullable-clear caveat as setCurrentCall above -
+  /// clearPendingIncomingCallT is handled directly in store.dart.
+  AppState setPendingIncomingCall(AppState state, DispatchModel action) {
+    switch (action.type) {
+      case setPendingIncomingCallT:
+        return AppState(pendingIncomingCall: action.payload);
       default:
         return state;
     }

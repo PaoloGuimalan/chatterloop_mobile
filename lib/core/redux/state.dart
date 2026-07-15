@@ -1,3 +1,5 @@
+import 'package:chatterloop_app/models/call_models/call_session_model.dart';
+import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/post_models/user_post_model.dart';
@@ -21,6 +23,19 @@ class AppState {
   /// needs filtering by relationship on the read side.
   Map<String, PresenceInfo> presence;
 
+  /// Cross-screen "is there a call happening" signal - deliberately thin
+  /// (see call_session_model.dart's doc comment). The actual mediasoup
+  /// engine state (transports/consumers/roster) lives in CallController,
+  /// not here - this is only set/cleared by whoever drives CallController
+  /// (M5's call-entry-point flow), never by CallController itself.
+  CallSession? currentCall;
+
+  /// A still-ringing incoming-call alert, if any - set from the
+  /// `incomingcall` SSE event (see sse_events.dart), cleared on
+  /// accept/decline/timeout or a `callreject`/`endcall` signal for the
+  /// same conversation arriving first.
+  IncomingCallAlert? pendingIncomingCall;
+
   AppState(
       {this.userAuth = const UserAuth(
           null,
@@ -33,7 +48,9 @@ class AppState {
       this.notificationsstate = const NotificationsStateModel([], 0),
       this.isUsingReplyAssist = false,
       this.replyAssistContext = const [],
-      this.presence = const {}});
+      this.presence = const {},
+      this.currentCall,
+      this.pendingIncomingCall});
 
   AppState copyWith(
       {UserAuth? authState,
@@ -44,7 +61,11 @@ class AppState {
       NotificationsStateModel? notificationsstateprop,
       bool? isUsingReplyAssistProp,
       List<ReplyAssistContext>? replyAssistContextProp,
-      Map<String, PresenceInfo>? presenceProp}) {
+      Map<String, PresenceInfo>? presenceProp,
+      CallSession? currentCallProp,
+      bool clearCurrentCallProp = false,
+      IncomingCallAlert? pendingIncomingCallProp,
+      bool clearPendingIncomingCallProp = false}) {
     return AppState(
         userAuth: authState ?? userAuth,
         posts: postslist ?? posts,
@@ -54,6 +75,11 @@ class AppState {
         notificationsstate: notificationsstateprop ?? notificationsstate,
         isUsingReplyAssist: isUsingReplyAssistProp ?? isUsingReplyAssist,
         replyAssistContext: replyAssistContextProp ?? replyAssistContext,
-        presence: presenceProp ?? presence);
+        presence: presenceProp ?? presence,
+        currentCall:
+            clearCurrentCallProp ? null : (currentCallProp ?? currentCall),
+        pendingIncomingCall: clearPendingIncomingCallProp
+            ? null
+            : (pendingIncomingCallProp ?? pendingIncomingCall));
   }
 }
