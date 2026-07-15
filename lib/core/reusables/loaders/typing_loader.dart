@@ -13,12 +13,10 @@ class TypingIndicatorState extends State<TypingIndicator>
   late Animation<double> _animation1;
   late Animation<double> _animation2;
   late Animation<double> _animation3;
-  late bool _isTyping;
 
   @override
   void initState() {
     super.initState();
-    _isTyping = widget.isTyping;
 
     _controller = AnimationController(
       vsync: this,
@@ -49,13 +47,13 @@ class TypingIndicatorState extends State<TypingIndicator>
       child: Column(
         children: [
           SizedBox(
-            height: _isTyping ? 7 : 0,
+            height: widget.isTyping ? 7 : 0,
           ),
           Row(
             children: [
               AnimatedContainer(
-                width: _isTyping ? 60 : 0,
-                height: _isTyping ? 40 : 0,
+                width: widget.isTyping ? 60 : 0,
+                height: widget.isTyping ? 40 : 0,
                 decoration: BoxDecoration(
                     color: Color(0xffdedede),
                     borderRadius: BorderRadius.circular(10)),
