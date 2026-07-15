@@ -254,6 +254,13 @@ class ConversationStateView extends State<ConversationView> {
         .where((u) => u.entityID == entityId)
         .toList();
     if (matches != null && matches.isNotEmpty) return matches.first.displayName;
+
+    if (kDebugMode) {
+      print("[_resolveSenderName] no match for entityId=$entityId");
+      print("  conversationSetup.details=${conversationSetup?['details']}");
+      print("  conversationInfo.usersWithInfo="
+          "${conversationInfo?.usersWithInfo.map((u) => '{entityID:${u.entityID}, userID:${u.userID}, name:${u.displayName}}').toList()}");
+    }
     return entityId;
   }
 
@@ -336,6 +343,11 @@ class ConversationStateView extends State<ConversationView> {
       // leaving conversationInfo permanently unset (blocking send/seen/typing).
       dynamic rawGetConversationInfo = decodedGetConversationInfo?["data"];
       if (rawGetConversationInfo is! Map) return;
+
+      if (kDebugMode) {
+        print("[getConversationInfoProcess] raw usersWithInfo="
+            "${rawGetConversationInfo["usersWithInfo"]}");
+      }
 
       ConversationInfoModel conversationInfoFinal =
           ConversationInfoModel.fromJson(
