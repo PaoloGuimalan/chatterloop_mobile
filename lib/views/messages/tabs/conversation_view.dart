@@ -185,11 +185,23 @@ class ConversationStateView extends State<ConversationView> {
             if (!isRefreshed) {
               int oldRangeAdd = range + 20;
 
-              initConversationProcess(
-                  conversationMetaData.conversationID, oldRangeAdd);
               setState(() {
-                range = oldRangeAdd;
                 isRefreshed = true;
+              });
+              // range only advances once the fetch actually lands (mirrors
+              // the SSE listener's own .then(...) pattern in _startLoading)
+              // - bumping it eagerly here made the "more to load" spinner
+              // (gated on range >= totalMessages) disappear the instant a
+              // scroll triggered a fetch, before the new messages had
+              // actually arrived to replace it.
+              initConversationProcess(
+                      conversationMetaData.conversationID, oldRangeAdd)
+                  .then((_) {
+                if (mounted) {
+                  setState(() {
+                    range = oldRangeAdd;
+                  });
+                }
               });
 
               Future.delayed(Duration(milliseconds: 2500), () {

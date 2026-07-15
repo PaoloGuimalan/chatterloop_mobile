@@ -52,6 +52,17 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
 
   bool isChecked = false;
 
+  /// The replied-to message, if there genuinely is one. replyedmessage
+  /// defaults to [] (not null) whenever the server's $lookup found nothing
+  /// (e.g. the original was deleted, or isReply is true but the reference
+  /// never resolved) - a bare `replyedmessage?[0]` still throws in that
+  /// case since ?[] only guards a null receiver, not an empty list, so
+  /// every reply-preview access below goes through this instead.
+  MessageContent? get _repliedTo {
+    final list = _messageContent.replyedmessage;
+    return (list != null && list.isNotEmpty) ? list[0] : null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1353,7 +1364,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
             SizedBox(
               height: _messageContent.isReply ? 0 : 5,
             ),
-            _messageContent.isReply
+            _messageContent.isReply && _repliedTo != null
                 ? Column(
                     children: [
                       SizedBox(
@@ -1369,9 +1380,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             padding:
                                 EdgeInsets.only(left: 7, right: 7, bottom: 7),
                             child: Text(
-                              _messageContent.replyedmessage?[0].sender == null
-                                  ? "replied to a message"
-                                  : "replied to ${widget.resolveSenderName(_messageContent.replyedmessage![0].sender)}",
+                              "replied to ${widget.resolveSenderName(_repliedTo!.sender)}",
                               style: TextStyle(
                                   fontSize: 12,
                                   color: Color(0xFF565656),
@@ -1383,25 +1392,18 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       ),
                       Opacity(
                         opacity: 0.6,
-                        child: _messageContent.replyedmessage?[0].isDeleted
-                                as bool
+                        child: _repliedTo!.isDeleted == true
                             ? messageDeletedItem(
-                                _messageContent.replyedmessage?[0].messageType
-                                    as String,
+                                _repliedTo!.messageType,
                                 _messageContent.sender == _currentUserID,
-                                _messageContent.replyedmessage?[0].sender ==
-                                    _currentUserID,
+                                _repliedTo!.sender == _currentUserID,
                                 true)
                             : messageTypeSwitch(
-                                _messageContent.replyedmessage?[0].content
-                                    as String,
-                                _messageContent.replyedmessage?[0].messageType
-                                    as String,
-                                _messageContent.replyedmessage?[0].messageID
-                                    as String,
+                                _repliedTo!.content,
+                                _repliedTo!.messageType,
+                                _repliedTo!.messageID,
                                 _messageContent.sender == _currentUserID,
-                                _messageContent.replyedmessage?[0].sender ==
-                                    _currentUserID,
+                                _repliedTo!.sender == _currentUserID,
                                 true,
                                 false,
                                 false),
