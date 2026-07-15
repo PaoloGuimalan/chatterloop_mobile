@@ -4,6 +4,7 @@
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
+import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -42,6 +43,28 @@ class ProfileApi {
       final data = response.data["data"];
       if (data is! Map) return null;
       return PublicProfile.fromJson(Map<String, dynamic>.from(data));
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
+  /// Same endpoint as getPublicProfileRequest above (webapp reuses the
+  /// exact same /api/user/auth/<slug>/ route for both - it branches on the
+  /// response's data.type: "user" -> Profile, "page" -> RealmProfile,
+  /// confirmed against ProfileContainer.tsx). Only ever called here when
+  /// the caller already knows (via UserAccount.activeEntity.type == "realm")
+  /// that the slug in question is a page, so no branching is needed on
+  /// this side - always parsed as a realm.
+  Future<RealmProfile?> getRealmProfileRequest(String slug) async {
+    try {
+      final response = await _userDio.get('${_endpoints.publicProfile}$slug/');
+      final data = response.data["data"];
+      if (data is! Map) return null;
+      return RealmProfile.fromJson(Map<String, dynamic>.from(data));
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

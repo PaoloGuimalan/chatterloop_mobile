@@ -73,6 +73,41 @@ class UserAccount {
   /// comparing message ownership against `id` never matches.
   String get entityId => activeEntity?.id ?? personalEntityId ?? id;
 
+  /// Always the account holder's own name, regardless of which entity is
+  /// currently active - used for the "switch back to yourself" row in the
+  /// entity switcher, which must keep showing your real name even while
+  /// acting as a page.
+  String get personalDisplayName => [
+        firstname,
+        if (middlename.isNotEmpty && middlename != "N/A") middlename,
+        lastname,
+      ].where((part) => part.trim().isNotEmpty).join(" ");
+
+  /// True once switched to a page/realm entity rather than acting as
+  /// yourself - matches webapp's UserMenu.tsx isActingAsPage check
+  /// (activeEntity.is_switched).
+  bool get isActingAsEntity => activeEntity?.type == "realm";
+
+  /// Display identity for whichever entity is currently active - the
+  /// account itself when personal, or the switched-to page's own
+  /// name/avatar/slug otherwise. Drives the top-bar avatar and user-menu
+  /// header; the profile TAB itself still always shows the personal
+  /// account (no page-profile screen exists yet to switch it to).
+  String get activeDisplayName => isActingAsEntity
+      ? (activeEntity?.name ?? personalDisplayName)
+      : personalDisplayName;
+
+  String get activeHandle => isActingAsEntity
+      ? "@${activeEntity?.slug ?? activeEntity?.id ?? ''}"
+      : "@$username";
+
+  String? get activeAvatarSrc => isActingAsEntity
+      ? activeEntity?.profile
+      : (profile != "none" ? profile : null);
+
+  String get activeAvatarSeed =>
+      isActingAsEntity ? (activeEntity?.id ?? id) : id;
+
   @override
   String toString() {
     return 'UserAccount(id: $id, username: $username, firstname: $firstname, middlename: $middlename, lastname: $lastname, email: $email, isActivated: $isActivated, isVerified: $isVerified)';

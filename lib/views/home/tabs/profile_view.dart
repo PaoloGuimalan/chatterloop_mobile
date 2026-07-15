@@ -11,7 +11,6 @@ import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
-import 'package:go_router/go_router.dart';
 
 class ProfileView extends StatefulWidget {
   const ProfileView({super.key});
@@ -21,27 +20,39 @@ class ProfileView extends StatefulWidget {
 }
 
 class _ProfileViewState extends State<ProfileView> {
-  bool _refreshed = false;
+  bool _isFetchingProfile = false;
 
   /// Mirrors the webapp: it always round-trips through GET
   /// /api/user/auth/:username/ for the profile screen, even for your own
   /// profile, rather than only trusting the JWT-cached copy from login.
-  Future<void> _refreshFromServer(BuildContext context, String username) async {
-    if (_refreshed || username.isEmpty) return;
-    _refreshed = true;
+  ///
+  /// Triggered by "joinedDate is missing" rather than a one-shot "have we
+  /// ever fetched" flag - joinedDate/isBadged only ever come from this
+  /// round-trip (fromNodeJwt/fromDjangoJwt never carry them), and an entity
+  /// switch (EntityApi) wholesale-replaces UserAccount with a fresh
+  /// JWT-decoded copy that's lost them again. A one-shot flag would leave
+  /// this permanently blank after the first switch.
+  Future<void> _refreshFromServer(
+      BuildContext context, UserAccount user) async {
+    if (_isFetchingProfile ||
+        user.username.isEmpty ||
+        user.joinedDate != null) {
+      return;
+    }
+    _isFetchingProfile = true;
 
-    final fresh = await ProfileApi().getPublicProfileRequest(username);
+    final fresh = await ProfileApi().getPublicProfileRequest(user.username);
+    _isFetchingProfile = false;
     if (!mounted || fresh == null) return;
 
-    final current = StoreProvider.of<AppState>(context).state.userAuth.user;
     StoreProvider.of<AppState>(context).dispatch(DispatchModel(
         setUserAuthT,
         UserAuth(
             true,
             UserAccount.fromPublicProfile(fresh,
-                allowedModules: current.allowedModules,
-                activeEntity: current.activeEntity,
-                personalEntityId: current.personalEntityId))));
+                allowedModules: user.allowedModules,
+                activeEntity: user.activeEntity,
+                personalEntityId: user.personalEntityId))));
   }
 
   @override
@@ -50,7 +61,7 @@ class _ProfileViewState extends State<ProfileView> {
     return StoreConnector<AppState, AppState>(
       builder: (context, state) {
         final user = state.userAuth.user;
-        _refreshFromServer(context, user.username);
+        _refreshFromServer(context, user);
 
         final displayName = [
           user.firstname,
@@ -84,26 +95,18 @@ class _ProfileViewState extends State<ProfileView> {
                             user.birthdate?.month,
                             user.birthdate?.day,
                             user.birthdate?.year),
-                        actions: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Column(
-                            children: [
-                              if (!user.isVerified)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: CLBadge(
-                                      label: "Email not verified",
-                                      tone: CLBadgeTone.pink),
-                                ),
-                              CLBtn(
-                                label: "Edit Profile",
-                                size: CLBtnSize.lg,
-                                block: true,
-                                onPressed: () => context.push('/profile/edit'),
+                        // Edit Profile now lives under Settings (Personal
+                        // Information / Credentials, both route to
+                        // /profile/edit) rather than as a button here.
+                        actions: user.isVerified
+                            ? null
+                            : Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 20),
+                                child: CLBadge(
+                                    label: "Email not verified",
+                                    tone: CLBadgeTone.pink),
                               ),
-                            ],
-                          ),
-                        ),
                       ),
                     ],
                   ),

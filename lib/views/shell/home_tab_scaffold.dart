@@ -16,6 +16,7 @@ import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
+import 'package:chatterloop_app/core/reusables/widgets/user_menu_popover.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
@@ -50,6 +51,15 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   // indexedStack is used here instead of plain tab content).
   int _lastTabIndex = 0;
   double _tabOpacity = 1;
+
+  final GlobalKey _profileButtonKey = GlobalKey();
+
+  // Detected inside the StoreConnector builder below (not didUpdateWidget -
+  // this doesn't come from widget's own constructor params, it's Redux
+  // state), so the entity-scoped fetches this gates re-fire against the
+  // newly active entity after a switch, mirroring webapp's post-switch
+  // full reload without an actual app restart.
+  String? _lastEntityId;
 
   @override
   void didUpdateWidget(covariant HomeTabScaffold oldWidget) {
@@ -121,6 +131,16 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
       int unreadTotal = state.messages.isEmpty
           ? 0
           : state.messages.map((m) => m.unread).reduce((a, b) => a + b);
+
+      final entityId = state.userAuth.user.entityId;
+      if (_lastEntityId != null && _lastEntityId != entityId) {
+        isMessagesInitialized = false;
+        isContactsInitialized = false;
+        isNotificationsInitialized = false;
+        isActiveUsersInitialized = false;
+      }
+      _lastEntityId = entityId;
+
       if (!isMessagesInitialized) getConversationListProcess(context);
       if (!isContactsInitialized) getContactsProcess(context);
       if (!isNotificationsInitialized) getNotificationsListProcess(context);
@@ -159,11 +179,33 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                           count: state.notificationsstate.totalunread,
                           onPressed: () => context.push('/notifications'),
                         ),
-                        CLIconBtn(
-                          icon: Icons.logout,
-                          color: p.pink,
-                          tooltip: "Logout",
-                          onPressed: () => _logout(context),
+                        const SizedBox(width: 4),
+                        // Logout moved into the user menu (opened from the
+                        // bottom-nav menu button) - this now shows whichever
+                        // entity is currently active (yourself, or a page
+                        // you've switched to). Tapping it goes to that same
+                        // active entity's own profile - the personal Profile
+                        // tab normally, or the switched-to page's read-only
+                        // profile screen while acting as it. The menu's own
+                        // "Profile" row (user_menu_popover.dart) mirrors this
+                        // exact same entity-aware target.
+                        InkWell(
+                          onTap: () {
+                            final user = state.userAuth.user;
+                            if (user.isActingAsEntity) {
+                              context.push(
+                                  '/realm/${user.activeEntity?.slug ?? user.activeEntity?.id}');
+                            } else {
+                              widget.navigationShell.goBranch(3);
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(CLRadii.pill),
+                          child: CLAvatar(
+                            id: state.userAuth.user.activeAvatarSeed,
+                            name: state.userAuth.user.activeDisplayName,
+                            src: state.userAuth.user.activeAvatarSrc,
+                            size: 34,
+                          ),
                         ),
                       ],
                     ),
@@ -203,9 +245,14 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                         widget.navigationShell.currentIndex == 2,
                         () => widget.navigationShell.goBranch(2)),
                     _navButton(
-                        Icons.person_2_outlined,
+                        Icons.menu,
                         widget.navigationShell.currentIndex == 3,
-                        () => widget.navigationShell.goBranch(3)),
+                        () => showUserMenuPopover(context,
+                            anchorKey: _profileButtonKey,
+                            onOpenProfile: () =>
+                                widget.navigationShell.goBranch(3),
+                            onLogout: () => _logout(context)),
+                        buttonKey: _profileButtonKey),
                   ],
                 ),
               ),
@@ -218,9 +265,11 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
     });
   }
 
-  Widget _navButton(IconData icon, bool active, VoidCallback onPressed) {
+  Widget _navButton(IconData icon, bool active, VoidCallback onPressed,
+      {Key? buttonKey}) {
     final p = cl(context);
     return InkWell(
+      key: buttonKey,
       onTap: onPressed,
       borderRadius: BorderRadius.circular(CLRadii.pill),
       child: Container(

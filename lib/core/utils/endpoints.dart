@@ -64,4 +64,18 @@ class Endpoints {
   /// broadcasts it over the same "messages_list" SSE channel (payload gets
   /// a deletedMessageID field), matching webapp's DeleteMessageRequest.
   String deleteMessage = '/m/deletemessage';
+
+  /// Realms/pages this account administers (filtered client-side to
+  /// is_admin) - powers the "Switch account" list, matches webapp's
+  /// EntitySwitcher -> GetMyRealmsRequest(1, 20, "page").
+  String myRealms = '/api/realm/my-list';
+
+  /// {realm_id} -> re-issues the authtoken with a different `entity` claim
+  /// (same userID, acting as the page instead). Only realms of type "page"
+  /// support this; server enforces OWNER/ADMIN membership.
+  String entitySwitch = '/api/user/entity/switch';
+
+  /// Switches back to the account's own personal entity - 400s if already
+  /// acting as yourself.
+  String entitySwitchBack = '/api/user/entity/switch-back';
 }

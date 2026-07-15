@@ -9,6 +9,15 @@ AppState _setUserAuth(AppState state, dynamic action) {
       authState: reducers.setUserAuth(state, action).userAuth);
 }
 
+/// Unlike every other reducer wrapper here, this does NOT copyWith back onto
+/// the existing state - reducers.resetAppState already returns a complete
+/// fresh AppState (see its doc comment), and merging it in via copyWith
+/// would defeat the entire point by re-preserving the old messages/contacts/
+/// notifications/presence/etc. this action exists to clear.
+AppState _resetAppState(AppState state, dynamic action) {
+  return reducers.resetAppState(state, action);
+}
+
 AppState _setFeedPosts(AppState state, dynamic action) {
   return state.copyWith(postslist: reducers.setFeedPosts(state, action).posts);
 }
@@ -58,6 +67,7 @@ AppState _setReplyAssistContext(AppState state, dynamic action) {
 
 final appReducer = combineReducers<AppState>([
   TypedReducer<AppState, dynamic>(_setUserAuth).call,
+  TypedReducer<AppState, dynamic>(_resetAppState).call,
   TypedReducer<AppState, dynamic>(_setFeedPosts).call,
   TypedReducer<AppState, dynamic>(_setMessagesList).call,
   TypedReducer<AppState, dynamic>(_setContactsList).call,

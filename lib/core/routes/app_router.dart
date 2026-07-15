@@ -13,11 +13,14 @@ import 'package:chatterloop_app/views/messages/messages_view.dart';
 import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
 import 'package:chatterloop_app/views/notifications/notifications_view.dart';
 import 'package:chatterloop_app/views/profile/profile_edit_view.dart';
+import 'package:chatterloop_app/views/profile/realm_profile_view.dart';
 import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/search_view.dart';
+import 'package:chatterloop_app/views/settings/settings_view.dart';
 import 'package:chatterloop_app/views/shell/authenticated_shell.dart';
 import 'package:chatterloop_app/views/shell/home_tab_scaffold.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
+import 'package:chatterloop_app/views/switching/switching_view.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -84,6 +87,15 @@ GoRouter buildAppRouter(AuthController authController) {
       GoRoute(
           path: '/verify-email',
           pageBuilder: (c, s) => _clPage(s, const VerifyEmailScreen())),
+      // Top-level (outside the shell) so it replaces the whole visible UI -
+      // no bottom nav/top bar while an entity switch + AppState reset is in
+      // flight. `extra` carries the actual switch-back/switch-to-page
+      // closure from wherever it was triggered (see user_menu_popover.dart).
+      GoRoute(
+        path: '/switching',
+        pageBuilder: (c, s) => _clPage(
+            s, SwitchingScreen(perform: s.extra as Future<bool> Function())),
+      ),
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
         routes: [
@@ -125,12 +137,20 @@ GoRouter buildAppRouter(AuthController authController) {
               path: '/profile/edit',
               pageBuilder: (c, s) => _clPage(s, const ProfileEditScreen())),
           GoRoute(
+              path: '/settings',
+              pageBuilder: (c, s) => _clPage(s, const SettingsScreen())),
+          GoRoute(
               path: '/notifications',
               pageBuilder: (c, s) => _clPage(s, const NotificationsView())),
           GoRoute(
             path: '/user/:username',
             pageBuilder: (c, s) => _clPage(
                 s, UserProfileScreen(username: s.pathParameters['username']!)),
+          ),
+          GoRoute(
+            path: '/realm/:slug',
+            pageBuilder: (c, s) =>
+                _clPage(s, RealmProfileScreen(slug: s.pathParameters['slug']!)),
           ),
         ],
       ),
