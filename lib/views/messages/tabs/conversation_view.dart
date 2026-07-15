@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -20,11 +22,15 @@ import 'package:chatterloop_app/models/messages_models/conversation_info_model.d
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 class ConversationView extends StatefulWidget {
   final String conversationId;
@@ -35,10 +41,27 @@ class ConversationView extends StatefulWidget {
   ConversationStateView createState() => ConversationStateView();
 }
 
+/// Matches webapp's ConversationV2.tsx MAX_ATTACHMENT_SIZE - files over
+/// this are silently dropped client-side (mirrors webapp's toast: "Cannot
+/// upload files greater than 25mb") rather than sent and rejected by the
+/// server's own equal 25MB multiparty.Form({maxFilesSize}) limit.
+const int _maxAttachmentBytes = 25 * 1024 * 1024;
+
 class ConversationStateView extends State<ConversationView> {
   StreamSubscription<SSEModel>? _eventBusSubscription;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _controller = TextEditingController();
+  final AudioRecorder _voiceRecorder = AudioRecorder();
+  bool _isRecordingVoice = false;
+
+  /// Attachments picked but not yet sent - matches webapp's composer
+  /// staging (imgList/nonImgList in ConversationV2.tsx): picking no longer
+  /// sends immediately, it queues here for review, and the actual send
+  /// button flushes whatever's staged (plus any typed text) together in
+  /// one go. Voice messages are the one exception - webapp sends those
+  /// immediately on stop with no staging/preview step, so that flow is
+  /// untouched here too.
+  List<({String path, String messageType})> _stagedFiles = [];
 
   bool isInitialized = false;
   bool isSeenMessageInitialized = false;
@@ -127,6 +150,25 @@ class ConversationStateView extends State<ConversationView> {
     _eventBusSubscription = eventBus.on<SSEModel>().listen((SSEModel event) {
       if (event.event == "messages_list") {
         if (mounted) {
+          // Deletion reuses this same broadcast channel (matches webapp's
+          // sse.ts reload vs reload_deleted_message split) - the payload's
+          // message.deletedMessageID marks a soft-delete instead of "go
+          // refetch a page". Handled as an in-place mutation (flip
+          // isDeleted on the matching MessageContent, no list reshuffle)
+          // rather than falling into the full-page refetch below, which
+          // would be wasted work for a single-field change and would also
+          // fight the reply-in-place logic elsewhere in this file.
+          final deletedMessageID = _deletedMessageIdFromSseEvent(event);
+          if (deletedMessageID != null) {
+            final target = conversationContentList
+                .where((message) => message.messageID == deletedMessageID)
+                .toList();
+            if (target.isNotEmpty) {
+              setState(() => target[0].isDeleted = true);
+            }
+            return;
+          }
+
           int newRange = range + 1;
           if (conversationInfo != null) {
             seenMessagesProcess(
@@ -151,10 +193,31 @@ class ConversationStateView extends State<ConversationView> {
     });
   }
 
+  /// Server pushes deletes over the same "messages_list" SSE channel used
+  /// for every other message event (routes/messages/index.js's
+  /// MessagesTrigger), distinguished only by message.deletedMessageID being
+  /// present on the payload - there's no separate event name to switch on.
+  /// Also scopes to this screen's conversation, since the channel fires for
+  /// every conversation the socket is subscribed to, not just the open one.
+  String? _deletedMessageIdFromSseEvent(SSEModel event) {
+    try {
+      final parsed = jsonDecode(event.data as String);
+      final message = parsed["message"];
+      if (message is! Map) return null;
+      if (message["conversationID"]?.toString() != widget.conversationId) {
+        return null;
+      }
+      return message["deletedMessageID"]?.toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void dispose() {
     _eventBusSubscription?.cancel();
     _scrollController.dispose();
+    _voiceRecorder.dispose();
     super.dispose();
   }
 
@@ -587,6 +650,218 @@ class ConversationStateView extends State<ConversationView> {
     }
   }
 
+  /// Shared by the image picker, file picker, and voice recorder below -
+  /// matches webapp's SendFilesRequest exactly (see ConversationsApi
+  /// .sendFilesRequest's doc comment): one multipart POST that both
+  /// uploads and creates the message(s), with an optimistic pending entry
+  /// per file added locally first (same pendingID-reconciliation pattern
+  /// combinedPendingAndMessagesList already uses for text messages - no
+  /// extra bookkeeping needed here for that part).
+  Future<void> sendFilesProcess(
+      String userID,
+      String conversationID,
+      String conversationType,
+      List<({String path, String messageType})> files,
+      bool isReplyingProp,
+      String replyingToProp) async {
+    if (files.isEmpty) return;
+
+    setState(() {
+      isReplying = IsReplying(false, "");
+    });
+
+    final pendingIDs = <String>[];
+    final newPendingMessagesList = [...pendingMessagesList];
+    for (var i = 0; i < files.length; i++) {
+      final pendingID =
+          "${userID}_${conversationID}_${pendingMessagesList.length + i + 1}_${ContentValidator().generateRandomNumber(10)}";
+      pendingIDs.add(pendingID);
+      newPendingMessagesList.add(PendingMessages(
+          conversationID, pendingID, files[i].path, files[i].messageType));
+    }
+
+    if (mounted) {
+      setState(() {
+        pendingMessagesList = newPendingMessagesList;
+        combinedPendingAndMessagesList = [
+          ...conversationContentList,
+          ...newPendingMessagesList
+        ];
+      });
+    }
+
+    await ConversationsApi().sendFilesRequest(
+      conversationID: conversationID,
+      isReply: isReplyingProp,
+      replyingTo: replyingToProp,
+      conversationType: conversationType,
+      pendingIDs: pendingIDs,
+      filePaths: files.map((f) => f.path).toList(),
+    );
+  }
+
+  void _attachmentTooLarge() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Cannot upload files greater than 25mb")),
+    );
+  }
+
+  /// Stages picked images for review instead of sending immediately -
+  /// pickMultiImage matches webapp's picker resolving to File[] (multiple
+  /// selection, not one-at-a-time). Oversized picks are dropped from the
+  /// batch (matches webapp's addFilesToComposer, which silently filters
+  /// rather than blocking the whole selection over one bad file).
+  Future<void> _pickImages() async {
+    final picked = await ImagePicker().pickMultiImage(imageQuality: 85);
+    if (picked.isEmpty || !mounted) return;
+    var droppedAny = false;
+    final accepted = <({String path, String messageType})>[];
+    for (final file in picked) {
+      if (await File(file.path).length() > _maxAttachmentBytes) {
+        droppedAny = true;
+        continue;
+      }
+      accepted.add((path: file.path, messageType: "image"));
+    }
+    if (!mounted) return;
+    if (droppedAny) _attachmentTooLarge();
+    if (accepted.isEmpty) return;
+    setState(() => _stagedFiles = [..._stagedFiles, ...accepted]);
+  }
+
+  /// Same staging as _pickImages, any file type, multi-select - the real
+  /// messageType (mimetype) is resolved server-side from each multipart
+  /// part's content-type header once uploaded (matches webapp - the
+  /// server never trusts a client-supplied type). "file" here is only a
+  /// local placeholder so the staged-preview/pending-message widgets pick
+  /// the generic file-card branch instead of misreading it as text/image.
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    final files = result?.files ?? [];
+    if (files.isEmpty || !mounted) return;
+    var droppedAny = false;
+    final accepted = <({String path, String messageType})>[];
+    for (final file in files) {
+      final path = file.path;
+      if (path == null) continue;
+      if (await File(path).length() > _maxAttachmentBytes) {
+        droppedAny = true;
+        continue;
+      }
+      accepted.add((path: path, messageType: "file"));
+    }
+    if (!mounted) return;
+    if (droppedAny) _attachmentTooLarge();
+    if (accepted.isEmpty) return;
+    setState(() => _stagedFiles = [..._stagedFiles, ...accepted]);
+  }
+
+  void _removeStagedFile(int index) {
+    setState(() {
+      _stagedFiles = [..._stagedFiles]..removeAt(index);
+    });
+  }
+
+  /// One thumbnail (image) or file-icon chip in the pre-send preview
+  /// strip, with a tap-to-remove "x" badge.
+  Widget _stagedAttachmentChip(int index) {
+    final file = _stagedFiles[index];
+    final isImage = file.messageType == "image";
+    return Padding(
+      padding: const EdgeInsets.only(left: 6, top: 8, bottom: 8),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Color(0xffe4e4e4),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: isImage
+                ? Image.file(File(file.path),
+                    width: 60, height: 60, fit: BoxFit.cover)
+                : Center(
+                    child: Icon(Icons.insert_drive_file_outlined,
+                        color: Color(0xFF565656), size: 26),
+                  ),
+          ),
+          Positioned(
+            top: -6,
+            right: -6,
+            child: GestureDetector(
+              onTap: () => _removeStagedFile(index),
+              child: Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle, color: Colors.black87),
+                child: Icon(Icons.close, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Diverges from webapp's exact voice-message UI on one point: webapp's
+  /// stop button has no cancel step, but the user explicitly asked for a
+  /// cancel affordance here, so recording now exposes a separate
+  /// stop-and-send vs. cancel action instead of a single toggle.
+  Future<void> _startVoiceRecording() async {
+    if (!await _voiceRecorder.hasPermission()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content:
+                Text("Microphone access is required to send a voice message")),
+      );
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    final path =
+        '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _voiceRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: path);
+    if (!mounted) return;
+    setState(() => _isRecordingVoice = true);
+  }
+
+  Future<void> _stopAndSendVoiceRecording(AppState state) async {
+    final path = await _voiceRecorder.stop();
+    if (!mounted) return;
+    setState(() => _isRecordingVoice = false);
+    if (path == null || conversationInfo == null) return;
+    if (await File(path).length() > _maxAttachmentBytes) {
+      _attachmentTooLarge();
+      return;
+    }
+    await sendFilesProcess(
+      state.userAuth.user.entityId,
+      widget.conversationId,
+      conversationInfo?.type as String,
+      [(path: path, messageType: "audio/m4a")],
+      isReplying.isReply,
+      isReplying.replyingTo,
+    );
+  }
+
+  /// Stops the in-progress recording and discards it - no message is sent
+  /// and the partial recording file is deleted rather than left orphaned
+  /// in the temp directory.
+  Future<void> _cancelVoiceRecording() async {
+    final path = await _voiceRecorder.stop();
+    if (mounted) setState(() => _isRecordingVoice = false);
+    if (path == null) return;
+    final file = File(path);
+    if (await file.exists()) await file.delete();
+  }
+
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, AppState>(
@@ -954,6 +1229,12 @@ class ConversationStateView extends State<ConversationView> {
                                                                     .width,
                                                             child:
                                                                 MessageContentWidget(
+                                                              key: ValueKey((combinedPendingAndMessagesList[combinedPendingAndMessagesList
+                                                                              .length -
+                                                                          1 -
+                                                                          index]
+                                                                      as MessageContent)
+                                                                  .messageID),
                                                               messageContent: combinedPendingAndMessagesList[
                                                                       combinedPendingAndMessagesList
                                                                               .length -
@@ -1100,6 +1381,12 @@ class ConversationStateView extends State<ConversationView> {
                                                                     .width,
                                                             child:
                                                                 PendingContentWidget(
+                                                              key: ValueKey((combinedPendingAndMessagesList[combinedPendingAndMessagesList
+                                                                              .length -
+                                                                          1 -
+                                                                          index]
+                                                                      as PendingMessages)
+                                                                  .pendingID),
                                                               messageID: (combinedPendingAndMessagesList[combinedPendingAndMessagesList
                                                                               .length -
                                                                           1 -
@@ -1169,6 +1456,9 @@ class ConversationStateView extends State<ConversationView> {
                                                             .width,
                                                         child:
                                                             MessageContentWidget(
+                                                                key: ValueKey(
+                                                                    contentItem
+                                                                        .messageID),
                                                                 messageContent:
                                                                     contentItem,
                                                                 previousContentUserID:
@@ -1315,6 +1605,9 @@ class ConversationStateView extends State<ConversationView> {
                                                               .width,
                                                           child:
                                                               PendingContentWidget(
+                                                            key: ValueKey(
+                                                                contentItem
+                                                                    .pendingID),
                                                             messageID:
                                                                 contentItem
                                                                     .pendingID,
@@ -1781,6 +2074,27 @@ class ConversationStateView extends State<ConversationView> {
                               ),
                             ),
                           ),
+                          // Attachments picked but not yet sent - matches
+                          // webapp's composer attachment strip. Reviewable
+                          // (each chip has its own remove "x") before
+                          // hitting send, rather than uploading the
+                          // instant something's picked.
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeInOut,
+                            height: _stagedFiles.isEmpty ? 0 : 76,
+                            color: p.surface,
+                            child: ClipRect(
+                              child: _stagedFiles.isEmpty
+                                  ? const SizedBox.shrink()
+                                  : ListView.builder(
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: _stagedFiles.length,
+                                      itemBuilder: (context, index) =>
+                                          _stagedAttachmentChip(index),
+                                    ),
+                            ),
+                          ),
                           Container(
                             decoration: BoxDecoration(
                               color: p.surface,
@@ -1817,7 +2131,7 @@ class ConversationStateView extends State<ConversationView> {
                                                       bottom: 0,
                                                       left: 0,
                                                       right: 0)),
-                                              onPressed: () {},
+                                              onPressed: _pickFiles,
                                               child: Center(
                                                 child: Icon(
                                                   Icons.add_circle_rounded,
@@ -1839,12 +2153,66 @@ class ConversationStateView extends State<ConversationView> {
                                                       bottom: 0,
                                                       left: 0,
                                                       right: 0)),
-                                              onPressed: () {},
+                                              onPressed: _pickImages,
                                               child: Center(
                                                 child: Icon(
                                                   Icons
                                                       .add_photo_alternate_rounded,
                                                   color: CLColors.brand300,
+                                                  size: 24,
+                                                ),
+                                              )),
+                                        ),
+                                        if (_isRecordingVoice)
+                                          ConstrainedBox(
+                                            constraints: BoxConstraints(
+                                                maxWidth: 40, maxHeight: 40),
+                                            child: ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
+                                                    backgroundColor:
+                                                        Colors.transparent,
+                                                    elevation: 0,
+                                                    padding: EdgeInsets.only(
+                                                        top: 0,
+                                                        bottom: 0,
+                                                        left: 0,
+                                                        right: 0)),
+                                                onPressed:
+                                                    _cancelVoiceRecording,
+                                                child: Center(
+                                                  child: Icon(
+                                                    Icons.close_rounded,
+                                                    color: CLColors.pink,
+                                                    size: 22,
+                                                  ),
+                                                )),
+                                          ),
+                                        ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                              maxWidth: 40, maxHeight: 40),
+                                          child: ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      Colors.transparent,
+                                                  elevation: 0,
+                                                  padding: EdgeInsets.only(
+                                                      top: 0,
+                                                      bottom: 0,
+                                                      left: 0,
+                                                      right: 0)),
+                                              onPressed: _isRecordingVoice
+                                                  ? () =>
+                                                      _stopAndSendVoiceRecording(
+                                                          state)
+                                                  : _startVoiceRecording,
+                                              child: Center(
+                                                child: Icon(
+                                                  _isRecordingVoice
+                                                      ? Icons.stop_circle
+                                                      : Icons.mic_none_rounded,
+                                                  color: _isRecordingVoice
+                                                      ? CLColors.pink
+                                                      : CLColors.brand300,
                                                   size: 24,
                                                 ),
                                               )),
@@ -1918,7 +2286,31 @@ class ConversationStateView extends State<ConversationView> {
                                                   left: 0,
                                                   right: 0)),
                                           onPressed: () {
-                                            if (conversationInfo != null) {
+                                            if (conversationInfo == null) {
+                                              return;
+                                            }
+                                            final hasText =
+                                                messageValue.trim().isNotEmpty;
+                                            final hasFiles =
+                                                _stagedFiles.isNotEmpty;
+                                            if (!hasText && !hasFiles) return;
+
+                                            // Captured before either send
+                                            // call - sendMessageProcess
+                                            // resets isReplying via
+                                            // setState synchronously (the
+                                            // part of an async function
+                                            // before its first await runs
+                                            // immediately), so reading
+                                            // isReplying again afterward
+                                            // for the files send would see
+                                            // it already cleared.
+                                            final wasReplying =
+                                                isReplying.isReply;
+                                            final replyingToId =
+                                                isReplying.replyingTo;
+
+                                            if (hasText) {
                                               sendMessageProcess(
                                                   state.userAuth.user.entityId,
                                                   widget.conversationId,
@@ -1930,19 +2322,29 @@ class ConversationStateView extends State<ConversationView> {
                                                   conversationInfo?.type
                                                       as String,
                                                   messageValue,
-                                                  isReplying.isReply,
-                                                  isReplying.replyingTo);
-                                              StoreProvider.of<AppState>(
-                                                      context)
-                                                  .dispatch(DispatchModel(
-                                                      setIsUsingReplyAssistT,
-                                                      false));
-                                              StoreProvider.of<AppState>(
-                                                      context)
-                                                  .dispatch(DispatchModel(
-                                                      clearReplyAssistContextT,
-                                                      []));
+                                                  wasReplying,
+                                                  replyingToId);
                                             }
+                                            if (hasFiles) {
+                                              final filesToSend = _stagedFiles;
+                                              setState(() => _stagedFiles = []);
+                                              sendFilesProcess(
+                                                  state.userAuth.user.entityId,
+                                                  widget.conversationId,
+                                                  conversationInfo?.type
+                                                      as String,
+                                                  filesToSend,
+                                                  wasReplying,
+                                                  replyingToId);
+                                            }
+                                            StoreProvider.of<AppState>(context)
+                                                .dispatch(DispatchModel(
+                                                    setIsUsingReplyAssistT,
+                                                    false));
+                                            StoreProvider.of<AppState>(context)
+                                                .dispatch(DispatchModel(
+                                                    clearReplyAssistContextT,
+                                                    []));
                                           },
                                           child: Center(
                                             child: Icon(

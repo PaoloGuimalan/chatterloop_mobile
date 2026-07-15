@@ -1,9 +1,18 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final String videoUrl;
-  const VideoPlayerScreen({super.key, required this.videoUrl});
+
+  /// True for a pending (not-yet-uploaded) video, whose "url" is actually
+  /// a local file path - the file picker/camera never produces a network
+  /// URL, only a path on-device.
+  final bool isLocalFile;
+
+  const VideoPlayerScreen(
+      {super.key, required this.videoUrl, this.isLocalFile = false});
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -20,11 +29,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Create and store the VideoPlayerController. The VideoPlayerController
     // offers several different constructors to play videos from assets, files,
     // or the internet.
-    _controller = VideoPlayerController.networkUrl(
-      Uri.parse(
-        widget.videoUrl,
-      ),
-    );
+    _controller = widget.isLocalFile
+        ? VideoPlayerController.file(File(widget.videoUrl))
+        : VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
 
     initializeVideoPlayerFuture = _controller.initialize();
   }

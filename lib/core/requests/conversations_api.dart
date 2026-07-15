@@ -227,6 +227,50 @@ class ConversationsApi {
     }
   }
 
+  /// Matches webapp's SendFilesRequest (ConversationV2.tsx) exactly - one
+  /// multipart/form-data POST that both uploads the attachment(s) AND
+  /// creates the message document server-side (unlike sendMessageRequest
+  /// above, this is plain form fields, not a JWT-signed token body).
+  /// pendingIDs must be index-aligned with filePaths (server pairs them up
+  /// positionally) and JSON-encoded as a string, matching
+  /// `formData.append("pendingIDs", JSON.stringify(...))` on the web side.
+  /// Used for images, arbitrary files, and voice messages alike - the
+  /// server infers messageType from each part's content-type
+  /// ("image" for image/*, the raw mimetype string otherwise, e.g.
+  /// "audio/m4a" for a voice recording).
+  Future<bool> sendFilesRequest({
+    required String conversationID,
+    required bool isReply,
+    required String replyingTo,
+    required String conversationType,
+    required List<String> pendingIDs,
+    required List<String> filePaths,
+  }) async {
+    ContentValidator().printer('${_endpoints.apiUrl}${_endpoints.sendFiles}');
+    try {
+      final formData = FormData.fromMap({
+        'conversationID': conversationID,
+        'isReply': isReply.toString(),
+        'replyingTo': replyingTo,
+        'conversationType': conversationType,
+        'pendingIDs': jsonEncode(pendingIDs),
+        'files': [
+          for (final path in filePaths)
+            await MultipartFile.fromFile(path,
+                filename: path.split(RegExp(r'[\\/]')).last),
+        ],
+      });
+      final response = await _dio.post(_endpoints.sendFiles, data: formData);
+      return response.data["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
   /// Matches webapp's ReactToMessageRequest (POST /m/addreaction, JWT-signed
   /// body, x-access-token auth via ApiClient's interceptor) - server just
   /// pushes newreaction onto the message's reactions array and broadcasts a
@@ -236,6 +280,28 @@ class ConversationsApi {
     ContentValidator().printer('${_endpoints.apiUrl}${_endpoints.addReaction}');
     try {
       final response = await _dio.post(_endpoints.addReaction,
+          data: {"token": JwtCodec.sign(payload.toJson())});
+      return response.data["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Matches webapp's DeleteMessageRequest (POST /m/deletemessage,
+  /// JWT-signed body) - server enforces sender-only ownership and does a
+  /// soft delete (isDeleted: true), then broadcasts it over the same
+  /// "messages_list" SSE channel with deletedMessageID set. No optimistic
+  /// local mutation here - the actual isDeleted flip happens when that SSE
+  /// event round-trips back in conversation_view.dart, same as webapp.
+  Future<bool> deleteMessageRequest(IDeleteMessageRequest payload) async {
+    ContentValidator()
+        .printer('${_endpoints.apiUrl}${_endpoints.deleteMessage}');
+    try {
+      final response = await _dio.post(_endpoints.deleteMessage,
           data: {"token": JwtCodec.sign(payload.toJson())});
       return response.data["status"] != false;
     } catch (e) {

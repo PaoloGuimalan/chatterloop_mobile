@@ -73,6 +73,22 @@ class IReactToMessageRequest {
   }
 }
 
+/// Mirrors webapp's MessageOptions.tsx -> DeleteMessageRequest payload:
+/// {conversationID, messageID}, signed as the JWT `token` field. Server does
+/// a sender-only soft delete (UserMessage.isDeleted = true) and broadcasts
+/// the result over the same "messages_list" SSE channel every other message
+/// event uses, with deletedMessageID set on the payload.
+class IDeleteMessageRequest {
+  String conversationID;
+  String messageID;
+
+  IDeleteMessageRequest(this.conversationID, this.messageID);
+
+  Map<String, dynamic> toJson() {
+    return {'conversationID': conversationID, 'messageID': messageID};
+  }
+}
+
 class ISendMessagePayload {
   String conversationID;
   String pendingID;

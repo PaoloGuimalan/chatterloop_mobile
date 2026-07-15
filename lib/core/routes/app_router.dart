@@ -18,7 +18,38 @@ import 'package:chatterloop_app/views/search/search_view.dart';
 import 'package:chatterloop_app/views/shell/authenticated_shell.dart';
 import 'package:chatterloop_app/views/shell/home_tab_scaffold.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
+/// Every route below goes through this instead of GoRoute's plain `builder`
+/// so pushes/pops get one consistent slide+fade instead of relying on
+/// per-platform MaterialPageRoute defaults (Android's ZoomPageTransitions
+/// in particular reads as an abrupt cut at normal tap speed).
+CustomTransitionPage<void> _clPage(GoRouterState state, Widget child) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 280),
+    reverseTransitionDuration: const Duration(milliseconds: 220),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeInOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.06, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
 
 GoRouter buildAppRouter(AuthController authController) {
   return GoRouter(
@@ -42,13 +73,17 @@ GoRouter buildAppRouter(AuthController authController) {
     },
     routes: [
       GoRoute(
-          path: '/splash', builder: (context, state) => const WelcomeScreen()),
-      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+          path: '/splash',
+          pageBuilder: (c, s) => _clPage(s, const WelcomeScreen())),
       GoRoute(
-          path: '/signup', builder: (context, state) => const SignupScreen()),
+          path: '/login',
+          pageBuilder: (c, s) => _clPage(s, const LoginScreen())),
+      GoRoute(
+          path: '/signup',
+          pageBuilder: (c, s) => _clPage(s, const SignupScreen())),
       GoRoute(
           path: '/verify-email',
-          builder: (context, state) => const VerifyEmailScreen()),
+          pageBuilder: (c, s) => _clPage(s, const VerifyEmailScreen())),
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
         routes: [
@@ -58,38 +93,44 @@ GoRouter buildAppRouter(AuthController authController) {
             branches: [
               StatefulShellBranch(routes: [
                 GoRoute(
-                    path: '/messages', builder: (c, s) => const MessagesView())
+                    path: '/messages',
+                    pageBuilder: (c, s) => _clPage(s, const MessagesView()))
               ]),
               StatefulShellBranch(routes: [
                 GoRoute(
-                    path: '/contacts', builder: (c, s) => const ContactsView())
+                    path: '/contacts',
+                    pageBuilder: (c, s) => _clPage(s, const ContactsView()))
               ]),
               StatefulShellBranch(routes: [
                 GoRoute(
-                    path: '/search', builder: (c, s) => const SearchScreen())
+                    path: '/search',
+                    pageBuilder: (c, s) => _clPage(s, const SearchScreen()))
               ]),
               StatefulShellBranch(routes: [
                 GoRoute(
-                    path: '/profile', builder: (c, s) => const ProfileView())
+                    path: '/profile',
+                    pageBuilder: (c, s) => _clPage(s, const ProfileView()))
               ]),
             ],
           ),
           GoRoute(
             path: '/conversation/:conversationId',
-            builder: (c, s) => ConversationView(
-              conversationId: s.pathParameters['conversationId']!,
-            ),
+            pageBuilder: (c, s) => _clPage(
+                s,
+                ConversationView(
+                  conversationId: s.pathParameters['conversationId']!,
+                )),
           ),
           GoRoute(
               path: '/profile/edit',
-              builder: (c, s) => const ProfileEditScreen()),
+              pageBuilder: (c, s) => _clPage(s, const ProfileEditScreen())),
           GoRoute(
               path: '/notifications',
-              builder: (c, s) => const NotificationsView()),
+              pageBuilder: (c, s) => _clPage(s, const NotificationsView())),
           GoRoute(
             path: '/user/:username',
-            builder: (c, s) =>
-                UserProfileScreen(username: s.pathParameters['username']!),
+            pageBuilder: (c, s) => _clPage(
+                s, UserProfileScreen(username: s.pathParameters['username']!)),
           ),
         ],
       ),

@@ -41,6 +41,28 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   bool isNotificationsInitialized = false;
   bool isActiveUsersInitialized = false;
 
+  // Bottom-tab switches go through StatefulNavigationShell.goBranch, which
+  // just flips IndexedStack's index - no page route, so no transition at
+  // all by default (an abrupt cut). A quick opacity dip on the *wrapper*
+  // gives that tap a visible response without re-keying navigationShell
+  // itself, which would tear down and rebuild every branch's Navigator
+  // (losing each tab's scroll position/loaded state - the entire reason
+  // indexedStack is used here instead of plain tab content).
+  int _lastTabIndex = 0;
+  double _tabOpacity = 1;
+
+  @override
+  void didUpdateWidget(covariant HomeTabScaffold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final index = widget.navigationShell.currentIndex;
+    if (index == _lastTabIndex) return;
+    _lastTabIndex = index;
+    setState(() => _tabOpacity = 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _tabOpacity = 1);
+    });
+  }
+
   Future<void> getConversationListProcess(BuildContext context) async {
     final res = await ConversationsApi().getConversationListRequest();
     if (!mounted) return;
@@ -149,7 +171,14 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                 ),
               ),
             ),
-            Expanded(child: widget.navigationShell),
+            Expanded(
+              child: AnimatedOpacity(
+                opacity: _tabOpacity,
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOut,
+                child: widget.navigationShell,
+              ),
+            ),
             Container(
               decoration: BoxDecoration(
                   color: p.surface,

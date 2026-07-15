@@ -47,8 +47,21 @@ class Endpoints {
   String sendNewMessage = '/u/sendMessage';
   String replyAssist = '/prompt/reply-assist';
 
+  /// Combined upload+send endpoint for image/file/voice message attachments
+  /// - unlike sendNewMessage above, this is a single multipart/form-data
+  /// call that both stores the file(s) to object storage AND creates the
+  /// UserMessage document server-side, matching webapp's SendFilesRequest
+  /// exactly (server/routes/users/index.js's POST /u/sendFiles). No
+  /// separate upload-then-create-post step like the profile photo flow.
+  String sendFiles = '/u/sendFiles';
+
   /// Only mounted under the Messages router (server/index.js: app.use("/m",
   /// Messages)) - there is no /u/addreaction, unlike seenNewMessages/
   /// sendNewMessage above which happen to live under both routers.
   String addReaction = '/m/addreaction';
+
+  /// Sender-only soft delete - server sets UserMessage.isDeleted = true and
+  /// broadcasts it over the same "messages_list" SSE channel (payload gets
+  /// a deletedMessageID field), matching webapp's DeleteMessageRequest.
+  String deleteMessage = '/m/deletemessage';
 }

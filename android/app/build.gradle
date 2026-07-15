@@ -35,7 +35,11 @@ android {
         applicationId = "com.example.chatterloop_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // record_android requires minSdk 23 (Android 6.0) - bumped from
+        // Flutter's own default (flutter.minSdkVersion, 21) per its own
+        // manifest-merger error/suggested fix. Drops support for
+        // Android 5.0/5.1 devices, which are vanishingly rare at this point.
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

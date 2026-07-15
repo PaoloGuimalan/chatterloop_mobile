@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -16,17 +19,6 @@ class PendingContentWidget extends StatefulWidget {
 }
 
 class PendingContentWidgetState extends State<PendingContentWidget> {
-  late String _messageID;
-  late String _content;
-  late String _contentType;
-  @override
-  void initState() {
-    super.initState();
-    _messageID = widget.messageID;
-    _content = widget.content;
-    _contentType = widget.contentType;
-  }
-
   /// Matches webapp's ContentHandler.tsx: "url%%%filename" is only used
   /// for legacy Google Cloud Storage uploads - every other upload (e.g.
   /// the DigitalOcean Spaces URLs this backend actually uses) is a plain
@@ -236,13 +228,19 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                   child: Container(
                     decoration: BoxDecoration(
                         color: Color(0xffd2d2d2),
-                        // borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: Color(0xffd2d2d2), width: 1)),
-                    child: Padding(
-                      padding: EdgeInsets.all(0),
-                      child: Image.network(
-                        content,
-                        fit: BoxFit.cover,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: EdgeInsets.all(0),
+                        // A pending image's content is always a local path
+                        // (the file being uploaded), never a URL yet -
+                        // Image.network can't read that, so this checks
+                        // which one it's looking at rather than assuming.
+                        child: content.startsWith('http')
+                            ? Image.network(content, fit: BoxFit.cover)
+                            : Image.file(File(content), fit: BoxFit.cover),
                       ),
                     ),
                   )),
@@ -351,11 +349,134 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
           ),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 270),
-            child: Container(
-              color: Colors.black,
-              child: VideoPlayerScreen(
-                  videoUrl:
-                      content.split("%%%")[0].replaceAll("###", "%23%23%23")),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                color: Colors.black,
+                // A pending video's content is always a local path (the
+                // file being uploaded) - no %%%/### legacy-URL handling
+                // applies to it, unlike a confirmed message's content.
+                child: content.startsWith('http')
+                    ? VideoPlayerScreen(
+                        videoUrl: content
+                            .split("%%%")[0]
+                            .replaceAll("###", "%23%23%23"))
+                    : VideoPlayerScreen(videoUrl: content, isLocalFile: true),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 5,
+          ),
+          isParentSenderCurrentUser
+              ? SizedBox(
+                  width: 0,
+                )
+              : Expanded(
+                  child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
+                  ],
+                ))
+        ],
+      );
+    } else if (messageType.contains("audio")) {
+      return Row(
+        mainAxisAlignment:
+            isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          !isParentSenderCurrentUser
+              ? SizedBox(
+                  width: 0,
+                )
+              : Expanded(
+                  child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.delete,
+                                    color: Color(0xFF565656),
+                                    size: 18,
+                                  ),
+                                )),
+                          ),
+                    isReply
+                        ? SizedBox(
+                            height: 0,
+                          )
+                        : ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: 40, maxHeight: 40),
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    elevation: 0,
+                                    padding: EdgeInsets.only(
+                                        top: 0, bottom: 0, left: 0, right: 0)),
+                                onPressed: () {},
+                                child: Center(
+                                  child: Icon(
+                                    Icons.reply,
+                                    color: Color(0xFF565656),
+                                    size: 20,
+                                  ),
+                                )),
+                          )
+                  ],
+                )),
+          SizedBox(
+            width: 5,
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 270),
+            // A pending voice message's content is always a local recording
+            // path, never a URL yet - matches the sent-message
+            // VoiceMessagePlayer used in message_content_widget.dart so a
+            // recording doesn't visually swap widgets the moment it's
+            // actually uploaded.
+            child: VoiceMessagePlayer(
+              src: content,
+              isSender: isCurrentUser,
+              isLocalFile: true,
             ),
           ),
           SizedBox(
@@ -590,9 +711,9 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
               Opacity(
                 opacity: 0.6,
                 child: messageTypeSwitch(
-                    _content,
-                    _contentType,
-                    _messageID,
+                    widget.content,
+                    widget.contentType,
+                    widget.messageID,
                     true,
                     true,
                     true), // pretend isReply to disable message buttons

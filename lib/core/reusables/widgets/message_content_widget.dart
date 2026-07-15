@@ -219,6 +219,17 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         emoji));
   }
 
+  /// Matches webapp's MessageOptions.tsx DeleteMessageProcess: fires the
+  /// request with no confirmation dialog and no optimistic local removal -
+  /// the server enforces sender-only ownership itself, and the visible
+  /// "Message deleted" placeholder only appears once the isDeleted flag
+  /// round-trips back through the messages_list SSE event handled in
+  /// conversation_view.dart.
+  void _deleteMessage(String messageID) {
+    ConversationsApi().deleteMessageRequest(
+        IDeleteMessageRequest(widget.conversationID, messageID));
+  }
+
   /// Triggered from the context menu's "React" item (a real Icon, not an
   /// emoji character) - matches webapp's EmojiPickerHandler switching from
   /// its quick-reaction bar to a full emoji picker.
@@ -289,7 +300,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                             bottom: 0,
                                             left: 0,
                                             right: 0)),
-                                    onPressed: () {},
+                                    onPressed: () => _deleteMessage(messageID),
                                     child: Center(
                                       child: Icon(
                                         Icons.delete,
@@ -503,7 +514,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                             bottom: 0,
                                             left: 0,
                                             right: 0)),
-                                    onPressed: () {},
+                                    onPressed: () => _deleteMessage(messageID),
                                     child: Center(
                                       child: Icon(
                                         Icons.delete,
@@ -585,13 +596,16 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       child: Container(
                         decoration: BoxDecoration(
                             color: Color(0xffd2d2d2),
-                            // borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(10),
                             border:
                                 Border.all(color: Color(0xffd2d2d2), width: 1)),
-                        child: Padding(
-                          padding: EdgeInsets.all(0),
-                          child: CLNetworkImage(
-                            src: content,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: EdgeInsets.all(0),
+                            child: CLNetworkImage(
+                              src: content,
+                            ),
                           ),
                         ),
                       )),
@@ -708,7 +722,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                             bottom: 0,
                                             left: 0,
                                             right: 0)),
-                                    onPressed: () {},
+                                    onPressed: () => _deleteMessage(messageID),
                                     child: Center(
                                       child: Icon(
                                         Icons.delete,
@@ -782,12 +796,15 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
               children: [
-                Container(
-                  color: Colors.black,
-                  child: VideoPlayerScreen(
-                      videoUrl: content
-                          .split("%%%")[0]
-                          .replaceAll("###", "%23%23%23")),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    color: Colors.black,
+                    child: VideoPlayerScreen(
+                        videoUrl: content
+                            .split("%%%")[0]
+                            .replaceAll("###", "%23%23%23")),
+                  ),
                 ),
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
                     ? Padding(
@@ -901,7 +918,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                             bottom: 0,
                                             left: 0,
                                             right: 0)),
-                                    onPressed: () {},
+                                    onPressed: () => _deleteMessage(messageID),
                                     child: Center(
                                       child: Icon(
                                         Icons.delete,
@@ -1123,7 +1140,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                             bottom: 0,
                                             left: 0,
                                             right: 0)),
-                                    onPressed: () {},
+                                    onPressed: () => _deleteMessage(messageID),
                                     child: Center(
                                       child: Icon(
                                         Icons.delete,

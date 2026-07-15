@@ -41,9 +41,13 @@ String _formatDuration(Duration d) {
 class VoiceMessagePlayer extends StatefulWidget {
   final String src;
   final bool isSender;
+  final bool isLocalFile;
 
   const VoiceMessagePlayer(
-      {super.key, required this.src, required this.isSender});
+      {super.key,
+      required this.src,
+      required this.isSender,
+      this.isLocalFile = false});
 
   @override
   State<VoiceMessagePlayer> createState() => _VoiceMessagePlayerState();
@@ -62,7 +66,11 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
     super.initState();
     _bars = _fallbackBars(widget.src, _barCount);
     _player = AudioPlayer();
-    _player.setSourceUrl(widget.src);
+    if (widget.isLocalFile) {
+      _player.setSourceDeviceFile(widget.src);
+    } else {
+      _player.setSourceUrl(widget.src);
+    }
     _player.onDurationChanged.listen((d) {
       if (mounted) setState(() => _duration = d);
     });

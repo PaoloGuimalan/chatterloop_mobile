@@ -1,7 +1,9 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
+import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -27,9 +29,11 @@ class MessageItemView extends StatelessWidget {
           ? "is typing…"
           : "someone is typing…";
     }
-    if (message.isDeleted) return "Message deleted";
     final prefix =
         _isCurrentUserSender && message.messageType != "notif" ? "you: " : "";
+    // Matches webapp's lastMessagePreview() exactly, including that a
+    // deleted message still gets the "you: " prefix like every other type.
+    if (message.isDeleted) return "$prefix[Deleted message]";
     if (message.messageType == "text" || message.messageType == "notif") {
       return "$prefix${message.content}";
     }
@@ -37,6 +41,34 @@ class MessageItemView extends StatelessWidget {
     if (message.messageType.contains("video")) return "${prefix}Sent a video";
     if (message.messageType.contains("audio")) return "${prefix}Sent an audio";
     return "${prefix}Sent a file";
+  }
+
+  /// messageDate's wire shape is genuinely ambiguous (see MessageItem's own
+  /// _parseDate doc comment) - tries a raw ISO/Mongo-Date string first (the
+  /// common case), then the {date: "MM/DD/YYYY", time: "h:mm AM/PM"} shape
+  /// some other endpoints use, falling back to date-only if the time
+  /// portion doesn't parse.
+  DateTime? _parseMessageDate(ActionDate d) {
+    final iso = DateTime.tryParse(d.date);
+    if (iso != null) return iso;
+    final combined = DateTime.tryParse("${d.date} ${d.time}");
+    if (combined != null) return combined;
+    final parts = d.date.split('/');
+    if (parts.length == 3) {
+      final month = int.tryParse(parts[0]);
+      final day = int.tryParse(parts[1]);
+      final year = int.tryParse(parts[2]);
+      if (month != null && day != null && year != null) {
+        return DateTime(year, month, day);
+      }
+    }
+    return null;
+  }
+
+  String _timeLabel() {
+    final parsed = _parseMessageDate(message.messageDate);
+    if (parsed != null) return timeSinceShort(parsed);
+    return "${message.messageDate.date} · ${message.messageDate.time}";
   }
 
   IconData? get _typeIcon => switch (message.conversationType) {
@@ -106,24 +138,23 @@ class MessageItemView extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 13, color: p.text2)),
-                    const SizedBox(height: 2),
-                    Text(
-                        "${message.messageDate.date} · ${message.messageDate.time}",
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11, color: p.text3)),
                   ],
                 ),
               ),
-              if (message.unread > 0)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: CLBadge(
-                      label: message.unread > 99
-                          ? "99+"
-                          : message.unread.toString(),
-                      tone: CLBadgeTone.pink),
-                ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(_timeLabel(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: p.text3)),
+                  if (message.unread > 0) ...[
+                    const SizedBox(height: 6),
+                    _UnreadDot(count: message.unread),
+                  ],
+                ],
+              ),
             ],
           ),
         ),
@@ -139,5 +170,36 @@ class MessageItemView extends StatelessWidget {
             (store.state.presence[message.details.entityId]?.online ?? false),
       );
     });
+  }
+}
+
+/// Solid filled-circle unread counter, matching webapp's Messages.tsx badge
+/// exactly (background: brand, white text, no 99+ truncation - the raw
+/// count is always shown, the pill just grows for wider numbers) - visually
+/// distinct from the generic soft-pill CLBadge used elsewhere in the app.
+class _UnreadDot extends StatelessWidget {
+  final int count;
+  const _UnreadDot({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Container(
+      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: p.brand,
+        borderRadius: BorderRadius.circular(CLRadii.pill),
+      ),
+      child: Text(
+        count.toString(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
   }
 }

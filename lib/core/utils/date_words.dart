@@ -70,9 +70,25 @@ DateTime? parseServerTimestamp(String? raw) {
       "${match.group(1)}T${match.group(2)}${match.group(3)}:${match.group(4)}");
 }
 
-/// Mirrors webapp's reusable.ts timeSince() - a relative "X ago" label for
-/// anything under a week old, else a short absolute date.
-String timeSince(DateTime past) {
+const _monthAbbreviations = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/// The "X ago" ladder shared by timeSince/timeSinceShort - null once past
+/// falls outside the under-a-week window, so each caller supplies its own
+/// absolute-date fallback format.
+String? _relativeTimeSince(DateTime past) {
   final seconds = DateTime.now().difference(past).inSeconds;
   if (seconds < 5) return "just now";
   if (seconds < 60) {
@@ -90,5 +106,18 @@ String timeSince(DateTime past) {
   if (days < 7) {
     return "$days day${days == 1 ? '' : 's'} ago";
   }
-  return "${ordinalSuffix(past.day)} of ${_monthNames[past.month - 1]} ${past.year}";
+  return null;
 }
+
+/// Mirrors webapp's reusable.ts timeSince() - a relative "X ago" label for
+/// anything under a week old, else a prose absolute date.
+String timeSince(DateTime past) =>
+    _relativeTimeSince(past) ??
+    "${ordinalSuffix(past.day)} of ${_monthNames[past.month - 1]} ${past.year}";
+
+/// Same relative-time ladder as timeSince, but the >7-days fallback matches
+/// webapp's Messages.tsx conversation-list format ("Jul 8, 2026") instead of
+/// timeSince's prose "8th of July 2026" - used for the messages list row.
+String timeSinceShort(DateTime past) =>
+    _relativeTimeSince(past) ??
+    "${_monthAbbreviations[past.month - 1]} ${past.day}, ${past.year}";

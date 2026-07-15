@@ -196,7 +196,17 @@ class _CLSkeletonState extends State<CLSkeleton>
           width: widget.width,
           height: widget.height,
           decoration: BoxDecoration(
-            color: Color.lerp(p.surface3, p.surfaceHover, _controller.value),
+            // surface3/surfaceHover (the original pair here) sit only 2-8
+            // RGB units from p.bg in light mode - on any screen whose
+            // Scaffold background is p.bg directly (Messages/Contacts/
+            // Notifications/Search/Profile all are, unlike the
+            // conversation screen, which wraps everything in a p.surface
+            // container first), the skeleton was rendering the entire
+            // time, just essentially invisible against its own
+            // background. border2 gives real contrast against both p.bg
+            // and p.surface, in both themes, regardless of what it's
+            // sitting on.
+            color: Color.lerp(p.surface3, p.border2, _controller.value),
             borderRadius: widget.borderRadius,
           ),
         );
@@ -283,6 +293,64 @@ class CLNetworkImage extends StatelessWidget {
       curve: Curves.easeOut,
       alignment: Alignment.topCenter,
       child: clipped,
+    );
+  }
+}
+
+/// Centered icon-badge + title + subtitle, for a screen's "nothing to show
+/// yet" states - mirrors webapp's Search.tsx empty-state Card exactly
+/// (circular icon badge, bold title, muted subtitle).
+class CLEmptyState extends StatelessWidget {
+  final IconData icon;
+  final Color iconBg;
+  final Color iconColor;
+  final Color? iconBorderColor;
+  final String title;
+  final String subtitle;
+
+  const CLEmptyState({
+    super.key,
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    this.iconBorderColor,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: iconBg,
+            border: iconBorderColor != null
+                ? Border.all(color: iconBorderColor!)
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 34, color: iconColor),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 18, fontWeight: FontWeight.w800, color: p.text),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: p.text2),
+        ),
+      ],
     );
   }
 }

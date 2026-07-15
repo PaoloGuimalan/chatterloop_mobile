@@ -61,45 +61,53 @@ class _ProfileViewState extends State<ProfileView> {
 
         return Scaffold(
           backgroundColor: p.bg,
-          body: SingleChildScrollView(
-            child: Column(
-              children: [
-                ProfileHeader(
-                  id: user.id,
-                  displayName: displayName,
-                  username: user.username,
-                  email: user.email,
-                  avatarSrc: user.profile != "none" ? user.profile : null,
-                  coverSrc: user.coverphoto,
-                  isBadged: user.isBadged,
-                  gender: user.gender,
-                  joinedLabel: formattedDateToWords(user.joinedDate),
-                  birthdateLabel: formattedBirthdate(user.birthdate?.month,
-                      user.birthdate?.day, user.birthdate?.year),
-                  actions: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      children: [
-                        if (!user.isVerified)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: CLBadge(
-                                label: "Email not verified",
-                                tone: CLBadgeTone.pink),
+          // user.username is only ever empty in the brief window before
+          // login/session-restore has populated Redux (UserAccount.empty
+          // is the AppState default) - shows a skeleton instead of a
+          // ProfileHeader built from every field being an empty string.
+          body: user.username.isEmpty
+              ? const SingleChildScrollView(child: ProfileHeaderSkeleton())
+              : SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      ProfileHeader(
+                        id: user.id,
+                        displayName: displayName,
+                        username: user.username,
+                        email: user.email,
+                        avatarSrc: user.profile != "none" ? user.profile : null,
+                        coverSrc: user.coverphoto,
+                        isBadged: user.isBadged,
+                        gender: user.gender,
+                        joinedLabel: formattedDateToWords(user.joinedDate),
+                        birthdateLabel: formattedBirthdate(
+                            user.birthdate?.month,
+                            user.birthdate?.day,
+                            user.birthdate?.year),
+                        actions: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            children: [
+                              if (!user.isVerified)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: CLBadge(
+                                      label: "Email not verified",
+                                      tone: CLBadgeTone.pink),
+                                ),
+                              CLBtn(
+                                label: "Edit Profile",
+                                size: CLBtnSize.lg,
+                                block: true,
+                                onPressed: () => context.push('/profile/edit'),
+                              ),
+                            ],
                           ),
-                        CLBtn(
-                          label: "Edit Profile",
-                          size: CLBtnSize.lg,
-                          block: true,
-                          onPressed: () => context.push('/profile/edit'),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
         );
       },
       converter: (store) => store.state,

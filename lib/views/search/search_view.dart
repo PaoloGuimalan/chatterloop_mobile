@@ -91,18 +91,45 @@ class _SearchScreenState extends State<SearchScreen> {
                         padding: EdgeInsets.symmetric(horizontal: 14),
                         child: CLListSkeleton(avatarSize: 52, count: 4),
                       )
-                    : (hasSearched && results.isEmpty)
+                    : !hasSearched
                         ? Center(
-                            key: const ValueKey('empty'),
-                            child: Text("No users found",
-                                style: TextStyle(color: p.text2)))
-                        : ListView.builder(
-                            key: const ValueKey('list'),
-                            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                            itemCount: results.length,
-                            itemBuilder: (context, index) =>
-                                _resultCard(context, results[index]),
-                          ),
+                            key: const ValueKey('initial'),
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: CLEmptyState(
+                                icon: Icons.manage_search,
+                                iconBg: p.brandSoft,
+                                iconColor: p.brand,
+                                title: "Search users only",
+                                subtitle:
+                                    "Start typing a name or username to find people.",
+                              ),
+                            ),
+                          )
+                        : results.isEmpty
+                            ? Center(
+                                key: const ValueKey('empty'),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: CLEmptyState(
+                                    icon: Icons.search_off,
+                                    iconBg: p.surface2,
+                                    iconColor: p.text2,
+                                    iconBorderColor: p.border,
+                                    title: "No users found",
+                                    subtitle:
+                                        "Try a different name or username.",
+                                  ),
+                                ),
+                              )
+                            : ListView.builder(
+                                key: const ValueKey('list'),
+                                padding:
+                                    const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                                itemCount: results.length,
+                                itemBuilder: (context, index) =>
+                                    _resultCard(context, results[index]),
+                              ),
               ),
             ),
           ],
