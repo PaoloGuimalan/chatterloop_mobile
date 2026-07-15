@@ -27,12 +27,19 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
     _contentType = widget.contentType;
   }
 
-  /// File/voice-note content is encoded as "url%%%filename". A bare
-  /// .split("%%%")[1] throws RangeError (only index 0 exists) whenever
-  /// content doesn't actually contain that delimiter.
+  /// Matches webapp's ContentHandler.tsx: "url%%%filename" is only used
+  /// for legacy Google Cloud Storage uploads - every other upload (e.g.
+  /// the DigitalOcean Spaces URLs this backend actually uses) is a plain
+  /// URL with no delimiter, whose filename is just its last "/"-segment.
   String _fileNamePart(String content) {
-    final parts = content.split("%%%");
-    return parts.length > 1 ? parts[1] : "File";
+    if (content.contains("storage.googleapis.com")) {
+      final parts = content.split("%%%");
+      return parts.length > 1 ? parts[1] : "File";
+    }
+    final segments = content.split("/");
+    return segments.isNotEmpty && segments.last.isNotEmpty
+        ? segments.last
+        : "File";
   }
 
   Widget messageTypeSwitch(String content, String messageType, String messageID,

@@ -83,14 +83,23 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     _onPressed = widget.onPressed;
   }
 
-  /// File/voice-note content is encoded as "url%%%filename". A bare
-  /// .split("%%%")[1] throws RangeError (only index 0 exists) whenever a
-  /// message's content doesn't actually contain that delimiter - confirmed
-  /// live as the cause of a group-conversation crash right at a file
-  /// message.
+  /// Matches webapp's ContentHandler.tsx exactly: the "url%%%filename"
+  /// encoding is only ever used for legacy Google Cloud Storage uploads
+  /// (storage.googleapis.com) - every other upload (e.g. the DigitalOcean
+  /// Spaces URLs this backend actually uses now) is just a plain URL with
+  /// no delimiter, and the filename is its last "/"-segment. Blindly
+  /// splitting on "%%%" for all content both threw (no [1] to index into)
+  /// and, after the earlier crash fix's "File" fallback, silently hid the
+  /// real filename that was sitting right there in the URL the whole time.
   String _fileNamePart(String content) {
-    final parts = content.split("%%%");
-    return parts.length > 1 ? parts[1] : "File";
+    if (content.contains("storage.googleapis.com")) {
+      final parts = content.split("%%%");
+      return parts.length > 1 ? parts[1] : "File";
+    }
+    final segments = content.split("/");
+    return segments.isNotEmpty && segments.last.isNotEmpty
+        ? segments.last
+        : "File";
   }
 
   /// Shared reply-assist checkbox handler - was copy-pasted near-identically
