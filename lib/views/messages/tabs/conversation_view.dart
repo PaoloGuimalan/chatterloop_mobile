@@ -261,7 +261,14 @@ class ConversationStateView extends State<ConversationView> {
       print("  conversationInfo.usersWithInfo="
           "${conversationInfo?.usersWithInfo.map((u) => '{entityID:${u.entityID}, userID:${u.userID}, name:${u.displayName}}').toList()}");
     }
-    return entityId;
+    // No source has this participant's name (seen live: the /conversationinfo
+    // endpoint returning usersWithInfo: null for a group - the deployed
+    // server's current behavior there doesn't match what this repo's
+    // getRealmWithUsers/formatToDesiredStructure would produce, which always
+    // .map()s to an array, never null - a deploy-lag mismatch, not something
+    // fixable from here). A 36-char uuid is a worse fallback than a short,
+    // honestly-unresolved label.
+    return "Member ${entityId.length >= 4 ? entityId.substring(entityId.length - 4) : entityId}";
   }
 
   String _seenersLabel(List<String> seeners) =>
