@@ -1502,75 +1502,37 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                   .messageID, // unique id for message
                               reactions: _quickReactions,
                               menuItems: _reactionMenuItems,
-                              messageWidget: _messageContent.messageType
-                                      .contains("audio")
-                                  ? ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                          maxWidth: 270, minHeight: 70),
-                                      child: ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  Color(0xffe4e4e4),
-                                              elevation: 0,
-                                              shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          10)),
-                                              padding: EdgeInsets.only(
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  left: 0,
-                                                  right: 0)),
-                                          onPressed: () {},
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                                borderRadius:
-                                                    BorderRadius.circular(10)),
-                                            child: Padding(
-                                              padding: EdgeInsets.only(
-                                                  top: 10,
-                                                  bottom: 10,
-                                                  left: 10,
-                                                  right: 10),
-                                              child: Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.start,
-                                                mainAxisSize: MainAxisSize.max,
-                                                children: [
-                                                  Icon(
-                                                    Icons.play_arrow,
-                                                    color: Colors.black,
-                                                    size: 22,
-                                                  ),
-                                                  SizedBox(
-                                                    width: 10,
-                                                  ),
-                                                  Expanded(
-                                                      child: Text(
-                                                    _fileNamePart(
-                                                        _messageContent
-                                                            .content),
-                                                    style: TextStyle(
-                                                        fontSize: 14,
-                                                        color: Colors.black),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ))
-                                                ],
-                                              ),
-                                            ),
-                                          )),
-                                    )
-                                  : messageTypeSwitch(
-                                      _messageContent.content,
-                                      _messageContent.messageType,
-                                      _messageContent.messageID,
-                                      _messageContent.sender == _currentUserID,
-                                      _messageContent.sender == _currentUserID,
-                                      false,
-                                      true,
-                                      false), // message widget
+                              // Every message type (including audio) goes
+                              // through the same messageTypeSwitch the
+                              // normal bubble uses - this used to
+                              // special-case audio with its own hardcoded
+                              // generic file-card look here, which fell out
+                              // of sync the moment the real audio bubble was
+                              // redesigned to use VoiceMessagePlayer (the
+                              // long-press preview kept showing the old
+                              // design since it never went through that
+                              // change).
+                              // flutter_chat_reactions' MessageBubble places
+                              // messageWidget directly with no Material
+                              // ancestor of its own (unlike its reaction
+                              // row/context menu, which do wrap themselves)
+                              // - VoiceMessagePlayer's play/pause InkWell
+                              // needs one to paint its ink response, or this
+                              // throws "No Material widget found" the
+                              // moment the long-press preview renders an
+                              // audio message.
+                              messageWidget: Material(
+                                type: MaterialType.transparency,
+                                child: messageTypeSwitch(
+                                    _messageContent.content,
+                                    _messageContent.messageType,
+                                    _messageContent.messageID,
+                                    _messageContent.sender == _currentUserID,
+                                    _messageContent.sender == _currentUserID,
+                                    false,
+                                    true,
+                                    false),
+                              ), // message widget
                               onReactionTap: (reaction) {
                                 _submitReaction(reaction);
                               },

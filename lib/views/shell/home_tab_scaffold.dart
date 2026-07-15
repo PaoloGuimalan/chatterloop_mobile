@@ -16,6 +16,7 @@ import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
+import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/user_menu_popover.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
@@ -117,10 +118,25 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
         .dispatch(DispatchModel(setActiveUsersListT, result));
   }
 
+  /// Mirrors webapp's logoutProcess exactly: clearStates() +
+  /// CloseSSENotifications() + LogoutRequest, in that order. The clear was
+  /// previously done via setUserAuthT, which only merges the new (signed-
+  /// out) userAuth into the existing state via copyWith - every other slice
+  /// (messages/contacts/notifications/presence/typing/reply-assist) stayed
+  /// stale in Redux even after logout. resetAppStateT wholesale-replaces
+  /// AppState instead, so it actually clears them, same as EntityApi's
+  /// switch flow already does. SSE was previously only closed indirectly
+  /// via AuthenticatedShell.dispose() firing once the auth redirect
+  /// unmounts that subtree - explicit here too so it's not solely
+  /// dependent on that widget teardown timing, matching webapp's own
+  /// belt-and-suspenders approach (it calls CloseSSENotifications()
+  /// directly from logoutProcess AND separately closes sockets in its
+  /// mount effect's cleanup).
   Future<void> _logout(BuildContext context) async {
-    await ApiClient.instance.clearToken();
     StoreProvider.of<AppState>(context).dispatch(
-        DispatchModel(setUserAuthT, UserAuth(false, UserAccount.empty)));
+        DispatchModel(resetAppStateT, UserAuth(false, UserAccount.empty)));
+    SseConnection().closeConnection();
+    await ApiClient.instance.clearToken();
     if (context.mounted) context.go('/login');
   }
 

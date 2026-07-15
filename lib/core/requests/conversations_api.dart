@@ -173,7 +173,15 @@ class ConversationsApi {
     }
   }
 
-  Future<EncodedResponse?> seenNewMessagesRequest(
+  /// Response is {status, message, seen: messageIDs} (server/routes/users/
+  /// index.js) - `seen` echoes back the full input messageIDs list, not a
+  /// JWT-encoded payload like most other endpoints in this file. Used to
+  /// prune whichever of those IDs the caller was still waiting to confirm,
+  /// matching webapp's SeenMessageRequest .then(response => ...response
+  /// .seen...). Previously this wrapped response.data["message"] (a plain
+  /// status string) in an EncodedResponse, which is the wrong field
+  /// entirely and nothing meaningful could be built on top of it.
+  Future<List<String>?> seenNewMessagesRequest(
       ISeenNewMessagesRequest payload, int range) async {
     ContentValidator()
         .printer('${_endpoints.apiUrl}${_endpoints.seenNewMessages}');
@@ -182,7 +190,9 @@ class ConversationsApi {
           data: {"token": JwtCodec.sign(payload.toJson())},
           options: Options(headers: {'range': range.toString()}));
       if (response.data["status"] == false) return null;
-      return EncodedResponse(response.data["message"]);
+      final seen = response.data["seen"];
+      if (seen is! List) return null;
+      return seen.map((id) => id.toString()).toList();
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

@@ -31,6 +31,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class ConversationView extends StatefulWidget {
   final String conversationId;
@@ -66,6 +67,12 @@ class ConversationStateView extends State<ConversationView> {
   bool isInitialized = false;
   bool isSeenMessageInitialized = false;
   bool isAutoScroll = true;
+
+  /// Accumulated by _queueMessageSeen as messages become visible on
+  /// screen, flushed via _flushSeenMessages after a 500ms debounce -
+  /// matches webapp's ConversationV2.tsx unreadmessages state.
+  List<String> _unreadMessageIds = [];
+  Timer? _seenDebounceTimer;
   bool isSettingUp = true;
   String? conversationLoadError;
   Map<String, dynamic>? conversationSetup;
@@ -170,17 +177,17 @@ class ConversationStateView extends State<ConversationView> {
           }
 
           int newRange = range + 1;
-          if (conversationInfo != null) {
-            seenMessagesProcess(
-                ISeenNewMessagesRequest(
-                    widget.conversationId,
-                    range,
-                    conversationInfo!.users
-                        .map((user) => user.entityID)
-                        .toList(),
-                    _unseenMessageIDs(_myAccountId)),
-                newRange);
-          }
+          // Marking messages seen is no longer driven from here - it used
+          // to fire against _unseenMessageIDs computed from
+          // conversationContentList BEFORE the refetch below had actually
+          // run, which meant the payload never included the very message
+          // that just arrived (the reason it triggered this branch in the
+          // first place). Now it's driven entirely by which messages are
+          // actually visible on screen (see _seenTrackedMessage/
+          // _queueMessageSeen), matching webapp's ConversationV2.tsx -
+          // this refetch just needs to bring the new message in; once it
+          // renders, VisibilityDetector picks it up on its own if it's
+          // actually in view.
           initConversationProcess(widget.conversationId, newRange).then((_) {
             if (mounted) {
               setState(() {
@@ -216,6 +223,7 @@ class ConversationStateView extends State<ConversationView> {
   @override
   void dispose() {
     _eventBusSubscription?.cancel();
+    _seenDebounceTimer?.cancel();
     _scrollController.dispose();
     _voiceRecorder.dispose();
     super.dispose();
@@ -385,13 +393,6 @@ class ConversationStateView extends State<ConversationView> {
   String _seenersLabel(List<String> seeners) =>
       seeners.map(_resolveSenderName).join(", ");
 
-  List<String> _unseenMessageIDs(String myAccountId) {
-    return conversationContentList
-        .where((message) => !message.seeners.contains(myAccountId))
-        .map((message) => message.messageID)
-        .toList();
-  }
-
   /// Returns whether messages actually loaded - used by _startLoading to
   /// tell "failed" apart from "still in flight" so a failure on the first
   /// call surfaces an error instead of leaving the screen spinning forever
@@ -488,18 +489,6 @@ class ConversationStateView extends State<ConversationView> {
         });
       }
 
-      if (!isSeenMessageInitialized) {
-        seenMessagesProcess(
-            ISeenNewMessagesRequest(
-                widget.conversationId,
-                range,
-                conversationInfoFinal.users
-                    .map((user) => user.entityID)
-                    .toList(),
-                _unseenMessageIDs(_myAccountId)),
-            range);
-      }
-
       // if (kDebugMode) {
       //   // print(rawContactsList);
       //   print(rawGetConversationInfo);
@@ -507,23 +496,57 @@ class ConversationStateView extends State<ConversationView> {
     }
   }
 
-  Future<void> seenMessagesProcess(
-      ISeenNewMessagesRequest payload, int rangeProp) async {
+  /// Wraps a confirmed message's bubble with viewport-visibility tracking,
+  /// matching webapp's ConversationV2.tsx exactly: each message that
+  /// becomes visible and isn't already in its own `seeners` gets queued,
+  /// and a 500ms debounce (reset on every new addition) is what actually
+  /// fires the seen-messages call - not a one-shot call on conversation
+  /// open, and not the SSE "messages_list" refetch (see _startLoading's
+  /// comment on why that path was racy). This is the ONLY thing that marks
+  /// messages seen now, same as webapp - there is no separate initial-load
+  /// call to coexist with; messages visible right after the conversation
+  /// opens (scrolled to wherever it lands) get caught by this the same way
+  /// newly-arrived ones do once they're actually on screen.
+  Widget _seenTrackedMessage(MessageContent content, Widget child) {
+    return VisibilityDetector(
+      key: ValueKey('seen-${content.messageID}'),
+      onVisibilityChanged: (info) {
+        if (info.visibleFraction < 0.5) return;
+        if (content.seeners.contains(_myAccountId)) return;
+        _queueMessageSeen(content.messageID);
+      },
+      child: child,
+    );
+  }
+
+  /// Add-only, dedupe-by-skip (not move-to-front like webapp's version -
+  /// VisibilityDetector's callback fires more chattily than a hook that
+  /// only reacts to a clean in/out transition, so re-queuing something
+  /// already pending would keep resetting the timer indefinitely during a
+  /// slow scroll). Resets the same 500ms debounce webapp uses on every
+  /// genuinely new addition.
+  void _queueMessageSeen(String messageID) {
+    if (_unreadMessageIds.contains(messageID)) return;
     if (mounted) {
-      setState(() {
-        isSeenMessageInitialized = true;
-      });
+      setState(() => _unreadMessageIds = [messageID, ..._unreadMessageIds]);
+    } else {
+      _unreadMessageIds = [messageID, ..._unreadMessageIds];
     }
+    _seenDebounceTimer?.cancel();
+    _seenDebounceTimer =
+        Timer(const Duration(milliseconds: 500), _flushSeenMessages);
+  }
 
-    EncodedResponse? getConversationInfoResponse =
-        await ConversationsApi().seenNewMessagesRequest(payload, rangeProp);
-
-    if (getConversationInfoResponse != null) {
-      if (kDebugMode) {
-        // print(rawContactsList);
-        print(getConversationInfoResponse);
-      }
-    }
+  Future<void> _flushSeenMessages() async {
+    if (_unreadMessageIds.isEmpty || conversationInfo == null) return;
+    final ids = List<String>.from(_unreadMessageIds);
+    final seen = await ConversationsApi().seenNewMessagesRequest(
+        ISeenNewMessagesRequest(widget.conversationId, range,
+            conversationInfo!.users.map((user) => user.entityID).toList(), ids),
+        range);
+    if (!mounted || seen == null) return;
+    setState(() => _unreadMessageIds =
+        _unreadMessageIds.where((id) => !seen.contains(id)).toList());
   }
 
   Future<void> postReplyAssistProcess(
@@ -1221,77 +1244,81 @@ class ConversationStateView extends State<ConversationView> {
                                                         is MessageContent)
                                                       Column(
                                                         children: [
-                                                          SizedBox(
-                                                            width:
-                                                                MediaQuery.of(
-                                                                        context)
-                                                                    .size
-                                                                    .width,
-                                                            child:
-                                                                MessageContentWidget(
-                                                              key: ValueKey((combinedPendingAndMessagesList[combinedPendingAndMessagesList
-                                                                              .length -
-                                                                          1 -
-                                                                          index]
-                                                                      as MessageContent)
-                                                                  .messageID),
-                                                              messageContent: combinedPendingAndMessagesList[
-                                                                      combinedPendingAndMessagesList
-                                                                              .length -
-                                                                          1 -
-                                                                          index]
-                                                                  as MessageContent,
-                                                              previousContentUserID: index >
-                                                                          0 &&
-                                                                      index <
-                                                                          combinedPendingAndMessagesList.length -
-                                                                              1
-                                                                  ? combinedPendingAndMessagesList[combinedPendingAndMessagesList
-                                                                              .length -
-                                                                          1 -
-                                                                          index -
-                                                                          1]
-                                                                      .sender
-                                                                  : index == 0
-                                                                      ? "start"
-                                                                      : "end",
-                                                              currentUserID:
-                                                                  state
-                                                                      .userAuth
-                                                                      .user
-                                                                      .entityId,
-                                                              resolveSenderName:
-                                                                  _resolveSenderName,
-                                                              isSingleConversation:
-                                                                  _conversationType ==
-                                                                      "single",
-                                                              conversationID: widget
-                                                                  .conversationId,
-                                                              onPressed: (bool
-                                                                      isReply,
-                                                                  String
-                                                                      replyingTo) {
-                                                                if (mounted) {
-                                                                  StoreProvider.of<
-                                                                              AppState>(
+                                                          _seenTrackedMessage(
+                                                            combinedPendingAndMessagesList[
+                                                                    combinedPendingAndMessagesList
+                                                                            .length -
+                                                                        1 -
+                                                                        index]
+                                                                as MessageContent,
+                                                            SizedBox(
+                                                              width:
+                                                                  MediaQuery.of(
                                                                           context)
-                                                                      .dispatch(DispatchModel(
-                                                                          setIsUsingReplyAssistT,
-                                                                          false));
-                                                                  StoreProvider.of<
-                                                                              AppState>(
-                                                                          context)
-                                                                      .dispatch(DispatchModel(
-                                                                          clearReplyAssistContextT,
-                                                                          []));
-                                                                  setState(() {
-                                                                    isReplying =
-                                                                        IsReplying(
-                                                                            isReply,
-                                                                            replyingTo);
-                                                                  });
-                                                                }
-                                                              },
+                                                                      .size
+                                                                      .width,
+                                                              child:
+                                                                  MessageContentWidget(
+                                                                key: ValueKey((combinedPendingAndMessagesList[combinedPendingAndMessagesList.length -
+                                                                            1 -
+                                                                            index]
+                                                                        as MessageContent)
+                                                                    .messageID),
+                                                                messageContent: combinedPendingAndMessagesList[
+                                                                        combinedPendingAndMessagesList.length -
+                                                                            1 -
+                                                                            index]
+                                                                    as MessageContent,
+                                                                previousContentUserID: index >
+                                                                            0 &&
+                                                                        index <
+                                                                            combinedPendingAndMessagesList.length -
+                                                                                1
+                                                                    ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length -
+                                                                            1 -
+                                                                            index -
+                                                                            1]
+                                                                        .sender
+                                                                    : index == 0
+                                                                        ? "start"
+                                                                        : "end",
+                                                                currentUserID:
+                                                                    state
+                                                                        .userAuth
+                                                                        .user
+                                                                        .entityId,
+                                                                resolveSenderName:
+                                                                    _resolveSenderName,
+                                                                isSingleConversation:
+                                                                    _conversationType ==
+                                                                        "single",
+                                                                conversationID:
+                                                                    widget
+                                                                        .conversationId,
+                                                                onPressed: (bool
+                                                                        isReply,
+                                                                    String
+                                                                        replyingTo) {
+                                                                  if (mounted) {
+                                                                    StoreProvider.of<AppState>(
+                                                                            context)
+                                                                        .dispatch(DispatchModel(
+                                                                            setIsUsingReplyAssistT,
+                                                                            false));
+                                                                    StoreProvider.of<AppState>(
+                                                                            context)
+                                                                        .dispatch(DispatchModel(
+                                                                            clearReplyAssistContextT,
+                                                                            []));
+                                                                    setState(
+                                                                        () {
+                                                                      isReplying = IsReplying(
+                                                                          isReply,
+                                                                          replyingTo);
+                                                                    });
+                                                                  }
+                                                                },
+                                                              ),
                                                             ),
                                                           ),
                                                           if (combinedPendingAndMessagesList[
@@ -1449,56 +1476,56 @@ class ConversationStateView extends State<ConversationView> {
 
                                                   return Column(
                                                     children: [
-                                                      SizedBox(
-                                                        width: MediaQuery.of(
-                                                                context)
-                                                            .size
-                                                            .width,
-                                                        child:
-                                                            MessageContentWidget(
-                                                                key: ValueKey(
-                                                                    contentItem
-                                                                        .messageID),
-                                                                messageContent:
-                                                                    contentItem,
-                                                                previousContentUserID:
-                                                                    previousContentUserID,
-                                                                currentUserID:
-                                                                    state
-                                                                        .userAuth
-                                                                        .user
-                                                                        .entityId,
-                                                                resolveSenderName:
-                                                                    _resolveSenderName,
-                                                                isSingleConversation:
-                                                                    _conversationType ==
-                                                                        "single",
-                                                                conversationID:
-                                                                    widget
-                                                                        .conversationId,
-                                                                onPressed: (bool
-                                                                        isReply,
-                                                                    String
-                                                                        replyingTo) {
-                                                                  if (mounted) {
-                                                                    StoreProvider.of<AppState>(
-                                                                            context)
-                                                                        .dispatch(DispatchModel(
-                                                                            setIsUsingReplyAssistT,
-                                                                            false));
-                                                                    StoreProvider.of<AppState>(
-                                                                            context)
-                                                                        .dispatch(DispatchModel(
-                                                                            clearReplyAssistContextT,
-                                                                            []));
-                                                                    setState(
-                                                                        () {
-                                                                      isReplying = IsReplying(
+                                                      _seenTrackedMessage(
+                                                        contentItem,
+                                                        SizedBox(
+                                                          width: MediaQuery.of(
+                                                                  context)
+                                                              .size
+                                                              .width,
+                                                          child:
+                                                              MessageContentWidget(
+                                                                  key: ValueKey(
+                                                                      contentItem
+                                                                          .messageID),
+                                                                  messageContent:
+                                                                      contentItem,
+                                                                  previousContentUserID:
+                                                                      previousContentUserID,
+                                                                  currentUserID: state
+                                                                      .userAuth
+                                                                      .user
+                                                                      .entityId,
+                                                                  resolveSenderName:
+                                                                      _resolveSenderName,
+                                                                  isSingleConversation:
+                                                                      _conversationType ==
+                                                                          "single",
+                                                                  conversationID:
+                                                                      widget
+                                                                          .conversationId,
+                                                                  onPressed: (bool
                                                                           isReply,
-                                                                          replyingTo);
-                                                                    });
-                                                                  }
-                                                                }),
+                                                                      String
+                                                                          replyingTo) {
+                                                                    if (mounted) {
+                                                                      StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+                                                                          setIsUsingReplyAssistT,
+                                                                          false));
+                                                                      StoreProvider.of<AppState>(
+                                                                              context)
+                                                                          .dispatch(DispatchModel(
+                                                                              clearReplyAssistContextT,
+                                                                              []));
+                                                                      setState(
+                                                                          () {
+                                                                        isReplying = IsReplying(
+                                                                            isReply,
+                                                                            replyingTo);
+                                                                      });
+                                                                    }
+                                                                  }),
+                                                        ),
                                                       ),
                                                       contentItem.messageType !=
                                                               "notif"
