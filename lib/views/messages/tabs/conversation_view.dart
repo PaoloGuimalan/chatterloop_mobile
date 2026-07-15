@@ -344,11 +344,22 @@ class ConversationStateView extends State<ConversationView> {
       Map<String, dynamic>? decodedGetConversationInfo =
           JwtCodec.decode(getConversationInfoResponse.result);
 
-      // Server wraps the payload once (createJWT({data: flattenedResults})),
-      // so decoded["data"] IS flattenedResults - there's no second nested
-      // "data" key. The extra ["data"] here always resolved to null,
-      // leaving conversationInfo permanently unset (blocking send/seen/typing).
-      dynamic rawGetConversationInfo = decodedGetConversationInfo?["data"];
+      // Confirmed by hitting the endpoint directly: a normally-populated
+      // response really is double-wrapped - createJWT({data:
+      // flattenedResults}) decodes to {data: {data: {...actual fields...}}}.
+      // A previous "fix" here dropped to single-level ["data"] access based
+      // only on the degenerate formatConnectionData([]) => {} edge case,
+      // where the extra ["data"] read as null - but that same shallow read
+      // was silently wrong for every normal response, since {data: {...}}
+      // only has one key ("data") and nothing else, so every real field
+      // (contactID, usersWithInfo, users, ...) always came back missing.
+      // Self-detect instead of hardcoding either shape: if the first level
+      // has its own nested "data" map, unwrap once more; otherwise use it
+      // as-is (covers the {} degenerate case, which has no "data" key to
+      // unwrap and must be used directly).
+      dynamic level1 = decodedGetConversationInfo?["data"];
+      dynamic rawGetConversationInfo =
+          (level1 is Map && level1["data"] is Map) ? level1["data"] : level1;
       if (rawGetConversationInfo is! Map) return;
 
       if (kDebugMode) {
