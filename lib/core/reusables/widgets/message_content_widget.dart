@@ -1,6 +1,7 @@
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/reusables/players/audio_player_widget.dart';
+import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
+import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -260,6 +261,13 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     ),
                   ),
                 ),
+                // Only on the full render, not the condensed reply-preview
+                // snippet (isReply here means "rendering as a reply
+                // preview", not "this message is a reply") - matches
+                // webapp's ContentHandler.tsx, which only shows
+                // LinkPreviewCard on the real message bubble.
+                if (!isReply && _messageContent.linkPreview != null)
+                  LinkPreviewCard(preview: _messageContent.linkPreview),
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
                     ? Row(
                         mainAxisSize: MainAxisSize.min,
@@ -899,12 +907,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
               children: [
-                Container(
-                  color: Colors.transparent,
-                  child: AudioPlayerWidget(
-                      audioUrl: content
-                          .split("%%%")[0]
-                          .replaceAll("###", "%23%23%23")),
+                VoiceMessagePlayer(
+                  src: content.split("%%%")[0].replaceAll("###", "%23%23%23"),
+                  isSender: isCurrentUser,
                 ),
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
                     ? Row(

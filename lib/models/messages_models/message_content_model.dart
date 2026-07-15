@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 
@@ -18,6 +19,7 @@ class MessageContent {
   String conversationType;
   List<MessageContent>? replyedmessage;
   List<UsersContactPreview>? reactionsWithInfo;
+  LinkPreviewData? linkPreview;
 
   MessageContent(
       this.messageID,
@@ -35,7 +37,8 @@ class MessageContent {
       this.messageType,
       this.conversationType,
       this.replyedmessage,
-      this.reactionsWithInfo);
+      this.reactionsWithInfo,
+      this.linkPreview);
 
   /// Every field is defensive - a real persisted message threw here (Null
   /// is not a subtype of String) despite matching the Mongoose schema on
@@ -85,6 +88,10 @@ class MessageContent {
                 .map((reactionInfo) => UsersContactPreview.fromJson(
                     Map<String, dynamic>.from(reactionInfo)))
                 .toList()
-            : []);
+            : [],
+        json["linkPreview"] is Map
+            ? LinkPreviewData.fromJson(
+                Map<String, dynamic>.from(json["linkPreview"]))
+            : null);
   }
 }
