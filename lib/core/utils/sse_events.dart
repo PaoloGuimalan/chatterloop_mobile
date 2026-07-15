@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
-import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -13,7 +14,12 @@ import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 
 class SseEvents {
-  void listen(SSEModel event, bool mainListener) {
+  /// A new SseEvents() is constructed per event (see sse_connection.dart),
+  /// so per-typer removal timers have to live at module/static scope to be
+  /// findable across calls - keyed by "userID|conversationID".
+  static final Map<String, Timer> _typingRemovalTimers = {};
+
+  Future<void> listen(SSEModel event, bool mainListener) async {
     switch (event.event) {
       case "notifications":
         Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
@@ -82,7 +88,22 @@ class SseEvents {
 
             appStore.dispatch(DispatchModel(setIsTypingListT, finalTyperData));
 
-            Future.delayed(Duration(milliseconds: 5000), () {
+            // Debounced per (userID, conversationID) - a person actively
+            // typing re-broadcasts every few seconds, and each broadcast
+            // used to schedule its own independent 5s removal with nothing
+            // cancelling earlier ones. An earlier broadcast's timer firing
+            // after a newer one arrived would clear the indicator while
+            // they were still typing (then the newer broadcast's own timer
+            // would fire later and no-op) - looked like the indicator
+            // randomly disappearing/reappearing. Cancel any pending
+            // removal for this pair before scheduling the new one, so only
+            // the most recent broadcast's timer ever actually fires.
+            final key =
+                "${finalTyperData.userID}|${finalTyperData.conversationID}";
+            _typingRemovalTimers[key]?.cancel();
+            _typingRemovalTimers[key] =
+                Timer(const Duration(milliseconds: 5000), () {
+              _typingRemovalTimers.remove(key);
               appStore
                   .dispatch(DispatchModel(removeIsTypingListT, finalTyperData));
             });
@@ -96,14 +117,34 @@ class SseEvents {
       case "contactslist":
         return;
       case "messages_list":
+        // This event carries no actual data - server's MessagesTrigger
+        // (reusables/hooks/sse.js) always publishes result: "" and
+        // message: {conversationID, entityID: sender} (an object, not the
+        // plain string this used to compare against userAuth.user.entityId).
+        // It's a pure "something changed, go refetch" signal - matches the
+        // comment on the server's own reuse of this channel for link
+        // previews: webapp's listener dispatches a "reload" CustomEvent
+        // that just calls GetConversation() again, it doesn't try to
+        // extract a conversation list out of the event itself. The old
+        // code here tried to JwtCodec.decode an empty string and read a
+        // "conversationslist" key (copied from the unrelated, dead
+        // /u/initConversationList response shape) - that decode failed
+        // silently every time, so this whole case threw before ever
+        // reaching the dispatch, which is also why the sound alerts below
+        // never played and the messages list never live-updated anywhere
+        // that didn't already have its own conversation-scoped refetch
+        // (e.g. the open conversation screen refetches independently of
+        // this handler entirely).
         UserAuth userAuth = appStore.state.userAuth;
         Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
 
         if (mainListener) {
-          if (parsedresponse["message"] != userAuth.user.entityId) {
-            // play message ringtone
-            if (parsedresponse["onseen"]) {
-              // play seen ringtone
+          final details = parsedresponse["message"];
+          final senderEntityId =
+              details is Map ? details["entityID"]?.toString() : null;
+          if (senderEntityId != null &&
+              senderEntityId != userAuth.user.entityId) {
+            if (parsedresponse["onseen"] == true) {
               AudioPlayer audioPlayer = AudioPlayer();
               audioPlayer.play(AssetSource('sounds/seen_alert.mp3'));
             } else {
@@ -113,18 +154,10 @@ class SseEvents {
           }
         }
 
-        Map<String, dynamic>? decodedmessageslist =
-            JwtCodec.decode(parsedresponse["result"]);
-
-        List<dynamic> rawConversationList =
-            decodedmessageslist?["conversationslist"];
-
-        List<MessageItem> spreadedConversationList = rawConversationList
-            .map((message) => MessageItem.fromJson(message))
-            .toList();
-
-        appStore.dispatch(
-            DispatchModel(setMessagesListT, spreadedConversationList));
+        final refreshed = await ConversationsApi().getConversationListRequest();
+        if (refreshed != null) {
+          appStore.dispatch(DispatchModel(setMessagesListT, refreshed.items));
+        }
         return;
       case "active_users":
         return;
