@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
@@ -619,29 +620,22 @@ class ConversationStateView extends State<ConversationView> {
                                       )),
                                 ),
                                 SizedBox(width: 2),
-                                ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    maxHeight: 40,
-                                    maxWidth: 40,
-                                  ),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: p.border,
-                                      border: Border.all(
-                                        color: p.border,
-                                        width: 1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(50),
-                                    ),
-                                    child: Padding(
-                                      padding: EdgeInsets.all(10),
-                                      child: Image.network(
-                                        conversationMetaData
-                                            .conversationPreview.profile,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  ),
+                                // CLAvatar instead of a raw Image.network -
+                                // that had no clipping on the child at all
+                                // (BoxDecoration's borderRadius only paints
+                                // the container's own background, it doesn't
+                                // clip children; needed ClipOval/clipBehavior
+                                // for that), so the image rendered as an
+                                // unclipped rectangle over/around the
+                                // rounded background instead of filling a
+                                // clean circle.
+                                CLAvatar(
+                                  id: conversationMetaData.conversationID,
+                                  name: conversationMetaData
+                                      .conversationPreview.previewName,
+                                  src: conversationMetaData
+                                      .conversationPreview.profile,
+                                  size: 40,
                                 ),
                                 SizedBox(width: 15),
                                 Expanded(
