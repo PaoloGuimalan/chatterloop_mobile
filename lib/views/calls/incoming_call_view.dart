@@ -68,7 +68,8 @@ class _IncomingCallViewState extends State<IncomingCallView> {
       conversationID: widget.alert.conversationID,
       conversationType: widget.alert.conversationType,
       callType: widget.alert.callType,
-      startCameraOff: true,
+      isOutgoing: false,
+      startCameraOff: widget.alert.callType != "video",
     );
     if (!mounted) return;
     if (!joined) {
@@ -134,9 +135,15 @@ class _IncomingCallViewState extends State<IncomingCallView> {
 
   Widget _buildScaffold(IncomingCallAlert alert, bool hasImage) {
     return PopScope(
-      // Decline is an explicit action (button), not a back-swipe dismiss -
-      // an accidental swipe shouldn't silently drop an incoming call.
+      // Back press declines, same as ActiveCallView's back-press-hangs-up -
+      // never a silent dismiss (canPop: true would leave the call ringing
+      // in the background with no visible alert) and never a dead end if
+      // the automatic dismiss-on-remote-cancel logic above ever has a gap.
       canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (!_resolving) _decline();
+      },
       child: Scaffold(
         backgroundColor: const Color(0xFF14161A),
         body: SafeArea(

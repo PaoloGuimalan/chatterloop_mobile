@@ -383,7 +383,9 @@ class ConversationStateView extends State<ConversationView> {
       conversationID: widget.conversationId,
       conversationType: _conversationType,
       callType: callType,
-      startCameraOff: true,
+      isOutgoing: true,
+      recepients: recipients,
+      startCameraOff: callType != "video",
     );
     if (!joined) return;
 

@@ -49,5 +49,7 @@
 	<string>Chatterloop needs access to your photo library to attach images to messages and update your profile/cover photo.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Chatterloop needs access to your microphone to record voice messages.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Chatterloop needs access to your camera for video calls.</string>
 </dict>
 </plist>

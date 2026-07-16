@@ -152,6 +152,29 @@ class WebrtcApi {
         if (instance != null) 'instance': instance,
       });
 
+  /// Unlike every other method here, this is a plain synchronous GET - no
+  /// SSE round-trip, since it's static server config, not room state.
+  /// webapp fetches this once before joining and passes the "camera" list
+  /// straight through to transport.produce()'s encodings param when
+  /// producing video - matches server/reusables/hooks/webRTC.js's
+  /// CAMERA_ENCODINGS (3-layer simulcast: rid r0/r1/r2). Returns an empty
+  /// list on any failure so callers can fall back to producing without
+  /// explicit encodings rather than blocking the whole call on this.
+  Future<List<Map<String, dynamic>>> getCameraEncodingsRequest() async {
+    try {
+      final response = await _dio.get(_endpoints.webrtcEncodings);
+      final camera = response.data?['camera'];
+      if (camera is! List) return const [];
+      return camera.whereType<Map>().map(Map<String, dynamic>.from).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return const [];
+    }
+  }
+
   Future<bool> _post(String path, Map<String, dynamic> data) async {
     try {
       final response = await _dio.post(path, data: data);

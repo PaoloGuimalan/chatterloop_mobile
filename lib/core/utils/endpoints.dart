@@ -102,4 +102,11 @@ class Endpoints {
   String webrtcLeaveRoom = '/webrtc/leave-room';
   String webrtcParticipantStatus = '/webrtc/participant-status';
   String webrtcReconnect = '/webrtc/reconnect';
+
+  /// Simulcast encoding presets ({camera, screenshare}, each a list of
+  /// {rid, maxBitrate, scaleResolutionDownBy}) - plain synchronous JSON
+  /// response (unlike the rest of /webrtc/*, this one isn't SSE-relayed).
+  /// webapp fetches this before joining and passes it straight through to
+  /// transport.produce()'s encodings param for camera video specifically.
+  String webrtcEncodings = '/webrtc/encodings';
 }

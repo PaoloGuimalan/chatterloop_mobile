@@ -20,6 +20,15 @@ class CLColors {
   static const pinkSoftLight = Color(0xFFFFE6E9);
   static const online = Color(0xFF2ECC71);
 
+  // Calling - matches webapp/src/styles/styles.css's calls_v2 rules
+  // exactly (.div_video_blocks's background, .btn_call_controls_enable's
+  // background, .btn_call_controls_end's background) rather than reusing
+  // the general palette above, since the call screen is intentionally
+  // styled to look identical to webapp's call window regardless of theme.
+  static const callTile = Color(0xFF3D4043);
+  static const callControlOff = Color(0xFF888888);
+  static const callEnd = Color(0xFFFF0000);
+
   // Light surfaces
   static const bgLight = Color(0xFFEEF1F5);
   static const surfaceLight = Color(0xFFFFFFFF);

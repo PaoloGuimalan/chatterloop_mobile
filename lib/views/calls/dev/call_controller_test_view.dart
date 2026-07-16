@@ -40,6 +40,7 @@ class CallControllerTestView extends StatelessWidget {
                                   conversationID: _testConversationID,
                                   conversationType: "single",
                                   callType: "audio",
+                                  isOutgoing: true,
                                   startMuted: false,
                                 )
                             : null,
@@ -76,7 +77,7 @@ class CallControllerTestView extends StatelessWidget {
                   "clientId: ${controller.clientId}\n"
                   "conversationID: ${controller.conversationID}\n"
                   "muted: ${controller.muted}\n"
-                  "participants: ${controller.participants.length}\n"
+                  "participants: ${controller.joinedParticipants.length}\n"
                   "remote consumers: ${controller.consumers.length}\n"
                   "lastError: ${controller.lastError ?? '-'}",
                   style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
@@ -86,9 +87,11 @@ class CallControllerTestView extends StatelessWidget {
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  children: controller.participants
+                  children: controller.joinedParticipants
                       .map((p) => Text(
-                            "${p.username ?? p.clientId} (entity=${p.entityId ?? '-'}) muted=${p.muted} cameraOff=${p.cameraOff}",
+                            "${p.username.isNotEmpty ? p.username : p.clientId} "
+                            "muted=${controller.participantStatuses[p.clientId]?.muted ?? false} "
+                            "cameraOff=${controller.participantStatuses[p.clientId]?.cameraOff ?? false}",
                             style: const TextStyle(
                                 fontSize: 12, fontFamily: 'monospace'),
                           ))
