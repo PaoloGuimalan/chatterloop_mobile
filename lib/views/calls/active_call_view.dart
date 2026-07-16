@@ -19,13 +19,10 @@
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
-import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/call_api.dart';
 import 'package:chatterloop_app/models/call_models/call_signed_payloads_model.dart';
-import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:go_router/go_router.dart';
 
 const _kCallBg = Color(0xFF14161A);
 
@@ -38,6 +35,7 @@ class ActiveCallView extends StatefulWidget {
 
 class _ActiveCallViewState extends State<ActiveCallView> {
   bool _endingOrGone = false;
+  bool _hadRemoteParticipant = false;
 
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   bool _localRendererReady = false;
@@ -109,6 +107,16 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     }
   }
 
+  void _closeCallScreen() {
+    if (!mounted) return;
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+    } else {
+      nav.pushNamedAndRemoveUntil('/messages', (route) => false);
+    }
+  }
+
   Future<void> _endCall() async {
     if (_endingOrGone) return;
     setState(() => _endingOrGone = true);
@@ -118,7 +126,9 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     // webapp's CallWindow.tsx isCaller gate) - a callee hanging up just
     // leaves the mediasoup room below, surfacing to the caller as an
     // ordinary participant-left roster event, nothing more.
-    if (current != null && current.isOutgoing && current.recepients.isNotEmpty) {
+    if (current != null &&
+        current.isOutgoing &&
+        current.recepients.isNotEmpty) {
       CallApi().endCallRequest(IEndCallRequest(
         conversationID: current.conversationID,
         conversationType: current.conversationType,
@@ -126,15 +136,13 @@ class _ActiveCallViewState extends State<ActiveCallView> {
       ));
     }
 
+    // leaveCall() clears the Redux call state AND navigates off this
+    // screen (see CallController._navigateAwayFromCall) - no need to
+    // duplicate either here, which would double-pop.
     await CallController.instance.leaveCall();
-    appStore.dispatch(DispatchModel(clearCurrentCallT, null));
-    if (mounted) {
-      if (context.canPop()) {
-        context.pop();
-      } else {
-        context.go('/messages');
-      }
-    }
+
+    if (!mounted) return;
+    _closeCallScreen();
   }
 
   @override
@@ -159,28 +167,13 @@ class _ActiveCallViewState extends State<ActiveCallView> {
           final controller = CallController.instance;
           _syncRenderers(controller);
 
-          // The call ended out from under this screen - either the other
-          // side's decline/hangup arrived via sse_events.dart's
-          // "callreject" case (which calls leaveCall() directly), the
-          // transport-close safety net in CallController fired, or the
-          // other side just silently left the mediasoup room with no
-          // explicit signal at all. Either way status ends up idle here
-          // and this screen needs to both pop AND clear the cross-screen
-          // Redux signal - _endCall() below does the latter for an
-          // explicit hangup, but this branch is the only place that does
-          // it for the other paths, which don't go through _endCall().
-          if (controller.status == CallEngineStatus.idle && !_endingOrGone) {
-            _endingOrGone = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              appStore.dispatch(DispatchModel(clearCurrentCallT, null));
-              if (!mounted) return;
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go('/messages');
-              }
-            });
-          }
+          // Navigation away when the call ends is now driven centrally by
+          // CallController.leaveCall() (via the global router), so every
+          // end path - the button, callreject, transport-close, the
+          // single-call auto-end, the media watchdog - leaves this screen
+          // reliably without depending on this widget being the mounted,
+          // rebuilding one at the instant status flips to idle (which was
+          // unreliable for the auto-end path). Nothing to do here.
 
           final connecting = controller.status == CallEngineStatus.joining;
           final statusText = connecting
@@ -189,7 +182,29 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                   ? "Ringing…"
                   : "Connected";
 
-          final hasAnyVideo = !controller.cameraOff || _remoteRenderers.isNotEmpty;
+          final hasAnyVideo =
+              !controller.cameraOff || _remoteRenderers.isNotEmpty;
+
+          final hasRemote = controller.joinedParticipants.isNotEmpty;
+          if (hasRemote) _hadRemoteParticipant = true;
+
+          final shouldAutoCloseSingle = !controller.isGroup &&
+              _hadRemoteParticipant &&
+              controller.joinedParticipants.isEmpty &&
+              controller.status != CallEngineStatus.joining;
+
+          if (shouldAutoCloseSingle && !_endingOrGone) {
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              if (!mounted || _endingOrGone) return;
+              final navigator = Navigator.of(context);
+
+              setState(() => _endingOrGone = true);
+              await controller.leaveCall();
+
+              if (!mounted) return;
+              if (navigator.canPop()) navigator.pop();
+            });
+          }
 
           return Scaffold(
             backgroundColor: _kCallBg,
@@ -207,7 +222,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
   /// "@username" + " • muted" + " • camera off" - the EXACT suffix text
   /// and ordering from CallWindow.tsx's placeholder tiles (camera-off
   /// suffix always precedes muted).
-  String _statusLabel(String name, {required bool cameraOff, required bool muted}) {
+  String _statusLabel(String name,
+      {required bool cameraOff, required bool muted}) {
     final buffer = StringBuffer(name);
     if (cameraOff) buffer.write(" • camera off");
     if (muted) buffer.write(" • muted");
@@ -262,17 +278,21 @@ class _ActiveCallViewState extends State<ActiveCallView> {
         .toList();
 
     final remoteEntries = controller.consumers.entries
-        .where((e) => e.value.kind == 'video' && _remoteRenderers.containsKey(e.key))
+        .where((e) =>
+            e.value.kind == 'video' && _remoteRenderers.containsKey(e.key))
         .toList();
 
     return Stack(
       children: [
         Positioned.fill(
           child: remoteEntries.isEmpty
-              ? _buildLocalOrWaitingFill(controller, statusText, waitingParticipants)
+              ? _buildLocalOrWaitingFill(
+                  controller, statusText, waitingParticipants)
               : remoteEntries.length == 1
-                  ? _remoteVideoTile(controller, remoteEntries.first, fill: true)
-                  : _remoteVideoGrid(controller, remoteEntries, waitingParticipants),
+                  ? _remoteVideoTile(controller, remoteEntries.first,
+                      fill: true)
+                  : _remoteVideoGrid(
+                      controller, remoteEntries, waitingParticipants),
         ),
         if (!controller.cameraOff && _localRendererReady)
           Positioned(
@@ -329,7 +349,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                     objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
                 : _placeholderTile(
                     _statusLabel("You",
-                        cameraOff: controller.cameraOff, muted: controller.muted),
+                        cameraOff: controller.cameraOff,
+                        muted: controller.muted),
                   ),
           ),
           if (waitingParticipants.isNotEmpty)
@@ -346,10 +367,12 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                             child: _placeholderTile(
                               _statusLabel(
                                 "@${p.username.isNotEmpty ? p.username : p.clientId}",
-                                cameraOff: controller.participantStatuses[p.clientId]
+                                cameraOff: controller
+                                        .participantStatuses[p.clientId]
                                         ?.cameraOff ??
                                     false,
-                                muted: controller.participantStatuses[p.clientId]
+                                muted: controller
+                                        .participantStatuses[p.clientId]
                                         ?.muted ??
                                     false,
                               ),
@@ -419,7 +442,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                 ),
                 child: Text(
                   _statusLabel(label,
-                      cameraOff: status?.cameraOff ?? false, muted: status?.muted ?? false),
+                      cameraOff: status?.cameraOff ?? false,
+                      muted: status?.muted ?? false),
                   style: const TextStyle(color: Colors.white, fontSize: 11),
                 ),
               ),
@@ -434,7 +458,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
   /// just wrapped two-per-row instead of stretched full-screen. Ported
   /// for structural fidelity with M8 in mind; this milestone only ever
   /// exercises the single-remote-tile path above.
-  Widget _remoteVideoGrid(CallController controller,
+  Widget _remoteVideoGrid(
+      CallController controller,
       List<MapEntry<String, ConsumerEntry>> remoteEntries,
       List<JoinedParticipant> waitingParticipants) {
     return LayoutBuilder(
@@ -454,9 +479,12 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                     height: tileWidth * 1.2,
                     child: _placeholderTile(_statusLabel(
                       "@${p.username.isNotEmpty ? p.username : p.clientId}",
-                      cameraOff:
-                          controller.participantStatuses[p.clientId]?.cameraOff ?? false,
-                      muted: controller.participantStatuses[p.clientId]?.muted ?? false,
+                      cameraOff: controller
+                              .participantStatuses[p.clientId]?.cameraOff ??
+                          false,
+                      muted:
+                          controller.participantStatuses[p.clientId]?.muted ??
+                              false,
                     )),
                   )),
             ],
@@ -510,7 +538,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
           _CallControlButton(
             icon: controller.muted ? Icons.mic_off : Icons.mic,
             off: controller.muted,
-            onPressed: controller.isActive ? () => controller.toggleMic() : null,
+            onPressed:
+                controller.isActive ? () => controller.toggleMic() : null,
           ),
           _CallControlButton(
             icon: controller.cameraOff ? Icons.videocam_off : Icons.videocam,

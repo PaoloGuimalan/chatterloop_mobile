@@ -109,16 +109,21 @@ class WebrtcApi {
         'clientId': clientId,
       });
 
-  /// recipients (entity ids to notify of the departure) is optional -
-  /// server falls back to the conversation's own saved participant list
-  /// when omitted (server/routes/webrtc/index.js's leave-room handler).
+  /// Body matches webapp's LeaveRoomRequest exactly:
+  /// {conversationID, instance, clientId, recipients}. `instance` is the
+  /// pod name this session is bound to (carried from create-transport-
+  /// response); `recipients` are the entity ids to notify of the departure
+  /// (server ALSO unions in the conversation's saved participants, so this
+  /// is additive, but webapp always sends it so we do too).
   Future<bool> leaveRoomRequest({
     required String conversationID,
     required String clientId,
     List<String>? recipients,
+    String? instance,
   }) =>
       _post(_endpoints.webrtcLeaveRoom, {
         'conversationID': conversationID,
+        if (instance != null) 'instance': instance,
         'clientId': clientId,
         if (recipients != null) 'recipients': recipients,
       });

@@ -64,11 +64,22 @@ class _IncomingCallViewState extends State<IncomingCallView> {
     CallRingManager.stop();
     appStore.dispatch(DispatchModel(clearPendingIncomingCallT, null));
 
+    // The callee's recipients (who to notify when WE leave) = the caller
+    // plus every other participant the alert carries, minus ourselves.
+    // Without this the callee had no recipients, so its leave-room couldn't
+    // tell the caller it left. entityID throughout (matches webapp).
+    final myEntityId = appStore.state.userAuth.user.entityId;
+    final recepients = <String>{
+      widget.alert.caller.entityId,
+      ...widget.alert.recepients,
+    }.where((e) => e.isNotEmpty && e != myEntityId).toList();
+
     final joined = await CallController.instance.joinCall(
       conversationID: widget.alert.conversationID,
       conversationType: widget.alert.conversationType,
       callType: widget.alert.callType,
       isOutgoing: false,
+      recepients: recepients,
       startCameraOff: widget.alert.callType != "video",
     );
     if (!mounted) return;
@@ -82,8 +93,15 @@ class _IncomingCallViewState extends State<IncomingCallView> {
             conversationID: widget.alert.conversationID,
             conversationType: widget.alert.conversationType,
             callType: widget.alert.callType,
-            isOutgoing: false)));
-    context.go('/call/active');
+            isOutgoing: false,
+            recepients: recepients)));
+    // pushReplacement (not go) so THIS incoming-call route is REPLACED by
+    // the active-call route rather than left underneath it. With go,
+    // go_router can keep this imperatively-pushed page in the stack, so
+    // when the call later ends and the active screen pops, this incoming
+    // screen briefly reappears before dismissing itself - the flash the
+    // caller/callee sees on hang-up.
+    context.pushReplacement('/call/active');
   }
 
   Future<void> _decline() async {

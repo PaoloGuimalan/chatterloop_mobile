@@ -62,6 +62,22 @@ class SseConnection {
         header: {
           "Accept": "text/event-stream",
           "origin": Endpoints.origin,
+          // Disable gzip on the SSE stream. dart:io's HttpClient requests
+          // `Accept-Encoding: gzip` by default and auto-decompresses -
+          // but the gzip decoder can only emit decoded bytes once it has a
+          // full compressed block, so it BUFFERS individual small events
+          // (a lone participant-left / produce-response) until enough
+          // later traffic accumulates to complete the block. That exactly
+          // matched the symptom: the join-time burst of events (lots of
+          // bytes at once) always arrived, but isolated mid-call events
+          // (webapp leaving, a second produce-response) stalled in the
+          // decoder and never surfaced until the connection was torn down.
+          // The browser's native EventSource doesn't hit this because it
+          // streams each parsed event immediately. Forcing identity
+          // encoding makes each flushed SSE event deliver as its own
+          // uncompressed chunk, so the parser sees it right away.
+          "Accept-Encoding": "identity",
+          "Cache-Control": "no-cache",
         }).listen((event) {
       eventBus.fire(event);
       SseEvents().listen(event, true);

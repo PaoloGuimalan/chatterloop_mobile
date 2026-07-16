@@ -1143,7 +1143,8 @@ class ConversationStateView extends State<ConversationView> {
                                                     bottom: 0,
                                                     left: 0,
                                                     right: 0)),
-                                            onPressed: () => _initiateCall("audio"),
+                                            onPressed: () =>
+                                                _initiateCall("audio"),
                                             child: Center(
                                               child: Icon(
                                                 Icons.call,
@@ -1168,7 +1169,8 @@ class ConversationStateView extends State<ConversationView> {
                                                     bottom: 0,
                                                     left: 0,
                                                     right: 0)),
-                                            onPressed: () => _initiateCall("video"),
+                                            onPressed: () =>
+                                                _initiateCall("video"),
                                             child: Center(
                                               child: Icon(
                                                 Icons.videocam_rounded,

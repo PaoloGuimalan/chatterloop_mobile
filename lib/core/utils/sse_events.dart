@@ -15,6 +15,7 @@ import 'package:chatterloop_app/models/notifications_models/notifications_state_
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 
 class SseEvents {
@@ -159,6 +160,10 @@ class SseEvents {
           Map<String, dynamic>? decodedResult =
               JwtCodec.decode(parsedresponse["result"]);
           final rawRejectData = decodedResult?["rejectdata"];
+          if (kDebugMode) {
+            print("[SSE] callreject received: rejectdata=$rawRejectData "
+                "currentCall=${appStore.state.currentCall?.conversationID}");
+          }
           if (rawRejectData is Map) {
             final conversationID = rawRejectData["conversationID"]?.toString();
             if (conversationID != null) {

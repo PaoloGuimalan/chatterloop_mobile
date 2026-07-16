@@ -29,13 +29,41 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_client_sse/constants/sse_request_type_enum.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart' show SSEModel;
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 class PatchedSSEClient {
-  static http.Client _client = http.Client();
+  /// Built on a dart:io HttpClient with autoUncompress DISABLED, which is
+  /// the single most important detail for SSE on mobile.
+  ///
+  /// package:http's plain `Client()` on Android wraps a dart:io HttpClient
+  /// whose `autoUncompress` defaults to true. That both forces
+  /// `Accept-Encoding: gzip` onto every request (overriding any identity
+  /// header we set) AND pipes the response body through gzip's decoder -
+  /// and that decoder can only emit decoded bytes once it has a full
+  /// compressed block. On a long-lived SSE stream that means isolated,
+  /// infrequent events (a lone participant-left / callreject / mid-call
+  /// new_producer during an otherwise-quiet call) get held in the decoder
+  /// until enough *later* traffic arrives to complete a block, or the
+  /// connection is torn down and they're lost entirely. Confirmed on
+  /// device: the join-time burst always arrived, then the stream went
+  /// silent for the entire rest of the call. The browser's native
+  /// EventSource (what webapp uses) has no such buffer, which is why
+  /// webapp's identical listener flow works and this one didn't.
+  ///
+  /// Turning autoUncompress off makes dart:io request identity encoding and
+  /// stream the raw bytes straight through, so each flushed SSE event is
+  /// delivered the instant it arrives - matching EventSource's behaviour.
+  static http.Client _makeClient() {
+    final io = HttpClient()..autoUncompress = false;
+    return IOClient(io);
+  }
+
+  static http.Client _client = _makeClient();
 
   /// Whichever StreamController the most recent subscribeToSSE call
   /// returned - what unsubscribeFromSSE() (called with no arguments,
@@ -77,7 +105,7 @@ class PatchedSSEClient {
     var currentSSEModel = SSEModel(data: '', id: '', event: '');
     while (true) {
       try {
-        _client = http.Client();
+        _client = _makeClient();
         var request = http.Request(
           method == SSERequestType.GET ? "GET" : "POST",
           Uri.parse(url),
@@ -130,12 +158,12 @@ class PatchedSSEClient {
                 case 'retry':
                   break;
                 default:
-                  _retryConnection(
-                    method: method,
-                    url: url,
-                    header: header,
-                    streamController: streamController,
-                  );
+                  // Per the SSE spec, a field name we don't recognise must
+                  // be IGNORED, not treated as an error. The upstream
+                  // package reconnected here, which on a live call could
+                  // churn/duplicate the connection and drop in-flight
+                  // events - do nothing instead.
+                  break;
               }
             },
             onError: (e, s) {

@@ -39,10 +39,13 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/requests/webrtc_api.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:mediasoup_client_flutter/mediasoup_client_flutter.dart';
@@ -249,6 +252,9 @@ class CallController extends ChangeNotifier {
     _recvTransportState = null;
     _videoProduceAttempts = 0;
     videoProduceFailed = false;
+    _hadRemotePeer = false;
+    _mediaWatchdog?.cancel();
+    _mediaWatchdog = null;
   }
 
   // ════════════════════════════════════════════════════════════════════
@@ -314,6 +320,10 @@ class CallController extends ChangeNotifier {
   // running the normal leave-room request instead.
   // ════════════════════════════════════════════════════════════════════
   Future<void> leaveCall() async {
+    if (kDebugMode) {
+      print("[CallController] leaveCall() called (hasLeft=$_hasLeft, "
+          "status=$status)");
+    }
     if (_hasLeft) return;
     _hasLeft = true;
     status = CallEngineStatus.leaving;
@@ -328,21 +338,26 @@ class CallController extends ChangeNotifier {
     try {
       final recepients =
           endCallRecepients.isNotEmpty ? endCallRecepients : members;
+      final instance =
+          connectTransportState.instance ?? connectRecvTransportState.instance;
 
-      // Only the caller ever notifies the other side explicitly (matches
-      // webapp's isCaller gate exactly) - a callee hanging up just leaves
-      // the mediasoup room below, surfacing to the caller as an ordinary
-      // participant-left roster event.
-      if (isOutgoing && recepients.isNotEmpty && conversationID != null) {
+      // Always send leave-room with the SAME payload webapp does
+      // ({conversationID, instance, clientId, recipients}) - this is what
+      // makes the server publish "update_participants" (action:left) to the
+      // other party so THEY tear down. Previously the callee sent no
+      // recipients and no instance, which is the departure notification
+      // webapp relies on. Sending it unconditionally (caller AND callee) is
+      // correct: the server only fans this out to the given recipients +
+      // the conversation's saved participants, so there's no risk of
+      // over-notifying, and both sides genuinely need to tell the other
+      // they left. (EndCallRequest above / the caller gate stays separate -
+      // that's the JWT-signed /u/endcall relay, a different mechanism.)
+      if (conversationID != null) {
         await _webrtcApi.leaveRoomRequest(
           conversationID: conversationID!,
           clientId: clientId,
-          recipients: recepients,
-        );
-      } else if (conversationID != null) {
-        await _webrtcApi.leaveRoomRequest(
-          conversationID: conversationID!,
-          clientId: clientId,
+          recipients: recepients.isNotEmpty ? recepients : null,
+          instance: instance,
         );
       }
     } catch (e) {
@@ -366,6 +381,48 @@ class CallController extends ChangeNotifier {
     _hasJoined = false;
     _hasLeft = false;
     notifyListeners();
+
+    // Clear the cross-screen Redux call state here too, so teardown is
+    // complete no matter WHO triggered leaveCall() - the end-call button
+    // (ActiveCallView._endCall does this itself), the callreject SSE path,
+    // the transport-close safety net, or the single-call auto-end. Before,
+    // only _endCall and ActiveCallView's idle-detection cleared it, so an
+    // auto-end that fired while the screen wasn't the active route could
+    // leave a stale currentCall around. Idempotent - safe to double-clear.
+    appStore.dispatch(DispatchModel(clearCurrentCallT, null));
+    // Also clear any lingering incoming-call state, so no incoming-call
+    // screen can be revealed/re-shown as we tear the call down.
+    appStore.dispatch(DispatchModel(clearPendingIncomingCallT, null));
+
+    // Drive the UI off the call screen from HERE, centrally. Previously
+    // this relied on ActiveCallView's own build-time "status == idle"
+    // detection - which only works if that screen happens to be the
+    // mounted, rebuilding widget at the instant status flips. On the
+    // auto-end path (update_participants → leaveCall) that proved
+    // unreliable: the controller reached idle but the screen stayed up.
+    // Navigating from the single teardown path fixes every trigger at
+    // once (button, callreject, transport-close, auto-end, watchdog).
+    _navigateAwayFromCall();
+    if (kDebugMode) print("[CallController] leaveCall() complete → idle");
+  }
+
+  /// Leaves whatever call screen is showing. Pops back to wherever the
+  /// call was pushed from when possible (the caller pushed it over the
+  /// conversation), else falls back to /messages (the callee entered it
+  /// via a route replacement, so there's nothing to pop). No-op if we're
+  /// not currently on a /call screen (e.g. the user already navigated).
+  void _navigateAwayFromCall() {
+    try {
+      final loc = appRouter.routerDelegate.currentConfiguration.uri.path;
+      if (!loc.startsWith('/call')) return;
+      if (appRouter.canPop()) {
+        appRouter.pop();
+      } else {
+        appRouter.go('/messages');
+      }
+    } catch (e) {
+      if (kDebugMode) print("[CallController] navigate-away failed: $e");
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════
@@ -417,6 +474,7 @@ class CallController extends ChangeNotifier {
       participantStatuses[p.clientId] =
           ParticipantStatusEntry(muted: p.muted, cameraOff: p.cameraOff);
     }
+    _noteRemotePeerIfPresent();
     notifyListeners();
 
     final newDevice = Device();
@@ -783,6 +841,125 @@ class CallController extends ChangeNotifier {
   }
 
   // ════════════════════════════════════════════════════════════════════
+  // "Am I the only one left?" auto-end for SINGLE conversations, per the
+  // user's explicit spec. In a 1:1 call, once the other side leaves there
+  // is nobody to talk to, so the call should end itself rather than
+  // stranding the user on a dead screen they have to hang up manually. For
+  // group calls / conferences / voice channels the opposite is correct -
+  // being the last one present is fine (you just stop seeing others'
+  // tiles), so this only ever fires when !isGroup.
+  //
+  // The crucial subtlety the user called out: DON'T count your own tiles.
+  // A participant can legitimately have two video tiles at once (camera +
+  // screen share). Those are always LOCAL here (mediaStream / screenStream),
+  // never consumers - every ConsumerEntry is by definition remote - but the
+  // presence check is written explicitly in terms of "someone whose
+  // clientId isn't mine" so the intent is unmistakable and it stays correct
+  // even if that ever changes. `_hadRemotePeer` guards the ringing phase:
+  // before anyone has ever joined, an empty roster is normal and must not
+  // trigger an end.
+  // ════════════════════════════════════════════════════════════════════
+  bool _hadRemotePeer = false;
+
+  bool get _hasOtherParticipant {
+    final rosterOther = joinedParticipants.any((p) => p.clientId != clientId);
+    final consumerOther = consumers.values
+        .any((c) => c.ownerClientId != null && c.ownerClientId != clientId);
+    return rosterOther || consumerOther;
+  }
+
+  void _noteRemotePeerIfPresent() {
+    if (_hasOtherParticipant) _hadRemotePeer = true;
+  }
+
+  void _maybeAutoEndIfAlone() {
+    if (isGroup) return;
+    if (status != CallEngineStatus.active) return;
+    if (!_hadRemotePeer) return;
+    if (_hasOtherParticipant) return;
+    if (kDebugMode) {
+      print("[CallController] auto-end: only self left in single call");
+    }
+    scheduleMicrotask(() => leaveCall());
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // Media-flow watchdog — the delivery-INDEPENDENT fallback for ending a
+  // 1:1 call when the peer leaves. The proper signal is the SSE
+  // "update_participants"/"callreject" (fast path, handled above), but on
+  // mobile that stream is buffered at the edge proxy (the server's
+  // sse-express keepalive is a newline-less comment and never flushes, so
+  // an HTTP/1.1 client's whole stream gets held and released in bursts -
+  // the browser's HTTP/2 EventSource doesn't hit this). So it can arrive
+  // late or not until the call is torn down. This watchdog covers that:
+  // while a single call is active, it polls every remote consumer's RTP
+  // byte count; if NOTHING has been received from any of them for a
+  // sustained window, the peer has almost certainly left (the SFU stopped
+  // relaying their now-closed producers) and we end the call.
+  //
+  // Trade-off (documented deliberately): a peer who is BOTH muted AND
+  // camera-off sends no RTP either, so a long-enough silence could be
+  // misread as a departure. The window is set generously (25s) precisely
+  // to make that rare - real conversation keeps audio or video bytes
+  // flowing well inside it - and this only ever runs for `!isGroup`. It
+  // turns the failure mode from "stuck forever" into "auto-closes within
+  // ~25s", which is strictly better while the SSE edge-buffering stands.
+  // ════════════════════════════════════════════════════════════════════
+  Timer? _mediaWatchdog;
+  int _lastRemoteBytes = 0;
+  DateTime _lastRemoteBytesChange = DateTime.now();
+  static const _mediaSilenceLimit = Duration(seconds: 25);
+
+  void _startMediaWatchdog() {
+    _mediaWatchdog?.cancel();
+    if (isGroup) return;
+    _lastRemoteBytes = 0;
+    _lastRemoteBytesChange = DateTime.now();
+    _mediaWatchdog = Timer.periodic(
+        const Duration(seconds: 3), (_) => unawaited(_tickMediaWatchdog()));
+  }
+
+  Future<void> _tickMediaWatchdog() async {
+    if (status != CallEngineStatus.active || isGroup || !_hadRemotePeer) return;
+    // No remote consumers yet: nothing to measure. The roster-based
+    // _maybeAutoEndIfAlone covers "peer left before producing".
+    if (consumers.isEmpty) return;
+
+    int total = 0;
+    for (final entry in consumers.values) {
+      try {
+        final stats = await entry.consumer.getStats();
+        if (stats is List) {
+          for (final report in stats) {
+            final values = (report as dynamic).values;
+            if (values is Map) {
+              final br = values['bytesReceived'];
+              if (br is num) total += br.toInt();
+            }
+          }
+        }
+      } catch (_) {
+        // A consumer whose getStats throws is likely already gone - ignore.
+      }
+    }
+
+    final now = DateTime.now();
+    if (total > _lastRemoteBytes) {
+      _lastRemoteBytes = total;
+      _lastRemoteBytesChange = now;
+      return;
+    }
+    if (now.difference(_lastRemoteBytesChange) >= _mediaSilenceLimit) {
+      if (kDebugMode) {
+        print("[CallController] media watchdog: no remote RTP for "
+            "${_mediaSilenceLimit.inSeconds}s in single call → peer gone, ending");
+      }
+      _mediaWatchdog?.cancel();
+      scheduleMicrotask(() => leaveCall());
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════
   // useEffect #3 - screen share producing (CallWindow.tsx lines 559-620).
   // Ported for structural fidelity; no UI control exposes this yet
   // (out of this milestone's scope), so screenStream never actually gets
@@ -950,6 +1127,13 @@ class CallController extends ChangeNotifier {
       ownerClientId: pending.ownerClientId,
       source: pending.source,
     );
+    if (kDebugMode) {
+      print("[CallController] CONSUME added: kind=${pending.kind} "
+          "source=${pending.source} producerId=${pending.producerId} "
+          "owner=${pending.ownerClientId} "
+          "streamId=${consumer.stream.id} trackId=${consumer.track.id}");
+    }
+    _noteRemotePeerIfPresent();
     notifyListeners();
   }
 
@@ -1199,6 +1383,17 @@ class CallController extends ChangeNotifier {
       return;
     }
 
+    // Diagnostic: log every SSE event type reaching this device. Kept for
+    // now to verify the gzip-disable fix actually lets webapp's live room
+    // broadcasts (participant-left, participant-status, mid-call
+    // new_producer) through during a call rather than only join-time
+    // responses. Safe to drop once end-call teardown is confirmed stable.
+    if (kDebugMode) {
+      print("[CallController] SSE-RAW ${event.event}: "
+          "convo=${data['conversationID']} clientId=${data['clientId']} "
+          "roster=${joinedParticipants.length}");
+    }
+
     switch (event.event) {
       case "join-room-response":
         final rawParticipants = data['participants'];
@@ -1245,6 +1440,7 @@ class CallController extends ChangeNotifier {
             muted: data['muted'] == true,
             cameraOff: data['cameraOff'] == true,
           );
+          _noteRemotePeerIfPresent();
           notifyListeners();
         }
         return;
@@ -1253,39 +1449,77 @@ class CallController extends ChangeNotifier {
           final leftClientId = data['clientId']?.toString();
           final leftUsername = data['username']?.toString();
 
-          final before = joinedParticipants.length;
           if (leftClientId != null) {
             joinedParticipants.removeWhere((p) => p.clientId == leftClientId);
           } else if (leftUsername != null) {
             joinedParticipants.removeWhere((p) => p.username == leftUsername);
           }
 
-          // 1:1 call, roster now empty, and it wasn't just us leaving -
-          // matches webapp's own auto-leaveCallProcess condition exactly
-          // (CallWindow.tsx lines 998-1009).
-          if (!isGroup &&
-              joinedParticipants.isEmpty &&
-              before != joinedParticipants.length &&
-              ((leftClientId != null && leftClientId != clientId) ||
-                  (leftClientId == null &&
-                      leftUsername != null &&
-                      leftUsername != appStore.state.userAuth.user.username))) {
-            scheduleMicrotask(() => leaveCall());
-          }
-
           if (leftClientId != null) {
             participantStatuses.remove(leftClientId);
           }
 
+          // Close any consumers owned by the departed producer(s).
           final producerIds = data['producerIds'];
           if (producerIds is List) {
             for (final producerId in producerIds) {
               final entry = consumers.remove(producerId.toString());
               entry?.consumer.close();
               _producerSource.remove(producerId.toString());
+              _producerOwner.remove(producerId.toString());
             }
           }
           notifyListeners();
+          _maybeAutoEndIfAlone();
+        }
+        return;
+      // ── update_participants ────────────────────────────────────────
+      // The RELIABLE departure signal on mobile, and the one webapp also
+      // listens to (sse.ts registers it and dispatches
+      // REMOVE_PREVIEW_PARTICIPANT). Unlike "participant-left" - which the
+      // server only publishes deep inside leaveRoom() from the Redis ROOM
+      // membership, cross-pod via relayOrRun, and which was not arriving on
+      // this device - "update_participants" is published straight from the
+      // /leave-room (and /leave-room-keepalive) handlers to the
+      // conversation's SAVED recipients (GetAllReceivers), which always
+      // includes us. Its shape is different: {result: {clientId, action}},
+      // no top-level conversationID/clientId (that's why it logs as
+      // convo=null clientId=null). We only act on it for a clientId we
+      // actually have in the current call, since it carries no
+      // conversationID to scope by and this device could be a recipient of
+      // other conversations' leave events.
+      case "update_participants":
+        {
+          final result = data['result'];
+          if (result is Map) {
+            final leftClientId = result['clientId']?.toString();
+            final action = result['action']?.toString();
+            if (action == "left" &&
+                leftClientId != null &&
+                leftClientId != clientId) {
+              final known =
+                  joinedParticipants.any((p) => p.clientId == leftClientId) ||
+                      consumers.values
+                          .any((c) => c.ownerClientId == leftClientId);
+              if (known) {
+                joinedParticipants
+                    .removeWhere((p) => p.clientId == leftClientId);
+                participantStatuses.remove(leftClientId);
+                final ownedProducerIds = consumers.entries
+                    .where((e) => e.value.ownerClientId == leftClientId)
+                    .map((e) => e.key)
+                    .toList();
+                for (final producerId in ownedProducerIds) {
+                  final entry = consumers.remove(producerId);
+                  entry?.consumer.close();
+                  _producerOwner.remove(producerId);
+                  _producerSource.remove(producerId);
+                }
+                notifyListeners();
+                _maybeAutoEndIfAlone();
+              }
+            }
+          }
         }
         return;
       // "callreject" (webapp's equivalent of this - both /rejectcall's
@@ -1310,6 +1544,10 @@ class CallController extends ChangeNotifier {
             cameraOff: data['cameraOff'] == true,
           );
           notifyListeners();
+          // The user specifically asked to also re-check on status updates
+          // (not just participant-left) - some teardown paths surface as a
+          // status flip on the way out before the roster event lands.
+          _maybeAutoEndIfAlone();
         }
         return;
       case "producer-closed":
@@ -1321,6 +1559,7 @@ class CallController extends ChangeNotifier {
           _producerOwner.remove(producerId);
           _producerSource.remove(producerId);
           notifyListeners();
+          _maybeAutoEndIfAlone();
         }
         return;
       case "produce-response":
@@ -1381,6 +1620,7 @@ class CallController extends ChangeNotifier {
               joinedParticipants.add(JoinedParticipant(
                   clientId: producerClientId,
                   username: data['username'].toString()));
+              _noteRemotePeerIfPresent();
               notifyListeners();
             }
           }
@@ -1497,6 +1737,12 @@ class CallController extends ChangeNotifier {
         "mobile-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(99999)}";
     notifyListeners();
 
+    if (kDebugMode) {
+      print("[CallController] joinCall: entityId="
+          "${appStore.state.userAuth.user.entityId} isOutgoing=$isOutgoing "
+          "clientId=$_clientId members=$members");
+    }
+
     _sseSub ??= eventBus.on<SSEModel>().listen(_onSseEvent);
 
     // initLocalMedia (useEffect #7) - kicked off independently, same as
@@ -1533,6 +1779,7 @@ class CallController extends ChangeNotifier {
 
       status = CallEngineStatus.active;
       notifyListeners();
+      _startMediaWatchdog();
       return true;
     } catch (e) {
       lastError = e.toString();
