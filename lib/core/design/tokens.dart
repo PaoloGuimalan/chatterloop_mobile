@@ -199,6 +199,14 @@ class CLPalette extends ThemeExtension<CLPalette> {
 CLPalette cl(BuildContext context) =>
     Theme.of(context).extension<CLPalette>() ?? CLPalette.light;
 
+/// The Chatterloop wordmark asset for the current theme. The `-dark` variant
+/// reads on dark surfaces - matches webapp's
+/// `theme === "dark" ? ChatterLoopDarkImg : ChatterLoopImg`.
+String clLogoAsset(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? 'assets/images/chatterloop-dark.png'
+        : 'assets/images/chatterloop.png';
+
 ThemeData buildCLTheme(Brightness brightness) {
   final p = brightness == Brightness.dark ? CLPalette.dark : CLPalette.light;
   final base =

@@ -5,6 +5,7 @@
 
 import 'dart:async';
 
+import 'package:chatterloop_app/core/auth/consent_prefs.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
@@ -66,10 +67,20 @@ class AuthController extends ChangeNotifier {
 
     try {
       final payload = JwtCodec.decode(response.usertoken);
-      final account = UserAccount.fromNodeJwt(payload ?? const {},
+      var account = UserAccount.fromNodeJwt(payload ?? const {},
           allowedModules: response.allowedModules,
           activeEntity: response.activeEntity,
           personalEntityId: response.personalEntityId);
+      // Strict consent half of the restore gate: the Node token reports
+      // profile completeness but never consent state, so re-apply the pending
+      // consents persisted at the last authoritative (Django) login. Any
+      // still pending means the account isn't complete and must pass through
+      // /setup again before reaching the app.
+      final storedPending = await ConsentPrefs.read();
+      if (storedPending.isNotEmpty) {
+        account = account.copyWith(
+            pendingConsents: storedPending, isComplete: false);
+      }
       _store.dispatch(DispatchModel(setUserAuthT, UserAuth(true, account)));
     } catch (_) {
       // A malformed/expired token throws rather than returning null - fall

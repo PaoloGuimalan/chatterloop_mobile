@@ -2,7 +2,7 @@
     <application
         android:label="Chatterloop"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher_icon"
+        android:icon="@mipmap/launcher_icon"
         android:roundIcon="@mipmap/ic_launcher_icon">
         <activity
             android:name=".MainActivity"

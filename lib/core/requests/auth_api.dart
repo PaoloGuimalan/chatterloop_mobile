@@ -118,6 +118,57 @@ class AuthApi {
     }
   }
 
+  /// Current terms/privacy documents (public endpoint). Each entry is
+  /// {document_type, version, content, document_url, effective_date} -
+  /// the Setup screen uses document_url to link out. Mirrors webapp's
+  /// GetCurrentPoliciesRequest.
+  Future<List<Map<String, dynamic>>> getPoliciesRequest() async {
+    try {
+      final response = await _dio.get(_endpoints.policies);
+      final data = response.data?["data"];
+      if (data is! List) return const [];
+      return data.whereType<Map>().map(Map<String, dynamic>.from).toList();
+    } catch (e) {
+      if (kDebugMode) print("ERROR getPolicies: $e");
+      return const [];
+    }
+  }
+
+  /// PUT /api/user/me - fills in the missing profile fields (birthdate and/or
+  /// gender) so Account.is_profile_complete() passes. Only sends the keys it
+  /// was given. Mirrors webapp's CompleteProfileRequest.
+  Future<bool> completeProfileRequest({String? birthdate, String? gender}) async {
+    try {
+      final payload = <String, dynamic>{};
+      if (birthdate != null) payload['birthdate'] = birthdate;
+      if (gender != null) payload['gender'] = gender;
+      final response = await _dio.put(_endpoints.updateProfile, data: payload);
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR completeProfile: $e");
+        if (e is DioException) print("Response body: ${e.response?.data}");
+      }
+      return false;
+    }
+  }
+
+  /// POST /api/user/policies/accept with an empty body - the server records
+  /// acceptance of every consent it still has pending for this account.
+  /// Mirrors webapp's AcceptPoliciesRequest.
+  Future<bool> acceptPoliciesRequest() async {
+    try {
+      final response = await _dio.post(_endpoints.acceptPolicies, data: {});
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR acceptPolicies: $e");
+        if (e is DioException) print("Response body: ${e.response?.data}");
+      }
+      return false;
+    }
+  }
+
   /// Session restore - hits the Node backend's unified jwtchecker, which
   /// merges usertoken/allowed_modules/active_entity/personal_entity_id.
   Future<JWTCheckerResponse?> jwtCheckerRequest() async {

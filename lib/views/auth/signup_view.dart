@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/auth/consent_prefs.dart';
 import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -9,6 +10,8 @@ import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/views/auth/policy_viewer_view.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -36,8 +39,49 @@ class _SignupScreenState extends State<SignupScreen> {
   String? _year;
   String? _gender;
   bool _agreed = false;
+  String? _termsUrl;
+  String? _termsContent;
+  String? _privacyUrl;
+  String? _privacyContent;
   bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPolicies();
+  }
+
+  Future<void> _loadPolicies() async {
+    final docs = await AuthApi().getPoliciesRequest();
+    if (!mounted) return;
+    setState(() {
+      for (final d in docs) {
+        final type = d['document_type']?.toString();
+        final url = d['document_url']?.toString();
+        final content = d['content']?.toString();
+        if (type == 'terms') {
+          _termsUrl = url;
+          _termsContent = content;
+        }
+        if (type == 'privacy') {
+          _privacyUrl = url;
+          _privacyContent = content;
+        }
+      }
+    });
+  }
+
+  void _openPolicy(String title, String? content, String? url) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => PolicyViewerPage(
+        title: title,
+        content: content,
+        url: url,
+        isDark: Theme.of(context).brightness == Brightness.dark,
+      ),
+    ));
+  }
 
   Future<void> _submit() async {
     if (!_agreed) {
@@ -90,16 +134,15 @@ class _SignupScreenState extends State<SignupScreen> {
 
     await ApiClient.instance.writeToken(response!.authtoken);
     Map<String, dynamic>? userResponse = JwtCodec.decode(response.usertoken);
+    final account = UserAccount.fromDjangoJwt(userResponse ?? const {},
+        allowedModules: response.allowedModules,
+        activeEntity: response.activeEntity,
+        personalEntityId: response.personalEntityId);
+    await ConsentPrefs.save(account.pendingConsents);
 
     if (!mounted) return;
-    StoreProvider.of<AppState>(context).dispatch(DispatchModel(
-        setUserAuthT,
-        UserAuth(
-            true,
-            UserAccount.fromDjangoJwt(userResponse ?? const {},
-                allowedModules: response.allowedModules,
-                activeEntity: response.activeEntity,
-                personalEntityId: response.personalEntityId))));
+    StoreProvider.of<AppState>(context)
+        .dispatch(DispatchModel(setUserAuthT, UserAuth(true, account)));
 
     setState(() => _busy = false);
     context.go('/verify-email');
@@ -133,6 +176,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   Text(
                     'Create your account',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: p.text,
                       fontSize: 26,
@@ -143,6 +187,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   const SizedBox(height: 4),
                   Text(
                     'Join the loop in less than a minute.',
+                    textAlign: TextAlign.center,
                     style: TextStyle(color: p.text2, fontSize: 14),
                   ),
                   const SizedBox(height: 22),
@@ -222,18 +267,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       obscure: true,
                       controller: _password),
                   const SizedBox(height: 16),
-                  Row(children: [
-                    Checkbox(
-                      value: _agreed,
-                      onChanged: (v) => setState(() => _agreed = v ?? false),
-                      activeColor: p.brand,
-                    ),
-                    Expanded(
-                        child: Text(
-                      'I agree to the Terms and Conditions',
-                      style: TextStyle(color: p.text2, fontSize: 13),
-                    )),
-                  ]),
+                  _consentRow(p),
                   if (_error != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
@@ -268,6 +302,59 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _consentRow(CLPalette p) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 30,
+          height: 30,
+          child: Checkbox(
+            value: _agreed,
+            onChanged:
+                _busy ? null : (v) => setState(() => _agreed = v ?? false),
+            activeColor: p.brand,
+            visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text.rich(
+              TextSpan(
+                style: TextStyle(color: p.text2, fontSize: 13.5, height: 1.4),
+                children: [
+                  const TextSpan(text: 'I agree to the '),
+                  _linkSpan(
+                      'Terms and Conditions',
+                      p,
+                      () => _openPolicy(
+                          'Terms and Conditions', _termsContent, _termsUrl)),
+                  const TextSpan(text: ' and '),
+                  _linkSpan(
+                      'Privacy Policy',
+                      p,
+                      () => _openPolicy(
+                          'Privacy Policy', _privacyContent, _privacyUrl)),
+                  const TextSpan(text: '.'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  TextSpan _linkSpan(String text, CLPalette p, VoidCallback onTap) {
+    return TextSpan(
+      text: text,
+      style: TextStyle(color: p.brand, fontWeight: FontWeight.w700),
+      recognizer: (TapGestureRecognizer()..onTap = onTap),
     );
   }
 

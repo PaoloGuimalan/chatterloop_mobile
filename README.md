@@ -15,6 +15,10 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
+APK debug build command:
+
+- flutter run --dart-define-from-file=env.json
+
 APK release build command:
 
 - flutter build apk --release --target-platform android-arm,android-arm64,android-x64 --dart-define-from-file=env.json

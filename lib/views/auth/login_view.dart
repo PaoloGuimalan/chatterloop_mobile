@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/auth/consent_prefs.dart';
 import 'package:chatterloop_app/core/auth/google_auth_service.dart';
 import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -102,16 +103,17 @@ class LoginScreenState extends State<LoginScreen> {
   Future<void> _applyLogin(LoginResponse resp) async {
     await ApiClient.instance.writeToken(resp.authtoken);
     final userResponse = JwtCodec.decode(resp.usertoken);
+    final account = UserAccount.fromDjangoJwt(userResponse ?? const {},
+        allowedModules: resp.allowedModules,
+        activeEntity: resp.activeEntity,
+        personalEntityId: resp.personalEntityId);
+    // Persist the authoritative pending consents so session restore can gate
+    // on them too (the Node jwtchecker never reports consent state).
+    await ConsentPrefs.save(account.pendingConsents);
 
     if (!mounted) return;
-    StoreProvider.of<AppState>(context).dispatch(DispatchModel(
-        setUserAuthT,
-        UserAuth(
-            true,
-            UserAccount.fromDjangoJwt(userResponse ?? const {},
-                allowedModules: resp.allowedModules,
-                activeEntity: resp.activeEntity,
-                personalEntityId: resp.personalEntityId))));
+    StoreProvider.of<AppState>(context)
+        .dispatch(DispatchModel(setUserAuthT, UserAuth(true, account)));
 
     if (!mounted) return;
     setState(() {
@@ -150,8 +152,7 @@ class LoginScreenState extends State<LoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Image.asset('assets/images/chatterloop.png',
-                          width: 38, height: 38),
+                      Image.asset(clLogoAsset(context), width: 38, height: 38),
                       const SizedBox(width: 10),
                       Text(
                         'Chatterloop',
@@ -166,6 +167,7 @@ class LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 22),
                   Text(
                     'Welcome back',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: p.text,
                       fontSize: 26,
@@ -176,6 +178,7 @@ class LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 4),
                   Text(
                     'Log in to jump back into your loop.',
+                    textAlign: TextAlign.center,
                     style: TextStyle(color: p.text2, fontSize: 14),
                   ),
                   const SizedBox(height: 22),

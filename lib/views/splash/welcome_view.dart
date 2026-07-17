@@ -15,8 +15,7 @@ class WelcomeScreen extends StatelessWidget {
           children: [
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 120, maxWidth: 120),
-              child: Image.asset('assets/images/chatterloop.png',
-                  fit: BoxFit.cover),
+              child: Image.asset(clLogoAsset(context), fit: BoxFit.contain),
             ),
             const SizedBox(height: 16),
             Text(

@@ -55,6 +55,14 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       return;
     }
 
+    // Optimistically flip isVerified so the router gate advances us onward
+    // (to /setup if profile/consents are still pending, else the app) instead
+    // of bouncing straight back here. The verify request already succeeded.
+    final store = StoreProvider.of<AppState>(context);
+    final user = store.state.userAuth.user;
+    store.dispatch(DispatchModel(
+        setUserAuthT, UserAuth(true, user.copyWith(isVerified: true))));
+
     setState(() => _busy = false);
     context.go('/messages');
   }

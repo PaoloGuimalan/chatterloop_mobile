@@ -4,8 +4,10 @@
 // navigatorTabKey local to home_view.dart for the bottom tab bar).
 
 import 'package:chatterloop_app/core/auth/auth_controller.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/views/auth/login_view.dart';
+import 'package:chatterloop_app/views/auth/setup_view.dart';
 import 'package:chatterloop_app/views/calls/active_call_view.dart';
 import 'package:chatterloop_app/views/calls/incoming_call_view.dart';
 import 'package:chatterloop_app/views/auth/signup_view.dart';
@@ -19,6 +21,9 @@ import 'package:chatterloop_app/views/profile/profile_edit_view.dart';
 import 'package:chatterloop_app/views/profile/realm_profile_view.dart';
 import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/search_view.dart';
+import 'package:chatterloop_app/views/settings/credentials_view.dart';
+import 'package:chatterloop_app/views/settings/device_sessions_view.dart';
+import 'package:chatterloop_app/views/settings/personal_information_view.dart';
 import 'package:chatterloop_app/views/settings/settings_view.dart';
 import 'package:chatterloop_app/views/shell/authenticated_shell.dart';
 import 'package:chatterloop_app/views/shell/home_tab_scaffold.dart';
@@ -80,9 +85,26 @@ GoRouter buildAppRouter(AuthController authController) {
           // as a public path here.
           return path == '/login' || path == '/signup' ? null : '/login';
         case AuthStatus.authenticated:
-          return path == '/login' || path == '/signup' || path == '/splash'
-              ? '/messages'
-              : null;
+          final user = appStore.state.userAuth.user;
+          // Gate order mirrors webapp's App.tsx: an unverified email is sent
+          // to /verify-email; a verified-but-incomplete account (missing
+          // birthdate/gender or with pending terms/privacy consents) is sent
+          // to /setup; only a verified + complete account reaches the app.
+          if (!user.isVerified) {
+            return path == '/verify-email' ? null : '/verify-email';
+          }
+          if (!user.isComplete) {
+            return path == '/setup' ? null : '/setup';
+          }
+          // Fully cleared - never leave them parked on an auth/gate screen.
+          const gateScreens = {
+            '/login',
+            '/signup',
+            '/splash',
+            '/verify-email',
+            '/setup',
+          };
+          return gateScreens.contains(path) ? '/messages' : null;
       }
     },
     routes: [
@@ -98,6 +120,13 @@ GoRouter buildAppRouter(AuthController authController) {
       GoRoute(
           path: '/verify-email',
           pageBuilder: (c, s) => _clPage(s, const VerifyEmailScreen())),
+      // Post-verification gate (webapp's <Setup />): collects any missing
+      // birthdate/gender and records terms/privacy consent before the app
+      // is reachable. Top-level so it replaces the whole UI, like the other
+      // auth screens.
+      GoRoute(
+          path: '/setup',
+          pageBuilder: (c, s) => _clPage(s, const SetupScreen())),
       // Top-level (outside the shell) so it replaces the whole visible UI -
       // no bottom nav/top bar while an entity switch + AppState reset is in
       // flight. `extra` carries the actual switch-back/switch-to-page
@@ -162,6 +191,17 @@ GoRouter buildAppRouter(AuthController authController) {
           GoRoute(
               path: '/settings',
               pageBuilder: (c, s) => _clPage(s, const SettingsScreen())),
+          GoRoute(
+              path: '/settings/device-sessions',
+              pageBuilder: (c, s) =>
+                  _clPage(s, const DeviceSessionsScreen())),
+          GoRoute(
+              path: '/settings/personal-information',
+              pageBuilder: (c, s) =>
+                  _clPage(s, const PersonalInformationScreen())),
+          GoRoute(
+              path: '/settings/credentials',
+              pageBuilder: (c, s) => _clPage(s, const CredentialsScreen())),
           GoRoute(
               path: '/notifications',
               pageBuilder: (c, s) => _clPage(s, const NotificationsView())),

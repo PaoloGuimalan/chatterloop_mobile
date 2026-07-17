@@ -18,6 +18,24 @@ class Endpoints {
   String signup = '/api/user/me';
   String verifyEmail = '/api/user/verification';
   String updateProfile = '/api/user/me';
+
+  /// Current terms/privacy policy documents (public). Setup screen links out
+  /// to these. Mirrors webapp's GetCurrentPoliciesRequest.
+  String policies = '/api/user/policies';
+
+  /// POST with an empty body records acceptance of ALL pending consents for
+  /// the account. Mirrors webapp's AcceptPoliciesRequest.
+  String acceptPolicies = '/api/user/policies/accept';
+
+  // ─── Settings sections (Django user service) ─────────────────────────────
+  /// Device sessions: GET lists them, DELETE {sessionID} signs one out.
+  String devices = '/api/user/devices';
+
+  /// Blocked accounts: GET lists them, DELETE {blocked_entity_id} unblocks.
+  String blocks = '/api/user/blocks';
+
+  /// GET a full export of the account's data (Data & Privacy).
+  String dataExport = '/api/user/me/export';
   String search = '/api/user/search/'; // :query
   String publicProfile = '/api/user/auth/'; // :username
   String contacts = '/api/user/contacts';

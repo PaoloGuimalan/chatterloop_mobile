@@ -21,6 +21,18 @@ class UserAccount {
   final String? email;
   final bool isActivated;
   final bool isVerified;
+
+  /// Django's computed `is_complete` = is_profile_complete() (birthdate AND
+  /// gender) AND no pending consents. Gates access after login alongside
+  /// isVerified, mirroring webapp's App.tsx routing. The login/tp_auth
+  /// response carries the authoritative value; the Node jwtchecker used on
+  /// session restore doesn't compute it, so fromNodeJwt approximates it from
+  /// birthdate+gender presence (consent state can't be known there).
+  final bool isComplete;
+
+  /// Policy document_types the account still has to accept (e.g. "terms",
+  /// "privacy") - non-empty means the Setup consent step is still pending.
+  final List<String> pendingConsents;
   final String? profile;
   final String? coverphoto;
   final String? gender;
@@ -61,10 +73,47 @@ class UserAccount {
       this.activeEntity,
       this.personalEntityId,
       this.joinedDate,
-      this.isBadged = false});
+      this.isBadged = false,
+      this.isComplete = true,
+      this.pendingConsents = const []});
 
   static const empty =
       UserAccount("", "", "", "", "", "", false, false, null, null, null, null);
+
+  /// Field-level clone - used to optimistically flip isVerified/isComplete
+  /// after the verify-email / setup steps succeed, so the router gate
+  /// (which reads the Redux user) lets the account through on the next
+  /// navigation without a full re-fetch. Preserves allowedModules/
+  /// activeEntity/personalEntityId, which those step responses don't return.
+  UserAccount copyWith({
+    bool? isVerified,
+    bool? isComplete,
+    List<String>? pendingConsents,
+    UserBirthDate? birthdate,
+    String? gender,
+  }) {
+    return UserAccount(
+      id,
+      username,
+      firstname,
+      middlename,
+      lastname,
+      email,
+      isActivated,
+      isVerified ?? this.isVerified,
+      profile,
+      coverphoto,
+      gender ?? this.gender,
+      birthdate ?? this.birthdate,
+      allowedModules: allowedModules,
+      activeEntity: activeEntity,
+      personalEntityId: personalEntityId,
+      joinedDate: joinedDate,
+      isBadged: isBadged,
+      isComplete: isComplete ?? this.isComplete,
+      pendingConsents: pendingConsents ?? this.pendingConsents,
+    );
+  }
 
   /// The entity id messages.sender/receivers/seeners are actually keyed by
   /// - distinct from `id`, which is the Django Account row's id. Both
@@ -122,6 +171,10 @@ class UserAccount {
     Map<String, dynamic> fullname = json["fullname"] is Map
         ? Map<String, dynamic>.from(json["fullname"])
         : const {};
+    // Node's transformUser computes isComplete = birthdate && gender (profile
+    // completeness only - it can't know consent state). The strict consent
+    // half of the restore gate is layered on in auth_controller from the
+    // pending consents persisted at the last authoritative (Django) login.
     return UserAccount(
         (json["_id"] ?? json["userID"] ?? "").toString(),
         (json["userID"] ?? "").toString(),
@@ -140,7 +193,8 @@ class UserAccount {
             : null,
         allowedModules: allowedModules,
         activeEntity: activeEntity,
-        personalEntityId: personalEntityId);
+        personalEntityId: personalEntityId,
+        isComplete: json["isComplete"] == true);
   }
 
   /// Decodes the flat snake_case `usertoken` shape returned by Django's
@@ -167,7 +221,17 @@ class UserAccount {
             : null,
         allowedModules: allowedModules,
         activeEntity: activeEntity,
-        personalEntityId: personalEntityId);
+        personalEntityId: personalEntityId,
+        // Only gate on an EXPLICIT is_complete:false - a response that omits
+        // the field (some Django token shapes) must not be treated as
+        // incomplete and bounced to /setup.
+        isComplete: json.containsKey("is_complete")
+            ? json["is_complete"] == true
+            : true,
+        pendingConsents: (json["pending_consents"] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const []);
   }
 
   /// From the GET /api/user/auth/:username/ response (PublicProfile) -
