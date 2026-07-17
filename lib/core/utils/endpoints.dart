@@ -9,6 +9,12 @@ class Endpoints {
 
   String jwtChecker = '/auth/jwtchecker';
   String login = '/api/user/auth';
+
+  /// Third-party (Google) auth - takes a Google ID token and logs the user
+  /// in, auto-creating the account on first use. Same response shape as
+  /// `login` (result: {authtoken, usertoken, allowed_modules, ...}). Mirrors
+  /// webapp's ThirdPartyAuthenticationRequest -> POST /api/user/tp_auth.
+  String tpAuth = '/api/user/tp_auth';
   String signup = '/api/user/me';
   String verifyEmail = '/api/user/verification';
   String updateProfile = '/api/user/me';

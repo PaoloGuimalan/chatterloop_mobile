@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/auth/google_auth_service.dart';
 import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -24,6 +25,7 @@ class LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _busy = false;
+  bool _googleBusy = false;
   String? _error;
 
   Future<void> _submit() async {
@@ -36,7 +38,7 @@ class LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
 
-    LoginResponse? loginResponse =
+    final loginResponse =
         await AuthApi().loginRequest(_email.text.trim(), _password.text);
 
     if (!mounted) return;
@@ -49,9 +51,57 @@ class LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await ApiClient.instance.writeToken(loginResponse!.authtoken);
-    Map<String, dynamic>? userResponse =
-        JwtCodec.decode(loginResponse.usertoken);
+    await _applyLogin(loginResponse!);
+  }
+
+  /// Google sign-in / auto-signup: obtain a Google ID token natively, hand it
+  /// to /api/user/tp_auth (which logs in or creates the account), then apply
+  /// the returned session exactly like a password login. Mirrors webapp's
+  /// verifyTPAuthentication -> ThirdPartyAuthenticationRequest.
+  Future<void> _googleSignIn() async {
+    setState(() {
+      _googleBusy = true;
+      _error = null;
+    });
+
+    String? idToken;
+    try {
+      idToken = await GoogleAuthService.instance.signIn();
+    } on GoogleAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _googleBusy = false;
+        _error = e.message;
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    if (idToken == null) {
+      // User dismissed the account chooser - not an error.
+      setState(() => _googleBusy = false);
+      return;
+    }
+
+    final resp = await AuthApi().thirdPartyAuthRequest(idToken);
+    if (!mounted) return;
+    if (resp?.authtoken == null || resp?.usertoken == null) {
+      setState(() {
+        _googleBusy = false;
+        _error = "Google sign-in failed. Please try again.";
+      });
+      return;
+    }
+
+    await _applyLogin(resp!);
+  }
+
+  /// Shared post-auth session apply, identical for password and Google login
+  /// (both resolve to a LoginResponse): persist the authtoken, decode the
+  /// usertoken into the account, push it into Redux, and route into the app.
+  Future<void> _applyLogin(LoginResponse resp) async {
+    await ApiClient.instance.writeToken(resp.authtoken);
+    final userResponse = JwtCodec.decode(resp.usertoken);
 
     if (!mounted) return;
     StoreProvider.of<AppState>(context).dispatch(DispatchModel(
@@ -59,12 +109,16 @@ class LoginScreenState extends State<LoginScreen> {
         UserAuth(
             true,
             UserAccount.fromDjangoJwt(userResponse ?? const {},
-                allowedModules: loginResponse.allowedModules,
-                activeEntity: loginResponse.activeEntity,
-                personalEntityId: loginResponse.personalEntityId))));
+                allowedModules: resp.allowedModules,
+                activeEntity: resp.activeEntity,
+                personalEntityId: resp.personalEntityId))));
 
-    setState(() => _busy = false);
-    if (mounted) context.go('/messages');
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _googleBusy = false;
+    });
+    context.go('/messages');
   }
 
   @override
@@ -149,7 +203,32 @@ class LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 4),
                   CLBtn(
                     label: _busy ? 'Logging in…' : 'Log In',
-                    onPressed: _busy ? null : _submit,
+                    onPressed: (_busy || _googleBusy) ? null : _submit,
+                    size: CLBtnSize.lg,
+                    block: true,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(child: Divider(color: p.border2)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Text('OR',
+                            style: TextStyle(
+                                color: p.text2,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                      Expanded(child: Divider(color: p.border2)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  CLBtn(
+                    label:
+                        _googleBusy ? 'Signing in…' : 'Continue with Google',
+                    iconL: Icons.g_mobiledata,
+                    onPressed: (_busy || _googleBusy) ? null : _googleSignIn,
+                    variant: CLBtnVariant.outline,
                     size: CLBtnSize.lg,
                     block: true,
                   ),

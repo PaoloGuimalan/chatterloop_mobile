@@ -75,6 +75,32 @@ class AuthApi {
     }
   }
 
+  /// Third-party (Google) sign-in / auto-signup. Takes the Google ID token
+  /// obtained natively (GoogleAuthService) and hands it to Django's
+  /// /api/user/tp_auth, which verifies it and either logs in an existing
+  /// account or creates one on the spot - then returns the same
+  /// {authtoken, usertoken, allowed_modules, active_entity,
+  /// personal_entity_id} result as a normal login. Payload is exactly
+  /// `{token}`, matching webapp's ThirdPartyAuthenticationRequest.
+  Future<LoginResponse?> thirdPartyAuthRequest(String idToken) async {
+    ContentValidator().printer('${_endpoints.userApiUrl}${_endpoints.tpAuth}');
+
+    try {
+      final response =
+          await _dio.post(_endpoints.tpAuth, data: {'token': idToken});
+
+      if (response.data["status"] == false) return null;
+      return LoginResponse.fromJson(response.data["result"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+        if (e is DioException) print("Response body: ${e.response?.data}");
+      }
+      return null;
+    }
+  }
+
   /// Requires the caller to already hold an authtoken (issued by signup or
   /// login) - CodeVerification is IsAuthenticated-gated on the Django side.
   /// The token is attached automatically by ApiClient's interceptor.

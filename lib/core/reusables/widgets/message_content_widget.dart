@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
@@ -38,14 +39,14 @@ final List<MenuItem> _reactionMenuItems = [
 /// rounded pill, the emoji row clipped to 100px wide, and a "+N" overflow
 /// badge past 4 reactions - webapp doesn't slice the list either, it just
 /// clips it visually and shows the count alongside.
-Widget buildReactionPill(List<ReactionItem> reactions) {
+Widget buildReactionPill(List<ReactionItem> reactions, CLPalette p) {
   return Container(
     height: 20,
     constraints: const BoxConstraints(maxWidth: 100),
     padding: const EdgeInsets.symmetric(horizontal: 6),
     decoration: BoxDecoration(
-      color: Colors.white,
-      border: Border.all(color: const Color(0xffd2d2d2), width: 1),
+      color: p.surface,
+      border: Border.all(color: p.border2, width: 1),
       borderRadius: BorderRadius.circular(20),
     ),
     child: Row(
@@ -70,7 +71,7 @@ Widget buildReactionPill(List<ReactionItem> reactions) {
             padding: const EdgeInsets.only(left: 3),
             child: Text(
               "+${reactions.length - 4}",
-              style: const TextStyle(fontSize: 10, color: Color(0xFF565656)),
+              style: TextStyle(fontSize: 10, color: p.text2),
             ),
           ),
       ],
@@ -269,6 +270,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
       bool isReply,
       bool isHoverPreview,
       bool isMarkingEnabled) {
+    final p = cl(context);
     if (messageType == "text") {
       return Row(
         mainAxisAlignment:
@@ -376,8 +378,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               children: [
                 Container(
                   decoration: BoxDecoration(
-                      color:
-                          isCurrentUser ? Color(0xff1c7def) : Color(0xffdedede),
+                      color: isCurrentUser ? const Color(0xff1c7def) : p.border2,
                       borderRadius: BorderRadius.circular(10)),
                   child: Padding(
                     padding:
@@ -388,8 +389,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                           content,
                           TextStyle(
                               fontSize: 14,
-                              color:
-                                  isCurrentUser ? Colors.white : Colors.black),
+                              color: isCurrentUser ? Colors.white : p.text),
                         ),
                       ),
                     ),
@@ -405,7 +405,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!),
+                        child: buildReactionPill(_messageContent.reactions!, p),
                       )
                     : SizedBox(
                         height: 0,
@@ -595,10 +595,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       ),
                       child: Container(
                         decoration: BoxDecoration(
-                            color: Color(0xffd2d2d2),
+                            color: p.surface3,
                             borderRadius: BorderRadius.circular(10),
-                            border:
-                                Border.all(color: Color(0xffd2d2d2), width: 1)),
+                            border: Border.all(color: p.border2, width: 1)),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: Padding(
@@ -613,7 +612,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!),
+                        child: buildReactionPill(_messageContent.reactions!, p),
                       )
                     : SizedBox(
                         height: 0,
@@ -809,7 +808,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!),
+                        child: buildReactionPill(_messageContent.reactions!, p),
                       )
                     : SizedBox(
                         height: 0,
@@ -999,7 +998,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!),
+                        child: buildReactionPill(_messageContent.reactions!, p),
                       )
                     : SizedBox(
                         height: 0,
@@ -1216,7 +1215,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               children: [
                 ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(0xffe4e4e4),
+                        backgroundColor: p.border2,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10)),
@@ -1235,7 +1234,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                           children: [
                             Icon(
                               Icons.file_copy_outlined,
-                              color: Colors.black,
+                              color: p.text,
                               size: 35,
                             ),
                             SizedBox(
@@ -1244,8 +1243,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             Expanded(
                                 child: Text(
                               _fileNamePart(content),
-                              style:
-                                  TextStyle(fontSize: 14, color: Colors.black),
+                              style: TextStyle(fontSize: 14, color: p.text),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ))
@@ -1256,7 +1254,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 _messageContent.reactions!.isNotEmpty && !isHoverPreview
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!),
+                        child: buildReactionPill(_messageContent.reactions!, p),
                       )
                     : SizedBox(
                         height: 0,
