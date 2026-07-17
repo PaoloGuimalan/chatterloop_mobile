@@ -17,4 +17,4 @@ samples, guidance on mobile development, and a full API reference.
 
 APK release build command:
 
-- flutter build apk --release --target-platform android-arm,android-arm64,android-x64
+- flutter build apk --release --target-platform android-arm,android-arm64,android-x64 --dart-define-from-file=env.json
