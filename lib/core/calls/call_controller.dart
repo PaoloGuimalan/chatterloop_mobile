@@ -255,6 +255,9 @@ class CallController extends ChangeNotifier {
     _hadRemotePeer = false;
     _mediaWatchdog?.cancel();
     _mediaWatchdog = null;
+    _ringingWatch?.cancel();
+    _ringingWatch = null;
+    _ringingTicks = 0;
   }
 
   // ════════════════════════════════════════════════════════════════════
@@ -869,7 +872,83 @@ class CallController extends ChangeNotifier {
   }
 
   void _noteRemotePeerIfPresent() {
-    if (_hasOtherParticipant) _hadRemotePeer = true;
+    if (_hasOtherParticipant) {
+      _hadRemotePeer = true;
+      // A peer actually joined - this was a real answer, not a
+      // no-answer/declined ring, so the ringing watch is no longer needed.
+      _ringingWatch?.cancel();
+      _ringingWatch = null;
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // Ringing watch — the ringing-phase counterpart to the media watchdog
+  // below, and the fix for "caller stuck when the webapp declines".
+  //
+  // When WE'RE the caller and the callee DECLINES before answering, the
+  // only signal is a single small "callreject" SSE event. During an
+  // otherwise-idle ring there's no media and no burst of traffic to push
+  // the edge proxy's buffer out (see the media watchdog's note on the
+  // sse-express keepalive), so that lone event sits buffered and never
+  // arrives - and the media watchdog can't help because there are no remote
+  // consumers to measure yet. So this does two things every few seconds
+  // while we ring, until a peer actually joins:
+  //
+  //   1. KEEP THE SSE STREAM FLUSHED. Posting participant-status makes the
+  //      server publish an event straight back to us - it fans that event
+  //      out to every room member, and the caller is a member - and that
+  //      return traffic flushes the edge buffer, so a buffered callreject is
+  //      delivered within a tick instead of never. The post is idempotent:
+  //      it just re-asserts our own current mute/camera state.
+  //   2. HARD-CAP THE RING. If the decline still never arrives (or nobody
+  //      answers at all), end the call after the cap instead of ringing
+  //      forever - turning "stuck forever" into a bounded wait.
+  //
+  // Cancelled the instant a peer joins (a real answer, in
+  // _noteRemotePeerIfPresent), so it never touches a connected call.
+  // Caller-only and single-call-only, same reasoning as the media watchdog.
+  // ════════════════════════════════════════════════════════════════════
+  Timer? _ringingWatch;
+  int _ringingTicks = 0;
+  static const _ringingTickInterval = Duration(seconds: 3);
+  static const _ringingMaxTicks = 15; // 15 x 3s = 45s hard cap
+
+  void _startRingingWatch() {
+    _ringingWatch?.cancel();
+    _ringingWatch = null;
+    _ringingTicks = 0;
+    if (!isOutgoing || isGroup) return;
+    if (_hadRemotePeer) return; // callee already joined during setup
+    _ringingWatch = Timer.periodic(_ringingTickInterval, (t) {
+      // A peer joined (real answer) or the call is gone - stop watching.
+      if (status != CallEngineStatus.active || _hadRemotePeer) {
+        t.cancel();
+        _ringingWatch = null;
+        return;
+      }
+      _ringingTicks++;
+      // (1) Flush the SSE buffer by generating server->caller return traffic.
+      if (conversationID != null) {
+        unawaited(_webrtcApi
+            .participantStatusRequest(
+              conversationID: conversationID!,
+              clientId: clientId,
+              muted: muted,
+              cameraOff: cameraOff,
+            )
+            .catchError((_) => false));
+      }
+      // (2) Hard cap - don't ring forever if the decline never lands.
+      if (_ringingTicks >= _ringingMaxTicks) {
+        if (kDebugMode) {
+          print("[CallController] ringing watch: no answer / callreject not "
+              "delivered after ${_ringingTicks * 3}s - ending call");
+        }
+        t.cancel();
+        _ringingWatch = null;
+        leaveCall();
+      }
+    });
   }
 
   void _maybeAutoEndIfAlone() {
@@ -1780,6 +1859,7 @@ class CallController extends ChangeNotifier {
       status = CallEngineStatus.active;
       notifyListeners();
       _startMediaWatchdog();
+      _startRingingWatch();
       return true;
     } catch (e) {
       lastError = e.toString();

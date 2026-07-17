@@ -83,12 +83,40 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     for (final entry in videoConsumers) {
       if (_remoteRenderers.containsKey(entry.key)) continue;
       final renderer = RTCVideoRenderer();
-      renderer.initialize().then((_) {
+      renderer.initialize().then((_) async {
         if (!mounted) {
           renderer.dispose();
           return;
         }
-        renderer.srcObject = entry.value.consumer.stream;
+        // CRUCIAL: bind to this consumer's SPECIFIC track, not just its
+        // stream. mediasoup_client_flutter groups every remote track from
+        // the same peer endpoint into ONE MediaStream keyed by the RTP
+        // CNAME (unified_plan.dart receive(): streamId = rtcp.cname), and a
+        // browser uses a single CNAME for ALL its producers - so a peer's
+        // camera AND screen-share consumers share the exact same MediaStream
+        // object, which then holds both video tracks. Plain
+        // `srcObject = stream` renders only the FIRST video track, so every
+        // tile for that peer shows the camera (the screen-share bug). Passing
+        // the trackId renders THIS consumer's track specifically (Android:
+        // render.setStream(stream, trackId, ownerTag)), which is how the
+        // webapp keeps camera and screen distinct.
+        try {
+          await renderer.setSrcObject(
+            stream: entry.value.consumer.stream,
+            trackId: entry.value.consumer.track.id,
+          );
+        } catch (_) {
+          if (!mounted) {
+            renderer.dispose();
+            return;
+          }
+          // Fallback for any renderer that rejects a per-track bind.
+          renderer.srcObject = entry.value.consumer.stream;
+        }
+        if (!mounted) {
+          renderer.dispose();
+          return;
+        }
         setState(() => _remoteRenderers[entry.key] = renderer);
       });
     }
@@ -265,52 +293,22 @@ class _ActiveCallViewState extends State<ActiveCallView> {
   }
 
   Widget _buildVideoLayout(CallController controller, String statusText) {
-    // Participants who've joined but don't have a live video consumer
-    // yet - matches webapp's waitingParticipants placeholder tiles
-    // exactly (CallWindow.tsx lines 1303-1318).
-    final videoConsumerOwnerIds = controller.consumers.values
-        .where((e) => e.kind == 'video')
-        .map((e) => e.ownerClientId)
-        .whereType<String>()
-        .toSet();
-    final waitingParticipants = controller.joinedParticipants
-        .where((p) => !videoConsumerOwnerIds.contains(p.clientId))
-        .toList();
-
-    final remoteEntries = controller.consumers.entries
-        .where((e) =>
-            e.value.kind == 'video' && _remoteRenderers.containsKey(e.key))
-        .toList();
-
+    final tiles = _buildTiles(controller);
     return Stack(
       children: [
         Positioned.fill(
-          child: remoteEntries.isEmpty
-              ? _buildLocalOrWaitingFill(
-                  controller, statusText, waitingParticipants)
-              : remoteEntries.length == 1
-                  ? _remoteVideoTile(controller, remoteEntries.first,
-                      fill: true)
-                  : _remoteVideoGrid(
-                      controller, remoteEntries, waitingParticipants),
-        ),
-        if (!controller.cameraOff && _localRendererReady)
-          Positioned(
-            top: 16,
-            right: 16,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
-                width: 110,
-                height: 150,
-                child: RTCVideoView(
-                  _localRenderer,
-                  mirror: true,
-                  objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                ),
-              ),
-            ),
+          child: Padding(
+            // Leave room for the floating control bar so the bottom row of
+            // tiles isn't hidden behind it.
+            padding: const EdgeInsets.only(bottom: 92),
+            child: tiles.isEmpty
+                ? Center(
+                    child: Text(statusText,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 15)))
+                : _tileGrid(tiles),
           ),
+        ),
         if (controller.videoProduceFailed) _buildVideoErrorBanner(controller),
         Positioned(
           left: 0,
@@ -332,54 +330,245 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     );
   }
 
-  /// No live remote video yet - shows our own camera full-bleed if it's
-  /// on, else the "You • ..." placeholder tile, plus any waiting
-  /// participants stacked below (rare on a 1:1 call before the other side
-  /// answers, more relevant once M8 group calls land).
-  Widget _buildLocalOrWaitingFill(CallController controller, String statusText,
-      List<JoinedParticipant> waitingParticipants) {
-    return Container(
-      color: _kCallBg,
-      child: Column(
-        children: [
-          Expanded(
-            child: !controller.cameraOff && _localRendererReady
-                ? RTCVideoView(_localRenderer,
-                    mirror: true,
-                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
-                : _placeholderTile(
-                    _statusLabel("You",
-                        cameraOff: controller.cameraOff,
-                        muted: controller.muted),
+  /// One tile per video SOURCE in the call - your own camera, PLUS every
+  /// remote participant's camera AND screen-share (each is a separate
+  /// mediasoup consumer, so each gets its own tile bound to its own
+  /// stream), PLUS a placeholder for anyone who's joined but has no live
+  /// video yet. This is what makes the layout work for N participants and
+  /// for screen-share (one person's camera + screen = two distinct tiles),
+  /// instead of assuming a single remote. Because each remote tile binds
+  /// to its OWN consumer.stream, the screen tile shows the screen and the
+  /// camera tile shows the camera - they can no longer be confused.
+  List<Widget> _buildTiles(CallController controller) {
+    // Remote video consumers - camera and/or screen, one tile each.
+    final remoteVideo = controller.consumers.entries
+        .where((e) =>
+            e.value.kind == 'video' && _remoteRenderers.containsKey(e.key))
+        .toList();
+    // Shared screens sit ABOVE the camera tiles - a screen-share is usually
+    // the focus of the call, so it leads the grid, then our own camera, then
+    // everyone else's cameras.
+    final screens =
+        remoteVideo.where((e) => e.value.source == 'screen').toList();
+    final cameras =
+        remoteVideo.where((e) => e.value.source != 'screen').toList();
+
+    final withVideo = <String>{};
+    for (final e in remoteVideo) {
+      final owner = e.value.ownerClientId;
+      if (owner != null) withVideo.add(owner);
+    }
+
+    final tiles = <Widget>[
+      for (final entry in screens) _remoteTile(controller, entry),
+      _selfTile(controller),
+      for (final entry in cameras) _remoteTile(controller, entry),
+    ];
+
+    // Joined participants with no live video yet - placeholder tiles so
+    // the grid still shows them (waiting / camera-off).
+    for (final p in controller.joinedParticipants) {
+      if (p.clientId == controller.clientId) continue;
+      if (withVideo.contains(p.clientId)) continue;
+      tiles.add(_waitingTile(controller, p));
+    }
+
+    return tiles;
+  }
+
+  Widget _selfTile(CallController controller) {
+    final showVideo = !controller.cameraOff && _localRendererReady;
+    return _tileFrame(
+      key: const ValueKey('tile-self'),
+      label: _statusLabel("You",
+          cameraOff: controller.cameraOff, muted: controller.muted),
+      isScreen: false,
+      child: showVideo
+          ? RTCVideoView(_localRenderer,
+              mirror: true,
+              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+          : null,
+    );
+  }
+
+  Widget _remoteTile(
+      CallController controller, MapEntry<String, ConsumerEntry> entry) {
+    final ownerId = entry.value.ownerClientId;
+    final owner = ownerId != null
+        ? controller.joinedParticipants
+            .where((p) => p.clientId == ownerId)
+            .toList()
+        : const <JoinedParticipant>[];
+    final name = owner.isNotEmpty ? "@${owner.first.username}" : "Participant";
+    final status =
+        ownerId != null ? controller.participantStatuses[ownerId] : null;
+    final isScreen = entry.value.source == 'screen';
+    final renderer = _remoteRenderers[entry.key]!;
+    final screenLabel = "$name • screen";
+    final video = RTCVideoView(
+      renderer,
+      // A shared screen is usually a desktop aspect ratio - `contain` so
+      // nothing is cropped; a camera fills its tile with `cover`.
+      objectFit: isScreen
+          ? RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
+          : RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+    );
+    return _tileFrame(
+      // Keyed by producerId so each remote video keeps its OWN RTCVideoView
+      // (and its own texture) even as tiles are added/removed/reordered.
+      key: ValueKey('tile-${entry.key}'),
+      label: isScreen
+          ? screenLabel
+          : _statusLabel(name,
+              cameraOff: status?.cameraOff ?? false,
+              muted: status?.muted ?? false),
+      isScreen: isScreen,
+      // Shared screens: pinch-to-zoom in place, plus a corner button to open
+      // a fullscreen zoomable viewer for reading fine detail.
+      onExpand: isScreen ? () => _openScreenFullscreen(renderer, screenLabel) : null,
+      child: isScreen
+          ? InteractiveViewer(
+              panEnabled: true,
+              scaleEnabled: true,
+              minScale: 1.0,
+              maxScale: 5.0,
+              child: video,
+            )
+          : video,
+    );
+  }
+
+  /// Fullscreen zoomable view of a shared screen. Binds a second
+  /// RTCVideoView to the SAME renderer (the tile keeps its own) - the
+  /// renderer is owned by _remoteRenderers, so this view must never dispose
+  /// it; popping the route just tears down this extra view.
+  void _openScreenFullscreen(RTCVideoRenderer renderer, String label) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (ctx) => Scaffold(
+          backgroundColor: Colors.black,
+          body: SafeArea(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: InteractiveViewer(
+                    panEnabled: true,
+                    scaleEnabled: true,
+                    minScale: 1.0,
+                    maxScale: 6.0,
+                    child: RTCVideoView(
+                      renderer,
+                      objectFit:
+                          RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+                    ),
                   ),
+                ),
+                Positioned(
+                  top: 4,
+                  left: 4,
+                  right: 4,
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                      ),
+                      Expanded(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          if (waitingParticipants.isNotEmpty)
-            SizedBox(
-              height: 100,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                children: waitingParticipants
-                    .map((p) => Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: SizedBox(
-                            width: 140,
-                            child: _placeholderTile(
-                              _statusLabel(
-                                "@${p.username.isNotEmpty ? p.username : p.clientId}",
-                                cameraOff: controller
-                                        .participantStatuses[p.clientId]
-                                        ?.cameraOff ??
-                                    false,
-                                muted: controller
-                                        .participantStatuses[p.clientId]
-                                        ?.muted ??
-                                    false,
-                              ),
-                            ),
-                          ),
-                        ))
-                    .toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _waitingTile(CallController controller, JoinedParticipant p) {
+    final status = controller.participantStatuses[p.clientId];
+    return _tileFrame(
+      key: ValueKey('tile-waiting-${p.clientId}'),
+      label: _statusLabel(
+        "@${p.username.isNotEmpty ? p.username : p.clientId}",
+        cameraOff: status?.cameraOff ?? true,
+        muted: status?.muted ?? false,
+      ),
+      isScreen: false,
+      child: null,
+    );
+  }
+
+  /// Common tile chrome - webapp's #3D4043 rounded card, the video (or a
+  /// person placeholder when there's none), a bottom-left label chip, and
+  /// a screen-share badge in the corner for screen tiles.
+  Widget _tileFrame(
+      {Key? key,
+      required String label,
+      required bool isScreen,
+      VoidCallback? onExpand,
+      Widget? child}) {
+    return Container(
+      key: key,
+      margin: const EdgeInsets.all(4),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: CLColors.callTile,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          child ??
+              const Center(
+                child: Icon(Icons.person, color: Colors.white54, size: 40),
+              ),
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: 8,
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+            ),
+          ),
+          if (isScreen)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.45),
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: onExpand,
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.fullscreen, color: Colors.white, size: 20),
+                  ),
+                ),
               ),
             ),
         ],
@@ -387,110 +576,39 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     );
   }
 
-  /// #3D4043 background, 5px-derived rounded corners, centered label -
-  /// matches webapp's .div_video_blocks / .video_call_display exactly
-  /// (CallWindow.tsx lines 1274-1280, 1308-1316).
-  Widget _placeholderTile(String label) {
-    return Container(
-      margin: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: CLColors.callTile,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-            color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-
-  Widget _remoteVideoTile(
-      CallController controller, MapEntry<String, ConsumerEntry> entry,
-      {required bool fill}) {
-    final owner = entry.value.ownerClientId != null
-        ? controller.joinedParticipants
-            .where((p) => p.clientId == entry.value.ownerClientId)
-            .toList()
-        : const <JoinedParticipant>[];
-    final status = entry.value.ownerClientId != null
-        ? controller.participantStatuses[entry.value.ownerClientId]
-        : null;
-    final label = owner.isNotEmpty ? "@${owner.first.username}" : "Participant";
-
-    final video = RTCVideoView(_remoteRenderers[entry.key]!,
-        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover);
-
-    return ClipRRect(
-      borderRadius: fill ? BorderRadius.zero : BorderRadius.circular(8),
-      child: Container(
-        color: CLColors.callTile,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            video,
-            Positioned(
-              left: 8,
-              bottom: 8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  _statusLabel(label,
-                      cameraOff: status?.cameraOff ?? false,
-                      muted: status?.muted ?? false),
-                  style: const TextStyle(color: Colors.white, fontSize: 11),
-                ),
+  /// Responsive grid: FILLS the screen for a handful of tiles (1 = full,
+  /// 2 = stacked, 3-4 = 2x2), then switches to a scrollable 2-column grid
+  /// once there are more than comfortably fit. Works for any participant
+  /// count without hardcoding the 1:1 case.
+  Widget _tileGrid(List<Widget> tiles) {
+    final n = tiles.length;
+    if (n == 1) return tiles.first;
+    if (n <= 4) {
+      final cols = n == 2 ? 1 : 2; // two tiles stack vertically on a phone
+      final rows = (n / cols).ceil();
+      return Column(
+        children: [
+          for (var r = 0; r < rows; r++)
+            Expanded(
+              child: Row(
+                children: [
+                  // Only emit an Expanded for cells that actually have a
+                  // tile - so a row holding a single tile (e.g. the 3rd tile
+                  // of three) stretches to the FULL width instead of leaving
+                  // a 50% gap beside it.
+                  for (var c = 0; c < cols; c++)
+                    if (r * cols + c < n)
+                      Expanded(child: tiles[r * cols + c]),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Group-call tile grid - same tile styling as the 1:1 full-bleed case,
-  /// just wrapped two-per-row instead of stretched full-screen. Ported
-  /// for structural fidelity with M8 in mind; this milestone only ever
-  /// exercises the single-remote-tile path above.
-  Widget _remoteVideoGrid(
-      CallController controller,
-      List<MapEntry<String, ConsumerEntry>> remoteEntries,
-      List<JoinedParticipant> waitingParticipants) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final tileWidth = (constraints.maxWidth - 12) / 2;
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(4),
-          child: Wrap(
-            children: [
-              ...remoteEntries.map((entry) => SizedBox(
-                    width: tileWidth,
-                    height: tileWidth * 1.2,
-                    child: _remoteVideoTile(controller, entry, fill: false),
-                  )),
-              ...waitingParticipants.map((p) => SizedBox(
-                    width: tileWidth,
-                    height: tileWidth * 1.2,
-                    child: _placeholderTile(_statusLabel(
-                      "@${p.username.isNotEmpty ? p.username : p.clientId}",
-                      cameraOff: controller
-                              .participantStatuses[p.clientId]?.cameraOff ??
-                          false,
-                      muted:
-                          controller.participantStatuses[p.clientId]?.muted ??
-                              false,
-                    )),
-                  )),
-            ],
-          ),
-        );
-      },
+        ],
+      );
+    }
+    return GridView.count(
+      crossAxisCount: 2,
+      childAspectRatio: 3 / 4,
+      children: tiles,
     );
   }
 
