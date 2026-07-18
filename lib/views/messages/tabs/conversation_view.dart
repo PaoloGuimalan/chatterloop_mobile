@@ -1423,9 +1423,22 @@ class ConversationStateView extends State<ConversationView> {
                                                       1) {
                                                 return Column(
                                                   children: [
-                                                    // MessageContent item
+                                                    // Load-more spinner: show
+                                                    // ONLY while a fetch is
+                                                    // actually in flight
+                                                    // (isRefreshed), not
+                                                    // permanently whenever more
+                                                    // messages exist. A
+                                                    // CircularProgressIndicator
+                                                    // animates every frame; a
+                                                    // permanent one at the top
+                                                    // of the list kept the app
+                                                    // rendering nonstop (heat)
+                                                    // whenever it sat within the
+                                                    // list's cacheExtent.
                                                     if (!(range >=
-                                                        totalMessages))
+                                                            totalMessages) &&
+                                                        isRefreshed)
                                                       Padding(
                                                         padding:
                                                             EdgeInsets.only(
