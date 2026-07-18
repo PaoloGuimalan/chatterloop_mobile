@@ -20,16 +20,47 @@ class MessagesView extends StatefulWidget {
 
 class MessagesStateView extends State<MessagesView> {
   bool isInitialized = false;
+  int _page = 1;
+  bool _hasMore = false;
+  bool _loadingMore = false;
 
   Future<void> getConversationListProcess(BuildContext context) async {
     final res = await ConversationsApi().getConversationListRequest();
 
+    if (!mounted) return;
     if (res != null) {
-      if (!mounted) return;
-      setState(() => isInitialized = true);
-
+      setState(() {
+        isInitialized = true;
+        _page = 1;
+        _hasMore = res.next != null;
+      });
       StoreProvider.of<AppState>(context)
           .dispatch(DispatchModel(setMessagesListT, res.items));
+    } else {
+      setState(() => isInitialized = true);
+    }
+  }
+
+  /// Fetch the next page and APPEND it to the Redux list (read fresh at
+  /// dispatch time so a concurrent SSE update isn't clobbered). Guarded so
+  /// the repeated scroll notifications only kick off one request at a time.
+  Future<void> _loadMore(BuildContext context) async {
+    if (!_hasMore || _loadingMore) return;
+    setState(() => _loadingMore = true);
+    final store = StoreProvider.of<AppState>(context);
+    final res =
+        await ConversationsApi().getConversationListRequest(page: _page + 1);
+    if (!mounted) return;
+    if (res != null) {
+      store.dispatch(DispatchModel(
+          setMessagesListT, [...store.state.messages, ...res.items]));
+      setState(() {
+        _page += 1;
+        _hasMore = res.next != null;
+        _loadingMore = false;
+      });
+    } else {
+      setState(() => _loadingMore = false);
     }
   }
 
@@ -75,16 +106,37 @@ class MessagesStateView extends State<MessagesView> {
                             child: Text(
                                 "No conversations yet - search for people to start one.",
                                 style: TextStyle(color: p.text2)))
-                        : ListView.builder(
-                            key: ValueKey(
-                                'list-${state.messages.map((message) => message.unread).fold(0, (a, b) => a + b)}'),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            itemCount: messagesList.length,
-                            itemBuilder: (context, index) {
-                              return MessageItemView(
-                                  message: messagesList[index],
-                                  userID: state.userAuth.user.entityId);
+                        : NotificationListener<ScrollNotification>(
+                            key: const ValueKey('list'),
+                            onNotification: (n) {
+                              if (n.metrics.pixels >=
+                                  n.metrics.maxScrollExtent - 240) {
+                                _loadMore(context);
+                              }
+                              return false;
                             },
+                            child: ListView.builder(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
+                              itemCount:
+                                  messagesList.length + (_loadingMore ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                if (index >= messagesList.length) {
+                                  return const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 16),
+                                    child: Center(
+                                        child: SizedBox(
+                                            width: 22,
+                                            height: 22,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2))),
+                                  );
+                                }
+                                return MessageItemView(
+                                    message: messagesList[index],
+                                    userID: state.userAuth.user.entityId);
+                              },
+                            ),
                           ),
               ),
             ),

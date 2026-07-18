@@ -60,6 +60,121 @@ class ConversationsApi {
     }
   }
 
+  /// Archived conversations - GET /m/archives (page/range as headers, same as
+  /// getConversationListRequest). Same item shape, but they live under
+  /// result["archives"] and `next` is a bool. Mirrors webapp's
+  /// ManualInitConversationListRequest.
+  Future<({List<MessageItem> items, bool hasNext, int total})?>
+      getArchivesRequest(
+          {required String myEntityId, int page = 1, int range = 20}) async {
+    try {
+      final response = await _dio.get(_endpoints.archives,
+          options: Options(headers: {
+            'page': page.toString(),
+            'range': range.toString(),
+          }));
+      final result = response.data["result"];
+      if (result is! Map) return null;
+      final archives = result["archives"];
+      if (archives is! List) return null;
+      return (
+        items: archives.whereType<Map>().map((item) {
+          final m = Map<String, dynamic>.from(item);
+          // /m/archives returns the raw users/groupdetails/serverdetails
+          // shape, NOT the resolved `details` object /m/conversations gives -
+          // so synthesize `details` here (the same display resolution the
+          // webapp's ArchivedMessages does inline), or every card renders as
+          // "?"/no-name.
+          m["details"] = _archiveDetails(m, myEntityId);
+          return MessageItem.fromJson(m);
+        }).toList(),
+        hasNext: result["next"] == true,
+        total: _intValue(result["total"]),
+      );
+    } catch (e) {
+      if (kDebugMode) print("ERROR getArchives: $e");
+      return null;
+    }
+  }
+
+  /// Resolve a /m/conversations-style `details` object from an archive item's
+  /// raw shape: single -> the OTHER participant; group -> groupdetails;
+  /// channel/server -> serverdetails (falling back to groupdetails).
+  static Map<String, dynamic> _archiveDetails(
+      Map<String, dynamic> item, String myEntityId) {
+    final type = (item["conversationType"] ?? "single").toString();
+
+    String cleanProfile(dynamic v) {
+      final s = v?.toString();
+      return (s == null || s.isEmpty || s == "N/A") ? "none" : s;
+    }
+
+    if (type == "single") {
+      final users = (item["users"] as List?)?.whereType<Map>().toList() ?? [];
+      Map other = users.firstWhere(
+        (u) => (u["entityID"] ?? u["_id"])?.toString() != myEntityId,
+        orElse: () => users.isNotEmpty ? users.first : const {},
+      );
+      final fullname = other["fullname"] is Map ? other["fullname"] as Map : {};
+      final first = (fullname["firstName"] ?? "").toString();
+      final middle = (fullname["middleName"] ?? "").toString();
+      final last = (fullname["lastName"] ?? "").toString();
+      final displayName = [
+        first,
+        if (middle.isNotEmpty && middle != "N/A") middle,
+        last,
+      ].where((s) => s.trim().isNotEmpty).join(" ");
+      final entityId = (other["entityID"] ?? other["_id"] ?? "").toString();
+      return {
+        "id": entityId,
+        "entity_id": entityId,
+        "username": (other["userID"] ?? other["username"] ?? "").toString(),
+        "display_name": displayName,
+        "profile": cleanProfile(other["profile"]),
+      };
+    }
+
+    final conversationId = (item["conversationID"] ?? "").toString();
+    if (type == "group") {
+      final gd =
+          item["groupdetails"] is Map ? item["groupdetails"] as Map : {};
+      return {
+        "id": conversationId,
+        "entity_id": conversationId,
+        "username": "",
+        "display_name": (gd["groupName"] ?? "").toString(),
+        "profile": cleanProfile(gd["profile"]),
+      };
+    }
+
+    // channel / server
+    final sd = item["serverdetails"] is Map ? item["serverdetails"] as Map : {};
+    final gd = item["groupdetails"] is Map ? item["groupdetails"] as Map : {};
+    return {
+      "id": conversationId,
+      "entity_id": conversationId,
+      "username": "",
+      "display_name":
+          (sd["serverName"] ?? gd["groupName"] ?? "").toString(),
+      "profile": cleanProfile(sd["profile"]),
+    };
+  }
+
+  /// POST /m/history {conversationID, action} - archive | unarchive | clear
+  /// (clear = delete the conversation for the user). Mirrors webapp's
+  /// UpdateChatHistoryRequest.
+  Future<bool> updateChatHistoryRequest(
+      String conversationID, String action) async {
+    try {
+      final response = await _dio.post(_endpoints.chatHistory,
+          data: {'conversationID': conversationID, 'action': action});
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) print("ERROR updateChatHistory: $e");
+      return false;
+    }
+  }
+
   /// One-time snapshot of which contacts are currently online, plus a
   /// last-seen timestamp for the rest (GET /u/activecontacts) - matches
   /// webapp's ActiveContactsRequest, called once on app init. Live changes

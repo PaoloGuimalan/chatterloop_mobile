@@ -36,6 +36,10 @@ class Endpoints {
 
   /// GET a full export of the account's data (Data & Privacy).
   String dataExport = '/api/user/me/export';
+
+  /// POST to submit a moderation report ({target_type, target_id, reason,
+  /// description}). Used from another user's profile.
+  String reports = '/api/user/reports';
   String search = '/api/user/search/'; // :query
   String publicProfile = '/api/user/auth/'; // :username
   String contacts = '/api/user/contacts';
@@ -51,6 +55,15 @@ class Endpoints {
   /// The old /u/initConversationList this used to point at has zero call
   /// sites in the current webapp - dead/legacy, do not revert to it.
   String getConversationList = '/m/conversations';
+
+  /// Archived conversations (page/range sent as headers, like
+  /// getConversationList). Response: {result: {archives, next, total}}.
+  String archives = '/m/archives';
+
+  /// POST {conversationID, action} where action is archive | unarchive |
+  /// clear (clear = delete the conversation for the user). Mirrors webapp's
+  /// UpdateChatHistoryRequest.
+  String chatHistory = '/m/history';
 
   /// Resolves a conversation's setup/details (participants, display name,
   /// avatar) before anything else is fetched - critically, unlike

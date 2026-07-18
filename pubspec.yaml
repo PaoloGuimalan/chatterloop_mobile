@@ -65,6 +65,9 @@ dependencies:
   record: ^6.2.1
   path_provider: ^2.1.4
   visibility_detector: ^0.4.0+2
+  # Data & Privacy export - the mobile equivalent of the webapp's file
+  # download is the native share sheet (save to Files/Drive/send).
+  share_plus: ^10.1.4
 
   # Calling feature (M0 viability spike) - webapp's calls_v2 is built on
   # mediasoup (an SFU), not plain WebRTC offer/answer, and the server's

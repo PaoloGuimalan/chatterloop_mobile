@@ -11,6 +11,11 @@ class ConversationInfoModel {
   List<UsersContactPreview> usersWithInfo;
   List<ConversationFilesModel> conversationfiles;
 
+  /// Whether this conversation is archived for the current user - drives the
+  /// Archive/Unarchive toggle in the conversation menu (webapp reads
+  /// conversationinfo.chatHistory.isArchived).
+  bool isArchived;
+
   ConversationInfoModel(
       this.contactID,
       this.actionBy,
@@ -19,7 +24,8 @@ class ConversationInfoModel {
       this.users,
       this.type,
       this.usersWithInfo,
-      this.conversationfiles);
+      this.conversationfiles,
+      {this.isArchived = false});
 
   /// The server can legitimately return an empty/near-empty object here -
   /// e.g. opening a conversation that has no backing user_connection row
@@ -55,7 +61,10 @@ class ConversationInfoModel {
                 .map((file) => ConversationFilesModel.fromJson(
                     Map<String, dynamic>.from(file)))
                 .toList()
-            : []);
+            : [],
+        isArchived: (json["chatHistory"] is Map &&
+                json["chatHistory"]["isArchived"] == true) ||
+            json["isArchived"] == true);
   }
 }
 

@@ -21,7 +21,11 @@ import 'package:chatterloop_app/views/profile/profile_edit_view.dart';
 import 'package:chatterloop_app/views/profile/realm_profile_view.dart';
 import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/search_view.dart';
+import 'package:chatterloop_app/views/settings/archives_view.dart';
+import 'package:chatterloop_app/views/settings/blocked_accounts_view.dart';
 import 'package:chatterloop_app/views/settings/credentials_view.dart';
+import 'package:chatterloop_app/views/settings/data_privacy_view.dart';
+import 'package:chatterloop_app/views/settings/map_feed_view.dart';
 import 'package:chatterloop_app/views/settings/device_sessions_view.dart';
 import 'package:chatterloop_app/views/settings/personal_information_view.dart';
 import 'package:chatterloop_app/views/settings/settings_view.dart';
@@ -202,6 +206,20 @@ GoRouter buildAppRouter(AuthController authController) {
           GoRoute(
               path: '/settings/credentials',
               pageBuilder: (c, s) => _clPage(s, const CredentialsScreen())),
+          GoRoute(
+              path: '/settings/blocked-accounts',
+              pageBuilder: (c, s) =>
+                  _clPage(s, const BlockedAccountsScreen())),
+          GoRoute(
+              path: '/settings/data-privacy',
+              pageBuilder: (c, s) => _clPage(s, const DataPrivacyScreen())),
+          GoRoute(
+              path: '/settings/archives',
+              pageBuilder: (c, s) => _clPage(s, const ArchivesScreen())),
+          GoRoute(
+              path: '/settings/map',
+              pageBuilder: (c, s) =>
+                  _clPage(s, const MapFeedSettingsScreen())),
           GoRoute(
               path: '/notifications',
               pageBuilder: (c, s) => _clPage(s, const NotificationsView())),

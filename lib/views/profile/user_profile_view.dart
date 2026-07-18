@@ -1,15 +1,32 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/requests/settings_api.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
+
+/// Report reason values/labels - identical to webapp's Profile.tsx
+/// reportReasons list.
+const _kReportReasons = <(String, String)>[
+  ('spam', 'Spam'),
+  ('harassment', 'Harassment or bullying'),
+  ('hate_speech', 'Hate speech'),
+  ('violence', 'Violence or dangerous behavior'),
+  ('nudity', 'Nudity or sexual content'),
+  ('csae', 'Child sexual abuse or exploitation'),
+  ('impersonation', 'Impersonation'),
+  ('misinformation', 'Misinformation'),
+  ('other', 'Other'),
+];
 
 class UserProfileScreen extends StatefulWidget {
   final String username;
@@ -116,6 +133,229 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (conversationId != null) {
       context.push('/conversation/$conversationId');
     }
+  }
+
+  /// Block from the profile - webapp's blockUserProcess: confirm, then
+  /// POST /api/user/blocks {entityID}, and on success leave the (now-blocked)
+  /// profile. The confirm step is a dialog rather than the webapp's inline
+  /// two-tap button.
+  Future<void> _blockUser() async {
+    if (profile == null) return;
+    final p = cl(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text('Block @${profile!.username}?',
+            style: TextStyle(color: p.text, fontSize: 17)),
+        content: Text(
+          "They won't be able to contact you, see your posts, or find your profile in search.",
+          style: TextStyle(color: p.text2, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: p.text2))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: p.pink),
+              child: const Text('Block')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final result = await SettingsApi().blockAccount(profile!.entityId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result.message ??
+            (result.ok ? 'Account blocked' : 'Could not block this account'))));
+    if (result.ok) {
+      // Refresh the contacts + conversations lists so the now-blocked account
+      // (and any conversation with them) drops off those tabs immediately,
+      // then leave the profile.
+      await _refreshListsAfterBlock();
+      if (!mounted) return;
+      context.pop();
+    }
+  }
+
+  /// Re-fetch the contacts and conversation lists into Redux after a block.
+  /// Both tabs read straight from Redux and each only auto-fetches once (an
+  /// isInitialized guard), so without this the blocked user/conversation
+  /// would linger on those tabs until a full app restart.
+  Future<void> _refreshListsAfterBlock() async {
+    final store = StoreProvider.of<AppState>(context);
+    final convRes = await ConversationsApi().getConversationListRequest();
+    if (convRes != null) {
+      store.dispatch(DispatchModel(setMessagesListT, convRes.items));
+    }
+    final contactsRes = await ContactsApi().getContactsRequest();
+    store.dispatch(DispatchModel(setContactsListT, contactsRes.results));
+  }
+
+  /// Report sheet - webapp's report modal: a reason dropdown (default "spam")
+  /// + optional description, POST /api/user/reports.
+  void _openReportSheet() {
+    if (profile == null) return;
+    final p = cl(context);
+    String reason = 'spam';
+    final descController = TextEditingController();
+    bool submitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: p.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (sheetCtx) {
+        return StatefulBuilder(builder: (sheetCtx, setSheet) {
+          return Padding(
+            padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 18,
+                bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Icon(Icons.flag_outlined, color: p.text, size: 20),
+                  const SizedBox(width: 8),
+                  Text('Report this account',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: p.text)),
+                ]),
+                const SizedBox(height: 16),
+                Container(
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: p.input,
+                    borderRadius: BorderRadius.circular(CLRadii.sm),
+                    border: Border.all(color: p.border2),
+                  ),
+                  child: DropdownButton<String>(
+                    value: reason,
+                    isExpanded: true,
+                    underline: const SizedBox.shrink(),
+                    dropdownColor: p.surface,
+                    style: TextStyle(color: p.text, fontSize: 14),
+                    items: _kReportReasons
+                        .map((r) =>
+                            DropdownMenuItem(value: r.$1, child: Text(r.$2)))
+                        .toList(),
+                    onChanged: (v) => setSheet(() => reason = v ?? 'spam'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descController,
+                  maxLines: 3,
+                  style: TextStyle(color: p.text, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Add more details (optional)',
+                    hintStyle: TextStyle(color: p.text3, fontSize: 13.5),
+                    filled: true,
+                    fillColor: p.input,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(CLRadii.sm),
+                        borderSide: BorderSide(color: p.border2)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(CLRadii.sm),
+                        borderSide: BorderSide(color: p.border2)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(CLRadii.sm),
+                        borderSide: BorderSide(color: p.brand)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                CLBtn(
+                  label: submitting ? 'Submitting…' : 'Submit report',
+                  block: true,
+                  size: CLBtnSize.lg,
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          setSheet(() => submitting = true);
+                          final result = await SettingsApi().reportUser(
+                            targetId: profile!.entityId,
+                            reason: reason,
+                            description: descController.text.trim(),
+                          );
+                          if (!mounted) return;
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text(result.message ??
+                                  (result.ok
+                                      ? 'Report submitted'
+                                      : 'Could not submit report'))));
+                        },
+                ),
+                const SizedBox(height: 6),
+              ],
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  /// Never show block/report on your own profile (reachable if you open your
+  /// own username via search) - the server would reject it anyway.
+  bool _isSelf(BuildContext context) {
+    if (profile == null) return false;
+    final me = StoreProvider.of<AppState>(context).state.userAuth.user;
+    return me.username == profile!.username;
+  }
+
+  Widget _moreMenu(CLPalette p) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: PopupMenuButton<String>(
+        tooltip: 'More',
+        color: p.surface,
+        onSelected: (v) {
+          if (v == 'report') _openReportSheet();
+          if (v == 'block') _blockUser();
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'report',
+            child: Row(children: [
+              Icon(Icons.flag_outlined, size: 18, color: p.text2),
+              const SizedBox(width: 10),
+              Text('Report', style: TextStyle(color: p.text)),
+            ]),
+          ),
+          PopupMenuItem(
+            value: 'block',
+            child: Row(children: [
+              Icon(Icons.block, size: 18, color: p.pink),
+              const SizedBox(width: 10),
+              Text('Block', style: TextStyle(color: p.pink)),
+            ]),
+          ),
+        ],
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: p.surface,
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15), blurRadius: 6),
+            ],
+          ),
+          child: Icon(Icons.more_vert, size: 18, color: p.text),
+        ),
+      ),
+    );
   }
 
   /// Mirrors webapp's four connection states exactly (Profile.tsx): no
@@ -230,6 +470,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          if (!isLoading && !notFound && profile != null && !_isSelf(context))
+            _moreMenu(p),
+        ],
       ),
       body: isLoading
           ? const SingleChildScrollView(child: ProfileHeaderSkeleton())

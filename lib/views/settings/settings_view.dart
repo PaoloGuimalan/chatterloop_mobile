@@ -58,33 +58,45 @@ class SettingsScreen extends StatelessWidget {
               "Credentials",
               "Set up or update your necessary account credentials",
               () => context.push('/settings/credentials')),
-          const _SettingsItem(Icons.privacy_tip_outlined, "Data & Privacy",
-              "Export a copy of your data or delete your account", null),
+          _SettingsItem(
+              Icons.shield_outlined,
+              "Data & Privacy",
+              "Export a copy of your data or permanently delete your account",
+              () => context.push('/settings/data-privacy')),
           _SettingsItem(
               Icons.devices_outlined,
               "Device Sessions",
               "See where you're logged in and sign out of other devices",
               () => context.push('/settings/device-sessions')),
-          const _SettingsItem(Icons.block_outlined, "Blocked Accounts",
-              "Manage accounts you've blocked", null),
+          _SettingsItem(
+              Icons.block_outlined,
+              "Blocked Accounts",
+              "Manage accounts you've blocked",
+              () => context.push('/settings/blocked-accounts')),
         ],
       ),
-      const _SettingsCategory(
+      _SettingsCategory(
         "Messages",
         "Access your archived or restricted messages",
         [
-          _SettingsItem(Icons.archive_outlined, "Archives",
-              "Check archived messages, revisit conversations", null),
+          _SettingsItem(
+              Icons.inventory_2_outlined,
+              "Archives",
+              "Check your archived messages and revisit conversations",
+              () => context.push('/settings/archives')),
           _SettingsItem(Icons.lock_outline, "Restricted",
               "Access restricted conversations", null),
         ],
       ),
-      const _SettingsCategory(
+      _SettingsCategory(
         "Location",
         "View and/or modify how the app displays your location",
         [
-          _SettingsItem(Icons.map_outlined, "Map Feed Access",
-              "Change how Map Feed uses your location", null),
+          _SettingsItem(
+              Icons.map_outlined,
+              "Map Feed Access",
+              "Change how Map Feed uses or displays your location",
+              () => context.push('/settings/map')),
         ],
       ),
     ];

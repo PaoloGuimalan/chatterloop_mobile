@@ -20,15 +20,39 @@ class ContactsView extends StatefulWidget {
 
 class ContactsStateView extends State<ContactsView> {
   bool isContactsInitialized = false;
+  int _page = 1;
+  bool _hasNext = false;
+  bool _loadingMore = false;
 
   Future<void> getContactsProcess(BuildContext context) async {
     final result = await ContactsApi().getContactsRequest();
 
     if (!mounted) return;
-    setState(() => isContactsInitialized = true);
+    setState(() {
+      isContactsInitialized = true;
+      _page = 1;
+      _hasNext = result.hasNext;
+    });
 
     StoreProvider.of<AppState>(context)
         .dispatch(DispatchModel(setContactsListT, result.results));
+  }
+
+  /// Fetch the next page of raw contact rows and APPEND to Redux (deduped for
+  /// display in _dedupedContacts). Guarded against overlapping requests.
+  Future<void> _loadMore(BuildContext context) async {
+    if (!_hasNext || _loadingMore) return;
+    setState(() => _loadingMore = true);
+    final store = StoreProvider.of<AppState>(context);
+    final result = await ContactsApi().getContactsRequest(page: _page + 1);
+    if (!mounted) return;
+    store.dispatch(DispatchModel(
+        setContactsListT, [...store.state.contacts, ...result.results]));
+    setState(() {
+      _page += 1;
+      _hasNext = result.hasNext;
+      _loadingMore = false;
+    });
   }
 
   /// Both sides of a contact pair are stored as separate rows sharing the
@@ -88,23 +112,45 @@ class ContactsStateView extends State<ContactsView> {
                           borderRadius: BorderRadius.circular(CLRadii.md),
                         ),
                         clipBehavior: Clip.antiAlias,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          itemCount: contactsList.length,
-                          separatorBuilder: (context, index) =>
-                              Divider(height: 1, color: p.border),
-                          itemBuilder: (context, index) {
-                            final contact = contactsList[index];
-                            final other = contact.other(state.userAuth.user.id);
-                            final otherEntityId =
-                                contact.otherEntityId(state.userAuth.user.id);
-                            return ContactsItemWidget(
-                              contact: contact,
-                              other: other,
-                              online: state.presence[otherEntityId]?.online ??
-                                  false,
-                            );
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (n) {
+                            if (n.metrics.pixels >=
+                                n.metrics.maxScrollExtent - 240) {
+                              _loadMore(context);
+                            }
+                            return false;
                           },
+                          child: ListView.separated(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            itemCount:
+                                contactsList.length + (_loadingMore ? 1 : 0),
+                            separatorBuilder: (context, index) =>
+                                Divider(height: 1, color: p.border),
+                            itemBuilder: (context, index) {
+                              if (index >= contactsList.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Center(
+                                      child: SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2))),
+                                );
+                              }
+                              final contact = contactsList[index];
+                              final other =
+                                  contact.other(state.userAuth.user.id);
+                              final otherEntityId =
+                                  contact.otherEntityId(state.userAuth.user.id);
+                              return ContactsItemWidget(
+                                contact: contact,
+                                other: other,
+                                online: state.presence[otherEntityId]?.online ??
+                                    false,
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ),

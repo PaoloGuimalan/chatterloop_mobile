@@ -291,6 +291,63 @@ class ConversationStateView extends State<ConversationView> {
   String get _conversationType =>
       conversationSetup?['conversationType']?.toString() ?? "single";
 
+  /// Archive / Unarchive + Delete menu - webapp's ConversationV2 options
+  /// (minus Minimize, which is desktop-only). Strictly single + group only
+  /// (the caller gates on _conversationType). Archive/Delete remove the
+  /// conversation from the list and leave the thread; Unarchive restores it.
+  Widget _conversationMenu(CLPalette p) {
+    final archived = conversationInfo?.isArchived ?? false;
+    return PopupMenuButton<String>(
+      tooltip: 'Options',
+      color: p.surface,
+      padding: EdgeInsets.zero,
+      iconSize: 24,
+      constraints: const BoxConstraints(minWidth: 180),
+      icon: const Icon(Icons.info, color: Color(0xff1c7def), size: 24),
+      onSelected: _updateChatHistory,
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: archived ? 'unarchive' : 'archive',
+          child: Row(children: [
+            Icon(archived ? Icons.unarchive_outlined : Icons.archive_outlined,
+                size: 18, color: p.text2),
+            const SizedBox(width: 10),
+            Text(archived ? 'Unarchive' : 'Archive',
+                style: TextStyle(color: p.text)),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'clear',
+          child: Row(children: [
+            Icon(Icons.delete_outline, size: 18, color: p.pink),
+            const SizedBox(width: 10),
+            Text('Delete', style: TextStyle(color: p.pink)),
+          ]),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _updateChatHistory(String action) async {
+    final ok = await ConversationsApi()
+        .updateChatHistoryRequest(widget.conversationId, action);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Action failed. Please try again.')));
+      return;
+    }
+    // Refresh the conversation list so the archived/deleted conversation drops
+    // off, then leave the thread - mirrors webapp (navigate to /messages +
+    // remove the conversation from the list).
+    final res = await ConversationsApi().getConversationListRequest();
+    if (res != null) {
+      appStore.dispatch(DispatchModel(setMessagesListT, res.items));
+    }
+    if (!mounted) return;
+    context.go('/messages');
+  }
+
   /// The other participant's (single) or the realm/group's (group) display
   /// name and avatar - both come from the same "details" object GET
   /// /m/conversation/:conversationID returns (see _startLoading), matching
@@ -1182,28 +1239,39 @@ class ConversationStateView extends State<ConversationView> {
                                       SizedBox(
                                         width: 2,
                                       ),
-                                      ConstrainedBox(
-                                        constraints: BoxConstraints(
-                                            maxWidth: 40, maxHeight: 40),
-                                        child: ElevatedButton(
-                                            style: ElevatedButton.styleFrom(
-                                                backgroundColor:
-                                                    Colors.transparent,
-                                                elevation: 0,
-                                                padding: EdgeInsets.only(
-                                                    top: 0,
-                                                    bottom: 0,
-                                                    left: 0,
-                                                    right: 0)),
-                                            onPressed: () {},
-                                            child: Center(
-                                              child: Icon(
-                                                Icons.info,
-                                                color: Color(0xff1c7def),
-                                                size: 24,
-                                              ),
-                                            )),
-                                      )
+                                      // The info button doubles as the
+                                      // conversation options menu (Archive /
+                                      // Unarchive + Delete) for single/group -
+                                      // no separate options button. For other
+                                      // types it stays a plain info button.
+                                      (_conversationType == "single" ||
+                                              _conversationType == "group")
+                                          ? _conversationMenu(p)
+                                          : ConstrainedBox(
+                                              constraints: BoxConstraints(
+                                                  maxWidth: 40, maxHeight: 40),
+                                              child: ElevatedButton(
+                                                  style: ElevatedButton
+                                                      .styleFrom(
+                                                          backgroundColor: Colors
+                                                              .transparent,
+                                                          elevation: 0,
+                                                          padding:
+                                                              EdgeInsets.only(
+                                                                  top: 0,
+                                                                  bottom: 0,
+                                                                  left: 0,
+                                                                  right: 0)),
+                                                  onPressed: () {},
+                                                  child: Center(
+                                                    child: Icon(
+                                                      Icons.info,
+                                                      color:
+                                                          Color(0xff1c7def),
+                                                      size: 24,
+                                                    ),
+                                                  )),
+                                            ),
                                     ],
                                   )
                                 ],
