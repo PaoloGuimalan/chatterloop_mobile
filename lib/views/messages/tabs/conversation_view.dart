@@ -726,11 +726,14 @@ class ConversationStateView extends State<ConversationView> {
   /// genuinely new addition.
   void _queueMessageSeen(String messageID) {
     if (_unreadMessageIds.contains(messageID)) return;
-    if (mounted) {
-      setState(() => _unreadMessageIds = [messageID, ..._unreadMessageIds]);
-    } else {
-      _unreadMessageIds = [messageID, ..._unreadMessageIds];
-    }
+    // Plain mutation, NOT setState: _unreadMessageIds is only read by
+    // _flushSeenMessages (to POST seen receipts), never in build(). It used to
+    // setState here, so every unread message that scrolled into view - a burst
+    // of them right on open, and again while scrolling unread history -
+    // triggered a full rebuild of the entire conversation (all the large
+    // message rows) for nothing renderable. The 500ms debounce below is what
+    // actually drives the flush; the visibility callback only needs to record.
+    _unreadMessageIds = [messageID, ..._unreadMessageIds];
     _seenDebounceTimer?.cancel();
     _seenDebounceTimer =
         Timer(const Duration(milliseconds: 500), _flushSeenMessages);
@@ -744,8 +747,11 @@ class ConversationStateView extends State<ConversationView> {
             conversationInfo!.users.map((user) => user.entityID).toList(), ids),
         range);
     if (!mounted || seen == null) return;
-    setState(() => _unreadMessageIds =
-        _unreadMessageIds.where((id) => !seen.contains(id)).toList());
+    // Not setState - _unreadMessageIds isn't rendered (see _queueMessageSeen).
+    // The seen labels on the messages themselves refresh via the server's
+    // "messages_list" SSE echo, not from this list.
+    _unreadMessageIds =
+        _unreadMessageIds.where((id) => !seen.contains(id)).toList();
   }
 
   Future<void> postReplyAssistProcess(
