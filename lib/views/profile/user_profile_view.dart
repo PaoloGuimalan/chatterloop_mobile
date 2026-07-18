@@ -485,6 +485,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   child: Column(
                     children: [
                       StoreConnector<AppState, bool>(
+                        distinct: true,
                         converter: (store) =>
                             store.state.presence[profile!.entityId]?.online ??
                             false,

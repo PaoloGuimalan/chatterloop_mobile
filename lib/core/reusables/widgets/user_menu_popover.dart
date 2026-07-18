@@ -14,6 +14,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/requests/entity_api.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
+import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -230,7 +231,8 @@ class _MenuContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, AppState>(
+    return StoreConnector<AppState, ({UserAuth userAuth})>(
+      distinct: true,
       builder: (context, state) {
         final user = state.userAuth.user;
         final isSwitched = user.isActingAsEntity;
@@ -399,7 +401,7 @@ class _MenuContent extends StatelessWidget {
           ),
         );
       },
-      converter: (store) => store.state,
+      converter: (store) => (userAuth: store.state.userAuth),
     );
   }
 }

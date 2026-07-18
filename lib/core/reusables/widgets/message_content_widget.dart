@@ -1385,7 +1385,13 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return StoreConnector<AppState, AppState>(builder: (context, state) {
+    // Each message bubble was subscribed to the WHOLE store and rebuilt on
+    // every dispatch app-wide - in a long thread that's N bubbles re-rendering
+    // on every presence/typing/seen event. The builder only actually reads
+    // isUsingReplyAssist, so narrow to that one bool + distinct.
+    return StoreConnector<AppState, bool>(
+        distinct: true,
+        builder: (context, isUsingReplyAssist) {
       return Padding(
         padding: EdgeInsets.only(top: 2, bottom: 2, left: 0, right: 0),
         child: Column(
@@ -1557,13 +1563,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             _messageContent.sender == _currentUserID,
                             false,
                             false,
-                            state.isUsingReplyAssist)),
+                            isUsingReplyAssist)),
                   )
           ],
         ),
       );
-    }, converter: (store) {
-      return store.state;
-    });
+    }, converter: (store) => store.state.isUsingReplyAssist);
   }
 }

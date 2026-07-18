@@ -181,7 +181,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, AppState>(
+    return StoreConnector<AppState, ({UserAuth userAuth})>(
+      distinct: true,
       builder: (context, state) {
         _initFrom(state.userAuth.user);
 
@@ -317,7 +318,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           ),
         );
       },
-      converter: (store) => store.state,
+      converter: (store) => (userAuth: store.state.userAuth),
     );
   }
 }

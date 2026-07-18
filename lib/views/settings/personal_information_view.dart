@@ -191,8 +191,9 @@ class _PersonalInformationScreenState
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, AppState>(
-      converter: (store) => store.state,
+    return StoreConnector<AppState, ({UserAuth userAuth})>(
+      distinct: true,
+      converter: (store) => (userAuth: store.state.userAuth),
       builder: (context, state) {
         _initFrom(state.userAuth.user);
         return Scaffold(

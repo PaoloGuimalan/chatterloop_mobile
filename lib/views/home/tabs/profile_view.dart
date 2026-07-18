@@ -58,7 +58,8 @@ class _ProfileViewState extends State<ProfileView> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, AppState>(
+    return StoreConnector<AppState, ({UserAuth userAuth})>(
+      distinct: true,
       builder: (context, state) {
         final user = state.userAuth.user;
         _refreshFromServer(context, user);
@@ -113,7 +114,7 @@ class _ProfileViewState extends State<ProfileView> {
                 ),
         );
       },
-      converter: (store) => store.state,
+      converter: (store) => (userAuth: store.state.userAuth),
     );
   }
 }

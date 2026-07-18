@@ -71,7 +71,10 @@ class NotificationsStateView extends State<NotificationsView> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, AppState>(builder: (context, state) {
+    return StoreConnector<AppState,
+        ({NotificationsStateModel notificationsstate})>(
+        distinct: true,
+        builder: (context, state) {
       List<NotificationsItemModel> notificationslist =
           state.notificationsstate.notificationsList;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -167,8 +170,7 @@ class NotificationsStateView extends State<NotificationsView> {
                     ),
         ),
       );
-    }, converter: (store) {
-      return store.state;
-    });
+    }, converter: (store) =>
+            (notificationsstate: store.state.notificationsstate));
   }
 }

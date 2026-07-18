@@ -26,6 +26,7 @@ import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -37,6 +38,23 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+
+/// View-model for the conversation screen's top-level StoreConnector - the
+/// exact five slices its builder + helpers read. Narrowing to these (with
+/// distinct) keeps the whole thread off the rebuild path for unrelated
+/// dispatches (conversation-list refreshes, notifications, posts, non-
+/// participant presence, call state) - the bulk of SSE traffic while a chat
+/// is open. Each field reference only changes when copyWith replaces that
+/// slice, so record equality answers "did one of these five actually change".
+/// The live message thread itself is local state (setState), not Redux, so
+/// it's unaffected by this narrowing.
+typedef _ConvoVm = ({
+  UserAuth userAuth,
+  Map<String, PresenceInfo> presence,
+  List<IsTypingMetaData> isTypingList,
+  bool isUsingReplyAssist,
+  List<ReplyAssistContext> replyAssistContext,
+});
 
 class ConversationView extends StatefulWidget {
   final String conversationId;
@@ -472,7 +490,7 @@ class ConversationStateView extends State<ConversationView> {
   /// matches webapp's userSessionStatusFromContacts, simplified to always
   /// use a relative label instead of its live-vs-snapshot formatting split
   /// (see date_words.dart's timeSince doc comment for why).
-  String _headerSubtitle(AppState state) {
+  String _headerSubtitle(_ConvoVm state) {
     if (_conversationType != "single") return "Members are Active";
     final entityId = _headerEntityId;
     if (entityId == null) return "Recently Active";
@@ -999,7 +1017,7 @@ class ConversationStateView extends State<ConversationView> {
     setState(() => _isRecordingVoice = true);
   }
 
-  Future<void> _stopAndSendVoiceRecording(AppState state) async {
+  Future<void> _stopAndSendVoiceRecording(_ConvoVm state) async {
     final path = await _voiceRecorder.stop();
     if (!mounted) return;
     setState(() => _isRecordingVoice = false);
@@ -1031,7 +1049,8 @@ class ConversationStateView extends State<ConversationView> {
 
   @override
   Widget build(BuildContext context) {
-    return StoreConnector<AppState, AppState>(
+    return StoreConnector<AppState, _ConvoVm>(
+      distinct: true,
       builder: (context, state) {
         final p = cl(context);
         return PopScope(
@@ -2553,9 +2572,13 @@ class ConversationStateView extends State<ConversationView> {
           ),
         );
       },
-      converter: (store) {
-        return store.state;
-      },
+      converter: (store) => (
+            userAuth: store.state.userAuth,
+            presence: store.state.presence,
+            isTypingList: store.state.isTypingList,
+            isUsingReplyAssist: store.state.isUsingReplyAssist,
+            replyAssistContext: store.state.replyAssistContext,
+          ),
     );
   }
 }

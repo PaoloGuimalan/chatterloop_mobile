@@ -8,6 +8,8 @@ import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/contacts_item.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/contact_model.dart';
+import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 
@@ -75,7 +77,19 @@ class ContactsStateView extends State<ContactsView> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, AppState>(builder: (context, state) {
+    // The whole contacts list previously re-deduped + rebuilt on every
+    // dispatch. Narrow to the three slices used (contacts + own id + presence)
+    // so it only rebuilds when a contact changes or a contact's presence
+    // flips - not on message/typing/notification traffic.
+    return StoreConnector<
+        AppState,
+        ({
+          List<Contact> contacts,
+          UserAuth userAuth,
+          Map<String, PresenceInfo> presence
+        })>(
+        distinct: true,
+        builder: (context, state) {
       List<Contact> contactsList = _dedupedContacts(state.contacts);
       if (!isContactsInitialized) {
         getContactsProcess(context);
@@ -156,8 +170,10 @@ class ContactsStateView extends State<ContactsView> {
                     ),
         ),
       );
-    }, converter: (store) {
-      return store.state;
-    });
+    }, converter: (store) => (
+          contacts: store.state.contacts,
+          userAuth: store.state.userAuth,
+          presence: store.state.presence,
+        ));
   }
 }

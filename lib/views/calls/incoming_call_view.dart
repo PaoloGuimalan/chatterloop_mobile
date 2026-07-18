@@ -139,6 +139,7 @@ class _IncomingCallViewState extends State<IncomingCallView> {
     final alert = widget.alert;
     final hasImage = alert.displayImage != null && alert.displayImage != "none";
     return StoreConnector<AppState, bool>(
+      distinct: true,
       converter: (store) =>
           store.state.pendingIncomingCall?.conversationID == alert.conversationID,
       builder: (context, isStillPending) {

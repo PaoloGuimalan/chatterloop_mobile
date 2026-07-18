@@ -19,6 +19,7 @@ import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/user_menu_popover.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -143,7 +144,19 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, AppState>(builder: (context, state) {
+    // Persistent shell hosting every tab - previously rebuilt (app bar +
+    // bottom nav + unread reduce) on every dispatch app-wide. Narrow to the
+    // three slices it reads so it only rebuilds when unread/identity/
+    // notifications actually change.
+    return StoreConnector<
+        AppState,
+        ({
+          List<MessageItem> messages,
+          UserAuth userAuth,
+          NotificationsStateModel notificationsstate
+        })>(
+        distinct: true,
+        builder: (context, state) {
       int unreadTotal = state.messages.isEmpty
           ? 0
           : state.messages.map((m) => m.unread).reduce((a, b) => a + b);
@@ -276,9 +289,11 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
           ],
         ),
       );
-    }, converter: (store) {
-      return store.state;
-    });
+    }, converter: (store) => (
+          messages: store.state.messages,
+          userAuth: store.state.userAuth,
+          notificationsstate: store.state.notificationsstate,
+        ));
   }
 
   Widget _navButton(IconData icon, bool active, VoidCallback onPressed,

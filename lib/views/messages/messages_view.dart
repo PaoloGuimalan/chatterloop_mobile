@@ -67,7 +67,14 @@ class MessagesStateView extends State<MessagesView> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, AppState>(builder: (context, state) {
+    return StoreConnector<AppState,
+        ({List<MessageItem> messages, String entityId})>(
+        // Only the conversations list + own id matter here; each row's typing/
+        // online dot is handled by MessageItemView's own narrowed connector.
+        // distinct keeps this list off the rebuild path for presence/typing/
+        // notification dispatches - it only rebuilds when the list changes.
+        distinct: true,
+        builder: (context, state) {
       List<MessageItem> messagesList = state.messages;
       if (!isInitialized) {
         getConversationListProcess(context);
@@ -134,7 +141,7 @@ class MessagesStateView extends State<MessagesView> {
                                 }
                                 return MessageItemView(
                                     message: messagesList[index],
-                                    userID: state.userAuth.user.entityId);
+                                    userID: state.entityId);
                               },
                             ),
                           ),
@@ -143,8 +150,9 @@ class MessagesStateView extends State<MessagesView> {
           ],
         ),
       );
-    }, converter: (store) {
-      return store.state;
-    });
+    }, converter: (store) => (
+          messages: store.state.messages,
+          entityId: store.state.userAuth.user.entityId,
+        ));
   }
 }

@@ -76,7 +76,9 @@ class FeedStateView extends State<FeedView> {
 
   @override
   Widget build(BuildContext context) {
-    return StoreConnector<AppState, AppState>(builder: (context, state) {
+    return StoreConnector<AppState, ({List<UserPost> posts})>(
+        distinct: true,
+        builder: (context, state) {
       if (state.posts.isEmpty) {
         getPostsProcess(context, postLength);
       }
@@ -97,8 +99,6 @@ class FeedStateView extends State<FeedView> {
           ),
         ),
       );
-    }, converter: (store) {
-      return store.state;
-    });
+    }, converter: (store) => (posts: store.state.posts));
   }
 }

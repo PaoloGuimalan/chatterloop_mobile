@@ -88,6 +88,11 @@ class MessageItemView extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = cl(context);
     return StoreConnector<AppState, ({bool isTyping, bool online})>(
+        // Without distinct, this row rebuilds on EVERY store dispatch (each
+        // presence/typing/message event across the whole app). The converter
+        // already returns a small record with value equality, so distinct
+        // limits rebuilds to when THIS row's own typing/online actually flips.
+        distinct: true,
         builder: (context, data) {
       final title = message.details.displayName.isEmpty
           ? message.details.username
