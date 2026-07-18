@@ -1276,6 +1276,19 @@ class ConversationStateView extends State<ConversationView> {
                                                     fontSize: 14,
                                                     color: p.text,
                                                     fontWeight: FontWeight.bold,
+                                                    // Subtle underline signals
+                                                    // the name is tappable (it
+                                                    // opens the peer's profile)
+                                                    // - only for single convos,
+                                                    // where a profile exists.
+                                                    decoration:
+                                                        _conversationType ==
+                                                                "single"
+                                                            ? TextDecoration
+                                                                .underline
+                                                            : null,
+                                                    decorationColor: p.text3,
+                                                    decorationThickness: 1,
                                                   ),
                                                   maxLines: 1,
                                                   overflow:
