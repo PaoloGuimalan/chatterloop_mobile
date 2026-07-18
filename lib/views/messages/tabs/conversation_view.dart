@@ -40,18 +40,24 @@ import 'package:record/record.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 /// View-model for the conversation screen's top-level StoreConnector - the
-/// exact five slices its builder + helpers read. Narrowing to these (with
-/// distinct) keeps the whole thread off the rebuild path for unrelated
-/// dispatches (conversation-list refreshes, notifications, posts, non-
-/// participant presence, call state) - the bulk of SSE traffic while a chat
-/// is open. Each field reference only changes when copyWith replaces that
-/// slice, so record equality answers "did one of these five actually change".
+/// exact three slices its builder + helpers actually read. Narrowing to these
+/// (with distinct) keeps the whole thread off the rebuild path for unrelated
+/// dispatches - the bulk of SSE traffic while a chat is open. Each field
+/// reference only changes when copyWith replaces that slice, so record
+/// equality answers "did one of these three actually change".
+///
+/// Two high-frequency slices are deliberately NOT here, each owned by its own
+/// tiny self-subscribing connector so a change rebuilds only that spot, never
+/// the whole conversation (header + entire message list + input):
+///  - isTypingList: the other party typing is the most frequent change in a
+///    live chat; the typing bubble (_ConversationTypingIndicator) owns it.
+///  - presence: any contact going online/offline replaces the whole presence
+///    map; the header's online dot and "Active..." subtitle each own it.
+///
 /// The live message thread itself is local state (setState), not Redux, so
 /// it's unaffected by this narrowing.
 typedef _ConvoVm = ({
   UserAuth userAuth,
-  Map<String, PresenceInfo> presence,
-  List<IsTypingMetaData> isTypingList,
   bool isUsingReplyAssist,
   List<ReplyAssistContext> replyAssistContext,
 });
@@ -516,16 +522,33 @@ class ConversationStateView extends State<ConversationView> {
     return details is Map ? details['entity_id']?.toString() : null;
   }
 
+  /// Tapping the header avatar/name opens the OTHER entity's profile. Only for
+  /// single conversations - the other party in a 1:1 can be a user OR a
+  /// realm/page (a page DM'ing a user). The server resolves details.type to
+  /// 'user' or 'realm', and details.username to COALESCE(user.username,
+  /// realm.slug) - i.e. exactly the identifier each profile route wants
+  /// (/user/:username vs /realm/:slug). No-ops for group/channel (no single
+  /// profile to open) or before setup has resolved.
+  void _openHeaderProfile() {
+    if (_conversationType != "single") return;
+    final details = conversationSetup?['details'];
+    if (details is! Map) return;
+    final username = (details['username'] ?? '').toString();
+    if (username.isEmpty || username == 'unknown') return;
+    final isRealm = (details['type'] ?? '').toString() == 'realm';
+    context.push(isRealm ? '/realm/$username' : '/user/$username');
+  }
+
   /// "Active Now" while online, else "Active <time since> ago" once we
   /// have a last-seen timestamp for them, else the generic fallback text -
   /// matches webapp's userSessionStatusFromContacts, simplified to always
   /// use a relative label instead of its live-vs-snapshot formatting split
   /// (see date_words.dart's timeSince doc comment for why).
-  String _headerSubtitle(_ConvoVm state) {
+  String _headerSubtitle(Map<String, PresenceInfo> presence) {
     if (_conversationType != "single") return "Members are Active";
     final entityId = _headerEntityId;
     if (entityId == null) return "Recently Active";
-    final info = state.presence[entityId];
+    final info = presence[entityId];
     if (info == null) return "Recently Active";
     if (info.online) return "Active Now";
     if (info.lastSeen != null) return "Active ${timeSince(info.lastSeen!)}";
@@ -1192,15 +1215,34 @@ class ConversationStateView extends State<ConversationView> {
                                           borderRadius:
                                               BorderRadius.circular(20),
                                         )
-                                      : CLAvatar(
-                                          id: widget.conversationId,
-                                          name: _headerDisplayName,
-                                          src: _headerAvatarSrc,
-                                          size: 40,
-                                          online: _headerEntityId != null &&
-                                              (state.presence[_headerEntityId]
+                                      // Self-subscribes to just the peer's
+                                      // online flag, so a presence change (any
+                                      // contact) rebuilds this dot only, not
+                                      // the whole conversation (presence was
+                                      // removed from _ConvoVm for this reason).
+                                      : StoreConnector<AppState, bool>(
+                                          distinct: true,
+                                          converter: (store) =>
+                                              _headerEntityId != null &&
+                                              (store
+                                                      .state
+                                                      .presence[_headerEntityId]
                                                       ?.online ??
                                                   false),
+                                          builder: (context, online) =>
+                                              GestureDetector(
+                                            onTap:
+                                                _conversationType == "single"
+                                                    ? _openHeaderProfile
+                                                    : null,
+                                            child: CLAvatar(
+                                              id: widget.conversationId,
+                                              name: _headerDisplayName,
+                                              src: _headerAvatarSrc,
+                                              size: 40,
+                                              online: online,
+                                            ),
+                                          ),
                                         ),
                                   SizedBox(width: 15),
                                   Expanded(
@@ -1223,23 +1265,38 @@ class ConversationStateView extends State<ConversationView> {
                                             mainAxisAlignment:
                                                 MainAxisAlignment.center,
                                             children: [
-                                              Text(
-                                                _headerDisplayName,
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  color: p.text,
-                                                  fontWeight: FontWeight.bold,
+                                              GestureDetector(
+                                                onTap: _conversationType ==
+                                                        "single"
+                                                    ? _openHeaderProfile
+                                                    : null,
+                                                child: Text(
+                                                  _headerDisplayName,
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: p.text,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                              Text(
-                                                _headerSubtitle(state),
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: p.text2,
+                                              StoreConnector<AppState, String>(
+                                                distinct: true,
+                                                converter: (store) =>
+                                                    _headerSubtitle(
+                                                        store.state.presence),
+                                                builder: (context, subtitle) =>
+                                                    Text(
+                                                  subtitle,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: p.text2,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
-                                                overflow: TextOverflow.ellipsis,
                                               ),
                                             ],
                                           ),
@@ -2627,8 +2684,6 @@ class ConversationStateView extends State<ConversationView> {
       },
       converter: (store) => (
         userAuth: store.state.userAuth,
-        presence: store.state.presence,
-        isTypingList: store.state.isTypingList,
         isUsingReplyAssist: store.state.isUsingReplyAssist,
         replyAssistContext: store.state.replyAssistContext,
       ),
