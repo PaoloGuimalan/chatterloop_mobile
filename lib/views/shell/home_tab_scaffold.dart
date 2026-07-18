@@ -45,14 +45,22 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   bool isActiveUsersInitialized = false;
 
   // Bottom-tab switches go through StatefulNavigationShell.goBranch, which
-  // just flips IndexedStack's index - no page route, so no transition at
-  // all by default (an abrupt cut). A quick opacity dip on the *wrapper*
-  // gives that tap a visible response without re-keying navigationShell
-  // itself, which would tear down and rebuild every branch's Navigator
-  // (losing each tab's scroll position/loaded state - the entire reason
-  // indexedStack is used here instead of plain tab content).
+  // just flips IndexedStack's index (no page route), keeping each branch's
+  // Navigator (scroll position/loaded state) alive. On each switch the new
+  // content gets a small slide-in nudge (didUpdateWidget below) via
+  // AnimatedSlide - a TRANSFORM, so it's ~free on the raster thread. This
+  // deliberately replaced an AnimatedOpacity cross-fade that wrapped the whole
+  // IndexedStack: animating opacity across all four branches forced a
+  // full-screen saveLayer every frame, which was the "clunky screen switch".
   int _lastTabIndex = 0;
-  double _tabOpacity = 1;
+  // Rests at zero (no offset). On a tab change the offset jumps to _kTabNudge
+  // instantly (duration zero), then animates back to zero - a clean
+  // one-directional slide-up. Everything sits on the same scaffold bg, so the
+  // briefly-revealed strip is the same colour (no visible gap).
+  Offset _tabSlide = Offset.zero;
+  Duration _tabSlideDur = Duration.zero;
+  static const Offset _kTabNudge = Offset(0, 0.02);
+  static const Duration _kTabSlideMs = Duration(milliseconds: 190);
 
   final GlobalKey _profileButtonKey = GlobalKey();
 
@@ -69,9 +77,18 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
     final index = widget.navigationShell.currentIndex;
     if (index == _lastTabIndex) return;
     _lastTabIndex = index;
-    setState(() => _tabOpacity = 0);
+    // Jump to the start offset with NO animation, then slide back to rest on
+    // the next frame - AnimatedSlide animates only the second change, giving a
+    // one-directional slide-in (not a down-then-up wobble).
+    _tabSlide = _kTabNudge;
+    _tabSlideDur = Duration.zero;
+    setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _tabOpacity = 1);
+      if (!mounted) return;
+      setState(() {
+        _tabSlideDur = _kTabSlideMs;
+        _tabSlide = Offset.zero;
+      });
     });
   }
 
@@ -243,10 +260,10 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
               ),
             ),
             Expanded(
-              child: AnimatedOpacity(
-                opacity: _tabOpacity,
-                duration: const Duration(milliseconds: 140),
-                curve: Curves.easeOut,
+              child: AnimatedSlide(
+                offset: _tabSlide,
+                duration: _tabSlideDur,
+                curve: Curves.easeOutCubic,
                 child: widget.navigationShell,
               ),
             ),

@@ -43,24 +43,37 @@ import 'package:go_router/go_router.dart';
 CustomTransitionPage<void> _clPage(GoRouterState state, Widget child) {
   return CustomTransitionPage<void>(
     key: state.pageKey,
-    child: child,
-    transitionDuration: const Duration(milliseconds: 280),
+    transitionDuration: const Duration(milliseconds: 260),
     reverseTransitionDuration: const Duration(milliseconds: 220),
+    child: child,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
+      // Pure slide (a transform) - deliberately NO FadeTransition. Animating
+      // opacity across a whole screen composites the entire incoming page into
+      // an offscreen layer (saveLayer) on every frame of the transition, which
+      // is a real per-navigation cost and reads as a clunky screen switch. A
+      // transform is effectively free on the raster thread. The incoming page
+      // slides fully in from the right over the (opaque) outgoing one, which
+      // drifts slightly left in parallax so there's never a see-through gap -
+      // the standard iOS push, and cheap.
+      final incoming = Tween<Offset>(
+        begin: const Offset(1.0, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(
         parent: animation,
-        curve: Curves.easeInOutCubic,
+        curve: Curves.easeOutCubic,
         reverseCurve: Curves.easeInCubic,
-      );
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0.06, 0),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
-        ),
+      ));
+      final outgoing = Tween<Offset>(
+        begin: Offset.zero,
+        end: const Offset(-0.25, 0),
+      ).animate(CurvedAnimation(
+        parent: secondaryAnimation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      ));
+      return SlideTransition(
+        position: outgoing,
+        child: SlideTransition(position: incoming, child: child),
       );
     },
   );

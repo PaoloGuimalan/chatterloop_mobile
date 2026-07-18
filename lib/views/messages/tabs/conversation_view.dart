@@ -56,6 +56,37 @@ typedef _ConvoVm = ({
   List<ReplyAssistContext> replyAssistContext,
 });
 
+/// The newest-row typing indicator, subscribed to the store directly instead
+/// of reading a value captured inside the message list's itemBuilder. The
+/// inline value only refreshed when item 0 happened to rebuild; during a
+/// keyboard-open relayout that rebuild could be skipped, leaving the other
+/// party's typing state stale until the conversation was re-entered. Its own
+/// distinct StoreConnector rebuilds the moment isTypingList changes for this
+/// conversation, independent of the surrounding list.
+class _ConversationTypingIndicator extends StatelessWidget {
+  final String conversationId;
+  final CLPalette p;
+  const _ConversationTypingIndicator(
+      {required this.conversationId, required this.p});
+
+  @override
+  Widget build(BuildContext context) {
+    return StoreConnector<AppState, bool>(
+      distinct: true,
+      converter: (store) => store.state.isTypingList
+          .any((typing) => typing.conversationID == conversationId),
+      // left: aligns the loader's bubble with the received message bubbles
+      // above it (which sit at the message list's horizontal inset). bottom:
+      // only applied while actually typing, so there's no permanent gap above
+      // the input bar when no one is typing.
+      builder: (context, isTyping) => Padding(
+        padding: EdgeInsets.only(left: 10, bottom: isTyping ? 8 : 0),
+        child: TypingIndicator(isTyping: isTyping, p: p),
+      ),
+    );
+  }
+}
+
 class ConversationView extends StatefulWidget {
   final String conversationId;
 
@@ -670,6 +701,12 @@ class ConversationStateView extends State<ConversationView> {
   /// opens (scrolled to wherever it lands) get caught by this the same way
   /// newly-arrived ones do once they're actually on screen.
   Widget _seenTrackedMessage(MessageContent content, Widget child) {
+    // Already seen by me -> no visibility tracking needed. Returning the child
+    // bare avoids keeping a live VisibilityDetector (layer + global scheduler
+    // overhead) on every already-read message while scrolling long history;
+    // only genuinely-unread messages get one. The callback below already
+    // no-ops once I'm in seeners, so this just removes the wasted work.
+    if (content.seeners.contains(_myAccountId)) return child;
     return VisibilityDetector(
       key: ValueKey('seen-${content.messageID}'),
       onVisibilityChanged: (info) {
@@ -1270,10 +1307,11 @@ class ConversationStateView extends State<ConversationView> {
                                               constraints: BoxConstraints(
                                                   maxWidth: 40, maxHeight: 40),
                                               child: ElevatedButton(
-                                                  style: ElevatedButton
-                                                      .styleFrom(
-                                                          backgroundColor: Colors
-                                                              .transparent,
+                                                  style:
+                                                      ElevatedButton.styleFrom(
+                                                          backgroundColor:
+                                                              Colors
+                                                                  .transparent,
                                                           elevation: 0,
                                                           padding:
                                                               EdgeInsets.only(
@@ -1285,8 +1323,7 @@ class ConversationStateView extends State<ConversationView> {
                                                   child: Center(
                                                     child: Icon(
                                                       Icons.info,
-                                                      color:
-                                                          Color(0xff1c7def),
+                                                      color: Color(0xff1c7def),
                                                       size: 24,
                                                     ),
                                                   )),
@@ -1380,19 +1417,6 @@ class ConversationStateView extends State<ConversationView> {
                                                 combinedPendingAndMessagesList
                                                     .length, //conversationContentList.length
                                             itemBuilder: (context, index) {
-                                              bool
-                                                  hasConversationTypingActivity =
-                                                  state.isTypingList
-                                                          .where((typing) =>
-                                                              typing
-                                                                  .conversationID ==
-                                                              widget
-                                                                  .conversationId)
-                                                          .toList()
-                                                          .isNotEmpty
-                                                      ? true
-                                                      : false;
-
                                               if (index ==
                                                   combinedPendingAndMessagesList
                                                           .length -
@@ -1559,9 +1583,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                 : SizedBox
                                                                     .shrink(),
                                                           if (index == 0)
-                                                            TypingIndicator(
-                                                                isTyping:
-                                                                    hasConversationTypingActivity)
+                                                            const SizedBox
+                                                                .shrink()
                                                           else
                                                             SizedBox.shrink(),
                                                         ],
@@ -1611,9 +1634,8 @@ class ConversationStateView extends State<ConversationView> {
                                                             ),
                                                           ),
                                                           if (index == 0)
-                                                            TypingIndicator(
-                                                                isTyping:
-                                                                    hasConversationTypingActivity)
+                                                            const SizedBox
+                                                                .shrink()
                                                           else
                                                             SizedBox.shrink(),
                                                         ],
@@ -1772,10 +1794,8 @@ class ConversationStateView extends State<ConversationView> {
                                                               height: 0,
                                                             ),
                                                       index == 0
-                                                          ? TypingIndicator(
-                                                              isTyping:
-                                                                  hasConversationTypingActivity,
-                                                            )
+                                                          ? const SizedBox
+                                                              .shrink()
                                                           : SizedBox(
                                                               height: 0,
                                                             )
@@ -1822,10 +1842,8 @@ class ConversationStateView extends State<ConversationView> {
                                                           ),
                                                         ),
                                                         index == 0
-                                                            ? TypingIndicator(
-                                                                isTyping:
-                                                                    hasConversationTypingActivity,
-                                                              )
+                                                            ? const SizedBox
+                                                                .shrink()
                                                             : SizedBox(
                                                                 height: 0,
                                                               )
@@ -1840,6 +1858,17 @@ class ConversationStateView extends State<ConversationView> {
                                               }
                                             },
                                           ),
+                          ),
+                          // Typing indicator lives HERE (a fixed row just above
+                          // the input), NOT inside the reversed message list.
+                          // As a list item at index 0 it was virtualized away
+                          // whenever the keyboard opened - its StoreConnector
+                          // got disposed, so it stopped reacting to typing SSE
+                          // events until the row remounted (confirmed by logs).
+                          // Fixed here, it's always mounted and always live.
+                          _ConversationTypingIndicator(
+                            conversationId: widget.conversationId,
+                            p: p,
                           ),
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 500),
@@ -2437,22 +2466,27 @@ class ConversationStateView extends State<ConversationView> {
                                         child: TextField(
                                           controller: _controller,
                                           onChanged: (value) {
-                                            if (mounted) {
-                                              setState(() {
-                                                messageValue = value;
-                                                if (value.trim() != "") {
-                                                  if (conversationInfo !=
-                                                      null) {
-                                                    isTypingTimeout(
-                                                        widget.conversationId,
-                                                        conversationInfo!.users
-                                                            .map((user) => user
-                                                                .entityID
-                                                                .toString())
-                                                            .toList());
-                                                  }
-                                                }
-                                              });
+                                            if (!mounted) return;
+                                            // Plain assignment, NOT setState:
+                                            // messageValue is only read at send
+                                            // time (the button's onPressed),
+                                            // never during build/layout, so a
+                                            // keystroke must not rebuild the
+                                            // whole conversation tree - that was
+                                            // the typing lag. isTypingTimeout
+                                            // does its own throttled setState
+                                            // (once per typing burst), which is
+                                            // cheap and still needed.
+                                            messageValue = value;
+                                            if (value.trim() != "" &&
+                                                conversationInfo != null) {
+                                              isTypingTimeout(
+                                                  widget.conversationId,
+                                                  conversationInfo!.users
+                                                      .map((user) => user
+                                                          .entityID
+                                                          .toString())
+                                                      .toList());
                                             }
                                           },
                                           style: TextStyle(
@@ -2573,12 +2607,12 @@ class ConversationStateView extends State<ConversationView> {
         );
       },
       converter: (store) => (
-            userAuth: store.state.userAuth,
-            presence: store.state.presence,
-            isTypingList: store.state.isTypingList,
-            isUsingReplyAssist: store.state.isUsingReplyAssist,
-            replyAssistContext: store.state.replyAssistContext,
-          ),
+        userAuth: store.state.userAuth,
+        presence: store.state.presence,
+        isTypingList: store.state.isTypingList,
+        isUsingReplyAssist: store.state.isUsingReplyAssist,
+        replyAssistContext: store.state.replyAssistContext,
+      ),
     );
   }
 }

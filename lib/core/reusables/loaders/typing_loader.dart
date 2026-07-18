@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
 
 class TypingIndicator extends StatefulWidget {
   final bool isTyping;
-  const TypingIndicator({super.key, required this.isTyping});
+  final CLPalette p;
+  const TypingIndicator({super.key, required this.isTyping, required this.p});
   @override
   TypingIndicatorState createState() => TypingIndicatorState();
 }
@@ -55,7 +57,7 @@ class TypingIndicatorState extends State<TypingIndicator>
                 width: widget.isTyping ? 60 : 0,
                 height: widget.isTyping ? 40 : 0,
                 decoration: BoxDecoration(
-                    color: Color(0xffdedede),
+                    color: widget.p.surface3,
                     borderRadius: BorderRadius.circular(10)),
                 duration: Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
@@ -64,11 +66,11 @@ class TypingIndicatorState extends State<TypingIndicator>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      AnimatedDot(animation: _animation1),
+                      AnimatedDot(animation: _animation1, p: widget.p),
                       const SizedBox(width: 5),
-                      AnimatedDot(animation: _animation2),
+                      AnimatedDot(animation: _animation2, p: widget.p),
                       const SizedBox(width: 5),
-                      AnimatedDot(animation: _animation3),
+                      AnimatedDot(animation: _animation3, p: widget.p),
                     ],
                   ),
                 ),
@@ -86,7 +88,9 @@ class TypingIndicatorState extends State<TypingIndicator>
 }
 
 class AnimatedDot extends AnimatedWidget {
-  const AnimatedDot({super.key, required Animation<double> animation})
+  final CLPalette p;
+  const AnimatedDot(
+      {super.key, required Animation<double> animation, required this.p})
       : super(listenable: animation);
 
   Animation<double> get animation => listenable as Animation<double>;
@@ -98,8 +102,8 @@ class AnimatedDot extends AnimatedWidget {
       child: Container(
         width: 5,
         height: 5,
-        decoration: const BoxDecoration(
-          color: Colors.black,
+        decoration: BoxDecoration(
+          color: p.text,
           shape: BoxShape.circle,
         ),
       ),
