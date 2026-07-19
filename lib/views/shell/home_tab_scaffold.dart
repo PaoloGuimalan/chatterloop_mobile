@@ -9,6 +9,7 @@
 import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/notifications/push_notification_service.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
@@ -18,6 +19,7 @@ import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/user_menu_popover.dart';
+import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
@@ -70,6 +72,20 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   // newly active entity after a switch, mirroring webapp's post-switch
   // full reload without an actual app restart.
   String? _lastEntityId;
+
+  @override
+  void initState() {
+    super.initState();
+    // The tab shell only mounts once the user is authenticated, so this is the
+    // contextual moment to request notification permission - not on a cold
+    // launch (which would burn Android's one-shot dialog before the user has
+    // any reason to say yes). No-op on Android < 13 or if already asked.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!PushNotificationService.instance.permissionAlreadyAsked) {
+        PushNotificationService.instance.requestPermission();
+      }
+    });
+  }
 
   @override
   void didUpdateWidget(covariant HomeTabScaffold oldWidget) {
@@ -151,6 +167,14 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   /// directly from logoutProcess AND separately closes sockets in its
   /// mount effect's cleanup).
   Future<void> _logout(BuildContext context) async {
+    // Explicit server logout FIRST, while still authenticated (before the
+    // local token is cleared): the /u/logout endpoint nulls THIS device's FCM
+    // push token on its session row, so it stops being a push target. The
+    // separate status=false half is handled by the SSE close below. Best-
+    // effort in a try/catch - a failed logout call must never block sign-out.
+    try {
+      await ApiClient.instance.dio.post(Endpoints().logout);
+    } catch (_) {}
     StoreProvider.of<AppState>(context).dispatch(
         DispatchModel(resetAppStateT, UserAuth(false, UserAccount.empty)));
     SseConnection().closeConnection();
@@ -166,151 +190,153 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
     // three slices it reads so it only rebuilds when unread/identity/
     // notifications actually change.
     return StoreConnector<
-        AppState,
-        ({
-          List<MessageItem> messages,
-          UserAuth userAuth,
-          NotificationsStateModel notificationsstate
-        })>(
+            AppState,
+            ({
+              List<MessageItem> messages,
+              UserAuth userAuth,
+              NotificationsStateModel notificationsstate
+            })>(
         distinct: true,
         builder: (context, state) {
-      int unreadTotal = state.messages.isEmpty
-          ? 0
-          : state.messages.map((m) => m.unread).reduce((a, b) => a + b);
+          int unreadTotal = state.messages.isEmpty
+              ? 0
+              : state.messages.map((m) => m.unread).reduce((a, b) => a + b);
 
-      final entityId = state.userAuth.user.entityId;
-      if (_lastEntityId != null && _lastEntityId != entityId) {
-        isMessagesInitialized = false;
-        isContactsInitialized = false;
-        isNotificationsInitialized = false;
-        isActiveUsersInitialized = false;
-      }
-      _lastEntityId = entityId;
+          final entityId = state.userAuth.user.entityId;
+          if (_lastEntityId != null && _lastEntityId != entityId) {
+            isMessagesInitialized = false;
+            isContactsInitialized = false;
+            isNotificationsInitialized = false;
+            isActiveUsersInitialized = false;
+          }
+          _lastEntityId = entityId;
 
-      if (!isMessagesInitialized) getConversationListProcess(context);
-      if (!isContactsInitialized) getContactsProcess(context);
-      if (!isNotificationsInitialized) getNotificationsListProcess(context);
-      if (!isActiveUsersInitialized) getActiveUsersProcess(context);
+          if (!isMessagesInitialized) getConversationListProcess(context);
+          if (!isContactsInitialized) getContactsProcess(context);
+          if (!isNotificationsInitialized) getNotificationsListProcess(context);
+          if (!isActiveUsersInitialized) getActiveUsersProcess(context);
 
-      return Scaffold(
-        backgroundColor: p.bg,
-        body: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 14, 10, 12),
-              decoration: BoxDecoration(
-                  color: p.surface,
-                  border: Border(bottom: BorderSide(color: p.border))),
-              child: SafeArea(
-                bottom: false,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(_tabTitles[widget.navigationShell.currentIndex],
-                        style: TextStyle(
-                            color: p.text,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800)),
-                    Row(
+          return Scaffold(
+            backgroundColor: p.bg,
+            body: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 10, 12),
+                  decoration: BoxDecoration(
+                      color: p.surface,
+                      border: Border(bottom: BorderSide(color: p.border))),
+                  child: SafeArea(
+                    bottom: false,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        CLIconBtn(
-                          icon: Theme.of(context).brightness == Brightness.dark
-                              ? Icons.light_mode_outlined
-                              : Icons.dark_mode_outlined,
-                          tooltip: "Toggle theme",
-                          onPressed: () => ThemeScope.of(context).toggle(),
-                        ),
-                        _badgeIconButton(
-                          icon: Icons.notifications_none,
-                          count: state.notificationsstate.totalunread,
-                          onPressed: () => context.push('/notifications'),
-                        ),
-                        const SizedBox(width: 4),
-                        // Logout moved into the user menu (opened from the
-                        // bottom-nav menu button) - this now shows whichever
-                        // entity is currently active (yourself, or a page
-                        // you've switched to). Tapping it goes to that same
-                        // active entity's own profile - the personal Profile
-                        // tab normally, or the switched-to page's read-only
-                        // profile screen while acting as it. The menu's own
-                        // "Profile" row (user_menu_popover.dart) mirrors this
-                        // exact same entity-aware target.
-                        InkWell(
-                          onTap: () {
-                            final user = state.userAuth.user;
-                            if (user.isActingAsEntity) {
-                              context.push(
-                                  '/realm/${user.activeEntity?.slug ?? user.activeEntity?.id}');
-                            } else {
-                              widget.navigationShell.goBranch(3);
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(CLRadii.pill),
-                          child: CLAvatar(
-                            id: state.userAuth.user.activeAvatarSeed,
-                            name: state.userAuth.user.activeDisplayName,
-                            src: state.userAuth.user.activeAvatarSrc,
-                            size: 34,
-                          ),
+                        Text(_tabTitles[widget.navigationShell.currentIndex],
+                            style: TextStyle(
+                                color: p.text,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800)),
+                        Row(
+                          children: [
+                            CLIconBtn(
+                              icon: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? Icons.light_mode_outlined
+                                  : Icons.dark_mode_outlined,
+                              tooltip: "Toggle theme",
+                              onPressed: () => ThemeScope.of(context).toggle(),
+                            ),
+                            _badgeIconButton(
+                              icon: Icons.notifications_none,
+                              count: state.notificationsstate.totalunread,
+                              onPressed: () => context.push('/notifications'),
+                            ),
+                            const SizedBox(width: 4),
+                            // Logout moved into the user menu (opened from the
+                            // bottom-nav menu button) - this now shows whichever
+                            // entity is currently active (yourself, or a page
+                            // you've switched to). Tapping it goes to that same
+                            // active entity's own profile - the personal Profile
+                            // tab normally, or the switched-to page's read-only
+                            // profile screen while acting as it. The menu's own
+                            // "Profile" row (user_menu_popover.dart) mirrors this
+                            // exact same entity-aware target.
+                            InkWell(
+                              onTap: () {
+                                final user = state.userAuth.user;
+                                if (user.isActingAsEntity) {
+                                  context.push(
+                                      '/realm/${user.activeEntity?.slug ?? user.activeEntity?.id}');
+                                } else {
+                                  widget.navigationShell.goBranch(3);
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(CLRadii.pill),
+                              child: CLAvatar(
+                                id: state.userAuth.user.activeAvatarSeed,
+                                name: state.userAuth.user.activeDisplayName,
+                                src: state.userAuth.user.activeAvatarSrc,
+                                size: 34,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            Expanded(
-              child: AnimatedSlide(
-                offset: _tabSlide,
-                duration: _tabSlideDur,
-                curve: Curves.easeOutCubic,
-                child: widget.navigationShell,
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                  color: p.surface,
-                  border: Border(top: BorderSide(color: p.border))),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: SafeArea(
-                top: false,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _badgeNavButton(
-                        Icons.chat_bubble_outline,
-                        widget.navigationShell.currentIndex == 0,
-                        unreadTotal,
-                        () => widget.navigationShell.goBranch(0)),
-                    _navButton(
-                        Icons.contacts_outlined,
-                        widget.navigationShell.currentIndex == 1,
-                        () => widget.navigationShell.goBranch(1)),
-                    _navButton(
-                        Icons.search,
-                        widget.navigationShell.currentIndex == 2,
-                        () => widget.navigationShell.goBranch(2)),
-                    _navButton(
-                        Icons.menu,
-                        widget.navigationShell.currentIndex == 3,
-                        () => showUserMenuPopover(context,
-                            anchorKey: _profileButtonKey,
-                            onOpenProfile: () =>
-                                widget.navigationShell.goBranch(3),
-                            onLogout: () => _logout(context)),
-                        buttonKey: _profileButtonKey),
-                  ],
+                Expanded(
+                  child: AnimatedSlide(
+                    offset: _tabSlide,
+                    duration: _tabSlideDur,
+                    curve: Curves.easeOutCubic,
+                    child: widget.navigationShell,
+                  ),
                 ),
-              ),
+                Container(
+                  decoration: BoxDecoration(
+                      color: p.surface,
+                      border: Border(top: BorderSide(color: p.border))),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: SafeArea(
+                    top: false,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _badgeNavButton(
+                            Icons.chat_bubble_outline,
+                            widget.navigationShell.currentIndex == 0,
+                            unreadTotal,
+                            () => widget.navigationShell.goBranch(0)),
+                        _navButton(
+                            Icons.contacts_outlined,
+                            widget.navigationShell.currentIndex == 1,
+                            () => widget.navigationShell.goBranch(1)),
+                        _navButton(
+                            Icons.search,
+                            widget.navigationShell.currentIndex == 2,
+                            () => widget.navigationShell.goBranch(2)),
+                        _navButton(
+                            Icons.menu,
+                            widget.navigationShell.currentIndex == 3,
+                            () => showUserMenuPopover(context,
+                                anchorKey: _profileButtonKey,
+                                onOpenProfile: () =>
+                                    widget.navigationShell.goBranch(3),
+                                onLogout: () => _logout(context)),
+                            buttonKey: _profileButtonKey),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      );
-    }, converter: (store) => (
-          messages: store.state.messages,
-          userAuth: store.state.userAuth,
-          notificationsstate: store.state.notificationsstate,
-        ));
+          );
+        },
+        converter: (store) => (
+              messages: store.state.messages,
+              userAuth: store.state.userAuth,
+              notificationsstate: store.state.notificationsstate,
+            ));
   }
 
   Widget _navButton(IconData icon, bool active, VoidCallback onPressed,

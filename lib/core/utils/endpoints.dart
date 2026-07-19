@@ -10,6 +10,13 @@ class Endpoints {
   String jwtChecker = '/auth/jwtchecker';
   String login = '/api/user/auth';
 
+  /// Explicit logout (Node, jwtchecker-gated GET). Nulls this device's FCM
+  /// push token on the session so it stops being a push target; reads
+  /// deviceToken/entity from the auth token, so no body. status=false is set
+  /// separately when the SSE closes. MUST be called while still authenticated
+  /// (before the local token is cleared).
+  String logout = '/u/logout';
+
   /// Third-party (Google) auth - takes a Google ID token and logs the user
   /// in, auto-creating the account on first use. Same response shape as
   /// `login` (result: {authtoken, usertoken, allowed_modules, ...}). Mirrors

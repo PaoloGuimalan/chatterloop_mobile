@@ -1,5 +1,8 @@
 plugins {
     id "com.android.application"
+    // START: FlutterFire Configuration
+    id 'com.google.gms.google-services'
+    // END: FlutterFire Configuration
     id "kotlin-android"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
@@ -18,10 +21,15 @@ android {
 
     dependencies {
         implementation "com.google.android.material:material:1.13.0-alpha08"
+        // flutter_local_notifications 19.x uses java.time APIs that require
+        // core library desugaring to run on the app's minSdk (23).
+        coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"
     }
 
 
     compileOptions {
+        // Enables the desugared java.time backport used above.
+        coreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }

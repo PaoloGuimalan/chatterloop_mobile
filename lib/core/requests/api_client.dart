@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:chatterloop_app/core/configs/keys.dart';
+import 'package:chatterloop_app/core/notifications/fcm_token_holder.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/utils/device_token.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
@@ -54,6 +55,14 @@ class ApiClient {
         options.headers['X-Nonce'] = await _buildNonce(_userIdFromToken(token));
         if (token != null && token.isNotEmpty) {
           options.headers['x-access-token'] = token;
+        }
+        // FCM registration token (null until PushNotificationService fetches
+        // it). The server's jwtchecker reads this header and upserts it onto
+        // the current device session, so the token is registered/refreshed on
+        // ordinary authenticated requests - no dedicated endpoint needed.
+        final fcmToken = fcmTokenForHeader;
+        if (fcmToken != null && fcmToken.isNotEmpty) {
+          options.headers['fcm-token'] = fcmToken;
         }
         handler.next(options);
       },

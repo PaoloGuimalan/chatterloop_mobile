@@ -31,6 +31,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- FCM: the channel a background/killed "notification" message is
+             posted to by the system. Matches PushNotificationService's local
+             notifications channel id so foreground (app-shown) and background
+             (OS-shown) notifications land in the same, high-importance channel. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="chatterloop_messages" />
     </application>
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- record's AudioRecorder needs this to capture voice messages. -->
@@ -41,6 +48,12 @@
          permission_handler dependency is needed - this manifest
          declaration is only what makes that runtime request possible. -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- FCM push notifications: Android 13+ (API 33) requires this runtime
+         permission to DISPLAY notifications. Requested at runtime by
+         PushNotificationService.requestPermission(); it's a no-op / auto-
+         granted on Android 12 and below. Registration works without it -
+         only display is gated. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
