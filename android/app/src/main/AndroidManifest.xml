@@ -38,6 +38,14 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="chatterloop_messages" />
+        <!-- Status-bar icon for OS-shown notifications. Without this the FCM
+             SDK falls back to the app's launcher icon, which Android masks to
+             its alpha channel and renders as a solid white blob. Same drawable
+             the app-shown notifications use (NotificationRenderer._smallIcon)
+             so both paths look identical. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_chatterloop" />
     </application>
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- record's AudioRecorder needs this to capture voice messages. -->

@@ -19,6 +19,7 @@ import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/user_menu_popover.dart';
+import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
@@ -179,6 +180,10 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
         DispatchModel(resetAppStateT, UserAuth(false, UserAccount.empty)));
     SseConnection().closeConnection();
     await ApiClient.instance.clearToken();
+    // Clear the tray and every stored push thread - notifications outlive the
+    // session, so without this the next account to log in on this device would
+    // see the previous one's messages sitting in the notification shade.
+    await NotificationRenderer.dismissAll();
     if (context.mounted) context.go('/login');
   }
 

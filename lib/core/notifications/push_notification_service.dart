@@ -3,22 +3,27 @@
 // jwtchecker reads, and calling admin.messaging() for offline devices). This
 // service owns the CLIENT side:
 //
-//  1. Keeps the current FCM registration token cached in [cachedToken] so
-//     ApiClient's request interceptor can attach it as the `fcm-token` header
-//     on every authenticated request - that header is how the token gets
-//     registered/refreshed server-side (no dedicated endpoint needed).
+//  1. Keeps the current FCM registration token cached in [fcmTokenForHeader]
+//     so ApiClient's request interceptor can attach it as the `fcm-token`
+//     header on every authenticated request - that header is how the token
+//     gets registered/refreshed server-side (no dedicated endpoint needed).
 //  2. Requests the notification permission (Android 13+ POST_NOTIFICATIONS).
-//  3. Displays FOREGROUND messages as a system notification - FCM only
-//     auto-displays when the app is backgrounded/killed, never in foreground.
+//  3. Renders FOREGROUND messages, delegating to [NotificationRenderer] so
+//     they look identical to the ones the background isolate draws.
 //  4. Routes a notification tap to the right conversation via go_router.
 //
 // It deliberately makes NO API calls itself: registration is header-driven, so
 // there's nothing to POST here. It just keeps the token current and handles
 // display + taps.
+//
+// The tray LAYOUT lives in notification_renderer.dart, and the payload the
+// backend must send is documented in push_payload.dart.
 
 import 'dart:convert';
 
 import 'package:chatterloop_app/core/notifications/fcm_token_holder.dart';
+import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
+import 'package:chatterloop_app/core/notifications/push_payload.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -28,16 +33,9 @@ class PushNotificationService {
   PushNotificationService._();
   static final PushNotificationService instance = PushNotificationService._();
 
-  /// The message-notification channel. Its id MUST match the
-  /// `default_notification_channel_id` meta-data in AndroidManifest.xml so
-  /// that OS-shown (background/killed) and app-shown (foreground) notifications
-  /// land in the same channel.
-  static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
-    'chatterloop_messages',
-    'Messages',
-    description: 'New message and chat notifications',
-    importance: Importance.high,
-  );
+  /// Long enough for the router and auth resolution to settle before a
+  /// cold-start tap tries to navigate.
+  static const Duration _coldStartNavDelay = Duration(milliseconds: 800);
 
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _local =
@@ -61,19 +59,16 @@ class PushNotificationService {
     fcmTokenForHeader = await _safeGetToken();
     _fcm.onTokenRefresh.listen((token) => fcmTokenForHeader = token);
 
-    // Foreground: FCM does not display anything itself - we post it.
+    // Foreground: nothing displays a message for us, in either payload style.
     FirebaseMessaging.onMessage.listen(_showForeground);
 
-    // Tap while the app is backgrounded.
+    // Tap while the app is backgrounded. Only fires for OS-displayed
+    // (`notification`-block) pushes; taps on the notifications WE draw arrive
+    // through the local-notifications callback wired up in
+    // _initLocalNotifications instead.
     FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteTap);
 
-    // Tap that cold-launched the app from a killed state. Delay so the router
-    // and auth have a beat to settle before we navigate.
-    final initial = await _fcm.getInitialMessage();
-    if (initial != null) {
-      Future.delayed(
-          const Duration(milliseconds: 800), () => _handleRemoteTap(initial));
-    }
+    await _handleColdStartTap();
   }
 
   /// Requests the notification permission. On Android 13+ this shows the
@@ -101,10 +96,10 @@ class PushNotificationService {
   }
 
   Future<void> _initLocalNotifications() async {
-    const androidInit =
-        AndroidInitializationSettings('@mipmap/launcher_icon');
     await _local.initialize(
-      const InitializationSettings(android: androidInit),
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@drawable/ic_stat_chatterloop'),
+      ),
       onDidReceiveNotificationResponse: (resp) {
         final payload = resp.payload;
         if (payload != null && payload.isNotEmpty) {
@@ -112,50 +107,94 @@ class PushNotificationService {
         }
       },
     );
-    await _local
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_channel);
+
+    // Both channels up front, so they exist in system settings from first
+    // launch rather than only appearing after the first notification of each
+    // kind arrives.
+    await NotificationRenderer.createChannels(_local);
+
+    // The plugin is a singleton, so the renderer would otherwise re-initialize
+    // it on its first foreground render and drop the tap callback above.
+    NotificationRenderer.markInitialized();
   }
 
-  void _showForeground(RemoteMessage message) {
-    final notification = message.notification;
-    // Data-only messages carry no title/body to render here; they're handled
-    // by their own logic (or, in background/killed, by the OS). Nothing to
-    // show for a foreground data-only message unless we choose to.
-    if (notification == null) return;
+  /// A tap that cold-launched the app. Two separate sources, because the two
+  /// payload styles are displayed by different components:
+  ///
+  ///  - notifications WE drew (data-only pushes, the normal case) come back
+  ///    through the local-notifications plugin's launch details;
+  ///  - notifications the OS drew (`notification`-block pushes) come back
+  ///    through FCM's initial message.
+  ///
+  /// Checking only the FCM side - as this did before the renderer existed -
+  /// silently drops every cold-start tap on a threaded chat notification.
+  Future<void> _handleColdStartTap() async {
+    try {
+      final launch = await _local.getNotificationAppLaunchDetails();
+      final payload = launch?.notificationResponse?.payload;
+      if ((launch?.didNotificationLaunchApp ?? false) &&
+          payload != null &&
+          payload.isNotEmpty) {
+        _navigateAfterColdStart(_decode(payload));
+        return;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FCM] launch details failed: $e');
+    }
 
-    _local.show(
-      notification.hashCode,
-      notification.title,
-      notification.body,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channel.id,
-          _channel.name,
-          channelDescription: _channel.description,
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/launcher_icon',
-        ),
-      ),
-      payload: jsonEncode(message.data),
-    );
+    final initial = await _fcm.getInitialMessage();
+    if (initial != null) _navigateAfterColdStart(initial.data);
+  }
+
+  void _navigateAfterColdStart(Map<String, dynamic> data) {
+    Future.delayed(_coldStartNavDelay, () => _navigateFromData(data));
+  }
+
+  /// Foreground messages are never displayed by FCM in either payload style,
+  /// so we always draw them - through the same renderer the background isolate
+  /// uses, so an open app and a killed one produce an identical tray entry.
+  void _showForeground(RemoteMessage message) {
+    final data = Map<String, dynamic>.from(message.data);
+
+    // Tolerate a `notification`-block push by folding its text into the data
+    // map as fallbacks. Chat pushes should be data-only (see push_payload.dart)
+    // but this keeps a transitional or non-conforming payload displayable
+    // rather than silently dropped.
+    final notification = message.notification;
+    if (notification != null) {
+      data.putIfAbsent('title', () => notification.title ?? '');
+      data.putIfAbsent('body', () => notification.body ?? '');
+    }
+
+    if (data.isEmpty) return;
+    NotificationRenderer.render(data);
   }
 
   void _handleRemoteTap(RemoteMessage message) =>
       _navigateFromData(message.data);
 
-  /// Deep-links to the conversation named in the push's data payload. The
-  /// backend should include `conversationId` in the FCM `data` block for
-  /// message pushes; other push types can be routed here later by adding
-  /// cases. No-ops if there's nothing to route to.
+  /// Deep-links to whatever the push points at, in priority order:
+  ///
+  ///  1. a message push -> its conversation;
+  ///  2. an explicit, allowlisted `route` -> there;
+  ///  3. anything else -> the notifications screen.
+  ///
+  /// That last fallback is what lets the backend add new notification types
+  /// without a mobile release: an unrecognised type still lands somewhere
+  /// useful instead of doing nothing when tapped.
   void _navigateFromData(Map<String, dynamic> data) {
-    final conversationId =
-        (data['conversationId'] ?? data['conversationID'])?.toString();
-    if (conversationId != null && conversationId.isNotEmpty) {
+    final payload = PushPayload.fromData(data);
+
+    if (payload.isMessage) {
+      final conversationId = payload.conversationId!;
+      // Opening the thread makes its tray entry stale - drop both the row and
+      // the stored history so the next push starts a fresh thread.
+      NotificationRenderer.dismissConversation(conversationId);
       appRouter.push('/conversation/$conversationId');
+      return;
     }
+
+    appRouter.push(payload.safeRoute ?? '/notifications');
   }
 
   Map<String, dynamic> _decode(String source) {

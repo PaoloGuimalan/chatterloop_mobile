@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
@@ -160,6 +161,11 @@ class ConversationStateView extends State<ConversationView> {
     // latter calls dependOnInheritedWidgetOfExactType, which asserts if
     // used before initState() completes.
     _myAccountId = appStore.state.userAuth.user.entityId;
+    // Reading the thread makes its tray entry stale: drop the notification and
+    // the stored push history so a later message starts a fresh thread instead
+    // of redrawing messages that have already been seen. Covers opening the
+    // conversation normally - the notification-tap path clears it too.
+    NotificationRenderer.dismissConversation(widget.conversationId);
     combinedPendingAndMessagesList = [
       ...conversationContentList,
       ...pendingMessagesList

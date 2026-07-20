@@ -2,9 +2,12 @@ import 'package:chatterloop_app/core/auth/auth_controller.dart';
 import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/notifications/push_notification_service.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
+import 'dart:ui' show DartPluginRegistrant;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:flutter/services.dart';
@@ -17,9 +20,17 @@ import 'firebase_options.dart';
 @pragma(
     'vm:entry-point') // Required for background handlers in newer Flutter versions
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Initialize Firebase inside the background process
+  // This runs in its OWN isolate, spawned cold for every push: nothing set up
+  // in main() exists here - no Redux store, no router, and crucially no
+  // registered plugins. Both lines below are prerequisites for touching any
+  // plugin (local notifications, shared_preferences, path_provider) at all.
+  DartPluginRegistrant.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint("Handling a background message: ${message.messageId}");
+
+  // Data-only pushes are never displayed by the OS - that's precisely why the
+  // backend sends them that way (see push_payload.dart): it hands us the
+  // chance to draw the threaded, per-conversation tray layout ourselves.
+  await NotificationRenderer.render(message.data);
 }
 
 void main() async {
