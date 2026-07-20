@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "chatterloop_app" "\0"
+            VALUE "CompanyName", "com.chatterloop" "\0"
+            VALUE "FileDescription", "chatterloop" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "chatterloop_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2024 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "chatterloop_app.exe" "\0"
-            VALUE "ProductName", "chatterloop_app" "\0"
+            VALUE "InternalName", "chatterloop" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2024 com.chatterloop. All rights reserved." "\0"
+            VALUE "OriginalFilename", "chatterloop.exe" "\0"
+            VALUE "ProductName", "chatterloop" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

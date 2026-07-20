@@ -15,7 +15,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.example.chatterloop_app"
+    namespace = "com.chatterloop.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -40,14 +40,14 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.chatterloop_app"
+        applicationId "com.chatterloop.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // record_android requires minSdk 23 (Android 6.0) - bumped from
         // Flutter's own default (flutter.minSdkVersion, 21) per its own
         // manifest-merger error/suggested fix. Drops support for
         // Android 5.0/5.1 devices, which are vanishingly rare at this point.
-        minSdk = 23
+        minSdkVersion = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

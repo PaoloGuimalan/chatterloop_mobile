@@ -52,30 +52,28 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyD95H8bjinI_e1GLY4m7F0DMnaZeRCu8zE',
-    appId: '1:242618599501:android:10f13c71ed4733df007404',
+    appId: '1:242618599501:android:bdc971551cf30889007404',
     messagingSenderId: '242618599501',
     projectId: 'chatterloop',
     storageBucket: 'chatterloop.appspot.com',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBDgZM5U5ulWTw1FCuw2NnRnEFJCL49Tp8',
-    appId: '1:242618599501:ios:04ce189047af9747007404',
+    appId: '1:242618599501:ios:d6ec9fd755c51bc0007404',
     messagingSenderId: '242618599501',
     projectId: 'chatterloop',
     storageBucket: 'chatterloop.appspot.com',
     androidClientId: '242618599501-di8d5il7kdreifnkg6l6r0tbuc88t9se.apps.googleusercontent.com',
-    iosBundleId: 'com.example.chatterloopApp',
+    iosBundleId: 'com.chatterloop.app',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyBDgZM5U5ulWTw1FCuw2NnRnEFJCL49Tp8',
-    appId: '1:242618599501:ios:04ce189047af9747007404',
+    appId: '1:242618599501:ios:d6ec9fd755c51bc0007404',
     messagingSenderId: '242618599501',
     projectId: 'chatterloop',
     storageBucket: 'chatterloop.appspot.com',
     androidClientId: '242618599501-di8d5il7kdreifnkg6l6r0tbuc88t9se.apps.googleusercontent.com',
-    iosBundleId: 'com.example.chatterloopApp',
+    iosBundleId: 'com.chatterloop.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

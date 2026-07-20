@@ -7,6 +7,35 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:242618599501:android:bdc971551cf30889007404",
+        "android_client_info": {
+          "package_name": "com.chatterloop.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "242618599501-5o60a3bkftaohvae95ltuu4asb2vo1ab.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD95H8bjinI_e1GLY4m7F0DMnaZeRCu8zE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "242618599501-5o60a3bkftaohvae95ltuu4asb2vo1ab.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:242618599501:android:10f13c71ed4733df007404",
         "android_client_info": {
           "package_name": "com.example.chatterloop_app"
