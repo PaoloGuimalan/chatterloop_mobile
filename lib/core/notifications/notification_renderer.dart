@@ -29,9 +29,32 @@ class NotificationRenderer {
   /// `notification`-block push, the OS posts it to the manifest's channel -
   /// a mismatch would split chat notifications across two channels with
   /// separate user-visible settings.
-  static const String channelId = 'chatterloop_messages';
+  /// Suffixed `_v2` because a channel's sound, importance and vibration are
+  /// locked in at CREATION - Android deliberately ignores later edits so an app
+  /// can't undo a user's own settings. The v1 channels already exist on every
+  /// installed device with the default system sound, so giving them the
+  /// Chatterloop tones requires new ids. Bump this again for any future change
+  /// to a channel's sound or importance, and add the retired id to
+  /// [_legacyChannelIds] so it stops cluttering the user's settings screen.
+  static const String channelId = 'chatterloop_messages_v2';
   static const String channelName = 'Messages';
   static const String channelDescription = 'New message and chat notifications';
+
+  /// res/raw/message_alert.mp3 - the same tone the webapp plays for an
+  /// incoming message, so both clients sound like one product. Referenced
+  /// WITHOUT its extension, which is how Android resource names work.
+  static const String _messageSound = 'message_alert';
+
+  /// res/raw/notification_alert.mp3 - the webapp's generic activity tone.
+  static const String _activitySound = 'notification_alert';
+
+  /// Channels replaced by a newer id. Deleted on startup, otherwise Android
+  /// keeps showing them in the app's notification settings forever - the user
+  /// would see two "Messages" entries, only one of which does anything.
+  static const List<String> _legacyChannelIds = <String>[
+    'chatterloop_messages',
+    'chatterloop_activity',
+  ];
 
   /// Everything that isn't a chat message - contact requests, accepts, pokes,
   /// reactions, comments, mentions - shares one quieter channel.
@@ -40,7 +63,7 @@ class NotificationRenderer {
   /// individually in system settings, so this lets someone silence activity
   /// while keeping messages loud. One combined channel would take that choice
   /// away, and the usual result is people muting the app entirely.
-  static const String activityChannelId = 'chatterloop_activity';
+  static const String activityChannelId = 'chatterloop_activity_v2';
   static const String activityChannelName = 'Activity';
   static const String activityChannelDescription =
       'Contact requests, reactions, mentions and other activity';
@@ -191,6 +214,9 @@ class NotificationRenderer {
           priority: Priority.high,
           icon: _smallIcon,
           groupKey: _groupKey,
+          // Redundant on Android 8+ (the channel's sound wins) but it's what
+          // actually plays on 7 and below, where channels don't exist.
+          sound: const RawResourceAndroidNotificationSound(_messageSound),
           styleInformation: style,
           category: AndroidNotificationCategory.message,
           when: payload.sentAt.millisecondsSinceEpoch,
@@ -231,6 +257,7 @@ class NotificationRenderer {
           priority: Priority.defaultPriority,
           icon: _smallIcon,
           groupKey: _activityGroupKey,
+          sound: const RawResourceAndroidNotificationSound(_activitySound),
           // Lets a longer body expand instead of being ellipsised on one line.
           styleInformation: BigTextStyleInformation(payload.body),
         ),
@@ -271,12 +298,17 @@ class NotificationRenderer {
         AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return;
 
+    for (final legacy in _legacyChannelIds) {
+      await android.deleteNotificationChannel(legacy);
+    }
+
     await android.createNotificationChannel(
       const AndroidNotificationChannel(
         channelId,
         channelName,
         description: channelDescription,
         importance: Importance.high,
+        sound: RawResourceAndroidNotificationSound(_messageSound),
       ),
     );
     await android.createNotificationChannel(
@@ -285,6 +317,7 @@ class NotificationRenderer {
         activityChannelName,
         description: activityChannelDescription,
         importance: Importance.defaultImportance,
+        sound: RawResourceAndroidNotificationSound(_activitySound),
       ),
     );
   }

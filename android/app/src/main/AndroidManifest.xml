@@ -37,7 +37,7 @@
              (OS-shown) notifications land in the same, high-importance channel. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="chatterloop_messages" />
+            android:value="chatterloop_messages_v2" />
         <!-- Status-bar icon for OS-shown notifications. Without this the FCM
              SDK falls back to the app's launcher icon, which Android masks to
              its alpha channel and renders as a solid white blob. Same drawable

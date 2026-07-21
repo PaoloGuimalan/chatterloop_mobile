@@ -1,21 +1,35 @@
 <!--
-  Status-bar (small) notification icon.
+  Status-bar (small) notification icon: the Chatterloop converging-arrows mark.
 
   Android masks this to its ALPHA CHANNEL and paints the result in the system
-  accent colour - any colour information is discarded. A full-colour launcher
-  icon used here renders as a featureless white blob, which is why this exists
-  as a separate flat white silhouette on a transparent background.
+  accent colour - all colour information is discarded. That's why this is a
+  flat white silhouette on transparency, and why the brand's blue/grey split
+  can't survive here: all four arrows render as one colour regardless.
 
-  Placeholder speech bubble; swap the pathData for the Chatterloop mark when
-  a monochrome version is available. Keep it 24dp with generous padding -
-  shapes that reach the edges get visually clipped on some OEM skins.
+  Simplified from assets/images/chatterloop.png in two ways, both deliberate
+  for a mark that renders around 24dp in a status bar: the four arms are made
+  symmetric (the source has a shorter left arm), and the corner rounding is
+  dropped, since neither survives at this size and both cost legibility.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- top arm, pointing down toward centre -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M20,3H4C2.9,3 2,3.9 2,5v11c0,1.1 0.9,2 2,2h3v3.5L11.5,18H20c1.1,0 2,-0.9 2,-2V5C22,3.9 21.1,3 20,3zM7,9h10v1.6H7V9zM13.6,13.4H7v-1.6h6.6V13.4zM17,7.7H7V6.1h10V7.7z" />
+        android:pathData="M9.8,2 L14.2,2 L14.2,6.8 L16.4,6.8 L12,10.6 L7.6,6.8 L9.8,6.8 Z" />
+    <!-- bottom arm, pointing up -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9.8,22 L14.2,22 L14.2,17.2 L16.4,17.2 L12,13.4 L7.6,17.2 L9.8,17.2 Z" />
+    <!-- left arm, pointing right -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M2,9.8 L2,14.2 L6.8,14.2 L6.8,16.4 L10.6,12 L6.8,7.6 L6.8,9.8 Z" />
+    <!-- right arm, pointing left -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M22,9.8 L22,14.2 L17.2,14.2 L17.2,16.4 L13.4,12 L17.2,7.6 L17.2,9.8 Z" />
 </vector>
