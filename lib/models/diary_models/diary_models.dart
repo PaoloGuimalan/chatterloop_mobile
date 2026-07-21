@@ -112,17 +112,25 @@ class DiaryAttachment {
   final String? fileType;
   final DateTime? createdAt;
 
-  bool get isImage {
-    final type = (fileType ?? "").toLowerCase();
-    if (type.contains("image")) return true;
-    // file_type isn't always a MIME type - fall back to the extension.
-    final lower = url.toLowerCase();
-    return lower.endsWith(".jpg") ||
-        lower.endsWith(".jpeg") ||
-        lower.endsWith(".png") ||
-        lower.endsWith(".gif") ||
-        lower.endsWith(".webp");
+  /// file_type is whatever the upload endpoint recorded - sometimes a MIME
+  /// type, sometimes a bare word like "image" - so every check falls back to
+  /// the URL's extension rather than trusting it alone.
+  bool _matches(String keyword, RegExp extensions) {
+    if ((fileType ?? "").toLowerCase().contains(keyword)) return true;
+    // Strip any query string before testing: signed CDN URLs routinely end in
+    // "?AWSAccessKeyId=..." rather than the extension.
+    final path = url.toLowerCase().split('?').first;
+    return extensions.hasMatch(path);
   }
+
+  bool get isImage =>
+      _matches('image', RegExp(r'\.(jpe?g|png|gif|webp|bmp|heic)$'));
+
+  bool get isVideo =>
+      _matches('video', RegExp(r'\.(mp4|mov|m4v|avi|mkv|webm|3gp)$'));
+
+  bool get isAudio =>
+      _matches('audio', RegExp(r'\.(mp3|wav|m4a|aac|ogg|opus|flac)$'));
 
   factory DiaryAttachment.fromJson(Map<String, dynamic> json) =>
       DiaryAttachment(

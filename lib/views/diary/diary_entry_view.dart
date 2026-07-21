@@ -7,6 +7,8 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
+import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:flutter/material.dart';
@@ -187,44 +189,91 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
             const SizedBox(height: 10),
             ...entry.attachments.map((a) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: a.isImage
-                      ? CLNetworkImage(
-                          src: a.url,
-                          width: double.infinity,
-                          borderRadius: BorderRadius.circular(CLRadii.sm),
-                        )
-                      // Non-images have no useful preview, so they get a row
-                      // that opens them externally instead.
-                      : InkWell(
-                          onTap: () {
-                            final uri = Uri.tryParse(a.url);
-                            if (uri != null) {
-                              launchUrl(uri,
-                                  mode: LaunchMode.externalApplication);
-                            }
-                          },
-                          child: Row(
-                            children: [
-                              Icon(Icons.insert_drive_file_outlined,
-                                  size: 18, color: p.text2),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  a.fileName ?? "Attachment",
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style:
-                                      TextStyle(color: p.text, fontSize: 13),
-                                ),
-                              ),
-                              Icon(Icons.open_in_new, size: 15, color: p.text3),
-                            ],
-                          ),
-                        ),
+                  child: _attachment(a, p),
                 )),
           ],
         ),
       );
+
+  /// Renders an attachment as whatever it actually is: images are shown,
+  /// audio and video get real players, and anything else falls back to a row
+  /// that hands the URL to the OS.
+  ///
+  /// Both players are the ones already used for message media
+  /// (voice_message_player.dart, post_video_widget.dart) rather than new ones,
+  /// so diary media behaves exactly like media in a conversation.
+  Widget _attachment(DiaryAttachment a, CLPalette p) {
+    if (a.isImage) {
+      return CLNetworkImage(
+        src: a.url,
+        width: double.infinity,
+        borderRadius: BorderRadius.circular(CLRadii.sm),
+      );
+    }
+
+    if (a.isVideo) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(CLRadii.sm),
+        child: VideoPlayerScreen(videoUrl: a.url),
+      );
+    }
+
+    if (a.isAudio) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: p.surface2,
+          borderRadius: BorderRadius.circular(CLRadii.sm),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // isSender only picks the player's colour scheme; the diary has no
+            // sender/receiver distinction, so it uses the received styling.
+            VoiceMessagePlayer(src: a.url, isSender: false),
+            if (a.fileName != null && a.fileName!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 4),
+                child: Text(a.fileName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: p.text3, fontSize: 11.5)),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(CLRadii.sm),
+      onTap: () {
+        final uri = Uri.tryParse(a.url);
+        if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: p.surface2,
+          borderRadius: BorderRadius.circular(CLRadii.sm),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.insert_drive_file_outlined, size: 18, color: p.text2),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                a.fileName ?? "Attachment",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: p.text, fontSize: 13),
+              ),
+            ),
+            Icon(Icons.download_outlined, size: 17, color: p.text3),
+          ],
+        ),
+      ),
+    );
+  }
 
   String _formatDate(DateTime date) {
     const months = [

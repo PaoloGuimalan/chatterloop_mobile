@@ -11,6 +11,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
+import 'package:chatterloop_app/views/diary/widgets/mood_picker_sheet.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
@@ -45,7 +46,6 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   bool _isPrivate = true;
   bool _isSaving = false;
 
-  List<Mood> _moods = [];
   Mood? _selectedMood;
 
   final List<DiaryTag> _selectedTags = [];
@@ -61,7 +61,15 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMoods();
+  }
+
+  /// Moods are paged in by the picker itself, so nothing is fetched until it's
+  /// opened - the compose screen doesn't pay for a list the user may never
+  /// look at.
+  Future<void> _pickMood() async {
+    final choice = await showMoodPickerSheet(context, selected: _selectedMood);
+    if (choice == null || !mounted) return;
+    setState(() => _selectedMood = choice.mood);
   }
 
   @override
@@ -71,12 +79,6 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     _title.dispose();
     _tagInput.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadMoods() async {
-    final moods = await DiaryApi().getMoods();
-    if (!mounted) return;
-    setState(() => _moods = moods);
   }
 
   Future<void> _searchTags(String query) async {
@@ -359,33 +361,55 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
         ),
       );
 
+  /// A full-width field that opens the paginated picker, matching webapp's
+  /// "Select Mood" async select rather than rendering every mood inline.
   Widget _moodPicker(CLPalette p) => CLCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(width: double.infinity),
             Text("Mood",
                 style: TextStyle(
                     color: p.text2, fontSize: 12, fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
-            if (_moods.isEmpty)
-              Text("No moods available",
-                  style: TextStyle(color: p.text3, fontSize: 12.5))
-            else
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: _moods.map((mood) {
-                  final active = _selectedMood?.id == mood.id;
-                  return CLChip(
-                    label: "${mood.emoji} ${mood.name}",
-                    active: active,
-                    // Tapping the active mood clears it - mood is optional
-                    // server-side, and there'd otherwise be no way to unset it.
-                    onTap: () => setState(
-                        () => _selectedMood = active ? null : mood),
-                  );
-                }).toList(),
+            InkWell(
+              borderRadius: BorderRadius.circular(CLRadii.sm),
+              onTap: _pickMood,
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: p.surface2,
+                  border: Border.all(color: p.border2),
+                  borderRadius: BorderRadius.circular(CLRadii.sm),
+                ),
+                child: Row(
+                  children: [
+                    if (_selectedMood != null) ...[
+                      Text(_selectedMood!.emoji,
+                          style: const TextStyle(fontSize: 17)),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Text(
+                        _selectedMood?.name ?? "Select Mood",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _selectedMood == null ? p.text3 : p.text,
+                          fontSize: 14,
+                          fontWeight: _selectedMood == null
+                              ? FontWeight.w400
+                              : FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.expand_more, size: 20, color: p.text3),
+                  ],
+                ),
               ),
+            ),
           ],
         ),
       );

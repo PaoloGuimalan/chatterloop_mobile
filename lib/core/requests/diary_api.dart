@@ -99,23 +99,24 @@ class DiaryApi {
     }
   }
 
-  /// The mood list. Small and fixed server-side, so one large page is fetched
-  /// rather than paging through it.
-  Future<List<Mood>> getMoods({int page = 1, int range = 50}) async {
+  /// One page of moods. Returns the whole page rather than a bare list so the
+  /// picker can page through it the way webapp's AsyncPaginate does, instead
+  /// of guessing at a range large enough to cover every mood.
+  Future<DiaryPage<Mood>> getMoods({int page = 1, int range = 10}) async {
     try {
       final response = await _dio.get(
         _endpoints.diaryMoods,
         queryParameters: {'page': page, 'page_size': range},
       );
       final data = response.data;
-      if (data is! Map) return const [];
+      if (data is! Map) return DiaryPage.empty<Mood>();
       return DiaryPage.fromJson<Mood>(
         Map<String, dynamic>.from(data),
         Mood.fromJson,
-      ).results;
+      );
     } catch (e) {
       if (kDebugMode) print("[diary] getMoods failed: $e");
-      return const [];
+      return DiaryPage.empty<Mood>();
     }
   }
 
