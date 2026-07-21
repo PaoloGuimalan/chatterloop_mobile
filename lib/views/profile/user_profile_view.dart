@@ -9,6 +9,7 @@ import 'package:chatterloop_app/core/requests/settings_api.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
+import 'package:chatterloop_app/views/profile/widgets/diary_card.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
@@ -511,6 +512,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      // Renders on anyone's profile - the totals endpoint is
+                      // public - but only links through on your own, since the
+                      // entries themselves are self-only.
+                      ProfileDiaryCard(
+                        username: profile!.username,
+                        isSelf: _isSelf(context),
+                      ),
+                      const SizedBox(height: 24),
                     ],
                   ),
                 ),

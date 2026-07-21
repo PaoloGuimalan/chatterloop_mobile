@@ -92,6 +92,23 @@ dependencies:
   # present transitively, so promoting it to a direct dependency adds nothing
   # to the build.
   image: ^4.8.0
+  # Rich-text diary entries. Fleather rather than flutter_quill: every
+  # flutter_quill version (10 and 11 alike) drags in quill_native_bridge_windows
+  # 0.0.2, whose only published release calls a bare `GMEM_MOVEABLE` that NO
+  # published win32 defines - 5.4/5.5 spell it GMEM_MOVABLE, 5.8+ expose it
+  # only as GLOBAL_ALLOC_FLAGS.GMEM_MOVEABLE. That breaks the ANDROID build,
+  # because Flutter's generated Dart plugin registrant imports every endorsed
+  # federated implementation regardless of the target platform.
+  #
+  # Fleather is a Quill descendant with no native bridges at all (three pure
+  # Dart packages), and parchment ships a BIDIRECTIONAL HTML codec, so entries
+  # convert both ways rather than one - which also means an edit screen stays
+  # possible if the API ever grows a PUT.
+  fleather: ^1.22.0
+  # Fleather's document model, imported directly for its HTML codec.
+  parchment: ^1.22.0
+  # Renders web-authored entry HTML on the read side.
+  flutter_widget_from_html_core: ^0.16.1
 
 dev_dependencies:
   flutter_test:
@@ -148,3 +165,4 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+

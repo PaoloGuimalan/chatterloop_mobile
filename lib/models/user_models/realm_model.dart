@@ -52,6 +52,11 @@ class RealmProfile {
   final int followersCount;
   final bool isAdmin;
 
+  /// Whether the viewing entity already follows this realm - annotated onto
+  /// the serializer alongside is_admin/is_member. Drives which of
+  /// Follow/Following the profile shows.
+  final bool isFollower;
+
   const RealmProfile({
     required this.id,
     required this.name,
@@ -62,6 +67,7 @@ class RealmProfile {
     required this.type,
     required this.followersCount,
     required this.isAdmin,
+    this.isFollower = false,
   });
 
   factory RealmProfile.fromJson(Map<String, dynamic> json) {
@@ -77,6 +83,7 @@ class RealmProfile {
           ? json["followers_count"]
           : int.tryParse(json["followers_count"]?.toString() ?? '') ?? 0,
       isAdmin: json["is_admin"] == true,
+      isFollower: json["is_follower"] == true,
     );
   }
 }

@@ -78,8 +78,8 @@ class ProfileApi {
   /// {url, mediaType, fileName} for the returned CDN reference (result[0]
   /// .fileDetails.data - confirmed by reading saveFileRecordToDatabase in
   /// server/reusables/hooks/firebaseupload.js).
-  Future<({String url, String mediaType, String fileName})?> uploadMediaRequest(
-      String filePath, String mediaType) async {
+  Future<({String url, String mediaType, String fileName, String? fileId})?>
+      uploadMediaRequest(String filePath, String mediaType) async {
     try {
       final fileName = filePath.split(RegExp(r'[\\/]')).last;
       final form = FormData.fromMap({
@@ -105,6 +105,11 @@ class ProfileApi {
         url: url,
         mediaType: (first["fileType"] ?? mediaType).toString(),
         fileName: (first["fileName"] ?? fileName).toString(),
+        // Diary attachments persist this as Attachment.file_id (see
+        // diary/models.py); the profile/cover flow ignores it. Nullable
+        // because only the diary path actually depends on it - a missing
+        // fileID shouldn't fail an avatar upload.
+        fileId: first["fileID"]?.toString(),
       );
     } catch (e) {
       if (kDebugMode) {
@@ -151,6 +156,30 @@ class ProfileApi {
       final response = await _mainDio
           .post('/posts/createpost', data: {'token': JwtCodec.sign(payload)});
       return response.data["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Follows or unfollows a realm. Same endpoint either way, distinguished by
+  /// method - POST to follow, DELETE to unfollow - matching webapp's
+  /// FollowRealmRequest / UnfollowRealmRequest.
+  Future<bool> setRealmFollowRequest({
+    required String realmId,
+    required bool follow,
+  }) async {
+    try {
+      final body = {'realm_id': realmId};
+      final response = follow
+          ? await _userDio.post(_endpoints.realmFollow, data: body)
+          : await _userDio.delete(_endpoints.realmFollow, data: body);
+      return response.data is Map
+          ? response.data["status"] != false
+          : response.statusCode == 200;
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

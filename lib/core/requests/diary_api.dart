@@ -1,0 +1,144 @@
+// Diary endpoints (Django user service). Mirrors the Diary* request helpers in
+// webapp/src/reusables/hooks/requests.ts.
+//
+// Every method swallows its errors and returns null / an empty page, matching
+// the convention in notifications_api.dart - callers render an empty or error
+// state rather than handling exceptions.
+
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/utils/endpoints.dart';
+import 'package:chatterloop_app/models/diary_models/diary_models.dart';
+import 'package:flutter/foundation.dart';
+
+class DiaryApi {
+  // userService, not instance - every diary route lives on the Django user
+  // service (userApiUrl), not the Node realtime API.
+  final _dio = ApiClient.userService.dio;
+  final _endpoints = Endpoints();
+
+  /// The signed-in account's own entries, newest first.
+  ///
+  /// There is no variant of this for another account - DiaryListView filters
+  /// on `account=request.user` unconditionally. Someone else's diary can only
+  /// ever be summarised via [getDiaryTotal].
+  Future<DiaryPage<DiaryEntry>> getEntries({int page = 1, int range = 10}) async {
+    try {
+      final response = await _dio.get(
+        _endpoints.diaryEntries,
+        queryParameters: {'page': page, 'page_size': range},
+      );
+      final data = response.data;
+      if (data is! Map) return DiaryPage.empty<DiaryEntry>();
+      return DiaryPage.fromJson<DiaryEntry>(
+        Map<String, dynamic>.from(data),
+        DiaryEntry.fromJson,
+      );
+    } catch (e) {
+      if (kDebugMode) print("[diary] getEntries failed: $e");
+      return DiaryPage.empty<DiaryEntry>();
+    }
+  }
+
+  /// One entry. Succeeds for an entry that isn't yours only when it's public.
+  Future<DiaryEntry?> getEntry(String entryId) async {
+    try {
+      final response = await _dio.get('${_endpoints.diaryEntry}$entryId/');
+      final data = response.data;
+      if (data is! Map) return null;
+      return DiaryEntry.fromJson(Map<String, dynamic>.from(data));
+    } catch (e) {
+      if (kDebugMode) print("[diary] getEntry failed: $e");
+      return null;
+    }
+  }
+
+  /// Creates an entry, returning the created row (with its resolved tags and
+  /// attachments) or null.
+  ///
+  /// [entryDate] must be `YYYY-MM-DD`: the server splits on a space and parses
+  /// with `%Y-%m-%d`, so a full ISO-8601 timestamp with a `T` separator throws.
+  /// Title and content must both be non-empty or the server answers 422.
+  Future<DiaryEntry?> createEntry({
+    required String title,
+    required String content,
+    required String entryDate,
+    required bool isPrivate,
+    Mood? mood,
+    List<DiaryTag> tags = const [],
+    List<DiaryAttachment> attachments = const [],
+  }) async {
+    try {
+      final response = await _dio.post(_endpoints.diaryEntry, data: {
+        'title': title,
+        'content': content,
+        'entry_date': entryDate,
+        'is_private': isPrivate,
+        'mood': mood?.toPayload(),
+        'tags': tags.map((t) => t.toPayload()).toList(),
+        'attachments': attachments.map((a) => a.toPayload()).toList(),
+      });
+      final data = response.data;
+      if (data is! Map) return null;
+      return DiaryEntry.fromJson(Map<String, dynamic>.from(data));
+    } catch (e) {
+      if (kDebugMode) print("[diary] createEntry failed: $e");
+      return null;
+    }
+  }
+
+  /// Public summary for [username] - works without auth and for any account.
+  Future<DiaryTotal?> getDiaryTotal(String username) async {
+    try {
+      final response = await _dio.get('${_endpoints.diaryTotal}$username/');
+      final data = response.data;
+      if (data is! Map) return null;
+      return DiaryTotal.fromJson(Map<String, dynamic>.from(data));
+    } catch (e) {
+      if (kDebugMode) print("[diary] getDiaryTotal failed: $e");
+      return null;
+    }
+  }
+
+  /// The mood list. Small and fixed server-side, so one large page is fetched
+  /// rather than paging through it.
+  Future<List<Mood>> getMoods({int page = 1, int range = 50}) async {
+    try {
+      final response = await _dio.get(
+        _endpoints.diaryMoods,
+        queryParameters: {'page': page, 'page_size': range},
+      );
+      final data = response.data;
+      if (data is! Map) return const [];
+      return DiaryPage.fromJson<Mood>(
+        Map<String, dynamic>.from(data),
+        Mood.fromJson,
+      ).results;
+    } catch (e) {
+      if (kDebugMode) print("[diary] getMoods failed: $e");
+      return const [];
+    }
+  }
+
+  /// Tag autocomplete. An empty [search] returns the general list.
+  Future<List<DiaryTag>> searchTags({
+    String search = '',
+    int page = 1,
+    int range = 10,
+  }) async {
+    try {
+      final response = await _dio.get(
+        _endpoints.diaryTags,
+        queryParameters: {'search': search, 'page': page, 'page_size': range},
+      );
+      final data = response.data;
+      if (data is! Map) return const [];
+      return DiaryPage.fromJson<DiaryTag>(
+        Map<String, dynamic>.from(data),
+        DiaryTag.fromJson,
+      ).results;
+    } catch (e) {
+      if (kDebugMode) print("[diary] searchTags failed: $e");
+      return const [];
+    }
+  }
+}

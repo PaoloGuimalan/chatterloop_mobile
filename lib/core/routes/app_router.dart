@@ -7,6 +7,9 @@ import 'package:chatterloop_app/core/auth/auth_controller.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/views/auth/login_view.dart';
+import 'package:chatterloop_app/views/diary/diary_compose_view.dart';
+import 'package:chatterloop_app/views/diary/diary_entry_view.dart';
+import 'package:chatterloop_app/views/diary/diary_list_view.dart';
 import 'package:chatterloop_app/views/auth/setup_view.dart';
 import 'package:chatterloop_app/views/calls/active_call_view.dart';
 import 'package:chatterloop_app/views/calls/incoming_call_view.dart';
@@ -236,6 +239,27 @@ GoRouter buildAppRouter(AuthController authController) {
           GoRoute(
               path: '/notifications',
               pageBuilder: (c, s) => _clPage(s, const NotificationsView())),
+          // Diary. Gated on module.diary.access, mirroring webapp's
+          // ProfileContainer.tsx: while acting as a page the module simply
+          // isn't part of that context, so the redirect goes home rather than
+          // showing a permission error - it isn't a failure, the feature just
+          // doesn't exist there.
+          GoRoute(
+            path: '/diary',
+            redirect: _diaryGuard,
+            pageBuilder: (c, s) => _clPage(s, const DiaryListScreen()),
+          ),
+          GoRoute(
+            path: '/diary/new',
+            redirect: _diaryGuard,
+            pageBuilder: (c, s) => _clPage(s, const DiaryComposeScreen()),
+          ),
+          GoRoute(
+            path: '/diary/entry/:entryId',
+            redirect: _diaryGuard,
+            pageBuilder: (c, s) => _clPage(
+                s, DiaryEntryScreen(entryId: s.pathParameters['entryId']!)),
+          ),
           GoRoute(
             path: '/user/:username',
             pageBuilder: (c, s) => _clPage(
@@ -252,4 +276,18 @@ GoRouter buildAppRouter(AuthController authController) {
   );
   _appRouter = router;
   return router;
+}
+
+/// The module that carries the diary. Absent while acting as a page/realm -
+/// entity-switch re-issues allowed_modules for the new context (see
+/// entity_api.dart), so this flips without a re-login.
+const String _diaryModule = 'module.diary.access';
+
+/// Sends the diary routes home when the current context has no diary, matching
+/// ProfileContainer.tsx's `<Navigate to="/" />` for the same case. Read from
+/// the global store rather than context: redirect runs before the route's
+/// widget exists, so there is no StoreProvider to read from yet.
+String? _diaryGuard(BuildContext context, GoRouterState state) {
+  final modules = appStore.state.userAuth.user.allowedModules;
+  return modules.contains(_diaryModule) ? null : '/messages';
 }

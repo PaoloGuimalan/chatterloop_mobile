@@ -47,6 +47,34 @@ class Endpoints {
   /// POST to submit a moderation report ({target_type, target_id, reason,
   /// description}). Used from another user's profile.
   String reports = '/api/user/reports';
+
+  // ─── Diary (Django user service) ─────────────────────────────────────────
+  // All DRF-paginated ({count, next, previous, results}) except the single
+  // entry GET. See chatterloop_services/user_service/diary/urls.py.
+
+  /// The account's OWN entries only - DiaryListView filters on
+  /// `account=request.user` with no way to request anyone else's, so this can
+  /// never back a "view someone's diary" screen. Takes ?page=&page_size=.
+  String diaryEntries = '/api/diary/entries/';
+
+  /// GET one entry by id (append `<id>/`), or POST here to create one.
+  /// The GET allows an entry that isn't yours only when is_private is false.
+  /// There is deliberately no PUT or DELETE - entries are create-and-read
+  /// only, on web as well.
+  String diaryEntry = '/api/diary/entry/';
+
+  /// PUBLIC summary for a username (append `<username>/`) - DiaryTotalView
+  /// returns no authenticators for GET, so this is the one diary endpoint
+  /// that works unauthenticated, and the only one that can describe another
+  /// account's diary. Returns {user, total_entries, latest_entry, top_tags}.
+  String diaryTotal = '/api/diary/total/';
+
+  /// The fixed, server-seeded mood list. Takes ?page=&page_size=.
+  String diaryMoods = '/api/diary/moods/';
+
+  /// Tag autocomplete, backed by the shared Interest table rather than
+  /// anything diary-specific. Takes ?search=&page=&page_size=.
+  String diaryTags = '/api/diary/tags/';
   String search = '/api/user/search/'; // :query
   String publicProfile = '/api/user/auth/'; // :username
   String contacts = '/api/user/contacts';
@@ -113,6 +141,10 @@ class Endpoints {
   /// is_admin) - powers the "Switch account" list, matches webapp's
   /// EntitySwitcher -> GetMyRealmsRequest(1, 20, "page").
   String myRealms = '/api/realm/my-list';
+
+  /// Follow (POST) / unfollow (DELETE) a realm, both taking {realm_id}.
+  /// Mirrors webapp's FollowRealmRequest / UnfollowRealmRequest.
+  String realmFollow = '/api/realm/follow';
 
   /// {realm_id} -> re-issues the authtoken with a different `entity` claim
   /// (same userID, acting as the page instead). Only realms of type "page"
