@@ -16,7 +16,6 @@ import 'package:chatterloop_app/views/calls/incoming_call_view.dart';
 import 'package:chatterloop_app/views/auth/signup_view.dart';
 import 'package:chatterloop_app/views/auth/verify_email_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
-import 'package:chatterloop_app/views/home/tabs/profile_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
 import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
 import 'package:chatterloop_app/views/notifications/notifications_view.dart';
@@ -190,11 +189,11 @@ GoRouter buildAppRouter(AuthController authController) {
                     path: '/search',
                     pageBuilder: (c, s) => _clPage(s, const SearchScreen()))
               ]),
-              StatefulShellBranch(routes: [
-                GoRoute(
-                    path: '/profile',
-                    pageBuilder: (c, s) => _clPage(s, const ProfileView()))
-              ]),
+              // No profile branch. Your own profile is not a tab: it pushes
+              // /user/<your username> like any other, so one screen renders
+              // every profile and self/visitor differences stay in one place
+              // (UserProfileScreen._isSelf) instead of drifting across two
+              // implementations.
             ],
           ),
           GoRoute(

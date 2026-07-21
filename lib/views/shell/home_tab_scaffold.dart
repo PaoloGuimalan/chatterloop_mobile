@@ -32,7 +32,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
-const List<String> _tabTitles = ["Messages", "Contacts", "Search", "Profile"];
+// Three branches only - the profile is no longer a tab, it's a pushed screen
+// (see _openOwnProfile), so the fourth nav button is purely a menu trigger.
+const List<String> _tabTitles = ["Messages", "Contacts", "Search"];
 
 class HomeTabScaffold extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -168,6 +170,22 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   /// belt-and-suspenders approach (it calls CloseSSENotifications()
   /// directly from logoutProcess AND separately closes sockets in its
   /// mount effect's cleanup).
+  /// Opens whichever profile "you" currently means, as a pushed screen rather
+  /// than a tab - so your own profile is the same screen, with the same
+  /// layout, that a visitor sees.
+  ///
+  /// While acting as a page the identity IS the page, so the avatar leads to
+  /// the realm profile instead. The menu's own "Profile" row targets this same
+  /// method, so the two entry points can't drift apart.
+  void _openOwnProfile(UserAccount user) {
+    if (user.isActingAsEntity) {
+      final slug = user.activeEntity?.slug ?? user.activeEntity?.id;
+      if (slug != null) context.push('/realm/$slug');
+      return;
+    }
+    if (user.username.isNotEmpty) context.push('/user/${user.username}');
+  }
+
   Future<void> _logout(BuildContext context) async {
     // Explicit server logout FIRST, while still authenticated (before the
     // local token is cleared): the /u/logout endpoint nulls THIS device's FCM
@@ -270,15 +288,7 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                             // "Profile" row (user_menu_popover.dart) mirrors this
                             // exact same entity-aware target.
                             InkWell(
-                              onTap: () {
-                                final user = state.userAuth.user;
-                                if (user.isActingAsEntity) {
-                                  context.push(
-                                      '/realm/${user.activeEntity?.slug ?? user.activeEntity?.id}');
-                                } else {
-                                  widget.navigationShell.goBranch(3);
-                                }
-                              },
+                              onTap: () => _openOwnProfile(state.userAuth.user),
                               borderRadius: BorderRadius.circular(CLRadii.pill),
                               child: CLAvatar(
                                 id: state.userAuth.user.activeAvatarSeed,
@@ -324,13 +334,16 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                             Icons.search,
                             widget.navigationShell.currentIndex == 2,
                             () => widget.navigationShell.goBranch(2)),
+                        // Never "active": this opens a menu, it isn't a tab,
+                        // and there is no longer a fourth branch for it to
+                        // correspond to.
                         _navButton(
                             Icons.menu,
-                            widget.navigationShell.currentIndex == 3,
+                            false,
                             () => showUserMenuPopover(context,
                                 anchorKey: _profileButtonKey,
                                 onOpenProfile: () =>
-                                    widget.navigationShell.goBranch(3),
+                                    _openOwnProfile(state.userAuth.user),
                                 onLogout: () => _logout(context)),
                             buttonKey: _profileButtonKey),
                       ],

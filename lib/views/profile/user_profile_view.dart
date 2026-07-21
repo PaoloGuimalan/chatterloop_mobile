@@ -367,6 +367,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Widget _connectionActions(CLPalette p) {
     final rows = <Widget>[];
 
+    // Your own profile has no connection actions - it shows account state
+    // instead. Carried over from the old in-shell profile tab this screen
+    // replaced, so nothing was lost when the two merged into one screen.
+    if (_isSelf(context)) {
+      final me = StoreProvider.of<AppState>(context).state.userAuth.user;
+      if (me.isVerified) return const SizedBox.shrink();
+      return const CLBadge(
+          label: "Email not verified", tone: CLBadgeTone.pink);
+    }
+
     if (profile!.hasConnection == false) {
       rows.add(CLBtn(
         label: isConnectionActionLoading ? "Sending…" : "Add Contact",
