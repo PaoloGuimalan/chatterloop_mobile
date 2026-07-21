@@ -83,6 +83,16 @@ dependencies:
   firebase_messaging: ^15.0.0
   flutter_local_notifications: ^19.5.0
 
+  # Circle-cropping notification avatars. flutter_local_notifications builds
+  # Person icons with IconCompat.createWithBitmap, NOT createWithAdaptiveBitmap
+  # - only the latter gets circle-masked by Android - so a bitmap renders
+  # exactly as handed over, i.e. square. Cropping has to happen before the
+  # bytes reach the plugin. Pure Dart, so it also works inside the FCM
+  # background isolate, where dart:ui rendering is not dependable. Already
+  # present transitively, so promoting it to a direct dependency adds nothing
+  # to the build.
+  image: ^4.8.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

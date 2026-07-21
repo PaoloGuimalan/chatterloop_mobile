@@ -6,6 +6,7 @@ import 'package:chatterloop_app/core/notifications/push_payload.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
 /// Builds what the user actually sees in the notification tray.
@@ -75,8 +76,16 @@ class NotificationRenderer {
   static const String _activityGroupKey = 'chatterloop_activity';
 
   /// Monochrome status-bar icon. A full-colour launcher icon renders as a
-  /// white blob here - Android masks the small icon to its alpha channel.
+  /// white blob here - Android masks the SMALL icon to its alpha channel and
+  /// repaints it flat, so no colour can ever survive in this slot.
   static const String _smallIcon = '@drawable/ic_stat_chatterloop';
+
+  /// The LARGE icon slot, which unlike [_smallIcon] renders as a full-colour
+  /// bitmap - so this is where the real logo can appear. Used for activity
+  /// notifications; message notifications fill this slot with the sender's
+  /// avatar instead, which is more useful there.
+  static const AndroidBitmap<Object> _largeIcon =
+      DrawableResourceAndroidBitmap('@mipmap/launcher_icon');
 
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -256,6 +265,7 @@ class NotificationRenderer {
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
           icon: _smallIcon,
+          largeIcon: _largeIcon,
           groupKey: _activityGroupKey,
           sound: const RawResourceAndroidNotificationSound(_activitySound),
           // Lets a longer body expand instead of being ellipsised on one line.
@@ -322,31 +332,87 @@ class NotificationRenderer {
     );
   }
 
-  /// Downloads an avatar, caching it in the temp dir so repeat pushes from the
-  /// same person don't re-fetch. Returns null on any failure - a missing
-  /// avatar degrades to Android's initial-letter placeholder, which is far
-  /// better than a slow or broken CDN delaying the notification itself.
+  /// Side length of the processed avatar. Android renders the Person icon
+  /// small; anything bigger is bytes over the wire and pixels thrown away.
+  static const int _avatarSize = 128;
+
+  /// Downloads an avatar, crops it to a circle, and caches the RESULT so a
+  /// repeat push from the same person costs neither a fetch nor a re-crop.
+  ///
+  /// Returns null on any failure - a missing avatar degrades to Android's
+  /// initial-letter placeholder, which is far better than a slow or broken CDN
+  /// delaying the notification itself.
   static Future<ByteArrayAndroidIcon?> _avatarIcon(String url) async {
     try {
       final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/push_avatar_${url.hashCode}.img');
+      // v2 in the name so avatars cached as squares by the previous build
+      // aren't served back after this change.
+      final file = File('${dir.path}/push_avatar_v2_${url.hashCode}.png');
 
       if (file.existsSync()) {
         final cached = await file.readAsBytes();
         if (cached.isNotEmpty) return ByteArrayAndroidIcon(cached);
       }
 
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 4));
+      final response =
+          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 4));
       if (response.statusCode != 200 || response.bodyBytes.isEmpty) return null;
 
-      final Uint8List bytes = response.bodyBytes;
-      await file.writeAsBytes(bytes, flush: true);
-      return ByteArrayAndroidIcon(bytes);
+      final cropped = _circleCrop(response.bodyBytes);
+      if (cropped == null) return null;
+
+      await file.writeAsBytes(cropped, flush: true);
+      return ByteArrayAndroidIcon(cropped);
     } catch (e) {
       if (kDebugMode) debugPrint('[FCM] avatar fetch failed: $e');
       return null;
     }
+  }
+
+  /// Square source bytes in, circular PNG out.
+  ///
+  /// The plugin hands Person icons to IconCompat.createWithBitmap, which draws
+  /// the bitmap verbatim - unlike createWithAdaptiveBitmap, it applies no
+  /// circular mask. So the roundness has to be baked into the pixels here, by
+  /// clearing alpha outside the inscribed circle. PNG, not JPEG, because the
+  /// corners must stay transparent.
+  static Uint8List? _circleCrop(Uint8List source) {
+    final decoded = img.decodeImage(source);
+    if (decoded == null) return null;
+
+    // Square off the longer side first, from the centre, so a non-square
+    // source doesn't come out as an ellipse.
+    final side =
+        decoded.width < decoded.height ? decoded.width : decoded.height;
+    final square = img.copyCrop(
+      decoded,
+      x: (decoded.width - side) ~/ 2,
+      y: (decoded.height - side) ~/ 2,
+      width: side,
+      height: side,
+    );
+
+    final resized =
+        img.copyResize(square, width: _avatarSize, height: _avatarSize);
+
+    // Avatars are almost always JPEGs, which decode to 3 channels with no
+    // alpha at all - writing alpha 0 into one silently paints black corners
+    // instead of transparent ones. Force RGBA before masking.
+    final rgba = resized.numChannels == 4
+        ? resized
+        : resized.convert(numChannels: 4, alpha: 255);
+
+    final radius = _avatarSize / 2;
+    for (var y = 0; y < _avatarSize; y++) {
+      for (var x = 0; x < _avatarSize; x++) {
+        final dx = x - radius + 0.5;
+        final dy = y - radius + 0.5;
+        if (dx * dx + dy * dy > radius * radius) {
+          rgba.setPixelRgba(x, y, 0, 0, 0, 0);
+        }
+      }
+    }
+
+    return img.encodePng(rgba);
   }
 }
