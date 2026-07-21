@@ -13,6 +13,7 @@ import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class RealmProfileScreen extends StatefulWidget {
   final String slug;
@@ -91,7 +92,31 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
 
     return Scaffold(
       backgroundColor: p.bg,
-      appBar: AppBar(title: Text(realm?.name ?? "Page")),
+      // Same treatment as user_profile_view: transparent bar extended behind
+      // the body so the back button floats over the cover photo, instead of a
+      // hard header strip pushing the cover down. The two screens have to
+      // match here or switching between them visibly jumps.
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: p.surface,
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15), blurRadius: 6),
+              ],
+            ),
+            child: Icon(Icons.arrow_back, size: 18, color: p.text),
+          ),
+          onPressed: () => context.pop(),
+        ),
+      ),
       body: _isLoading
           ? const SingleChildScrollView(child: ProfileHeaderSkeleton())
           : realm == null

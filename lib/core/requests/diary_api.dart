@@ -120,7 +120,17 @@ class DiaryApi {
   }
 
   /// Tag autocomplete. An empty [search] returns the general list.
-  Future<List<DiaryTag>> searchTags({
+  ///
+  /// This endpoint does NOT return a plain DRF page: `results` is an object,
+  /// `{list, is_new}`, not an array (interests/views.py wraps the payload
+  /// before handing it to get_paginated_response). Parsing it as a normal page
+  /// silently yields nothing.
+  ///
+  /// [isNew] is the server's verdict that [search] matches no existing
+  /// interest, checked case- and whitespace-insensitively against
+  /// normalized_name - which is why it's trusted here rather than recomputed
+  /// from [tags] client-side, where "  Travel " vs "travel" would disagree.
+  Future<({List<DiaryTag> tags, bool isNew})> searchTags({
     String search = '',
     int page = 1,
     int range = 10,
@@ -131,14 +141,23 @@ class DiaryApi {
         queryParameters: {'search': search, 'page': page, 'page_size': range},
       );
       final data = response.data;
-      if (data is! Map) return const [];
-      return DiaryPage.fromJson<DiaryTag>(
-        Map<String, dynamic>.from(data),
-        DiaryTag.fromJson,
-      ).results;
+      if (data is! Map) return (tags: <DiaryTag>[], isNew: false);
+
+      final results = data["results"];
+      if (results is! Map) return (tags: <DiaryTag>[], isNew: false);
+
+      final rawList = results["list"];
+      final tags = rawList is List
+          ? rawList
+              .whereType<Map>()
+              .map((e) => DiaryTag.fromJson(Map<String, dynamic>.from(e)))
+              .toList()
+          : <DiaryTag>[];
+
+      return (tags: tags, isNew: results["is_new"] == true);
     } catch (e) {
       if (kDebugMode) print("[diary] searchTags failed: $e");
-      return const [];
+      return (tags: <DiaryTag>[], isNew: false);
     }
   }
 }

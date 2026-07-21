@@ -52,6 +52,10 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   List<DiaryTag> _tagSuggestions = [];
   bool _isSearchingTags = false;
 
+  /// Server's verdict that the typed text matches no existing interest. Drives
+  /// the "Add Tag" row, mirroring webapp's CustomTagItem.
+  bool _typedTagIsNew = false;
+
   final List<_PendingAttachment> _attachments = [];
 
   @override
@@ -76,20 +80,32 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   }
 
   Future<void> _searchTags(String query) async {
-    if (query.trim().isEmpty) {
-      setState(() => _tagSuggestions = []);
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      setState(() {
+        _tagSuggestions = [];
+        _typedTagIsNew = false;
+      });
       return;
     }
     setState(() => _isSearchingTags = true);
-    final results = await DiaryApi().searchTags(search: query.trim());
+    final result = await DiaryApi().searchTags(search: trimmed);
     if (!mounted) return;
+
+    // The response can land after the field has moved on; ignore a result
+    // that no longer describes what's typed rather than showing stale matches.
+    if (_tagInput.text.trim() != trimmed) return;
+
     setState(() {
       _isSearchingTags = false;
       // Hide anything already chosen so the list only offers new options.
       final chosen = _selectedTags.map((t) => t.name.toLowerCase()).toSet();
-      _tagSuggestions = results
+      _tagSuggestions = result.tags
           .where((t) => !chosen.contains(t.name.toLowerCase()))
           .toList();
+      // Don't offer to create a tag that's already selected.
+      _typedTagIsNew =
+          result.isNew && !chosen.contains(trimmed.toLowerCase());
     });
   }
 
@@ -102,6 +118,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
       _selectedTags.add(tag);
       _tagInput.clear();
       _tagSuggestions = [];
+      _typedTagIsNew = false;
     });
   }
 
@@ -377,6 +394,9 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Forces the card to fill its parent rather than shrinking to fit
+            // a single chip.
+            const SizedBox(width: double.infinity),
             Text("Tags",
                 style: TextStyle(
                     color: p.text2, fontSize: 12, fontWeight: FontWeight.w700)),
@@ -420,6 +440,44 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                       ),
               ),
             ),
+            // Mirrors webapp's tagsLoadOptions: the "create" option is
+            // prepended above the matches, so a unique name is offered first
+            // rather than buried under near-misses.
+            if (_typedTagIsNew) ...[
+              const SizedBox(height: 8),
+              InkWell(
+                borderRadius: BorderRadius.circular(CLRadii.sm),
+                onTap: _addTypedTag,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: p.brandSoft,
+                    borderRadius: BorderRadius.circular(CLRadii.sm),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.add, size: 16, color: p.brand),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _tagInput.text.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: p.text,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Text("Add Tag",
+                          style: TextStyle(color: p.brand, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             if (_tagSuggestions.isNotEmpty) ...[
               const SizedBox(height: 8),
               Wrap(
@@ -430,6 +488,14 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                     .map((t) => CLChip(label: t.name, onTap: () => _addTag(t)))
                     .toList(),
               ),
+            ],
+            if (!_isSearchingTags &&
+                _tagInput.text.trim().isNotEmpty &&
+                !_typedTagIsNew &&
+                _tagSuggestions.isEmpty) ...[
+              const SizedBox(height: 8),
+              Text("Already added",
+                  style: TextStyle(color: p.text3, fontSize: 12)),
             ],
           ],
         ),

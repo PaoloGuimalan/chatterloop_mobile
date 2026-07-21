@@ -159,6 +159,9 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Keeps the card full-width instead of shrinking around a single
+            // chip, so it lines up with the cards above and below it.
+            const SizedBox(width: double.infinity),
             Text("Tags",
                 style: TextStyle(
                     color: p.text2, fontSize: 12, fontWeight: FontWeight.w700)),
@@ -177,6 +180,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(width: double.infinity),
             Text("Attachments (${entry.attachments.length})",
                 style: TextStyle(
                     color: p.text2, fontSize: 12, fontWeight: FontWeight.w700)),
