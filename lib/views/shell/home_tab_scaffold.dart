@@ -19,6 +19,7 @@ import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/user_menu_popover.dart';
+import 'package:chatterloop_app/core/notifications/conversation_shortcuts.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
@@ -184,6 +185,9 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
     // session, so without this the next account to log in on this device would
     // see the previous one's messages sitting in the notification shade.
     await NotificationRenderer.dismissAll();
+    // Shortcuts outlive the session too - without this the next account would
+    // see the previous one's contacts in the launcher and the shade.
+    await ConversationShortcuts.clearAll();
     if (context.mounted) context.go('/login');
   }
 

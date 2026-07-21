@@ -2,6 +2,7 @@
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/notifications/conversation_shortcuts.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
@@ -36,6 +37,10 @@ class MessagesStateView extends State<MessagesView> {
       });
       StoreProvider.of<AppState>(context)
           .dispatch(DispatchModel(setMessagesListT, res.items));
+      // Fire-and-forget: publishes Android conversation shortcuts so incoming
+      // message notifications get the avatar-forward Conversation layout. Not
+      // awaited - it fetches avatars, and nothing on screen depends on it.
+      ConversationShortcuts.sync(res.items);
     } else {
       setState(() => isInitialized = true);
     }

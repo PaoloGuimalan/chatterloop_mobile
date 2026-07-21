@@ -21,6 +21,12 @@ android {
 
     dependencies {
         implementation "com.google.android.material:material:1.13.0-alpha08"
+        // ShortcutManagerCompat / ShortcutInfoCompat / Person / IconCompat,
+        // used by ConversationShortcuts.kt. Reaches the classpath transitively
+        // via the Flutter embedding too, but conversation shortcuts are the
+        // only reason any of it is compiled against directly - so declare it
+        // rather than depend on someone else's transitive graph.
+        implementation "androidx.core:core-ktx:1.13.1"
         // flutter_local_notifications 19.x uses java.time APIs that require
         // core library desugaring to run on the app's minSdk (23).
         coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"

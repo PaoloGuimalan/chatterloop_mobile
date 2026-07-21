@@ -226,6 +226,12 @@ class NotificationRenderer {
           // Redundant on Android 8+ (the channel's sound wins) but it's what
           // actually plays on 7 and below, where channels don't exist.
           sound: const RawResourceAndroidNotificationSound(_messageSound),
+          // Links this notification to the conversation shortcut published by
+          // ConversationShortcuts. With a matching long-lived shortcut Android
+          // promotes it to a Conversation notification - contact's avatar
+          // large, app icon badged on it in colour, own section in the shade.
+          // Harmless when no shortcut exists; it just renders as before.
+          shortcutId: conversationId,
           styleInformation: style,
           category: AndroidNotificationCategory.message,
           when: payload.sentAt.millisecondsSinceEpoch,
@@ -343,16 +349,30 @@ class NotificationRenderer {
   /// initial-letter placeholder, which is far better than a slow or broken CDN
   /// delaying the notification itself.
   static Future<ByteArrayAndroidIcon?> _avatarIcon(String url) async {
+    final file = await avatarFile(url);
+    if (file == null) return null;
+    try {
+      return ByteArrayAndroidIcon(await file.readAsBytes());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The circle-cropped avatar as a file on disk, downloading and cropping it
+  /// if it isn't cached yet. Returns null on any failure.
+  ///
+  /// Public because conversation shortcuts need the same image as a file path
+  /// to hand to Android's ShortcutManager - sharing this avoids fetching and
+  /// cropping the same avatar twice for the same person.
+  static Future<File?> avatarFile(String url) async {
+    if (url.isEmpty) return null;
     try {
       final dir = await getTemporaryDirectory();
       // v2 in the name so avatars cached as squares by the previous build
-      // aren't served back after this change.
+      // aren't served back after the circle-crop change.
       final file = File('${dir.path}/push_avatar_v2_${url.hashCode}.png');
 
-      if (file.existsSync()) {
-        final cached = await file.readAsBytes();
-        if (cached.isNotEmpty) return ByteArrayAndroidIcon(cached);
-      }
+      if (file.existsSync() && await file.length() > 0) return file;
 
       final response =
           await http.get(Uri.parse(url)).timeout(const Duration(seconds: 4));
@@ -362,7 +382,7 @@ class NotificationRenderer {
       if (cropped == null) return null;
 
       await file.writeAsBytes(cropped, flush: true);
-      return ByteArrayAndroidIcon(cropped);
+      return file;
     } catch (e) {
       if (kDebugMode) debugPrint('[FCM] avatar fetch failed: $e');
       return null;
