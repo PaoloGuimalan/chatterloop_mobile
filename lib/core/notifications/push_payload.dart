@@ -49,10 +49,27 @@
 //       "type":  "contact_request",       // free-form; only "message" is special
 //       "title": "Contact Request",
 //       "body":  "@paulo sent you a contact request.",
-//       "route": "/user/paulo"            // optional deep link, see below
+//       "route": "/user/paulo",           // optional deep link, see below
+//       "imageUrl": "https://.../post.jpg",     // optional, see below
+//       "senderAvatarUrl": "https://.../me.jpg" // optional, see below
 //     },
 //     "android": { "priority": "high" }
 //   }
+//
+// The thumbnail beside an activity notification is driven entirely by the
+// payload, and is BLANK when neither image field is sent - deliberately, since
+// a fixed app icon there says nothing the notification's own header doesn't
+// already say. Resolution order:
+//
+//   imageUrl        -> shown square. For content: the post that was liked or
+//                      commented on, the photo someone was tagged in.
+//   senderAvatarUrl -> shown circular. For person-centric events with no
+//                      content behind them: contact requests, follows, pokes.
+//   neither         -> no thumbnail at all.
+//
+// Send whichever actually describes the event; sending both just means imageUrl
+// wins. Keep them small (~128px) - they're downloaded on the device before the
+// notification can be posted.
 //
 // `route` is optional. Omitted, a tap opens the notifications screen, which is
 // the right destination for almost everything. Set it to deep-link somewhere
@@ -85,6 +102,7 @@ class PushPayload {
     this.senderAvatarUrl,
     this.messageId,
     this.route,
+    this.imageUrl,
   });
 
   /// Routes which tray layout is used. "message" gets the threaded
@@ -110,6 +128,11 @@ class PushPayload {
   final String? senderName;
   final String? senderAvatarUrl;
   final String? messageId;
+
+  /// Optional content image for non-message notifications - the post that was
+  /// reacted to, commented on, or tagged in. Rendered square, and takes
+  /// precedence over [senderAvatarUrl] when both are present.
+  final String? imageUrl;
 
   /// Optional deep link for non-message notifications. Validated against an
   /// allowlist before use - see [allowedRoutePrefixes].
@@ -177,6 +200,7 @@ class PushPayload {
       senderAvatarUrl: str('senderAvatarUrl'),
       messageId: str('messageId'),
       route: str('route'),
+      imageUrl: str('imageUrl'),
     );
   }
 }

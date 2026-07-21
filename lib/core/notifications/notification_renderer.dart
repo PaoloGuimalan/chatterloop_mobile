@@ -80,12 +80,10 @@ class NotificationRenderer {
   /// repaints it flat, so no colour can ever survive in this slot.
   static const String _smallIcon = '@drawable/ic_stat_chatterloop';
 
-  /// The LARGE icon slot, which unlike [_smallIcon] renders as a full-colour
-  /// bitmap - so this is where the real logo can appear. Used for activity
-  /// notifications; message notifications fill this slot with the sender's
-  /// avatar instead, which is more useful there.
-  static const AndroidBitmap<Object> _largeIcon =
-      DrawableResourceAndroidBitmap('@mipmap/launcher_icon');
+  /// The LARGE icon slot, unlike [_smallIcon], renders as a full-colour bitmap.
+  /// Nothing static goes there: message notifications fill it with the sender's
+  /// avatar, activity notifications with whatever the payload describes, and
+  /// both leave it empty rather than falling back to the app icon.
 
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -245,14 +243,38 @@ class NotificationRenderer {
   /// backend has now or adds later. Plain title + body, expandable if the body
   /// is long, on the quieter Activity channel.
   ///
-  /// Deliberately generic - it reads only `title`, `body` and the optional
-  /// `route`, never the `type`. That means a brand-new notification type on the
-  /// server displays and deep-links correctly with no mobile release.
+  /// Deliberately generic - it reads only `title`, `body`, the optional
+  /// `route`, and the optional thumbnail fields, never the `type`. That means a
+  /// brand-new notification type on the server displays and deep-links
+  /// correctly with no mobile release.
   static Future<void> _renderGeneric(
     PushPayload payload,
     Map<String, dynamic> raw,
   ) async {
     if (payload.title == null && payload.body.isEmpty) return;
+
+    // Two independent slots, not a fallback chain:
+    //
+    //   WHO it's from  -> the actor's avatar, circular, always shown when known
+    //   WHAT it's about -> the related image, square, only when one exists
+    //
+    // Android puts the avatar in the collapsed row and the content image in the
+    // expanded view. There is no app-controlled slot on the LEFT of a standard
+    // notification - that position is the system-drawn app icon, and the
+    // avatar-on-the-left look belongs exclusively to Conversation
+    // notifications, which these are not (see _renderMessage).
+    //
+    // Nothing static fills either slot: a fixed app icon would be pure noise,
+    // since the header already names the app.
+    final File? actorAvatar = payload.senderAvatarUrl != null
+        ? await avatarFile(payload.senderAvatarUrl!)
+        : null;
+    final File? contentImage =
+        payload.imageUrl != null ? await imageFile(payload.imageUrl!) : null;
+
+    final AndroidBitmap<Object>? avatarBitmap = actorAvatar == null
+        ? null
+        : FilePathAndroidBitmap(actorAvatar.path);
 
     await _plugin.show(
       // No stable per-thread identity here, so these get a rotating id and
@@ -271,11 +293,22 @@ class NotificationRenderer {
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
           icon: _smallIcon,
-          largeIcon: _largeIcon,
+          largeIcon: avatarBitmap,
           groupKey: _activityGroupKey,
           sound: const RawResourceAndroidNotificationSound(_activitySound),
-          // Lets a longer body expand instead of being ellipsised on one line.
-          styleInformation: BigTextStyleInformation(payload.body),
+          styleInformation: contentImage != null
+              // With a related image, expanding shows it full width. The
+              // avatar is kept alongside rather than replaced, so "who" and
+              // "what" are both visible at once.
+              ? BigPictureStyleInformation(
+                  FilePathAndroidBitmap(contentImage.path),
+                  largeIcon: avatarBitmap,
+                  summaryText: payload.body,
+                  hideExpandedLargeIcon: false,
+                )
+              // Without one, fall back to letting a long body expand instead
+              // of being ellipsised onto a single line.
+              : BigTextStyleInformation(payload.body),
         ),
       ),
       payload: jsonEncode(raw),
@@ -342,6 +375,10 @@ class NotificationRenderer {
   /// small; anything bigger is bytes over the wire and pixels thrown away.
   static const int _avatarSize = 128;
 
+  /// Content images are shown expanded, several hundred dp wide, so they need
+  /// far more pixels than an avatar - 128 here would look obviously blurry.
+  static const int _imageSize = 512;
+
   /// Downloads an avatar, crops it to a circle, and caches the RESULT so a
   /// repeat push from the same person costs neither a fetch nor a re-crop.
   ///
@@ -358,19 +395,38 @@ class NotificationRenderer {
     }
   }
 
-  /// The circle-cropped avatar as a file on disk, downloading and cropping it
-  /// if it isn't cached yet. Returns null on any failure.
+  /// A person's avatar, circle-cropped, as a file on disk.
   ///
   /// Public because conversation shortcuts need the same image as a file path
   /// to hand to Android's ShortcutManager - sharing this avoids fetching and
   /// cropping the same avatar twice for the same person.
-  static Future<File?> avatarFile(String url) async {
+  static Future<File?> avatarFile(String url) =>
+      _cachedImage(url, circle: true, size: _avatarSize);
+
+  /// Content imagery - a post, a tagged photo - squared but not rounded.
+  ///
+  /// Deliberately not circular: a circle reads as "a person", so applying it to
+  /// a post thumbnail would misrepresent what the notification is about.
+  static Future<File?> imageFile(String url) =>
+      _cachedImage(url, circle: false, size: _imageSize);
+
+  /// Downloads, processes and caches [url], returning null on any failure - a
+  /// missing thumbnail is always better than a slow or broken CDN holding up
+  /// the notification itself.
+  static Future<File?> _cachedImage(
+    String url, {
+    required bool circle,
+    required int size,
+  }) async {
     if (url.isEmpty) return null;
     try {
       final dir = await getTemporaryDirectory();
-      // v2 in the name so avatars cached as squares by the previous build
-      // aren't served back after the circle-crop change.
-      final file = File('${dir.path}/push_avatar_v2_${url.hashCode}.png');
+      // Shape AND size are part of the cache key: the same URL can legitimately
+      // be wanted both ways - a profile photo is a small circle as an avatar,
+      // but a large square when it IS the content someone reacted to.
+      final shape = circle ? 'circle' : 'square';
+      final file =
+          File('${dir.path}/push_img_${shape}_${size}_${url.hashCode}.png');
 
       if (file.existsSync() && await file.length() > 0) return file;
 
@@ -378,25 +434,31 @@ class NotificationRenderer {
           await http.get(Uri.parse(url)).timeout(const Duration(seconds: 4));
       if (response.statusCode != 200 || response.bodyBytes.isEmpty) return null;
 
-      final cropped = _circleCrop(response.bodyBytes);
-      if (cropped == null) return null;
+      final processed =
+          _processImage(response.bodyBytes, circle: circle, size: size);
+      if (processed == null) return null;
 
-      await file.writeAsBytes(cropped, flush: true);
+      await file.writeAsBytes(processed, flush: true);
       return file;
     } catch (e) {
-      if (kDebugMode) debugPrint('[FCM] avatar fetch failed: $e');
+      if (kDebugMode) debugPrint('[FCM] image fetch failed: $e');
       return null;
     }
   }
 
-  /// Square source bytes in, circular PNG out.
+  /// Source bytes in, centre-cropped square PNG out - rounded into a circle
+  /// when [circle] is set.
   ///
-  /// The plugin hands Person icons to IconCompat.createWithBitmap, which draws
-  /// the bitmap verbatim - unlike createWithAdaptiveBitmap, it applies no
-  /// circular mask. So the roundness has to be baked into the pixels here, by
-  /// clearing alpha outside the inscribed circle. PNG, not JPEG, because the
-  /// corners must stay transparent.
-  static Uint8List? _circleCrop(Uint8List source) {
+  /// The roundness has to be baked into the pixels rather than left to Android,
+  /// because the plugin hands Person icons to IconCompat.createWithBitmap,
+  /// which draws the bitmap verbatim - unlike createWithAdaptiveBitmap, it
+  /// applies no circular mask. PNG throughout, not JPEG, because the corners
+  /// of a circle must stay transparent.
+  static Uint8List? _processImage(
+    Uint8List source, {
+    required bool circle,
+    required int size,
+  }) {
     final decoded = img.decodeImage(source);
     if (decoded == null) return null;
 
@@ -412,8 +474,9 @@ class NotificationRenderer {
       height: side,
     );
 
-    final resized =
-        img.copyResize(square, width: _avatarSize, height: _avatarSize);
+    final resized = img.copyResize(square, width: size, height: size);
+
+    if (!circle) return img.encodePng(resized);
 
     // Avatars are almost always JPEGs, which decode to 3 channels with no
     // alpha at all - writing alpha 0 into one silently paints black corners
@@ -422,9 +485,9 @@ class NotificationRenderer {
         ? resized
         : resized.convert(numChannels: 4, alpha: 255);
 
-    final radius = _avatarSize / 2;
-    for (var y = 0; y < _avatarSize; y++) {
-      for (var x = 0; x < _avatarSize; x++) {
+    final radius = size / 2;
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
         final dx = x - radius + 0.5;
         final dy = y - radius + 0.5;
         if (dx * dx + dy * dy > radius * radius) {
