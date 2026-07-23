@@ -84,18 +84,28 @@ class Contact {
     required this.type,
   });
 
-  /// The other party relative to `myAccountId` - matches Contacts.tsx's
-  /// `selfActed = action_by.details.id === authentication.user.userID` check.
-  ContactPersonDetails other(String myAccountId) =>
-      actionBy.details.id == myAccountId
-          ? involvedEntity.details
-          : actionBy.details;
+  /// The other side of the connection, oriented on ENTITY ids.
+  ///
+  /// Pass the ACTING entity id (UserAccount.entityId), not an account id.
+  /// Contacts are entity<->entity now, so a counterpart can be a page - and
+  /// a page's `details.id` is a realm pk that can never equal a user id, so
+  /// the old `actionBy.details.id == myAccountId` check resolved the wrong
+  /// side for any user<->page contact. Comparing entity ids is the only
+  /// test valid for both kinds, and it also stays correct while acting as
+  /// a page (where neither side is the human).
+  ContactEntity otherEntity(String myEntityId) =>
+      actionBy.id == myEntityId ? involvedEntity : actionBy;
 
-  /// Same "other party" logic as other() above, but the entity id (needed
-  /// to look someone up in AppState.presence, which is keyed by
-  /// entity id, not account id) rather than their account-level details.
-  String otherEntityId(String myAccountId) =>
-      actionBy.details.id == myAccountId ? involvedEntity.id : actionBy.id;
+  ContactPersonDetails other(String myEntityId) =>
+      otherEntity(myEntityId).details;
+
+  /// Entity id of the other side - also the key AppState.presence uses.
+  String otherEntityId(String myEntityId) => otherEntity(myEntityId).id;
+
+  /// Whether the counterpart is a page rather than a person. Presence and
+  /// "active now" are human concepts, so callers skip them for realms.
+  bool otherIsRealm(String myEntityId) =>
+      otherEntity(myEntityId).type == "realm";
 
   factory Contact.fromJson(Map<String, dynamic> json) {
     return Contact(

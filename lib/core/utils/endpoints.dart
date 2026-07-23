@@ -76,6 +76,12 @@ class Endpoints {
   /// anything diary-specific. Takes ?search=&page=&page_size=.
   String diaryTags = '/api/diary/tags/';
   String search = '/api/user/search/'; // :query
+
+  /// Search v2 - unified entity search returning users AND realms/pages in
+  /// one normalized shape, plus connection state for user hits. Supersedes
+  /// `search` above (which is user-only). Takes :query then
+  /// ?types=user,realm&realm_types=page.
+  String entitySearch = '/api/entity/search/'; // :query
   String publicProfile = '/api/user/auth/'; // :username
   String contacts = '/api/user/contacts';
   String poke = '/api/user/poke';

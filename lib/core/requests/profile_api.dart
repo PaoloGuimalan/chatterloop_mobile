@@ -165,15 +165,19 @@ class ProfileApi {
     }
   }
 
-  /// Follows or unfollows a realm. Same endpoint either way, distinguished by
-  /// method - POST to follow, DELETE to unfollow - matching webapp's
-  /// FollowRealmRequest / UnfollowRealmRequest.
-  Future<bool> setRealmFollowRequest({
-    required String realmId,
+  /// Follows or unfollows ANY entity - a page or a person. Same endpoint
+  /// either way, distinguished by method: POST to follow, DELETE to unfollow.
+  ///
+  /// Following is entity->entity now (the backend's Follow row targets an
+  /// entity, not a realm), so this takes an entity id and a person can be
+  /// followed exactly like a page. `entity_id` is the canonical key; the
+  /// legacy `realm_id` is still accepted server side but no longer sent.
+  Future<bool> setEntityFollowRequest({
+    required String entityId,
     required bool follow,
   }) async {
     try {
-      final body = {'realm_id': realmId};
+      final body = {'entity_id': entityId};
       final response = follow
           ? await _userDio.post(_endpoints.realmFollow, data: body)
           : await _userDio.delete(_endpoints.realmFollow, data: body);

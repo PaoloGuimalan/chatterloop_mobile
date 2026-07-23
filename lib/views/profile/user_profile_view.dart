@@ -45,6 +45,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool isOpeningMessage = false;
   bool isPokeLoading = false;
 
+  /// Following is entity->entity now, so a person can be followed exactly
+  /// like a page. Mirrored into local state so the button flips immediately.
+  bool _isFollowing = false;
+  bool _isUpdatingFollow = false;
+
   @override
   void initState() {
     super.initState();
@@ -58,13 +63,35 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       profile = result;
       notFound = result == null;
       isLoading = false;
+      _isFollowing = result?.isFollower ?? false;
+    });
+  }
+
+  /// Follow/unfollow this person. Same endpoint pages use - it takes any
+  /// entity id. Optimistic, like the realm profile's follow button.
+  Future<void> _toggleFollow() async {
+    if (profile == null || _isUpdatingFollow) return;
+
+    final wasFollowing = _isFollowing;
+    setState(() {
+      _isUpdatingFollow = true;
+      _isFollowing = !wasFollowing;
+    });
+
+    final ok = await ProfileApi().setEntityFollowRequest(
+        entityId: profile!.entityId, follow: !wasFollowing);
+
+    if (!mounted) return;
+    setState(() {
+      _isUpdatingFollow = false;
+      if (!ok) _isFollowing = wasFollowing;
     });
   }
 
   Future<void> _addContact() async {
     if (profile == null) return;
     setState(() => isConnectionActionLoading = true);
-    final ok = await ContactsApi().requestContactRequest(profile!.id);
+    final ok = await ContactsApi().requestContactRequest(profile!.entityId);
     if (!mounted) return;
     setState(() => isConnectionActionLoading = false);
     if (ok) await _load();
@@ -78,7 +105,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     setState(() => isConnectionActionLoading = true);
     final ok = await ContactsApi().declineContactRequest(
         connectionId: profile!.connectionId!,
-        toUserId: profile!.id,
+        entityId: profile!.entityId,
         action: action);
     if (!mounted) return;
     setState(() => isConnectionActionLoading = false);
@@ -89,7 +116,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (profile == null || profile!.connectionId == null) return;
     setState(() => isConnectionActionLoading = true);
     final ok = await ContactsApi().acceptContactRequest(
-        connectionId: profile!.connectionId!, toUserId: profile!.id);
+        connectionId: profile!.connectionId!, entityId: profile!.entityId);
     if (!mounted) return;
     setState(() => isConnectionActionLoading = false);
     if (ok) await _load();
@@ -376,6 +403,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       return const CLBadge(
           label: "Email not verified", tone: CLBadgeTone.pink);
     }
+
+    // Follow is independent of the connection state - you can follow someone
+    // you are not connected to, exactly as on a page.
+    rows.add(CLBtn(
+      label: _isUpdatingFollow
+          ? "…"
+          : (_isFollowing ? "Following" : "Follow"),
+      size: CLBtnSize.md,
+      variant: _isFollowing ? CLBtnVariant.outline : CLBtnVariant.soft,
+      onPressed: _isUpdatingFollow ? null : _toggleFollow,
+    ));
 
     if (profile!.hasConnection == false) {
       rows.add(CLBtn(

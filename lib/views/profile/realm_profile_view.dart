@@ -9,6 +9,7 @@
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
@@ -30,6 +31,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
   /// Held separately from [_realm] so the button can flip immediately on tap
   /// and the count can move with it, without refetching the whole profile.
   bool _isFollowing = false;
+  bool _isConnectionActionLoading = false;
   int _followers = 0;
   bool _isUpdatingFollow = false;
 
@@ -50,6 +52,45 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     });
   }
 
+  /// entity_id is the canonical contact target - the endpoint resolves it
+  /// directly, so a page is as valid a target as a person.
+  Future<void> _addRealmContact() async {
+    final r = _realm;
+    if (r == null || _isConnectionActionLoading) return;
+    setState(() => _isConnectionActionLoading = true);
+    final ok = await ContactsApi().requestContactRequest(r.entityId);
+    if (!mounted) return;
+    setState(() => _isConnectionActionLoading = false);
+    if (ok) await _load();
+  }
+
+  Future<void> _acceptRealmConnection() async {
+    final r = _realm;
+    if (r == null || r.connectionId == null || _isConnectionActionLoading) {
+      return;
+    }
+    setState(() => _isConnectionActionLoading = true);
+    final ok = await ContactsApi().acceptContactRequest(
+        connectionId: r.connectionId!, entityId: r.entityId);
+    if (!mounted) return;
+    setState(() => _isConnectionActionLoading = false);
+    if (ok) await _load();
+  }
+
+  /// "remove" withdraws a request I sent, "decline" rejects one sent to me.
+  Future<void> _respondToRealmConnection(String action) async {
+    final r = _realm;
+    if (r == null || r.connectionId == null || _isConnectionActionLoading) {
+      return;
+    }
+    setState(() => _isConnectionActionLoading = true);
+    final ok = await ContactsApi().declineContactRequest(
+        connectionId: r.connectionId!, entityId: r.entityId, action: action);
+    if (!mounted) return;
+    setState(() => _isConnectionActionLoading = false);
+    if (ok) await _load();
+  }
+
   Future<void> _toggleFollow() async {
     final realm = _realm;
     if (realm == null || _isUpdatingFollow) return;
@@ -64,7 +105,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     });
 
     final ok = await ProfileApi()
-        .setRealmFollowRequest(realmId: realm.id, follow: !wasFollowing);
+        .setEntityFollowRequest(entityId: realm.entityId, follow: !wasFollowing);
 
     if (!mounted) return;
     setState(() {
@@ -166,12 +207,79 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
       );
     }
 
-    return CLBtn(
-      label: _isFollowing ? "Following" : "Follow",
-      iconL: _isFollowing ? Icons.check : Icons.add,
-      variant: _isFollowing ? CLBtnVariant.outline : CLBtnVariant.primary,
-      block: true,
-      onPressed: _isUpdatingFollow ? null : _toggleFollow,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CLBtn(
+          label: _isFollowing ? "Following" : "Follow",
+          iconL: _isFollowing ? Icons.check : Icons.add,
+          variant: _isFollowing ? CLBtnVariant.outline : CLBtnVariant.primary,
+          block: true,
+          onPressed: _isUpdatingFollow ? null : _toggleFollow,
+        ),
+        const SizedBox(height: 8),
+        _connectionAction(realm),
+      ],
+    );
+  }
+
+  /// A Connection is entity<->entity, so a page can be a contact just like a
+  /// person. Same state machine the user profile uses: settled first, then
+  /// WHO asked - initiator withdraws, receiver answers.
+  Widget _connectionAction(RealmProfile realm) {
+    if (realm.connectionAccomplished == true) {
+      return CLBtn(
+        label: "Connected",
+        variant: CLBtnVariant.outline,
+        block: true,
+        onPressed: null,
+      );
+    }
+
+    if (!realm.hasConnection) {
+      return CLBtn(
+        label: _isConnectionActionLoading ? "Sending…" : "Add Contact",
+        iconL: Icons.person_add_alt,
+        variant: CLBtnVariant.soft,
+        block: true,
+        onPressed: _isConnectionActionLoading ? null : _addRealmContact,
+      );
+    }
+
+    if (realm.isConnectionInitiator == true) {
+      return CLBtn(
+        label: _isConnectionActionLoading ? "Cancelling…" : "Cancel Request",
+        variant: CLBtnVariant.danger,
+        block: true,
+        onPressed: _isConnectionActionLoading
+            ? null
+            : () => _respondToRealmConnection("remove"),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Expanded(
+          child: CLBtn(
+            label: _isConnectionActionLoading ? "…" : "Accept",
+            block: true,
+            onPressed:
+                _isConnectionActionLoading ? null : _acceptRealmConnection,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: CLBtn(
+            label: "Decline",
+            variant: CLBtnVariant.outline,
+            block: true,
+            onPressed: _isConnectionActionLoading
+                ? null
+                : () => _respondToRealmConnection("decline"),
+          ),
+        ),
+      ],
     );
   }
 

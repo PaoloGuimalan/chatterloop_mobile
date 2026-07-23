@@ -172,13 +172,13 @@ class NotificationsStateView extends State<NotificationsView> {
     final ok = accept
         ? await ContactsApi().acceptContactRequest(
             connectionId: notif.referenceID,
-            toUserId: notif.fromUserID,
+            entityId: notif.fromUserID,
           )
         // "decline" rejects an incoming request; "remove" is for cancelling a
         // sent one, which isn't reachable from this screen.
         : await ContactsApi().declineContactRequest(
             connectionId: notif.referenceID,
-            toUserId: notif.fromUserID,
+            entityId: notif.fromUserID,
             action: "decline",
           );
 

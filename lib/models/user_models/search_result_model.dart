@@ -3,6 +3,10 @@
 /// envelope - it's a plain DRF paginated response: {count, next, previous, results}.
 class SearchResultUser {
   final String id;
+
+  /// The canonical id for contact actions - connections are entity<->entity,
+  /// so the endpoints key on this rather than the account id.
+  final String entityId;
   final String username;
   final String firstName;
   final String middleName;
@@ -14,8 +18,19 @@ class SearchResultUser {
   final String? connectionId;
   final bool isActionByEntity;
 
+  /// "user" or "realm". Search is entity-generic now, so a result may be a
+  /// page - which routes to /realm/:slug rather than /user/:username and has
+  /// no contact actions (you open the page and follow from there).
+  final String type;
+
+  /// Realm.type ("page", "group", ...) for realm hits; null for people.
+  final String? realmType;
+
+  bool get isRealm => type == "realm";
+
   const SearchResultUser({
     required this.id,
+    required this.entityId,
     required this.username,
     required this.firstName,
     required this.middleName,
@@ -26,6 +41,8 @@ class SearchResultUser {
     required this.connectionAccomplished,
     this.connectionId,
     required this.isActionByEntity,
+    this.type = "user",
+    this.realmType,
   });
 
   String get displayName => [
@@ -37,6 +54,7 @@ class SearchResultUser {
   factory SearchResultUser.fromJson(Map<String, dynamic> json) {
     return SearchResultUser(
       id: (json["id"] ?? "").toString(),
+      entityId: (json["entity_id"] ?? "").toString(),
       username: (json["username"] ?? "").toString(),
       firstName: (json["first_name"] ?? "").toString(),
       middleName: (json["middle_name"] ?? "").toString(),
@@ -47,6 +65,36 @@ class SearchResultUser {
       connectionAccomplished: json["connection_accomplished"] == true,
       connectionId: json["connection_id"]?.toString(),
       isActionByEntity: json["is_action_by_entity"] == true,
+    );
+  }
+
+  /// Search v2 (`/api/entity/search/`), which returns users AND pages in one
+  /// normalized shape: {entity_id, type, display_name, handle, profile,
+  /// is_verified, realm_type} plus connection state for people.
+  ///
+  /// Mapped onto the same fields the v1 shape used - display_name lands in
+  /// firstName with an "N/A" middle and empty last - so `displayName` and
+  /// every widget reading these keep working unchanged for both kinds.
+  factory SearchResultUser.fromEntityJson(Map<String, dynamic> json) {
+    return SearchResultUser(
+      // Account id: present for people, null for pages (which are not
+      // contact targets). Falls back to the entity id so widget keys and
+      // avatars always have something stable.
+      id: (json["id"] ?? json["entity_id"] ?? "").toString(),
+      entityId: (json["entity_id"] ?? "").toString(),
+      username: (json["handle"] ?? "").toString(),
+      firstName: (json["display_name"] ?? "").toString(),
+      middleName: "N/A",
+      lastName: "",
+      // v2 already normalizes "none"/"N/A" to null.
+      profile: json["profile"]?.toString(),
+      gender: null,
+      hasConnection: json["has_connection"] == true,
+      connectionAccomplished: json["connection_accomplished"] == true,
+      connectionId: json["connection_id"]?.toString(),
+      isActionByEntity: json["is_action_by_entity"] == true,
+      type: (json["type"] ?? "user").toString(),
+      realmType: json["realm_type"]?.toString(),
     );
   }
 }
@@ -78,6 +126,10 @@ class PublicProfile {
   final String? connectionId;
   final bool? isConnectionInitiator;
 
+  /// Following is entity->entity now, so a person can be followed just like
+  /// a page. Drives the Follow/Following button on the user profile.
+  final bool isFollower;
+
   /// Raw parts from the response's "birthdate": {month, day, year} - month
   /// is already a full name (Django's birthdate.strftime("%B")), not a
   /// number, unlike joinedDate below. Null when the account has none set.
@@ -108,6 +160,7 @@ class PublicProfile {
     this.connectionAccomplished,
     this.connectionId,
     this.isConnectionInitiator,
+    this.isFollower = false,
     this.birthMonth,
     this.birthDay,
     this.birthYear,
@@ -152,6 +205,7 @@ class PublicProfile {
       connectionId: connection["connection_id"]?.toString(),
       isConnectionInitiator:
           connection["is_user_connection_initiator"] as bool?,
+      isFollower: json["is_follower"] == true,
       birthMonth: birthdate?["month"]?.toString(),
       birthDay: birthdate?["day"]?.toString(),
       birthYear: birthdate?["year"]?.toString(),

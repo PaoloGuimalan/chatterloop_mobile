@@ -12,10 +12,17 @@ class ContactsItemWidget extends StatelessWidget {
   final ContactPersonDetails other;
   final bool online;
 
+  /// Counterpart is a page rather than a person. Contacts are entity<->entity
+  /// now, so a page can appear in this list; its name/handle arrive through
+  /// the same first_name/username fields (the backend maps a realm's
+  /// name/slug onto them), only presence and the badge differ.
+  final bool isRealm;
+
   const ContactsItemWidget(
       {super.key,
       required this.contact,
       required this.other,
+      this.isRealm = false,
       this.online = false});
 
   void _openProfile(BuildContext context) {
@@ -79,6 +86,11 @@ class ContactsItemWidget extends StatelessWidget {
                             if (other.isBadged) ...[
                               const SizedBox(width: 4),
                               Icon(Icons.verified, size: 15, color: p.brand),
+                            ],
+                            if (isRealm) ...[
+                              const SizedBox(width: 4),
+                              Icon(Icons.flag_outlined,
+                                  size: 14, color: p.text3),
                             ],
                           ],
                         ),

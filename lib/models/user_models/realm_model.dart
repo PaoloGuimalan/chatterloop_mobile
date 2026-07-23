@@ -43,6 +43,11 @@ class RealmSummary {
 /// itself is {"data": {...}}, matching PublicProfile's envelope.
 class RealmProfile {
   final String id;
+
+  /// The realm's ENTITY id (RealmSerializer's `entity`). This - not `id` -
+  /// is what follow and contact actions key on, since both are
+  /// entity<->entity operations.
+  final String entityId;
   final String name;
   final String? slug;
   final String? profile;
@@ -57,8 +62,18 @@ class RealmProfile {
   /// Follow/Following the profile shows.
   final bool isFollower;
 
+  /// Connection state between the acting entity and this page. A Connection
+  /// is entity<->entity, so a page can be a contact; the backend returns the
+  /// same `connection` block the user profile does. All null when there is
+  /// no connection (or when viewing your own page).
+  final bool hasConnection;
+  final bool? connectionAccomplished;
+  final String? connectionId;
+  final bool? isConnectionInitiator;
+
   const RealmProfile({
     required this.id,
+    required this.entityId,
     required this.name,
     this.slug,
     this.profile,
@@ -68,11 +83,19 @@ class RealmProfile {
     required this.followersCount,
     required this.isAdmin,
     this.isFollower = false,
+    this.hasConnection = false,
+    this.connectionAccomplished,
+    this.connectionId,
+    this.isConnectionInitiator,
   });
 
   factory RealmProfile.fromJson(Map<String, dynamic> json) {
+    final connection = json["connection"] is Map
+        ? Map<String, dynamic>.from(json["connection"])
+        : const <String, dynamic>{};
     return RealmProfile(
       id: (json["id"] ?? "").toString(),
+      entityId: (json["entity"] ?? "").toString(),
       name: (json["name"] ?? "").toString(),
       slug: json["slug"]?.toString(),
       profile: json["profile"]?.toString(),
@@ -84,6 +107,11 @@ class RealmProfile {
           : int.tryParse(json["followers_count"]?.toString() ?? '') ?? 0,
       isAdmin: json["is_admin"] == true,
       isFollower: json["is_follower"] == true,
+      hasConnection: connection["is_connection_present"] == true,
+      connectionAccomplished: connection["is_connection_handshaked"] as bool?,
+      connectionId: connection["connection_id"]?.toString(),
+      isConnectionInitiator:
+          connection["is_user_connection_initiator"] as bool?,
     );
   }
 }

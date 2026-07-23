@@ -41,12 +41,15 @@ class ContactsApi {
     }
   }
 
-  /// addUsername is misleadingly named on the backend - it actually expects
-  /// the target account's UUID id, not their username string.
-  Future<bool> requestContactRequest(String accountId) async {
+  /// Takes the target's ENTITY id. Contacts are entity<->entity, so this is
+  /// the canonical key the backend resolves directly - a page is as valid a
+  /// target as a person. (The legacy `addUsername` key, which confusingly
+  /// took an account UUID rather than a username, is still accepted server
+  /// side but no longer sent from here.)
+  Future<bool> requestContactRequest(String entityId) async {
     try {
-      final response = await _dio
-          .post(_endpoints.contacts, data: {'addUsername': accountId});
+      final response =
+          await _dio.post(_endpoints.contacts, data: {'entity_id': entityId});
       return response.data["status"] == true;
     } catch (e) {
       if (kDebugMode) {
@@ -80,11 +83,13 @@ class ContactsApi {
     }
   }
 
+  /// entityId is the other party's ENTITY id (the canonical key; the old
+  /// `to_user_id` is still accepted server side).
   Future<bool> acceptContactRequest(
-      {required String connectionId, required String toUserId}) async {
+      {required String connectionId, required String entityId}) async {
     try {
       final response = await _dio.put(_endpoints.contacts,
-          data: {'connection_id': connectionId, 'to_user_id': toUserId});
+          data: {'connection_id': connectionId, 'entity_id': entityId});
       return response.data["status"] != false;
     } catch (e) {
       if (kDebugMode) {
@@ -100,11 +105,11 @@ class ContactsApi {
   /// incoming request, "remove" to cancel a sent one or unfriend someone.
   Future<bool> declineContactRequest(
       {required String connectionId,
-      required String toUserId,
+      required String entityId,
       required String action}) async {
     try {
       final response = await _dio.delete(_endpoints.contacts,
-          data: {'connection_id': connectionId, 'to_user_id': toUserId},
+          data: {'connection_id': connectionId, 'entity_id': entityId},
           options: Options(headers: {'action': action}));
       return response.data["status"] != false;
     } catch (e) {

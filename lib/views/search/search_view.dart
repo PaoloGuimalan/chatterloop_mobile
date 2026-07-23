@@ -36,7 +36,8 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
     setState(() => isSearching = true);
-    final found = await SearchApi().searchUsersRequest(query);
+    // Entity search (v2): people AND pages in one normalized shape.
+    final found = await SearchApi().searchEntitiesRequest(query);
     if (!mounted) return;
     setState(() {
       results = found;
@@ -52,10 +53,18 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   (String, CLBadgeTone) _status(SearchResultUser user) {
+    // Pages carry no connection state - they are not contact targets from
+    // search, so they get a kind label instead of a relationship one.
+    if (user.isRealm) return ("Page", CLBadgeTone.brand);
     if (user.connectionAccomplished) return ("Connected", CLBadgeTone.green);
     if (user.hasConnection) return ("Pending", CLBadgeTone.gold);
     return ("New", CLBadgeTone.grey);
   }
+
+  /// Pages live at /realm/:slug, people at /user/:username. `username` holds
+  /// the handle for both kinds (v2's `handle`).
+  String _profilePath(SearchResultUser user) =>
+      user.isRealm ? '/realm/${user.username}' : '/user/${user.username}';
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +82,7 @@ class _SearchScreenState extends State<SearchScreen> {
               padding: const EdgeInsets.all(14),
               child: CLField(
                 icon: Icons.search,
-                placeholder: "Search by name or @username",
+                placeholder: "Search people and pages",
                 controller: _controller,
                 onChanged: _onQueryChanged,
               ),
@@ -100,9 +109,9 @@ class _SearchScreenState extends State<SearchScreen> {
                                 icon: Icons.manage_search,
                                 iconBg: p.brandSoft,
                                 iconColor: p.brand,
-                                title: "Search users only",
+                                title: "Search people and pages",
                                 subtitle:
-                                    "Start typing a name or username to find people.",
+                                    "Start typing a name or handle to find people and pages.",
                               ),
                             ),
                           )
@@ -116,9 +125,9 @@ class _SearchScreenState extends State<SearchScreen> {
                                     iconBg: p.surface2,
                                     iconColor: p.text2,
                                     iconBorderColor: p.border,
-                                    title: "No users found",
+                                    title: "No results found",
                                     subtitle:
-                                        "Try a different name or username.",
+                                        "Try a different name or handle.",
                                   ),
                                 ),
                               )
@@ -149,7 +158,7 @@ class _SearchScreenState extends State<SearchScreen> {
           children: [
             InkWell(
               borderRadius: BorderRadius.circular(CLRadii.pill),
-              onTap: () => context.push('/user/${user.username}'),
+              onTap: () => context.push(_profilePath(user)),
               child: CLAvatar(
                   id: user.id,
                   name: user.displayName,
@@ -159,7 +168,7 @@ class _SearchScreenState extends State<SearchScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: InkWell(
-                onTap: () => context.push('/user/${user.username}'),
+                onTap: () => context.push(_profilePath(user)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -192,7 +201,16 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            if (user.connectionAccomplished)
+            if (user.isRealm)
+              // Pages are not connection targets from search - open the page
+              // and follow / add from there.
+              CLBtn(
+                label: "View page",
+                size: CLBtnSize.sm,
+                variant: CLBtnVariant.outline,
+                onPressed: () => context.push(_profilePath(user)),
+              )
+            else if (user.connectionAccomplished)
               CLBtn(
                 label: "Message",
                 size: CLBtnSize.sm,
@@ -216,13 +234,14 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _requestContact(SearchResultUser user) async {
-    final ok = await ContactsApi().requestContactRequest(user.id);
+    final ok = await ContactsApi().requestContactRequest(user.entityId);
     if (!ok || !mounted) return;
     setState(() {
       results = results
           .map((u) => u.id == user.id
               ? SearchResultUser(
                   id: u.id,
+                  entityId: u.entityId,
                   username: u.username,
                   firstName: u.firstName,
                   middleName: u.middleName,
@@ -233,6 +252,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   connectionAccomplished: false,
                   connectionId: u.connectionId,
                   isActionByEntity: true,
+                  type: u.type,
+                  realmType: u.realmType,
                 )
               : u)
           .toList();

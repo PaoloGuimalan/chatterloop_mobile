@@ -153,15 +153,25 @@ class ContactsStateView extends State<ContactsView> {
                                 );
                               }
                               final contact = contactsList[index];
-                              final other =
-                                  contact.other(state.userAuth.user.id);
+                              // Orient on the ACTING entity id, not the
+                              // account id - a counterpart can be a page, and
+                              // this also stays correct while acting as one.
+                              final myEntityId = state.userAuth.user.entityId;
+                              final other = contact.other(myEntityId);
                               final otherEntityId =
-                                  contact.otherEntityId(state.userAuth.user.id);
+                                  contact.otherEntityId(myEntityId);
+                              final otherIsRealm =
+                                  contact.otherIsRealm(myEntityId);
                               return ContactsItemWidget(
                                 contact: contact,
                                 other: other,
-                                online: state.presence[otherEntityId]?.online ??
-                                    false,
+                                isRealm: otherIsRealm,
+                                // Presence is a human concept - a page is
+                                // never "online".
+                                online: otherIsRealm
+                                    ? false
+                                    : state.presence[otherEntityId]?.online ??
+                                        false,
                               );
                             },
                           ),
