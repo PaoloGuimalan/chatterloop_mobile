@@ -59,6 +59,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<void> _load() async {
     final result = await ProfileApi().getPublicProfileRequest(widget.username);
     if (!mounted) return;
+
+    // /api/user/auth/:handle/ serves people AND pages from one route. A realm
+    // payload has none of the user fields this screen reads, so it would
+    // render a blank profile with dead buttons - hand it to the realm screen
+    // instead. pushReplacement so Back doesn't land on the broken screen.
+    if (result != null && result.isRealmPayload) {
+      context.pushReplacement('/realm/${result.slug ?? widget.username}');
+      return;
+    }
+
     setState(() {
       profile = result;
       notFound = result == null;
@@ -167,6 +177,40 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   /// POST /api/user/blocks {entityID}, and on success leave the (now-blocked)
   /// profile. The confirm step is a dialog rather than the webapp's inline
   /// two-tap button.
+  /// Unfriend an established connection. Webapp removes it on the first tap;
+  /// on mobile a mis-tap is far likelier (the button sits next to Poke and
+  /// Message), and removing is destructive and silent - the other side just
+  /// disappears from both contact lists - so it confirms first. Uses the
+  /// same "remove" action as cancelling a pending request.
+  Future<void> _removeConnection() async {
+    if (profile == null || profile!.connectionId == null) return;
+    final p = cl(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text('Remove @${profile!.username}?',
+            style: TextStyle(color: p.text, fontSize: 17)),
+        content: Text(
+          "You'll both be removed from each other's contacts. You can send a new request later.",
+          style: TextStyle(color: p.text2, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: p.text2))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: p.pink),
+              child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await _declineConnection("remove");
+  }
+
   Future<void> _blockUser() async {
     if (profile == null) return;
     final p = cl(context);
@@ -460,10 +504,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           CLBtn(
-            label: "Connected",
+            label: isConnectionActionLoading ? "Removing…" : "Connected",
+            iconL: Icons.how_to_reg,
             size: CLBtnSize.md,
             variant: CLBtnVariant.outline,
-            onPressed: null,
+            onPressed: isConnectionActionLoading ? null : _removeConnection,
           ),
           const SizedBox(width: 8),
           CLBtn(

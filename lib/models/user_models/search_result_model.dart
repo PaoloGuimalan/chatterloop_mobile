@@ -130,6 +130,19 @@ class PublicProfile {
   /// a page. Drives the Follow/Following button on the user profile.
   final bool isFollower;
 
+  /// The payload's own "type". /api/user/auth/:handle/ serves BOTH people and
+  /// pages from one route and branches on this: "user" for a person, the
+  /// realm kind ("page", ...) for a realm. A realm payload parsed as a
+  /// PublicProfile yields blank fields, so callers check [isRealmPayload]
+  /// and route to /realm/:slug instead.
+  final String type;
+
+  /// Realm slug, present only on a realm payload (a person's handle arrives
+  /// as `userID` and lands in [username]).
+  final String? slug;
+
+  bool get isRealmPayload => type.isNotEmpty && type != "user";
+
   /// Raw parts from the response's "birthdate": {month, day, year} - month
   /// is already a full name (Django's birthdate.strftime("%B")), not a
   /// number, unlike joinedDate below. Null when the account has none set.
@@ -161,6 +174,8 @@ class PublicProfile {
     this.connectionId,
     this.isConnectionInitiator,
     this.isFollower = false,
+    this.type = "user",
+    this.slug,
     this.birthMonth,
     this.birthDay,
     this.birthYear,
@@ -206,6 +221,8 @@ class PublicProfile {
       isConnectionInitiator:
           connection["is_user_connection_initiator"] as bool?,
       isFollower: json["is_follower"] == true,
+      type: (json["type"] ?? "user").toString(),
+      slug: json["slug"]?.toString(),
       birthMonth: birthdate?["month"]?.toString(),
       birthDay: birthdate?["day"]?.toString(),
       birthYear: birthdate?["year"]?.toString(),

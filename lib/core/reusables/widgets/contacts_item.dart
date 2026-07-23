@@ -25,8 +25,14 @@ class ContactsItemWidget extends StatelessWidget {
       this.isRealm = false,
       this.online = false});
 
+  /// Pages live at /realm/:slug, people at /user/:username. Both screens
+  /// parse different response shapes, so routing a page into the user screen
+  /// yields a blank profile with dead buttons - `other.username` holds the
+  /// realm's slug for a page (the backend maps slug onto that field), so the
+  /// only thing distinguishing them is [isRealm].
   void _openProfile(BuildContext context) {
-    context.push('/user/${other.username}');
+    context.push(
+        isRealm ? '/realm/${other.username}' : '/user/${other.username}');
   }
 
   void _openMessage(BuildContext context) {

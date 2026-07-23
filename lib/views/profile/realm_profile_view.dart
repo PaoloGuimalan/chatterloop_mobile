@@ -77,6 +77,39 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     if (ok) await _load();
   }
 
+  /// Unfriend an established connection with this page. Confirms first for
+  /// the same reason the user profile does: removing is destructive, silent,
+  /// and the button sits right beside Follow.
+  Future<void> _removeRealmConnection() async {
+    final r = _realm;
+    if (r == null || r.connectionId == null) return;
+    final p = cl(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text('Remove ${r.name}?',
+            style: TextStyle(color: p.text, fontSize: 17)),
+        content: Text(
+          "You'll both be removed from each other's contacts. Following is separate and won't change.",
+          style: TextStyle(color: p.text2, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: p.text2))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: p.pink),
+              child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await _respondToRealmConnection("remove");
+  }
+
   /// "remove" withdraws a request I sent, "decline" rejects one sent to me.
   Future<void> _respondToRealmConnection(String action) async {
     final r = _realm;
@@ -229,10 +262,12 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
   Widget _connectionAction(RealmProfile realm) {
     if (realm.connectionAccomplished == true) {
       return CLBtn(
-        label: "Connected",
+        label: _isConnectionActionLoading ? "Removing…" : "Connected",
+        iconL: Icons.how_to_reg,
         variant: CLBtnVariant.outline,
         block: true,
-        onPressed: null,
+        onPressed:
+            _isConnectionActionLoading ? null : _removeRealmConnection,
       );
     }
 
