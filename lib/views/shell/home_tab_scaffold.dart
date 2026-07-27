@@ -260,23 +260,26 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
+                        // Same size AND weight as appBarTheme.titleTextStyle -
+                        // this header and a pushed screen's AppBar have to read
+                        // as one thing.
                         Text(_tabTitles[widget.navigationShell.currentIndex],
                             style: TextStyle(
                                 color: p.text,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800)),
+                                fontSize: CLType.screenTitle,
+                                fontWeight: FontWeight.w700)),
                         Row(
                           children: [
                             CLIconBtn(
                               icon: Theme.of(context).brightness ==
                                       Brightness.dark
-                                  ? Icons.light_mode_outlined
-                                  : Icons.dark_mode_outlined,
+                                  ? Icons.light_mode
+                                  : Icons.dark_mode,
                               tooltip: "Toggle theme",
                               onPressed: () => ThemeScope.of(context).toggle(),
                             ),
                             _badgeIconButton(
-                              icon: Icons.notifications_none,
+                              icon: Icons.notifications,
                               count: state.notificationsstate.totalunread,
                               onPressed: () => context.push('/notifications'),
                             ),
@@ -325,12 +328,12 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _badgeNavButton(
-                            Icons.chat_bubble_outline,
+                            Icons.forum,
                             widget.navigationShell.currentIndex == 0,
                             unreadTotal,
                             () => widget.navigationShell.goBranch(0)),
                         _navButton(
-                            Icons.contacts_outlined,
+                            Icons.contacts,
                             widget.navigationShell.currentIndex == 1,
                             () => widget.navigationShell.goBranch(1)),
                         _navButton(
@@ -409,7 +412,7 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                   count > 99 ? "99+" : count.toString(),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                      fontSize: 9,
+                      fontSize: CLType.meta,
                       color: Colors.white,
                       fontWeight: FontWeight.w700),
                 ),
@@ -452,7 +455,7 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                     count > 99 ? "99+" : count.toString(),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                        fontSize: 9,
+                        fontSize: CLType.meta,
                         color: Colors.white,
                         fontWeight: FontWeight.w700),
                   ),

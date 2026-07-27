@@ -9,10 +9,13 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
 import 'package:flutter/material.dart';
 
-const double kPersonCardWidth = 150;
-const double kPersonCardHeight = 168;
-const double kRealmCardWidth = 176;
-const double kRealmCardHeight = 174;
+// Rail card widths. Taken down from the mockup's 150/176, which were drawn in
+// a 428px device frame - on a 360dp phone those left barely more than two cards
+// visible, and they got looser still once the type scale shrank the text inside
+// them. There are deliberately no HEIGHT constants: CLRailSection measures its
+// tallest child, so a card is exactly as tall as its contents.
+const double kPersonCardWidth = 132;
+const double kRealmCardWidth = 152;
 
 /// Icon and label per realm kind. Only page/server/group can reach the client
 /// - channel/conference/voice realms are filtered out server side - but the
@@ -64,6 +67,7 @@ class SearchPersonCard extends StatelessWidget {
     return SizedBox(
       width: kPersonCardWidth,
       child: CLCard(
+        padding: const EdgeInsets.all(12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -74,11 +78,11 @@ class SearchPersonCard extends StatelessWidget {
                 id: person.entityId,
                 name: person.displayName,
                 src: person.profile,
-                size: 48,
+                size: 42,
                 online: online,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             InkWell(
               onTap: () => onOpen(person),
               child: Row(
@@ -91,7 +95,7 @@ class SearchPersonCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: CLType.bodySm,
                         fontWeight: FontWeight.w700,
                         color: p.text,
                       ),
@@ -109,7 +113,7 @@ class SearchPersonCard extends StatelessWidget {
               "${person.mutualCount} mutual",
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11.5, color: p.text3),
+              style: TextStyle(fontSize: CLType.caption, color: p.text3),
             ),
             const SizedBox(height: 10),
             CLMiniBtn(
@@ -191,7 +195,7 @@ class SearchRealmCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = cl(context);
     final gradient = clEntityGradient(realm.entityId);
-    final bannerHeight = wide ? 74.0 : 64.0;
+    final bannerHeight = wide ? 64.0 : 56.0;
 
     final banner = InkWell(
       onTap: () => onOpen(realm),
@@ -211,11 +215,11 @@ class SearchRealmCard extends StatelessWidget {
                 id: realm.entityId,
                 name: realm.displayName,
                 src: realm.profile,
-                size: wide ? 48 : 44,
+                size: wide ? 44 : 38,
                 cornerRadius: CLRadii.md,
               )
             : Icon(realmTypeIcon(realm.realmType),
-                size: wide ? 30 : 26, color: Colors.white),
+                size: wide ? 28 : 24, color: Colors.white),
       ),
     );
 
@@ -269,7 +273,7 @@ class SearchRealmCard extends StatelessWidget {
         children: [
           banner,
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
             child: wide
                 ? Row(
                     children: [
@@ -331,6 +335,7 @@ class SearchContentCard extends StatelessWidget {
       onTap: () => onOpen(post),
       borderRadius: BorderRadius.circular(CLRadii.md),
       child: CLCard(
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -341,7 +346,7 @@ class SearchContentCard extends StatelessWidget {
                   id: post.author.entityId,
                   name: post.author.displayName,
                   src: post.author.profile,
-                  size: 30,
+                  size: 28,
                 ),
                 const SizedBox(width: 8),
                 Flexible(
@@ -418,18 +423,19 @@ class SearchPersonCardSkeleton extends StatelessWidget {
     return SizedBox(
       width: kPersonCardWidth,
       child: CLCard(
+        padding: const EdgeInsets.all(12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const CLSkeleton(
-                width: 48,
-                height: 48,
-                borderRadius: BorderRadius.all(Radius.circular(24))),
-            const SizedBox(height: 12),
-            const CLSkeleton(width: 90, height: 12),
+                width: 42,
+                height: 42,
+                borderRadius: BorderRadius.all(Radius.circular(21))),
+            const SizedBox(height: 10),
+            const CLSkeleton(width: 84, height: 11),
             const SizedBox(height: 8),
-            const CLSkeleton(width: 60, height: 10),
-            const SizedBox(height: 12),
+            const CLSkeleton(width: 56, height: 10),
+            const SizedBox(height: 10),
             CLSkeleton(
                 width: double.infinity,
                 height: 28,
@@ -462,10 +468,10 @@ class SearchRealmCardSkeleton extends StatelessWidget {
         children: [
           CLSkeleton(
               width: double.infinity,
-              height: wide ? 74 : 64,
+              height: wide ? 64 : 56,
               borderRadius: BorderRadius.zero),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -494,6 +500,7 @@ class SearchContentCardSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const CLCard(
+      padding: EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -501,9 +508,9 @@ class SearchContentCardSkeleton extends StatelessWidget {
           Row(
             children: [
               CLSkeleton(
-                  width: 30,
-                  height: 30,
-                  borderRadius: BorderRadius.all(Radius.circular(15))),
+                  width: 28,
+                  height: 28,
+                  borderRadius: BorderRadius.all(Radius.circular(14))),
               SizedBox(width: 8),
               CLSkeleton(width: 110, height: 11),
             ],

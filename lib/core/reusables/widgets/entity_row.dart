@@ -76,7 +76,7 @@ class CLEntityRow extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 13.5,
+                            fontSize: CLType.body,
                             fontWeight: FontWeight.w700,
                             color: p.text,
                           ),
@@ -97,7 +97,7 @@ class CLEntityRow extends StatelessWidget {
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: p.text3),
+                    style: TextStyle(fontSize: CLType.caption, color: p.text3),
                   ),
                 ],
               ),

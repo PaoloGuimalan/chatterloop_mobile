@@ -152,7 +152,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontSize: 14,
+                                    fontSize: CLType.title,
                                     fontWeight: FontWeight.w700,
                                     color: p.text,
                                   ),
@@ -168,7 +168,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                             const SizedBox(height: 2),
                             Text(
                               timeSince(post.datePosted!),
-                              style: TextStyle(fontSize: 12, color: p.text3),
+                              style: TextStyle(fontSize: CLType.caption, color: p.text3),
                             ),
                           ],
                         ],
@@ -183,7 +183,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                   TextSpan(
                     children: linkifySpans(
                       post.caption,
-                      TextStyle(fontSize: 14.5, height: 1.45, color: p.text),
+                      TextStyle(fontSize: CLType.title, height: 1.45, color: p.text),
                     ),
                   ),
                 ),
@@ -207,12 +207,13 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(reaction.emoji,
+                                        // Emoji glyph sized to its container - not a CLType step.
                                         style: const TextStyle(fontSize: 15)),
                                     const SizedBox(width: 4),
                                     Text(
                                       "${reaction.count}",
                                       style: TextStyle(
-                                          fontSize: 12.5, color: p.text3),
+                                          fontSize: CLType.label, color: p.text3),
                                     ),
                                   ],
                                 ))
@@ -227,14 +228,14 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                           const SizedBox(width: 4),
                           Text("${post.likesCount}",
                               style:
-                                  TextStyle(fontSize: 12.5, color: p.text3)),
+                                  TextStyle(fontSize: CLType.label, color: p.text3)),
                         ],
                       ),
                     ),
                   Icon(Icons.mode_comment_outlined, size: 15, color: p.text3),
                   const SizedBox(width: 4),
                   Text("${post.commentsCount}",
-                      style: TextStyle(fontSize: 12.5, color: p.text3)),
+                      style: TextStyle(fontSize: CLType.label, color: p.text3)),
                 ],
               ),
             ],
@@ -249,7 +250,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
     final p = cl(context);
     final post = _post;
 
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(title: const Text("Post")),
       body: _isLoading

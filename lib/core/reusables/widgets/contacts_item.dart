@@ -87,7 +87,7 @@ class ContactsItemWidget extends StatelessWidget {
                                   style: TextStyle(
                                       color: p.text,
                                       fontWeight: FontWeight.w700,
-                                      fontSize: 14.5)),
+                                      fontSize: CLType.title)),
                             ),
                             if (other.isBadged) ...[
                               const SizedBox(width: 4),
@@ -104,7 +104,7 @@ class ContactsItemWidget extends StatelessWidget {
                         Text("@${other.username}",
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: p.text2, fontSize: 12.5)),
+                            style: TextStyle(color: p.text2, fontSize: CLType.label)),
                       ],
                     ),
                   ),

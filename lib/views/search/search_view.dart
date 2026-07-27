@@ -223,8 +223,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _searchField(CLPalette p) {
     return Container(
-      height: 50,
-      padding: const EdgeInsets.only(left: 16, right: 6),
+      height: 44,
+      padding: const EdgeInsets.only(left: 14, right: 4),
       decoration: BoxDecoration(
         color: p.surface,
         border: Border.all(color: p.border),
@@ -238,8 +238,8 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       child: Row(
         children: [
-          Icon(Icons.search, size: 20, color: p.text3),
-          const SizedBox(width: 10),
+          Icon(Icons.search, size: 19, color: p.text3),
+          const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _controller,
@@ -249,7 +249,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 _debounce?.cancel();
                 _load(value);
               },
-              style: TextStyle(color: p.text, fontSize: 14),
+              style: TextStyle(color: p.text, fontSize: CLType.title),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 isCollapsed: true,
@@ -262,7 +262,7 @@ class _SearchScreenState extends State<SearchScreen> {
             CLIconBtn(
               icon: Icons.close,
               iconSize: 18,
-              size: 34,
+              size: 32,
               tooltip: "Clear",
               color: p.text2,
               onPressed: _clearQuery,
@@ -274,8 +274,12 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _initialState(CLPalette p) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 260),
-      padding: const EdgeInsets.all(22),
+      // Sized to the panel's own contents rather than to a share of the screen:
+      // this sits under a search field and a chip row, so a tall block here
+      // reads as the point of the screen instead of a placeholder waiting for a
+      // query. The mockup's 260 was drawn in a 428px frame.
+      constraints: const BoxConstraints(minHeight: 168),
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
       decoration: BoxDecoration(
         color: p.surface,
         border: Border.all(color: p.border),
@@ -283,6 +287,7 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       alignment: Alignment.center,
       child: CLEmptyState(
+        compact: true,
         icon: Icons.manage_search,
         iconBg: p.brandSoft,
         iconColor: p.brand,
@@ -296,7 +301,6 @@ class _SearchScreenState extends State<SearchScreen> {
     final people = _overview?.people.results ?? const <SearchPersonResult>[];
     return CLRailSection(
       title: "People",
-      height: kPersonCardHeight,
       actionLabel: people.isEmpty ? null : "See all",
       onAction:
           people.isEmpty ? null : () => _openDetail(SearchDetailKind.people),
@@ -326,7 +330,6 @@ class _SearchScreenState extends State<SearchScreen> {
     final realms = _overview?.realms.results ?? const <SearchRealmResult>[];
     return CLRailSection(
       title: "Realms",
-      height: kRealmCardHeight,
       actionLabel: realms.isEmpty ? null : "See all",
       onAction:
           realms.isEmpty ? null : () => _openDetail(SearchDetailKind.realms),
@@ -401,44 +404,44 @@ class _SearchScreenState extends State<SearchScreen> {
     final showPosts =
         _filter == _ExploreFilter.all || _filter == _ExploreFilter.posts;
 
+    // Deliberately a bare Scaffold with NO SafeArea - this is a tab, and the
+    // shell owns both insets: its header reserves the status bar and its bottom
+    // nav reserves the Android nav bar. Wrapping the body in a SafeArea here
+    // applied the bottom inset a SECOND time, leaving a dead strip the height
+    // of the nav buttons between the content and the nav bar. Pushed screens
+    // are the opposite case - they use CLScreen, which does inset the bottom.
     return Scaffold(
       backgroundColor: p.bg,
-      // top: false - the shell's global header already reserves the status
-      // bar; a second SafeArea here duplicated that inset and produced a
-      // large gap under the header.
-      body: SafeArea(
-        top: false,
-        child: StoreConnector<AppState, Map<String, PresenceInfo>>(
-          distinct: true,
-          converter: (store) => store.state.presence,
-          builder: (context, presence) => ListView(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-            children: [
-              _searchField(p),
-              const SizedBox(height: 16),
-              CLChipsRail(
-                children: _filterDefs
-                    .map((def) => CLChip(
-                          label: def.$2,
-                          icon: def.$3,
-                          active: _filter == def.$1,
-                          onTap: () => setState(() => _filter = def.$1),
-                        ))
-                    .toList(),
-              ),
-              const SizedBox(height: 22),
-              if (!hasQuery)
-                _initialState(p)
-              else ...[
-                if (showPeople) _peopleSection(presence),
-                if (showPeople && (showRealms || showPosts))
-                  const SizedBox(height: 26),
-                if (showRealms) _realmsSection(),
-                if (showRealms && showPosts) const SizedBox(height: 26),
-                if (showPosts) _contentSection(),
-              ],
+      body: StoreConnector<AppState, Map<String, PresenceInfo>>(
+        distinct: true,
+        converter: (store) => store.state.presence,
+        builder: (context, presence) => ListView(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+          children: [
+            _searchField(p),
+            const SizedBox(height: 16),
+            CLChipsRail(
+              children: _filterDefs
+                  .map((def) => CLChip(
+                        label: def.$2,
+                        icon: def.$3,
+                        active: _filter == def.$1,
+                        onTap: () => setState(() => _filter = def.$1),
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: 22),
+            if (!hasQuery)
+              _initialState(p)
+            else ...[
+              if (showPeople) _peopleSection(presence),
+              if (showPeople && (showRealms || showPosts))
+                const SizedBox(height: 26),
+              if (showRealms) _realmsSection(),
+              if (showRealms && showPosts) const SizedBox(height: 26),
+              if (showPosts) _contentSection(),
             ],
-          ),
+          ],
         ),
       ),
     );

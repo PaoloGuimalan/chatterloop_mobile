@@ -99,7 +99,7 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
   Widget build(BuildContext context) {
     final p = cl(context);
     const danger = Color(0xFFD64545);
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(title: const Text('Data & Privacy')),
       body: SingleChildScrollView(
@@ -164,12 +164,12 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
         children: [
           Text(title,
               style: TextStyle(
-                  fontSize: 14,
+                  fontSize: CLType.title,
                   fontWeight: FontWeight.w700,
                   color: titleColor)),
           const SizedBox(height: 4),
           Text(desc,
-              style: TextStyle(fontSize: 13, color: p.text2, height: 1.4)),
+              style: TextStyle(fontSize: CLType.bodySm, color: p.text2, height: 1.4)),
         ],
       );
 }

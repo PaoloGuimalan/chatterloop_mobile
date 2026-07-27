@@ -196,7 +196,7 @@ class _PersonalInformationScreenState
       converter: (store) => (userAuth: store.state.userAuth),
       builder: (context, state) {
         _initFrom(state.userAuth.user);
-        return Scaffold(
+        return CLScreen(
           backgroundColor: p.bg,
           appBar: AppBar(title: const Text('Personal Information')),
           body: SingleChildScrollView(
@@ -300,9 +300,9 @@ class _PersonalInformationScreenState
         children: [
           Text(title,
               style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w700, color: p.text)),
+                  fontSize: CLType.title, fontWeight: FontWeight.w700, color: p.text)),
           const SizedBox(height: 2),
-          Text(desc, style: TextStyle(fontSize: 13, color: p.text2)),
+          Text(desc, style: TextStyle(fontSize: CLType.bodySm, color: p.text2)),
         ],
       );
 
@@ -324,7 +324,7 @@ class _PersonalInformationScreenState
           child: Text(label,
               style: TextStyle(
                   color: active ? Colors.white : p.text2,
-                  fontSize: 13.5,
+                  fontSize: CLType.body,
                   fontWeight: FontWeight.w600)),
         ),
       ),
@@ -343,11 +343,11 @@ class _PersonalInformationScreenState
       ),
       child: DropdownButton<String>(
         value: value,
-        hint: Text(label, style: TextStyle(color: p.text3, fontSize: 14)),
+        hint: Text(label, style: TextStyle(color: p.text3, fontSize: CLType.title)),
         isExpanded: true,
         underline: const SizedBox.shrink(),
         dropdownColor: p.surface,
-        style: TextStyle(color: p.text, fontSize: 14),
+        style: TextStyle(color: p.text, fontSize: CLType.title),
         items: options
             .map((o) => DropdownMenuItem(value: o, child: Text(o)))
             .toList(),

@@ -101,7 +101,7 @@ class SettingsScreen extends StatelessWidget {
       ),
     ];
 
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(title: const Text("Settings")),
       body: ListView.builder(
@@ -116,7 +116,7 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 Text(category.title,
                     style: TextStyle(
-                        fontSize: 13,
+                        fontSize: CLType.bodySm,
                         fontWeight: FontWeight.w700,
                         color: p.text2)),
                 const SizedBox(height: 8),
@@ -167,12 +167,12 @@ class _SettingsRow extends StatelessWidget {
                   children: [
                     Text(item.name,
                         style: TextStyle(
-                            fontSize: 14,
+                            fontSize: CLType.title,
                             fontWeight: FontWeight.w600,
                             color: p.text)),
                     const SizedBox(height: 2),
                     Text(item.description,
-                        style: TextStyle(fontSize: 12, color: p.text2)),
+                        style: TextStyle(fontSize: CLType.caption, color: p.text2)),
                   ],
                 ),
               ),

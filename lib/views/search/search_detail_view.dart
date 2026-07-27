@@ -288,7 +288,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
     final p = cl(context);
     final empty = _emptyState;
 
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(
         title: Text(widget.kind.title),

@@ -13,6 +13,7 @@
 // what caught CLMiniBtn's label not being Flexible.
 
 import 'package:chatterloop_app/core/design/rails.dart';
+import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/reusables/widgets/entity_row.dart';
@@ -150,7 +151,6 @@ void main() {
             title: "People",
             actionLabel: "See all",
             onAction: () {},
-            height: kPersonCardHeight,
             children: [
               SearchPersonCard(
                 person: _person(),
@@ -174,7 +174,6 @@ void main() {
             title: "Realms",
             actionLabel: "See all",
             onAction: () {},
-            height: kRealmCardHeight,
             children: [
               // One card per action state: Follow (page), Open (server), Join
               // (group), Open chat (joined group).
@@ -233,7 +232,6 @@ void main() {
             title: "Group chats",
             actionLabel: "See all 12",
             onAction: () {},
-            height: 100,
             children: [
               for (var i = 0; i < 4; i++)
                 CLGroupTile(group: _group(), onOpen: (_) {}),
@@ -346,6 +344,149 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a scrollable chips rail shows both chevrons, never a hole',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: buildCLTheme(Brightness.light),
+      home: Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.all(14),
+          child: CLChipsRail(children: [
+            // Long enough labels that the row certainly overflows 360px.
+            for (final label in [
+              "Group chats · 12",
+              "Connections · 38",
+              "Followers · 214",
+              "Following · 96",
+            ])
+              CLChip(label: label, icon: Icons.groups),
+          ]),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    // At rest the rail sits at its start, so the left chevron cannot scroll -
+    // but it must still be RENDERED (dimmed), otherwise its reserved 26px slot
+    // is a blank gap to the left of the first chip.
+    expect(find.byIcon(Icons.chevron_left), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+
+    // Measured on the chip's BOX, not its label - a chip has 14px of padding
+    // and an icon before its text.
+    final leftArrow = tester.getRect(find.byIcon(Icons.chevron_left));
+    final firstChip = tester.getRect(find.byType(CLChip).first);
+    // The chevron occupies the space before the chips rather than leaving it
+    // empty. Allow 12: the 6px gutter, plus the ~5px by which a 16px glyph
+    // falls short of its 26px circle. A reserved-but-empty slot would put ~32
+    // here.
+    expect(leftArrow.right, lessThan(firstChip.left));
+    expect(firstChip.left - leftArrow.right, lessThanOrEqualTo(12));
+
+    expect(tester.takeException(), isNull);
+  });
+
+  // The parallax on a page push must NOT run for a see-through route stacked on
+  // top: the drift only works because an opaque incoming page hides the gap it
+  // leaves behind. Under a transparent route (the message long-press preview)
+  // that gap is bare black down the right edge. Testing "is it a PageRoute" was
+  // not enough - HeroDialogRoute IS one, since heroes only fly between page
+  // routes; it's just not opaque.
+  group('page transition', () {
+    final bodyKey = UniqueKey();
+    final navKey = GlobalKey<NavigatorState>();
+
+    /// Pushes `route` and returns how far the page below moved horizontally,
+    /// sampled PART-WAY through the transition. Sampling after it settles isn't
+    /// possible for an opaque push - Overlay stops building the covered route,
+    /// so there's nothing left to measure - and mid-flight is the more precise
+    /// question anyway, since the parallax is a transition effect.
+    Future<double> pushAndMeasure(WidgetTester tester, Route<void> route) async {
+      // No `home:` - it wins over onGenerateRoute for '/', so the route under
+      // test would never be built.
+      await tester.pumpWidget(MaterialApp(
+        navigatorKey: navKey,
+        onGenerateRoute: (_) => CLPageRoute(
+          page: CLPage(
+            key: const ValueKey('root'),
+            child: Container(key: bodyKey, color: const Color(0xFF112233)),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final before = tester.getTopLeft(find.byKey(bodyKey)).dx;
+
+      navKey.currentState!.push(route);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 130));
+      final shift = tester.getTopLeft(find.byKey(bodyKey)).dx - before;
+
+      await tester.pumpAndSettle();
+      return shift;
+    }
+
+    testWidgets('a transparent route leaves the page where it is',
+        (tester) async {
+      // Same shape as flutter_chat_reactions' HeroDialogRoute.
+      final shift = await pushAndMeasure(tester, _TransparentPageRoute());
+      expect(shift, 0);
+    });
+
+    testWidgets('another app page still gets the parallax', (tester) async {
+      // Pushing one of our own pages - the only pairing the parallax ever
+      // applied to, since a transition needs both canTransitionTo here AND
+      // canTransitionFrom on the incoming route, and MaterialPageRoute's
+      // requires the route below to be a Material one.
+      final shift = await pushAndMeasure(
+        tester,
+        CLPageRoute(
+          page: const CLPage(
+            key: ValueKey('next'),
+            child: SizedBox.shrink(),
+          ),
+        ),
+      );
+      expect(shift, lessThan(0));
+    });
+  });
+
+  // The two halves of the same bug, which have bitten this app more than once:
+  // a PUSHED screen must keep its body clear of the Android nav bar, and a TAB
+  // screen must NOT - the shell's bottom nav already consumed that inset, so
+  // insetting again leaves a dead strip above the nav bar.
+  group('system nav bar insets', () {
+    const navBarHeight = 48.0;
+    const screenHeight = 780.0;
+    final bodyKey = UniqueKey();
+
+    Future<Size> pumpBody(WidgetTester tester, Widget Function(Widget) wrap) async {
+      tester.view.physicalSize = const Size(360, screenHeight);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.viewPadding = const FakeViewPadding(bottom: navBarHeight);
+      tester.view.padding = const FakeViewPadding(bottom: navBarHeight);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: wrap(SizedBox.expand(key: bodyKey)),
+      ));
+      return tester.getSize(find.byKey(bodyKey));
+    }
+
+    testWidgets('CLScreen holds its body above the nav bar', (tester) async {
+      final size = await pumpBody(tester, (body) => CLScreen(body: body));
+      expect(size.height, screenHeight - navBarHeight);
+    });
+
+    testWidgets('a tab Scaffold fills the full height', (tester) async {
+      // What Explore/Contacts/Messages do - the shell owns the inset.
+      final size = await pumpBody(tester, (body) => Scaffold(body: body));
+      expect(size.height, screenHeight);
+    });
+  });
+
   test('a contact request is actionable only while pending', () {
     expect(_notification(actionable: true).isActionable, isTrue);
     expect(
@@ -382,4 +523,28 @@ void main() {
     // Totals and paging flags survive the patch.
     expect(patched.connections.total, 1);
   });
+}
+
+/// A stand-in for flutter_chat_reactions' HeroDialogRoute: a PageRoute (it must
+/// be one, so heroes can fly to it) that does NOT cover the page below.
+class _TransparentPageRoute extends PageRoute<void> {
+  @override
+  bool get opaque => false;
+
+  @override
+  Color get barrierColor => const Color(0x8A000000);
+
+  @override
+  String get barrierLabel => 'test overlay';
+
+  @override
+  bool get maintainState => true;
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 260);
+
+  @override
+  Widget buildPage(BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation) =>
+      const SizedBox.shrink();
 }

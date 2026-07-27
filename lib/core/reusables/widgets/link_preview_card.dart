@@ -203,7 +203,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                      fontSize: 11,
+                                      fontSize: CLType.meta,
                                       letterSpacing: 0.4,
                                       color: p.text2),
                                 ),
@@ -217,7 +217,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 13,
+                            fontSize: CLType.bodySm,
                             fontWeight: FontWeight.w700,
                             color: p.text),
                       ),
@@ -228,7 +228,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                           data.description!,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: p.text2),
+                          style: TextStyle(fontSize: CLType.caption, color: p.text2),
                         ),
                       ),
                   ],

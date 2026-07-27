@@ -48,7 +48,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
     final p = cl(context);
     final entry = _entry;
 
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(title: const Text("Entry")),
       body: _isLoading
@@ -94,6 +94,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
             Row(
               children: [
                 if (entry.mood != null) ...[
+                  // Emoji glyph sized to its container - not a CLType step.
                   Text(entry.mood!.emoji, style: const TextStyle(fontSize: 22)),
                   const SizedBox(width: 10),
                 ],
@@ -102,7 +103,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                     entry.title.isEmpty ? "Untitled" : entry.title,
                     style: TextStyle(
                         color: p.text,
-                        fontSize: 19,
+                        fontSize: CLType.screenTitle,
                         fontWeight: FontWeight.w800),
                   ),
                 ),
@@ -115,21 +116,21 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                 const SizedBox(width: 5),
                 Text(
                   entry.entryDate != null ? _formatDate(entry.entryDate!) : "",
-                  style: TextStyle(color: p.text3, fontSize: 12),
+                  style: TextStyle(color: p.text3, fontSize: CLType.caption),
                 ),
                 const SizedBox(width: 12),
                 Icon(entry.isPrivate ? Icons.lock_outline : Icons.public,
                     size: 13, color: p.text3),
                 const SizedBox(width: 5),
                 Text(entry.isPrivate ? "Private" : "Public",
-                    style: TextStyle(color: p.text3, fontSize: 12)),
+                    style: TextStyle(color: p.text3, fontSize: CLType.caption)),
                 if (entry.mood != null) ...[
                   const SizedBox(width: 12),
                   Flexible(
                     child: Text(entry.mood!.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: p.text3, fontSize: 12)),
+                        style: TextStyle(color: p.text3, fontSize: CLType.caption)),
                   ),
                 ],
               ],
@@ -147,7 +148,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
           width: double.infinity,
           child: HtmlWidget(
             entry.content,
-            textStyle: TextStyle(color: p.text, fontSize: 14.5, height: 1.5),
+            textStyle: TextStyle(color: p.text, fontSize: CLType.title, height: 1.5),
             onTapUrl: (url) async {
               final uri = Uri.tryParse(url);
               if (uri == null) return false;
@@ -166,7 +167,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
             const SizedBox(width: double.infinity),
             Text("Tags",
                 style: TextStyle(
-                    color: p.text2, fontSize: 12, fontWeight: FontWeight.w700)),
+                    color: p.text2, fontSize: CLType.caption, fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             Wrap(
               spacing: 6,
@@ -185,7 +186,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
             const SizedBox(width: double.infinity),
             Text("Attachments (${entry.attachments.length})",
                 style: TextStyle(
-                    color: p.text2, fontSize: 12, fontWeight: FontWeight.w700)),
+                    color: p.text2, fontSize: CLType.caption, fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             ...entry.attachments.map((a) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
@@ -237,7 +238,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                 child: Text(a.fileName!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: p.text3, fontSize: 11.5)),
+                    style: TextStyle(color: p.text3, fontSize: CLType.caption)),
               ),
           ],
         ),
@@ -265,7 +266,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                 a.fileName ?? "Attachment",
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: p.text, fontSize: 13),
+                style: TextStyle(color: p.text, fontSize: CLType.bodySm),
               ),
             ),
             Icon(Icons.download_outlined, size: 17, color: p.text3),

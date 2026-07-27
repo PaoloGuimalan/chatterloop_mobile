@@ -196,7 +196,7 @@ class _NotificationsViewState extends State<NotificationsView> {
       child: Text(
         "$count",
         style: const TextStyle(
-          fontSize: 10.5,
+          fontSize: CLType.meta,
           fontWeight: FontWeight.w700,
           color: Colors.white,
         ),
@@ -221,7 +221,7 @@ class _NotificationsViewState extends State<NotificationsView> {
               Text(
                 section.title,
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: CLType.sectionTitle,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.15,
                   color: p.text,
@@ -247,7 +247,7 @@ class _NotificationsViewState extends State<NotificationsView> {
                   Text(
                     "You're all caught up!",
                     style: TextStyle(
-                        fontSize: 13.5,
+                        fontSize: CLType.body,
                         fontWeight: FontWeight.w700,
                         color: p.text),
                   ),
@@ -255,7 +255,7 @@ class _NotificationsViewState extends State<NotificationsView> {
                   Text(
                     chrome.emptyText,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: p.text3),
+                    style: TextStyle(fontSize: CLType.caption, color: p.text3),
                   ),
                 ],
               ),
@@ -284,7 +284,7 @@ class _NotificationsViewState extends State<NotificationsView> {
                   child: Text(
                     "See all ${data.total} →",
                     style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: CLType.label,
                       fontWeight: FontWeight.w600,
                       color: p.brand,
                     ),
@@ -301,7 +301,7 @@ class _NotificationsViewState extends State<NotificationsView> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(
         title: const Text("Notifications"),
@@ -312,7 +312,7 @@ class _NotificationsViewState extends State<NotificationsView> {
             label: Text(
               "Mark all read",
               style: TextStyle(
-                fontSize: 12.5,
+                fontSize: CLType.label,
                 fontWeight: FontWeight.w600,
                 color: p.brand,
               ),

@@ -21,14 +21,14 @@ class WelcomeScreen extends StatelessWidget {
             Text(
               "Chatterloop",
               style: TextStyle(
-                  fontSize: 22,
+                  fontSize: CLType.hero,
                   fontWeight: FontWeight.w800,
                   color: p.text,
                   letterSpacing: -0.5),
             ),
             const SizedBox(height: 4),
             Text("Link · Share · Explore",
-                style: TextStyle(fontSize: 14, color: p.text2)),
+                style: TextStyle(fontSize: CLType.body, color: p.text2)),
           ],
         ),
       ),

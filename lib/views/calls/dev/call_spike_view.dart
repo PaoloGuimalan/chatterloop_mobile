@@ -22,6 +22,7 @@
 // package's produce()/consume() are void + callback-based, not
 // promise/Future-returning, unlike mediasoup-client-js).
 
+import 'package:chatterloop_app/core/design/tokens.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -454,7 +455,7 @@ class _CallSpikeViewState extends State<CallSpikeView> {
               itemCount: _logLines.length,
               itemBuilder: (context, i) => Text(
                 _logLines[i],
-                style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                style: const TextStyle(fontSize: CLType.meta, fontFamily: 'monospace'),
               ),
             ),
           ),

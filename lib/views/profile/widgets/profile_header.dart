@@ -108,11 +108,11 @@ class ProfileHeader extends StatelessWidget {
           Icon(icon, size: 19, color: p.text2),
           const SizedBox(width: 8),
           if (label.isNotEmpty)
-            Text("$label ", style: TextStyle(color: p.text, fontSize: 14)),
+            Text("$label ", style: TextStyle(color: p.text, fontSize: CLType.title)),
           Flexible(
             child: Text(value,
                 style: TextStyle(
-                    color: p.text, fontSize: 14, fontWeight: FontWeight.w700),
+                    color: p.text, fontSize: CLType.title, fontWeight: FontWeight.w700),
                 overflow: TextOverflow.ellipsis),
           ),
         ],
@@ -173,7 +173,7 @@ class ProfileHeader extends StatelessWidget {
                   displayName.isEmpty ? username : displayName,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: p.text, fontSize: 20, fontWeight: FontWeight.w800),
+                      color: p.text, fontSize: CLType.screenTitle, fontWeight: FontWeight.w800),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -187,10 +187,10 @@ class ProfileHeader extends StatelessWidget {
         ),
         if (email != null && email!.isNotEmpty) ...[
           const SizedBox(height: 4),
-          Text(email!, style: TextStyle(color: p.text2, fontSize: 13)),
+          Text(email!, style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
         ],
         const SizedBox(height: 2),
-        Text("@$username", style: TextStyle(color: p.text2, fontSize: 13)),
+        Text("@$username", style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
         if (actions != null) ...[
           const SizedBox(height: 16),
           actions!,

@@ -612,6 +612,54 @@ class ConversationStateView extends State<ConversationView> {
     return "Member ${entityId.length >= 4 ? entityId.substring(entityId.length - 4) : entityId}";
   }
 
+  /// The message the composer is quoting, or null when it isn't in the loaded
+  /// page (it can be older than what's been fetched).
+  ///
+  /// The reply panel used to re-run this `where(...)` inline for every single
+  /// value it needed - background colour, label, label colour, content, content
+  /// colour, twice over for the two panel variants. Eight copies of one lookup
+  /// is how the two bugs here happened: one copy interpolated `sender` raw (a
+  /// uuid in the composer) and another compared it against `user.id` instead of
+  /// `user.entityId`, so the quoted-content preview stayed black on the blue
+  /// background while the label beside it was correct.
+  MessageContent? get _quotedMessage {
+    final matches = conversationContentList
+        .where((message) => message.messageID == isReplying.replyingTo)
+        .toList();
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  /// Whether the quoted message is one of MINE - which is what the reply
+  /// panel's blue-vs-grey (and white-vs-black) styling keys off.
+  ///
+  /// `sender` holds an ENTITY id, so this has to compare against entityId.
+  /// Comparing against the account id never matches, for anyone.
+  bool get _isQuotingSelf => _quotedMessage?.sender == _myAccountId;
+
+  /// The composer's "Replying to ..." line. Empty when there's nothing quoted;
+  /// the label is painted transparent in that case anyway.
+  String get _replyingToLabel {
+    final quoted = _quotedMessage;
+    if (quoted == null) return "";
+    // Kept as "your message" rather than _resolveSenderName's "You" - the
+    // sentence reads about the message here, not about the person.
+    if (_isQuotingSelf) return "Replying to your message";
+    return "Replying to ${_resolveSenderName(quoted.sender)}";
+  }
+
+  /// One-line summary of the quoted message for the reply panel ("Photo",
+  /// "Voice message", the text itself...). Empty when nothing is quoted.
+  String get _quotedPreviewText {
+    final quoted = _quotedMessage;
+    if (quoted == null) return "";
+    return messageReplyIdentifier(quoted.messageType, quoted.content);
+  }
+
+  /// Reply-panel styling: [mine] on your own quoted message, [others] on
+  /// someone else's, [none] when nothing is quoted.
+  T _quotedStyle<T>({required T mine, required T others, required T none}) =>
+      _quotedMessage == null ? none : (_isQuotingSelf ? mine : others);
+
   String _seenersLabel(List<String> seeners) =>
       seeners.map(_resolveSenderName).join(", ");
 
@@ -1279,7 +1327,7 @@ class ConversationStateView extends State<ConversationView> {
                                                 child: Text(
                                                   _headerDisplayName,
                                                   style: TextStyle(
-                                                    fontSize: 14,
+                                                    fontSize: CLType.title,
                                                     color: p.text,
                                                     fontWeight: FontWeight.bold,
                                                     // Subtle underline signals
@@ -1310,7 +1358,7 @@ class ConversationStateView extends State<ConversationView> {
                                                     Text(
                                                   subtitle,
                                                   style: TextStyle(
-                                                    fontSize: 12,
+                                                    fontSize: CLType.caption,
                                                     color: p.text2,
                                                   ),
                                                   overflow:
@@ -1431,7 +1479,7 @@ class ConversationStateView extends State<ConversationView> {
                                               textAlign: TextAlign.center,
                                               style: TextStyle(
                                                   color: p.text2,
-                                                  fontSize: 13)),
+                                                  fontSize: CLType.bodySm)),
                                         ],
                                       ),
                                     ),
@@ -1455,7 +1503,7 @@ class ConversationStateView extends State<ConversationView> {
                                                           color: p.text,
                                                           fontWeight:
                                                               FontWeight.w700,
-                                                          fontSize: 15)),
+                                                          fontSize: CLType.sectionTitle)),
                                                   const SizedBox(height: 4),
                                                   Text(
                                                       "Say hello to start the conversation.",
@@ -1463,7 +1511,7 @@ class ConversationStateView extends State<ConversationView> {
                                                           TextAlign.center,
                                                       style: TextStyle(
                                                           color: p.text2,
-                                                          fontSize: 13)),
+                                                          fontSize: CLType.bodySm)),
                                                 ],
                                               ),
                                             ),
@@ -1643,7 +1691,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                                     _conversationType == "single" ? "Seen" : "Seen by everyone",
                                                                                     textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
                                                                                     style: TextStyle(
-                                                                                      fontSize: 12,
+                                                                                      fontSize: CLType.caption,
                                                                                       color: Color(0xFF565656),
                                                                                     ),
                                                                                   ),
@@ -1663,7 +1711,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                                         "Seen by ${_seenersLabel((combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners)}",
                                                                                         textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
                                                                                         style: TextStyle(
-                                                                                          fontSize: 12,
+                                                                                          fontSize: CLType.caption,
                                                                                           color: Color(0xFF565656),
                                                                                         ),
                                                                                       ),
@@ -1847,7 +1895,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                               _conversationType == "single" ? "Seen" : "Seen by everyone",
                                                                               textAlign: contentItem.sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
                                                                               style: TextStyle(
-                                                                                fontSize: 12,
+                                                                                fontSize: CLType.caption,
                                                                                 color: Color(0xFF565656),
                                                                               ),
                                                                             ),
@@ -1869,7 +1917,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                                   "Seen by ${_seenersLabel(contentItem.seeners)}",
                                                                                   textAlign: contentItem.sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
                                                                                   style: TextStyle(
-                                                                                    fontSize: 12,
+                                                                                    fontSize: CLType.caption,
                                                                                     color: Color(0xFF565656),
                                                                                   ),
                                                                                 ),
@@ -1980,25 +2028,11 @@ class ConversationStateView extends State<ConversationView> {
                                   child: AnimatedContainer(
                                       duration: Duration(milliseconds: 500),
                                       decoration: BoxDecoration(
-                                          color: conversationContentList
-                                                  .where((message) =>
-                                                      message.messageID ==
-                                                      isReplying.replyingTo)
-                                                  .toList()
-                                                  .isNotEmpty
-                                              ? conversationContentList
-                                                          .where((message) =>
-                                                              message
-                                                                  .messageID ==
-                                                              isReplying
-                                                                  .replyingTo)
-                                                          .toList()[0]
-                                                          .sender ==
-                                                      state.userAuth.user
-                                                          .entityId
-                                                  ? Color(0xff1c7def)
-                                                  : Color(0xffdedede)
-                                              : Colors.transparent,
+                                          color: _quotedStyle(
+                                            mine: Color(0xff1c7def),
+                                            others: Color(0xffdedede),
+                                            none: Colors.transparent,
+                                          ),
                                           borderRadius:
                                               BorderRadius.circular(7)),
                                       child: Padding(
@@ -2025,25 +2059,14 @@ class ConversationStateView extends State<ConversationView> {
                                                               MainAxisSize.max,
                                                           children: [
                                                             Text(
-                                                              "Replying to ${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList().isNotEmpty ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender == state.userAuth.user.entityId ? "your message" : "@${conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender}" : ""}",
+                                                              _replyingToLabel,
                                                               style: TextStyle(
-                                                                  fontSize: 12,
-                                                                  color: conversationContentList
-                                                                          .where((message) =>
-                                                                              message.messageID ==
-                                                                              isReplying
-                                                                                  .replyingTo)
-                                                                          .toList()
-                                                                          .isNotEmpty
-                                                                      ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
-                                                                              state
-                                                                                  .userAuth.user.entityId
-                                                                          ? Colors
-                                                                              .white
-                                                                          : Colors
-                                                                              .black
-                                                                      : Colors
-                                                                          .transparent,
+                                                                  fontSize: CLType.caption,
+                                                                  color: _quotedStyle(
+                                                                    mine: Colors.white,
+                                                                    others: Colors.black,
+                                                                    none: Colors.transparent,
+                                                                  ),
                                                                   fontWeight:
                                                                       FontWeight
                                                                           .bold),
@@ -2059,58 +2082,14 @@ class ConversationStateView extends State<ConversationView> {
                                                         child: SizedBox(),
                                                       ),
                                                       Text(
-                                                        conversationContentList
-                                                                .where((message) =>
-                                                                    message
-                                                                        .messageID ==
-                                                                    isReplying
-                                                                        .replyingTo)
-                                                                .toList()
-                                                                .isNotEmpty
-                                                            ? messageReplyIdentifier(
-                                                                conversationContentList
-                                                                    .where((message) =>
-                                                                        message
-                                                                            .messageID ==
-                                                                        isReplying
-                                                                            .replyingTo)
-                                                                    .toList()[0]
-                                                                    .messageType,
-                                                                conversationContentList
-                                                                    .where((message) =>
-                                                                        message
-                                                                            .messageID ==
-                                                                        isReplying
-                                                                            .replyingTo)
-                                                                    .toList()[0]
-                                                                    .content)
-                                                            : "",
+                                                        _quotedPreviewText,
                                                         style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: conversationContentList
-                                                                  .where((message) =>
-                                                                      message
-                                                                          .messageID ==
-                                                                      isReplying
-                                                                          .replyingTo)
-                                                                  .toList()
-                                                                  .isNotEmpty
-                                                              ? conversationContentList
-                                                                          .where((message) =>
-                                                                              message.messageID ==
-                                                                              isReplying
-                                                                                  .replyingTo)
-                                                                          .toList()[
-                                                                              0]
-                                                                          .sender ==
-                                                                      state
-                                                                          .userAuth
-                                                                          .user
-                                                                          .id
-                                                                  ? Colors.white
-                                                                  : Colors.black
-                                                              : Colors
-                                                                  .transparent,
+                                                          fontSize: CLType.caption,
+                                                          color: _quotedStyle(
+                                                            mine: Colors.white,
+                                                            others: Colors.black,
+                                                            none: Colors.transparent,
+                                                          ),
                                                           overflow: TextOverflow
                                                               .ellipsis,
                                                         ),
@@ -2232,25 +2211,11 @@ class ConversationStateView extends State<ConversationView> {
                                   child: AnimatedContainer(
                                       duration: Duration(milliseconds: 500),
                                       decoration: BoxDecoration(
-                                          color: conversationContentList
-                                                  .where((message) =>
-                                                      message.messageID ==
-                                                      isReplying.replyingTo)
-                                                  .toList()
-                                                  .isNotEmpty
-                                              ? conversationContentList
-                                                          .where((message) =>
-                                                              message
-                                                                  .messageID ==
-                                                              isReplying
-                                                                  .replyingTo)
-                                                          .toList()[0]
-                                                          .sender ==
-                                                      state.userAuth.user
-                                                          .entityId
-                                                  ? Color(0xff1c7def)
-                                                  : Color(0xffdedede)
-                                              : Colors.transparent,
+                                          color: _quotedStyle(
+                                            mine: Color(0xff1c7def),
+                                            others: Color(0xffdedede),
+                                            none: Colors.transparent,
+                                          ),
                                           borderRadius:
                                               BorderRadius.circular(7)),
                                       child: Padding(
@@ -2282,23 +2247,12 @@ class ConversationStateView extends State<ConversationView> {
                                                                   ? "Select messages for context"
                                                                   : "Use AI Reply Assist?",
                                                               style: TextStyle(
-                                                                  fontSize: 12,
-                                                                  color: conversationContentList
-                                                                          .where((message) =>
-                                                                              message.messageID ==
-                                                                              isReplying
-                                                                                  .replyingTo)
-                                                                          .toList()
-                                                                          .isNotEmpty
-                                                                      ? conversationContentList.where((message) => message.messageID == isReplying.replyingTo).toList()[0].sender ==
-                                                                              state
-                                                                                  .userAuth.user.entityId
-                                                                          ? Colors
-                                                                              .white
-                                                                          : Colors
-                                                                              .black
-                                                                      : Colors
-                                                                          .transparent,
+                                                                  fontSize: CLType.caption,
+                                                                  color: _quotedStyle(
+                                                                    mine: Colors.white,
+                                                                    others: Colors.black,
+                                                                    none: Colors.transparent,
+                                                                  ),
                                                                   fontWeight:
                                                                       FontWeight
                                                                           .bold),
@@ -2585,7 +2539,7 @@ class ConversationStateView extends State<ConversationView> {
                                             }
                                           },
                                           style: TextStyle(
-                                              fontSize: 12, color: p.text),
+                                              fontSize: CLType.caption, color: p.text),
                                           decoration: InputDecoration(
                                               contentPadding: EdgeInsets.only(
                                                   top: 6,

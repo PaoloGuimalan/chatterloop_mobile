@@ -252,7 +252,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         color: p.text,
-                        fontSize: 24,
+                        fontSize: CLType.hero,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5),
                   ),
@@ -260,7 +260,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   Text(
                     'A few details are needed before you can continue.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: p.text2, fontSize: 14),
+                    style: TextStyle(color: p.text2, fontSize: CLType.body),
                   ),
                   const SizedBox(height: 24),
                   if (_needBirthdate) ...[
@@ -299,7 +299,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(_error!,
-                          style: TextStyle(color: p.pink, fontSize: 13)),
+                          style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
                     ),
                   const SizedBox(height: 16),
                   CLBtn(
@@ -313,13 +313,13 @@ class _SetupScreenState extends State<SetupScreen> {
                     child: Wrap(
                       children: [
                         Text('Wrong account? ',
-                            style: TextStyle(color: p.text2, fontSize: 13.5)),
+                            style: TextStyle(color: p.text2, fontSize: CLType.body)),
                         GestureDetector(
                           onTap: _busy ? null : _logout,
                           child: Text('Logout',
                               style: TextStyle(
                                   color: p.brand,
-                                  fontSize: 13.5,
+                                  fontSize: CLType.body,
                                   fontWeight: FontWeight.w700)),
                         ),
                       ],
@@ -337,7 +337,7 @@ class _SetupScreenState extends State<SetupScreen> {
   Widget _label(String text, CLPalette p) => Text(
         text,
         style: TextStyle(
-            color: p.text2, fontSize: 13, fontWeight: FontWeight.w600),
+            color: p.text2, fontSize: CLType.bodySm, fontWeight: FontWeight.w600),
       );
 
   Widget _tappableField(CLPalette p,
@@ -362,7 +362,7 @@ class _SetupScreenState extends State<SetupScreen> {
             const SizedBox(width: 10),
             Text(text,
                 style: TextStyle(
-                    color: muted ? p.text3 : p.text, fontSize: 14.5)),
+                    color: muted ? p.text3 : p.text, fontSize: CLType.title)),
           ],
         ),
       ),
@@ -387,7 +387,7 @@ class _SetupScreenState extends State<SetupScreen> {
           child: Text(label,
               style: TextStyle(
                   color: selected ? p.brand : p.text,
-                  fontSize: 14,
+                  fontSize: CLType.title,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
         ),
       ),
@@ -416,7 +416,7 @@ class _SetupScreenState extends State<SetupScreen> {
             padding: const EdgeInsets.only(top: 5),
             child: Text.rich(
               TextSpan(
-                style: TextStyle(color: p.text2, fontSize: 13.5, height: 1.4),
+                style: TextStyle(color: p.text2, fontSize: CLType.body, height: 1.4),
                 children: [
                   const TextSpan(text: 'I agree to the '),
                   _linkSpan(

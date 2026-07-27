@@ -109,7 +109,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     'Verify your email',
                     style: TextStyle(
                         color: p.text,
-                        fontSize: 24,
+                        fontSize: CLType.hero,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5),
                   ),
@@ -118,11 +118,11 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     alignment: WrapAlignment.center,
                     children: [
                       Text('We sent a 6-digit code to ',
-                          style: TextStyle(color: p.text2, fontSize: 14)),
+                          style: TextStyle(color: p.text2, fontSize: CLType.body)),
                       Text(email,
                           style: TextStyle(
                               color: p.text,
-                              fontSize: 14,
+                              fontSize: CLType.body,
                               fontWeight: FontWeight.w700)),
                     ],
                   ),
@@ -139,7 +139,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 14),
                       child: Text(_error!,
-                          style: TextStyle(color: p.pink, fontSize: 13)),
+                          style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
                     ),
                   const SizedBox(height: 24),
                   CLBtn(
@@ -153,13 +153,13 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     alignment: WrapAlignment.center,
                     children: [
                       Text("Wrong account? ",
-                          style: TextStyle(color: p.text2, fontSize: 13.5)),
+                          style: TextStyle(color: p.text2, fontSize: CLType.body)),
                       GestureDetector(
                         onTap: _logout,
                         child: Text('Logout',
                             style: TextStyle(
                                 color: p.brand,
-                                fontSize: 13.5,
+                                fontSize: CLType.body,
                                 fontWeight: FontWeight.w700)),
                       ),
                     ],
@@ -189,7 +189,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
           LengthLimitingTextInputFormatter(1),
         ],
         style:
-            TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: p.text),
+            TextStyle(fontSize: CLType.hero, fontWeight: FontWeight.w700, color: p.text),
         decoration: InputDecoration(
           filled: true,
           fillColor: p.input,

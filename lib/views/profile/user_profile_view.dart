@@ -190,10 +190,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: p.surface,
         title: Text('Remove @${profile!.username}?',
-            style: TextStyle(color: p.text, fontSize: 17)),
+            style: TextStyle(color: p.text, fontSize: CLType.screenTitle)),
         content: Text(
           "You'll both be removed from each other's contacts. You can send a new request later.",
-          style: TextStyle(color: p.text2, fontSize: 14),
+          style: TextStyle(color: p.text2, fontSize: CLType.body),
         ),
         actions: [
           TextButton(
@@ -219,10 +219,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: p.surface,
         title: Text('Block @${profile!.username}?',
-            style: TextStyle(color: p.text, fontSize: 17)),
+            style: TextStyle(color: p.text, fontSize: CLType.screenTitle)),
         content: Text(
           "They won't be able to contact you, see your posts, or find your profile in search.",
-          style: TextStyle(color: p.text2, fontSize: 14),
+          style: TextStyle(color: p.text2, fontSize: CLType.body),
         ),
         actions: [
           TextButton(
@@ -298,7 +298,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   const SizedBox(width: 8),
                   Text('Report this account',
                       style: TextStyle(
-                          fontSize: 16,
+                          fontSize: CLType.sectionTitle,
                           fontWeight: FontWeight.w700,
                           color: p.text)),
                 ]),
@@ -316,7 +316,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     isExpanded: true,
                     underline: const SizedBox.shrink(),
                     dropdownColor: p.surface,
-                    style: TextStyle(color: p.text, fontSize: 14),
+                    style: TextStyle(color: p.text, fontSize: CLType.title),
                     items: _kReportReasons
                         .map((r) =>
                             DropdownMenuItem(value: r.$1, child: Text(r.$2)))
@@ -328,10 +328,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 TextField(
                   controller: descController,
                   maxLines: 3,
-                  style: TextStyle(color: p.text, fontSize: 14),
+                  style: TextStyle(color: p.text, fontSize: CLType.title),
                   decoration: InputDecoration(
                     hintText: 'Add more details (optional)',
-                    hintStyle: TextStyle(color: p.text3, fontSize: 13.5),
+                    hintStyle: TextStyle(color: p.text3, fontSize: CLType.body),
                     filled: true,
                     fillColor: p.input,
                     border: OutlineInputBorder(
@@ -539,7 +539,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       // Transparent + extended behind the body so the back button floats
       // over the cover photo, matching webapp's floating circular back

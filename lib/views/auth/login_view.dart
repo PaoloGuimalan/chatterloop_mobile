@@ -158,7 +158,7 @@ class LoginScreenState extends State<LoginScreen> {
                         'Chatterloop',
                         style: TextStyle(
                           color: p.text,
-                          fontSize: 24,
+                          fontSize: CLType.hero,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -170,7 +170,7 @@ class LoginScreenState extends State<LoginScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: p.text,
-                      fontSize: 26,
+                      fontSize: CLType.hero,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.5,
                     ),
@@ -179,7 +179,7 @@ class LoginScreenState extends State<LoginScreen> {
                   Text(
                     'Log in to jump back into your loop.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: p.text2, fontSize: 14),
+                    style: TextStyle(color: p.text2, fontSize: CLType.body),
                   ),
                   const SizedBox(height: 22),
                   CLField(
@@ -201,7 +201,7 @@ class LoginScreenState extends State<LoginScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: Text(_error!,
-                          style: TextStyle(color: p.pink, fontSize: 13)),
+                          style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
                     ),
                   const SizedBox(height: 4),
                   CLBtn(
@@ -219,7 +219,7 @@ class LoginScreenState extends State<LoginScreen> {
                         child: Text('OR',
                             style: TextStyle(
                                 color: p.text2,
-                                fontSize: 12,
+                                fontSize: CLType.caption,
                                 fontWeight: FontWeight.w600)),
                       ),
                       Expanded(child: Divider(color: p.border2)),
@@ -240,13 +240,13 @@ class LoginScreenState extends State<LoginScreen> {
                     child: Wrap(
                       children: [
                         Text("Don't have an account yet? ",
-                            style: TextStyle(color: p.text2, fontSize: 13.5)),
+                            style: TextStyle(color: p.text2, fontSize: CLType.body)),
                         GestureDetector(
                           onTap: () => context.push('/signup'),
                           child: Text('Sign Up',
                               style: TextStyle(
                                   color: p.brand,
-                                  fontSize: 13.5,
+                                  fontSize: CLType.body,
                                   fontWeight: FontWeight.w700)),
                         ),
                       ],

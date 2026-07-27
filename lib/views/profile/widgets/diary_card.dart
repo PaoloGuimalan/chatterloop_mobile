@@ -98,7 +98,7 @@ class _ProfileDiaryCardState extends State<ProfileDiaryCard> {
                     child: Text("Diary",
                         style: TextStyle(
                             color: p.text,
-                            fontSize: 14.5,
+                            fontSize: CLType.title,
                             fontWeight: FontWeight.w800)),
                   ),
                   if (widget.isSelf)
@@ -118,7 +118,7 @@ class _ProfileDiaryCardState extends State<ProfileDiaryCard> {
                       "${total.totalEntries == 1 ? 'entry' : 'entries'}",
                       style: TextStyle(
                           color: p.text,
-                          fontSize: 13,
+                          fontSize: CLType.bodySm,
                           fontWeight: FontWeight.w700),
                     ),
                   ],
@@ -134,7 +134,7 @@ class _ProfileDiaryCardState extends State<ProfileDiaryCard> {
                           "Last written ${timeSince(total.latestEntry!)}",
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: p.text2, fontSize: 12.5),
+                          style: TextStyle(color: p.text2, fontSize: CLType.label),
                         ),
                       ),
                     ],
@@ -143,7 +143,7 @@ class _ProfileDiaryCardState extends State<ProfileDiaryCard> {
                 if (total.topTags.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text("Writes most about",
-                      style: TextStyle(color: p.text3, fontSize: 11.5)),
+                      style: TextStyle(color: p.text3, fontSize: CLType.caption)),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 6,

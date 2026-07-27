@@ -89,10 +89,10 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: p.surface,
         title: Text('Remove ${r.name}?',
-            style: TextStyle(color: p.text, fontSize: 17)),
+            style: TextStyle(color: p.text, fontSize: CLType.screenTitle)),
         content: Text(
           "You'll both be removed from each other's contacts. Following is separate and won't change.",
-          style: TextStyle(color: p.text2, fontSize: 14),
+          style: TextStyle(color: p.text2, fontSize: CLType.body),
         ),
         actions: [
           TextButton(
@@ -164,7 +164,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     final p = cl(context);
     final realm = _realm;
 
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       // Same treatment as user_profile_view: transparent bar extended behind
       // the body so the back button floats over the cover photo, instead of a
@@ -331,7 +331,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
           children: [
             if (description != null && description.isNotEmpty) ...[
               Text(description,
-                  style: TextStyle(color: p.text, fontSize: 14, height: 1.4)),
+                  style: TextStyle(color: p.text, fontSize: CLType.body, height: 1.4)),
               const SizedBox(height: 12),
             ],
             _infoRow(p, Icons.people_alt_outlined,
@@ -355,7 +355,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
               child: Text(value,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      color: p.text, fontSize: 14, fontWeight: FontWeight.w700)),
+                      color: p.text, fontSize: CLType.title, fontWeight: FontWeight.w700)),
             ),
           ],
         ),

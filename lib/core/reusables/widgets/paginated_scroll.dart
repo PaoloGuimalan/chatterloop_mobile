@@ -103,7 +103,7 @@ class CLCountPill extends StatelessWidget {
       child: Text(
         "$count",
         style: TextStyle(
-          fontSize: 11.5,
+          fontSize: CLType.caption,
           fontWeight: FontWeight.w600,
           color: p.text2,
         ),

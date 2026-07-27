@@ -42,6 +42,32 @@ class _RailArrowScopeState extends State<_RailArrowScope> {
   bool _canLeft = false;
   bool _canRight = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Sync once after the first layout. Notifications alone are not enough: a
+    // rail whose contents don't change after they're first laid out never
+    // dispatches ScrollMetricsNotification, so its arrows would only appear
+    // once the user scrolled - and then the row would reflow around them.
+    // The controller has no clients until the track below has laid out, which
+    // is exactly what a post-frame callback waits for.
+    _syncAfterFrame();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RailArrowScope oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Contents can change without any scrolling - skeletons being replaced by
+    // real cards is the common case, and it changes what's reachable.
+    _syncAfterFrame();
+  }
+
+  void _syncAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _sync();
+    });
+  }
+
   void _sync() {
     if (!widget.controller.hasClients) return;
     final position = widget.controller.position;
@@ -62,10 +88,8 @@ class _RailArrowScopeState extends State<_RailArrowScope> {
       onNotification: (notification) {
         if (notification is ScrollNotification ||
             notification is ScrollMetricsNotification) {
-          // Metrics are being reported mid-layout; defer the setState.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _sync();
-          });
+          // Metrics are reported mid-layout; defer the setState out of it.
+          _syncAfterFrame();
         }
         return false;
       },
@@ -74,9 +98,15 @@ class _RailArrowScopeState extends State<_RailArrowScope> {
   }
 }
 
-/// The 26px circular chevron from the mockup. Renders as an inert
-/// same-size gap when its direction has nothing to reveal, so the header
-/// doesn't reflow every time a rail reaches an end.
+/// The 26px circular chevron from the mockup.
+///
+/// When its direction has nothing left to reveal it stays visible and DIMS,
+/// rather than disappearing. Both alternatives were worse: hiding it outright
+/// makes the whole row reflow the moment a rail is scrolled off its start, and
+/// replacing it with a same-size invisible box (what this used to do) leaves a
+/// 32px hole to the left of the first chip - the rail sits at its start most of
+/// the time, so that hole was the normal state, not an edge case. A dimmed
+/// chevron also says "you're at the start", which nothing else on the row does.
 class _RailArrow extends StatelessWidget {
   final IconData icon;
   final bool enabled;
@@ -88,20 +118,22 @@ class _RailArrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    if (!enabled) return const SizedBox(width: 26, height: 26);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(CLRadii.pill),
-      child: Container(
-        width: 26,
-        height: 26,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: p.surface,
-          shape: BoxShape.circle,
-          border: Border.all(color: p.border2),
+    return Opacity(
+      opacity: enabled ? 1 : 0.38,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(CLRadii.pill),
+        child: Container(
+          width: 26,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: p.surface,
+            shape: BoxShape.circle,
+            border: Border.all(color: p.border2),
+          ),
+          child: Icon(icon, size: 16, color: p.text2),
         ),
-        child: Icon(icon, size: 16, color: p.text2),
       ),
     );
   }
@@ -174,7 +206,7 @@ class CLSectionHeader extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: CLType.sectionTitle,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.15,
                 color: p.text,
@@ -190,7 +222,7 @@ class CLSectionHeader extends StatelessWidget {
                 child: Text(
                   actionLabel!,
                   style: TextStyle(
-                    fontSize: 12.5,
+                    fontSize: CLType.label,
                     fontWeight: FontWeight.w600,
                     color: p.brand,
                   ),
@@ -209,15 +241,19 @@ class CLSectionHeader extends StatelessWidget {
 
 /// Header + horizontally scrolling track, with the chevrons in the header.
 ///
-/// [height] is required because the track is a horizontal list inside a
-/// vertically scrolling page: without a bounded height it has no constraint to
-/// lay out against. Pass the tallest child's height.
+/// The track is as tall as its tallest child and no taller: a
+/// SingleChildScrollView + IntrinsicHeight + Row, rather than a horizontal
+/// ListView. A ListView would need a hardcoded height (a horizontal list gives
+/// its children a tight cross-axis constraint), and any such number is wrong
+/// the moment a card's contents change - which is exactly how the rails ended
+/// up with a strip of dead space inside every card after the type scale
+/// landed. IntrinsicHeight also equalises the cards, so a name that wraps
+/// doesn't leave its neighbours short.
 class CLRailSection extends StatefulWidget {
   final String title;
   final String? actionLabel;
   final VoidCallback? onAction;
   final List<Widget> children;
-  final double height;
   final double gap;
 
   /// Rendered instead of the track when there is nothing to show - an empty
@@ -230,7 +266,6 @@ class CLRailSection extends StatefulWidget {
     this.actionLabel,
     this.onAction,
     required this.children,
-    required this.height,
     this.gap = 12,
     this.empty,
   });
@@ -267,15 +302,23 @@ class _CLRailSectionState extends State<CLRailSection> {
           if (isEmpty)
             widget.empty ?? const SizedBox.shrink()
           else
-            SizedBox(
-              height: widget.height,
-              child: ListView.separated(
-                controller: _controller,
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.zero,
-                itemCount: widget.children.length,
-                separatorBuilder: (_, __) => SizedBox(width: widget.gap),
-                itemBuilder: (_, index) => widget.children[index],
+            SingleChildScrollView(
+              controller: _controller,
+              scrollDirection: Axis.horizontal,
+              child: IntrinsicHeight(
+                child: Row(
+                  // stretch works because IntrinsicHeight hands the Row a
+                  // tight height - every card ends up as tall as the tallest.
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var index = 0;
+                        index < widget.children.length;
+                        index++) ...[
+                      if (index > 0) SizedBox(width: widget.gap),
+                      widget.children[index],
+                    ],
+                  ],
+                ),
               ),
             ),
         ],
@@ -285,8 +328,13 @@ class _CLRailSectionState extends State<CLRailSection> {
 }
 
 /// A single row of chips (Explore's filters, Contacts' jump chips) flanked by
-/// the chevrons, per the mockup. Fixed 40px tall - chips are 30-32px plus
+/// the chevrons, per the mockup. 36px tall - a 34px chip plus a hair of
 /// breathing room.
+///
+/// Both chevrons appear or neither does: if the chips all fit there's nothing
+/// to reveal in either direction, so the row shows no chrome at all. Once they
+/// don't fit, both render and the one that can't move is dimmed rather than
+/// hidden - see [_RailArrow].
 class CLChipsRail extends StatefulWidget {
   final List<Widget> children;
   final double gap;

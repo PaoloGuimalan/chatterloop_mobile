@@ -254,7 +254,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   Widget build(BuildContext context) {
     final p = cl(context);
 
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(
         title: const Text("New entry"),
@@ -304,7 +304,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
             TextField(
               controller: _title,
               style: TextStyle(
-                  color: p.text, fontSize: 17, fontWeight: FontWeight.w700),
+                  color: p.text, fontSize: CLType.screenTitle, fontWeight: FontWeight.w700),
               decoration: InputDecoration(
                 hintText: "Title",
                 hintStyle: TextStyle(color: p.text3),
@@ -320,7 +320,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                   Icon(Icons.calendar_today_outlined, size: 14, color: p.text3),
                   const SizedBox(width: 6),
                   Text(_entryDateForApi(),
-                      style: TextStyle(color: p.text2, fontSize: 13)),
+                      style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
                   const SizedBox(width: 4),
                   Icon(Icons.arrow_drop_down, size: 18, color: p.text3),
                 ],
@@ -370,7 +370,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
             const SizedBox(width: double.infinity),
             Text("Mood",
                 style: TextStyle(
-                    color: p.text2, fontSize: 12, fontWeight: FontWeight.w700)),
+                    color: p.text2, fontSize: CLType.caption, fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             InkWell(
               borderRadius: BorderRadius.circular(CLRadii.sm),
@@ -388,6 +388,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                   children: [
                     if (_selectedMood != null) ...[
                       Text(_selectedMood!.emoji,
+                          // Emoji glyph sized to its container - not a CLType step.
                           style: const TextStyle(fontSize: 17)),
                       const SizedBox(width: 8),
                     ],
@@ -398,7 +399,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: _selectedMood == null ? p.text3 : p.text,
-                          fontSize: 14,
+                          fontSize: CLType.title,
                           fontWeight: _selectedMood == null
                               ? FontWeight.w400
                               : FontWeight.w700,
@@ -423,7 +424,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
             const SizedBox(width: double.infinity),
             Text("Tags",
                 style: TextStyle(
-                    color: p.text2, fontSize: 12, fontWeight: FontWeight.w700)),
+                    color: p.text2, fontSize: CLType.caption, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             if (_selectedTags.isNotEmpty) ...[
               Wrap(
@@ -445,10 +446,10 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
               onChanged: _searchTags,
               onSubmitted: (_) => _addTypedTag(),
               textInputAction: TextInputAction.done,
-              style: TextStyle(color: p.text, fontSize: 14),
+              style: TextStyle(color: p.text, fontSize: CLType.title),
               decoration: InputDecoration(
                 hintText: "Search or create a tag",
-                hintStyle: TextStyle(color: p.text3, fontSize: 13),
+                hintStyle: TextStyle(color: p.text3, fontSize: CLType.bodySm),
                 isDense: true,
                 suffixIcon: _isSearchingTags
                     ? const Padding(
@@ -491,12 +492,12 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               color: p.text,
-                              fontSize: 13,
+                              fontSize: CLType.bodySm,
                               fontWeight: FontWeight.w700),
                         ),
                       ),
                       Text("Add Tag",
-                          style: TextStyle(color: p.brand, fontSize: 12)),
+                          style: TextStyle(color: p.brand, fontSize: CLType.caption)),
                     ],
                   ),
                 ),
@@ -519,7 +520,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                 _tagSuggestions.isEmpty) ...[
               const SizedBox(height: 8),
               Text("Already added",
-                  style: TextStyle(color: p.text3, fontSize: 12)),
+                  style: TextStyle(color: p.text3, fontSize: CLType.caption)),
             ],
           ],
         ),
@@ -535,20 +536,20 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                   child: Text("Attachments",
                       style: TextStyle(
                           color: p.text2,
-                          fontSize: 12,
+                          fontSize: CLType.caption,
                           fontWeight: FontWeight.w700)),
                 ),
                 TextButton.icon(
                   onPressed: _pickAttachments,
                   icon: Icon(Icons.attach_file, size: 17, color: p.brand),
                   label: Text("Add",
-                      style: TextStyle(color: p.brand, fontSize: 13)),
+                      style: TextStyle(color: p.brand, fontSize: CLType.bodySm)),
                 ),
               ],
             ),
             if (_attachments.isEmpty)
               Text("Up to 25MB per file",
-                  style: TextStyle(color: p.text3, fontSize: 12))
+                  style: TextStyle(color: p.text3, fontSize: CLType.caption))
             else
               ..._attachments.map((a) => Padding(
                     padding: const EdgeInsets.only(top: 6),
@@ -561,10 +562,10 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                           child: Text(a.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: p.text, fontSize: 13)),
+                              style: TextStyle(color: p.text, fontSize: CLType.bodySm)),
                         ),
                         Text(_readableSize(a.size),
-                            style: TextStyle(color: p.text3, fontSize: 11.5)),
+                            style: TextStyle(color: p.text3, fontSize: CLType.caption)),
                         IconButton(
                           icon: Icon(Icons.close, size: 17, color: p.text3),
                           onPressed: () =>
@@ -590,13 +591,13 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                   Text(_isPrivate ? "Private" : "Public",
                       style: TextStyle(
                           color: p.text,
-                          fontSize: 14,
+                          fontSize: CLType.title,
                           fontWeight: FontWeight.w700)),
                   Text(
                     _isPrivate
                         ? "Only you can open this entry"
                         : "Anyone with the link can open this entry",
-                    style: TextStyle(color: p.text3, fontSize: 12),
+                    style: TextStyle(color: p.text3, fontSize: CLType.caption),
                   ),
                 ],
               ),

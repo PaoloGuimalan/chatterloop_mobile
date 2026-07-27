@@ -6,6 +6,8 @@
 // If neither is available, a short "unavailable" message is shown - matching
 // the webapp's fallback exactly.
 
+import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -71,7 +73,7 @@ class _PolicyViewerPageState extends State<PolicyViewerPage> {
   @override
   Widget build(BuildContext context) {
     final bg = widget.isDark ? const Color(0xFF0B0E14) : Colors.white;
-    return Scaffold(
+    return CLScreen(
       backgroundColor: bg,
       appBar: AppBar(
         elevation: 0,
@@ -80,7 +82,7 @@ class _PolicyViewerPageState extends State<PolicyViewerPage> {
         foregroundColor:
             widget.isDark ? const Color(0xFFE8EBF1) : const Color(0xFF14161A),
         title: Text(widget.title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            style: const TextStyle(fontSize: CLType.sectionTitle, fontWeight: FontWeight.w700)),
       ),
       body: _controller != null
           ? WebViewWidget(controller: _controller!)

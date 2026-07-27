@@ -60,6 +60,7 @@ Widget buildReactionPill(List<ReactionItem> reactions, CLPalette p) {
                   .map((reaction) => Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 1),
                         child: Text(reaction.emoji.toString(),
+                            // Emoji glyph sized to its container - not a CLType step.
                             style: const TextStyle(fontSize: 12)),
                       ))
                   .toList(),
@@ -71,7 +72,7 @@ Widget buildReactionPill(List<ReactionItem> reactions, CLPalette p) {
             padding: const EdgeInsets.only(left: 3),
             child: Text(
               "+${reactions.length - 4}",
-              style: TextStyle(fontSize: 10, color: p.text2),
+              style: TextStyle(fontSize: CLType.meta, color: p.text2),
             ),
           ),
       ],
@@ -271,6 +272,17 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
       bool isHoverPreview,
       bool isMarkingEnabled) {
     final p = cl(context);
+
+    // Reactions belong to the REAL bubble only. Both preview modes render a
+    // copy of a message: the long-press hero preview (isHoverPreview) and the
+    // quoted snippet above a reply (isReply - which means "rendering AS a reply
+    // preview", not "this message is a reply"). The reply case was doubly
+    // wrong, because these fields are the OUTER message's - so the snippet
+    // showed the replying message's reactions attached to the quoted one.
+    final showReactions = !isReply &&
+        !isHoverPreview &&
+        (_messageContent.reactions?.isNotEmpty ?? false);
+
     if (messageType == "text") {
       return Row(
         mainAxisAlignment:
@@ -388,7 +400,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         children: linkifySpans(
                           content,
                           TextStyle(
-                              fontSize: 14,
+                              fontSize: CLType.title,
                               color: isCurrentUser ? Colors.white : p.text),
                         ),
                       ),
@@ -402,7 +414,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 // LinkPreviewCard on the real message bubble.
                 if (!isReply && _messageContent.linkPreview != null)
                   LinkPreviewCard(preview: _messageContent.linkPreview),
-                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: buildReactionPill(_messageContent.reactions!, p),
@@ -609,7 +621,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         ),
                       )),
                 ),
-                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: buildReactionPill(_messageContent.reactions!, p),
@@ -805,7 +817,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             .replaceAll("###", "%23%23%23")),
                   ),
                 ),
-                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: buildReactionPill(_messageContent.reactions!, p),
@@ -995,7 +1007,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   src: content.split("%%%")[0].replaceAll("###", "%23%23%23"),
                   isSender: isCurrentUser,
                 ),
-                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: buildReactionPill(_messageContent.reactions!, p),
@@ -1096,7 +1108,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     child: Text(
                       content,
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Color(0xFF565656)),
+                      style: TextStyle(fontSize: CLType.caption, color: Color(0xFF565656)),
                     ),
                   ),
                 ),
@@ -1243,7 +1255,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             Expanded(
                                 child: Text(
                               _fileNamePart(content),
-                              style: TextStyle(fontSize: 14, color: p.text),
+                              style: TextStyle(fontSize: CLType.title, color: p.text),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ))
@@ -1251,7 +1263,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         ),
                       ),
                     )),
-                _messageContent.reactions!.isNotEmpty && !isHoverPreview
+                showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: buildReactionPill(_messageContent.reactions!, p),
@@ -1363,7 +1375,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               padding: EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
               child: Text(
                 "Message deleted",
-                style: TextStyle(fontSize: 14, color: Color(0xFFdedede)),
+                style: TextStyle(fontSize: CLType.body, color: Color(0xFFdedede)),
               ),
             ),
           ),
@@ -1422,7 +1434,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     widget.resolveSenderName(
                                         _messageContent.sender),
                                     style: TextStyle(
-                                      fontSize: 12,
+                                      fontSize: CLType.caption,
                                       color: Color(0xFF565656),
                                     ),
                                     overflow: TextOverflow.ellipsis,
@@ -1459,7 +1471,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             child: Text(
                               "replied to ${widget.resolveSenderName(_repliedTo!.sender)}",
                               style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: CLType.caption,
                                   color: Color(0xFF565656),
                                   fontWeight: FontWeight.bold),
                               overflow: TextOverflow.ellipsis,
@@ -1553,17 +1565,28 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         ),
                       );
                     },
+                    // The Material is INSIDE the Hero so it flies with it. A
+                    // hero's child is re-parented into the Navigator's overlay
+                    // for the flight, leaving the page's Material behind - and
+                    // without one, text falls back to DefaultTextStyle.fallback,
+                    // whose yellow double-underline decoration shows straight
+                    // through the bubble's own style. That's what marked the
+                    // message with yellow lines on the way back from the
+                    // long-press preview. transparency = no paint of its own.
                     child: Hero(
                         tag: _messageContent.messageID,
-                        child: messageTypeSwitch(
-                            _messageContent.content,
-                            _messageContent.messageType,
-                            _messageContent.messageID,
-                            _messageContent.sender == _currentUserID,
-                            _messageContent.sender == _currentUserID,
-                            false,
-                            false,
-                            isUsingReplyAssist)),
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: messageTypeSwitch(
+                              _messageContent.content,
+                              _messageContent.messageType,
+                              _messageContent.messageID,
+                              _messageContent.sender == _currentUserID,
+                              _messageContent.sender == _currentUserID,
+                              false,
+                              false,
+                              isUsingReplyAssist),
+                        )),
                   )
           ],
         ),

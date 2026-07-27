@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/models/post_models/user_post_model.dart';
 import 'package:flutter/material.dart';
@@ -86,13 +87,13 @@ class PostItemWidgetState extends State<PostItemWidget> {
                               Text(
                                   "${_post.postOwner.firstname}${_post.postOwner.middlename == "N/A" ? "" : " ${_post.postOwner.middlename}"} ${_post.postOwner.lastname}",
                                   style: TextStyle(
-                                      fontSize: 14,
+                                      fontSize: CLType.title,
                                       color: Color(0xFF565656),
                                       fontWeight: FontWeight.bold)),
                               _post.tagging.isTagged
                                   ? Text(" is with",
                                       style: TextStyle(
-                                        fontSize: 14,
+                                        fontSize: CLType.title,
                                         color: Color(0xFF565656),
                                       ))
                                   : SizedBox(
@@ -101,7 +102,7 @@ class PostItemWidgetState extends State<PostItemWidget> {
                               ..._post.taggedUsers.map((tagged) => Text(
                                   " ${tagged.firstname}${tagged.middlename == "N/A" ? "" : " ${tagged.middlename}"} ${tagged.lastname}",
                                   style: TextStyle(
-                                      fontSize: 14,
+                                      fontSize: CLType.title,
                                       color: Color(0xFF565656),
                                       fontWeight: FontWeight.bold)))
                             ],

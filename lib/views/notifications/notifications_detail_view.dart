@@ -136,7 +136,7 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
     final p = cl(context);
     final empty = _emptyState;
 
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(
         title: Text(widget.section.title),

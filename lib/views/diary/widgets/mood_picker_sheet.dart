@@ -129,7 +129,7 @@ class _MoodPickerSheetState extends State<_MoodPickerSheet> {
                   child: Text("Select Mood",
                       style: TextStyle(
                           color: p.text,
-                          fontSize: 15,
+                          fontSize: CLType.sectionTitle,
                           fontWeight: FontWeight.w800)),
                 ),
                 if (widget.selected != null)
@@ -137,7 +137,7 @@ class _MoodPickerSheetState extends State<_MoodPickerSheet> {
                     onPressed: () =>
                         Navigator.of(context).pop(const MoodSelection(null)),
                     child: Text("Clear",
-                        style: TextStyle(color: p.text2, fontSize: 13)),
+                        style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
                   ),
               ],
             ),
@@ -178,11 +178,12 @@ class _MoodPickerSheetState extends State<_MoodPickerSheet> {
                           final isSelected = widget.selected?.id == mood.id;
                           return ListTile(
                             leading: Text(mood.emoji,
+                                // Emoji glyph sized to its container - not a CLType step.
                                 style: const TextStyle(fontSize: 20)),
                             title: Text(mood.name,
                                 style: TextStyle(
                                     color: p.text,
-                                    fontSize: 14,
+                                    fontSize: CLType.title,
                                     fontWeight: isSelected
                                         ? FontWeight.w700
                                         : FontWeight.w400)),

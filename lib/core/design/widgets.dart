@@ -375,17 +375,26 @@ class CLEmptyState extends StatelessWidget {
     this.iconBorderColor,
     required this.title,
     required this.subtitle,
+    this.compact = false,
   });
+
+  /// A step down in every dimension, for an empty state that sits INSIDE a
+  /// screen rather than owning it - Explore's "start typing" panel is above the
+  /// fold with a search field and filter chips, so at full size it dominated a
+  /// screen it was only meant to be resting on. A screen-owning empty state
+  /// (the See-all views, an unavailable post) keeps the full size.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
+    final badge = compact ? 56.0 : 72.0;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 72,
-          height: 72,
+          width: badge,
+          height: badge,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: iconBg,
@@ -394,20 +403,24 @@ class CLEmptyState extends StatelessWidget {
                 : null,
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: 34, color: iconColor),
+          child: Icon(icon, size: compact ? 26 : 34, color: iconColor),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: compact ? 10 : 12),
         Text(
           title,
           textAlign: TextAlign.center,
           style: TextStyle(
-              fontSize: 18, fontWeight: FontWeight.w800, color: p.text),
+              fontSize: compact ? CLType.sectionTitle : CLType.screenTitle,
+              fontWeight: FontWeight.w800,
+              color: p.text),
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: compact ? 3 : 4),
         Text(
           subtitle,
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 14, color: p.text2),
+          style: TextStyle(
+              fontSize: compact ? CLType.caption : CLType.body,
+              color: p.text2),
         ),
       ],
     );
@@ -539,10 +552,13 @@ class CLBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
+    // Height, horizontal padding, label size. The label sizes are scale steps
+    // like everywhere else - they were already 13/14/15, they just weren't
+    // named.
     final (h, padX, fs) = switch (size) {
-      CLBtnSize.sm => (32.0, 12.0, 13.0),
-      CLBtnSize.md => (38.0, 16.0, 14.0),
-      CLBtnSize.lg => (46.0, 22.0, 15.0),
+      CLBtnSize.sm => (32.0, 12.0, CLType.bodySm),
+      CLBtnSize.md => (38.0, 16.0, CLType.title),
+      CLBtnSize.lg => (46.0, 22.0, CLType.sectionTitle),
     };
     final (bg, fg, border) = switch (variant) {
       CLBtnVariant.primary => (p.brand, Colors.white, null),
@@ -671,7 +687,7 @@ class CLMiniBtn extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: fg,
-                fontSize: 11.5,
+                fontSize: CLType.caption,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -724,13 +740,13 @@ class CLSectionEmpty extends StatelessWidget {
             title,
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: 13.5, fontWeight: FontWeight.w700, color: p.text),
+                fontSize: CLType.body, fontWeight: FontWeight.w700, color: p.text),
           ),
           const SizedBox(height: 2),
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: p.text3),
+            style: TextStyle(fontSize: CLType.caption, color: p.text3),
           ),
         ],
       ),
@@ -771,6 +787,59 @@ class CLIconBtn extends StatelessWidget {
         minimumSize: Size(size, size),
         padding: EdgeInsets.zero,
       ),
+    );
+  }
+}
+
+// -------- Screen -------------------------------------------------------------
+
+/// Scaffold for a PUSHED screen - one that owns the whole display, with no
+/// bottom nav under it.
+///
+/// The only thing it adds is `SafeArea(top: false)` around the body, and that
+/// is the whole point: a bare Scaffold does NOT keep its body clear of the
+/// Android navigation bar. The app draws edge-to-edge, so a plain
+/// `Scaffold(appBar:, body: ListView(...))` renders its last row UNDER the
+/// system nav buttons - which is exactly the bug this type exists to stop
+/// recurring. Only the body is inset; the AppBar handles the status bar itself.
+///
+/// Tab screens must NOT use this. Their bottom inset is already consumed by
+/// HomeTabScaffold's bottom nav bar (which deliberately paints its surface
+/// behind the nav buttons), so insetting again leaves a dead strip above the
+/// nav bar - the opposite bug.
+class CLScreen extends StatelessWidget {
+  final PreferredSizeWidget? appBar;
+  final Widget? body;
+  final Color? backgroundColor;
+  final Widget? floatingActionButton;
+  final bool? resizeToAvoidBottomInset;
+
+  /// For the profile screens, whose cover photo runs up behind a transparent
+  /// AppBar. Only affects the TOP edge, so it composes fine with the bottom
+  /// inset this widget adds.
+  final bool extendBodyBehindAppBar;
+
+  const CLScreen({
+    super.key,
+    this.appBar,
+    this.body,
+    this.backgroundColor,
+    this.floatingActionButton,
+    this.resizeToAvoidBottomInset,
+    this.extendBodyBehindAppBar = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: appBar,
+      backgroundColor: backgroundColor,
+      // Left to Scaffold: it already lifts the button clear of the system nav
+      // bar using MediaQuery's insets.
+      floatingActionButton: floatingActionButton,
+      resizeToAvoidBottomInset: resizeToAvoidBottomInset,
+      extendBodyBehindAppBar: extendBodyBehindAppBar,
+      body: body == null ? null : SafeArea(top: false, child: body!),
     );
   }
 }
@@ -840,7 +909,7 @@ class CLBadge extends StatelessWidget {
         label,
         style: TextStyle(
           color: fg,
-          fontSize: 12,
+          fontSize: CLType.caption,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -888,7 +957,7 @@ class CLChip extends StatelessWidget {
               label,
               style: TextStyle(
                 color: active ? Colors.white : p.text2,
-                fontSize: 13,
+                fontSize: CLType.bodySm,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -933,7 +1002,7 @@ class CLField extends StatelessWidget {
             child: Text(
               label!,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: CLType.caption,
                 color: p.text2,
                 fontWeight: FontWeight.w600,
               ),
@@ -959,7 +1028,7 @@ class CLField extends StatelessWidget {
                   obscureText: obscure,
                   keyboardType: keyboardType,
                   onChanged: onChanged,
-                  style: TextStyle(color: p.text, fontSize: 14),
+                  style: TextStyle(color: p.text, fontSize: CLType.title),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isCollapsed: true,
@@ -1035,7 +1104,7 @@ class CLBrandPanel extends StatelessWidget {
                     'Chatterloop',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 24,
+                      fontSize: CLType.hero,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.5,
                     ),
@@ -1051,7 +1120,7 @@ class CLBrandPanel extends StatelessWidget {
                       'A more visible way to stay connected.',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 40,
+                        fontSize: CLType.display,
                         fontWeight: FontWeight.w800,
                         height: 1.1,
                         letterSpacing: -1.2,
@@ -1063,7 +1132,7 @@ class CLBrandPanel extends StatelessWidget {
                     'Link · Share · Explore',
                     style: TextStyle(
                       color: Color(0xD9FFFFFF),
-                      fontSize: 16,
+                      fontSize: CLType.sectionTitle,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -1073,7 +1142,7 @@ class CLBrandPanel extends StatelessWidget {
                 '© Neon Systems · ChatterLoop',
                 style: TextStyle(
                   color: Color(0xB3FFFFFF),
-                  fontSize: 12.5,
+                  fontSize: CLType.label,
                 ),
               ),
             ],

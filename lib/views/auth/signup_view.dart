@@ -179,7 +179,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: p.text,
-                      fontSize: 26,
+                      fontSize: CLType.hero,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.5,
                     ),
@@ -188,7 +188,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   Text(
                     'Join the loop in less than a minute.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: p.text2, fontSize: 14),
+                    style: TextStyle(color: p.text2, fontSize: CLType.body),
                   ),
                   const SizedBox(height: 22),
                   Row(children: [
@@ -217,7 +217,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   Text('Birth date',
                       style: TextStyle(
                           color: p.text2,
-                          fontSize: 12,
+                          fontSize: CLType.caption,
                           fontWeight: FontWeight.w600)),
                   const SizedBox(height: 6),
                   Row(children: [
@@ -247,7 +247,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   Text('Gender',
                       style: TextStyle(
                           color: p.text2,
-                          fontSize: 12,
+                          fontSize: CLType.caption,
                           fontWeight: FontWeight.w600)),
                   const SizedBox(height: 6),
                   Row(children: [
@@ -272,7 +272,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Text(_error!,
-                          style: TextStyle(color: p.pink, fontSize: 13)),
+                          style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
                     ),
                   const SizedBox(height: 6),
                   CLBtn(
@@ -285,13 +285,13 @@ class _SignupScreenState extends State<SignupScreen> {
                   Center(
                     child: Wrap(children: [
                       Text('Already have an account? ',
-                          style: TextStyle(color: p.text2, fontSize: 13.5)),
+                          style: TextStyle(color: p.text2, fontSize: CLType.body)),
                       GestureDetector(
                         onTap: () => context.pop(),
                         child: Text('Log In',
                             style: TextStyle(
                                 color: p.brand,
-                                fontSize: 13.5,
+                                fontSize: CLType.body,
                                 fontWeight: FontWeight.w700)),
                       ),
                     ]),
@@ -326,7 +326,7 @@ class _SignupScreenState extends State<SignupScreen> {
             padding: const EdgeInsets.only(top: 5),
             child: Text.rich(
               TextSpan(
-                style: TextStyle(color: p.text2, fontSize: 13.5, height: 1.4),
+                style: TextStyle(color: p.text2, fontSize: CLType.body, height: 1.4),
                 children: [
                   const TextSpan(text: 'I agree to the '),
                   _linkSpan(
@@ -375,7 +375,7 @@ class _SignupScreenState extends State<SignupScreen> {
         isExpanded: true,
         underline: const SizedBox.shrink(),
         dropdownColor: p.surface,
-        style: TextStyle(color: p.text, fontSize: 14),
+        style: TextStyle(color: p.text, fontSize: CLType.title),
         items: options
             .map((o) => DropdownMenuItem(value: o, child: Text(o)))
             .toList(),
@@ -402,7 +402,7 @@ class _SignupScreenState extends State<SignupScreen> {
           label,
           style: TextStyle(
             color: active ? Colors.white : p.text2,
-            fontSize: 13.5,
+            fontSize: CLType.body,
             fontWeight: FontWeight.w600,
           ),
         ),

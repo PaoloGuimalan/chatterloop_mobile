@@ -88,7 +88,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
       builder: (context, state) {
         _initFrom(state.userAuth.user);
         final email = _original.email ?? '';
-        return Scaffold(
+        return CLScreen(
           backgroundColor: p.bg,
           appBar: AppBar(title: const Text('Credentials')),
           body: SingleChildScrollView(
@@ -122,7 +122,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                       Expanded(
                         child: Text(
                           email.isEmpty ? 'No email on file' : email,
-                          style: TextStyle(color: p.text3, fontSize: 14),
+                          style: TextStyle(color: p.text3, fontSize: CLType.body),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -160,9 +160,9 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
         children: [
           Text(title,
               style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w700, color: p.text)),
+                  fontSize: CLType.title, fontWeight: FontWeight.w700, color: p.text)),
           const SizedBox(height: 2),
-          Text(desc, style: TextStyle(fontSize: 13, color: p.text2)),
+          Text(desc, style: TextStyle(fontSize: CLType.bodySm, color: p.text2)),
         ],
       );
 }

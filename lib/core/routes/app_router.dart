@@ -44,46 +44,110 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 /// Every route below goes through this instead of GoRoute's plain `builder`
-/// so pushes/pops get one consistent slide+fade instead of relying on
-/// per-platform MaterialPageRoute defaults (Android's ZoomPageTransitions
-/// in particular reads as an abrupt cut at normal tap speed).
-CustomTransitionPage<void> _clPage(GoRouterState state, Widget child) {
-  return CustomTransitionPage<void>(
-    key: state.pageKey,
-    transitionDuration: const Duration(milliseconds: 260),
-    reverseTransitionDuration: const Duration(milliseconds: 220),
-    child: child,
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      // Pure slide (a transform) - deliberately NO FadeTransition. Animating
-      // opacity across a whole screen composites the entire incoming page into
-      // an offscreen layer (saveLayer) on every frame of the transition, which
-      // is a real per-navigation cost and reads as a clunky screen switch. A
-      // transform is effectively free on the raster thread. The incoming page
-      // slides fully in from the right over the (opaque) outgoing one, which
-      // drifts slightly left in parallax so there's never a see-through gap -
-      // the standard iOS push, and cheap.
-      final incoming = Tween<Offset>(
-        begin: const Offset(1.0, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      ));
-      final outgoing = Tween<Offset>(
-        begin: Offset.zero,
-        end: const Offset(-0.25, 0),
-      ).animate(CurvedAnimation(
-        parent: secondaryAnimation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      ));
-      return SlideTransition(
-        position: outgoing,
-        child: SlideTransition(position: incoming, child: child),
-      );
-    },
-  );
+/// so pushes/pops get one consistent slide instead of relying on per-platform
+/// MaterialPageRoute defaults (Android's ZoomPageTransitions in particular
+/// reads as an abrupt cut at normal tap speed).
+Page<void> _clPage(GoRouterState state, Widget child) =>
+    CLPage(key: state.pageKey, child: child);
+
+/// Deliberately a hand-rolled Page/PageRoute pair rather than go_router's
+/// `CustomTransitionPage`, for ONE reason: [CLPageRoute.canTransitionTo].
+///
+/// Public (rather than private to this file) so the transition rule can be
+/// tested directly - see test/redesign_layout_test.dart. It got shipped wrong
+/// once, and the symptom only shows on a device.
+class CLPage extends Page<void> {
+  final Widget child;
+
+  const CLPage({required LocalKey super.key, required this.child});
+
+  @override
+  Route<void> createRoute(BuildContext context) => CLPageRoute(page: this);
+}
+
+class CLPageRoute extends PageRoute<void> {
+  CLPageRoute({required CLPage page}) : super(settings: page);
+
+  CLPage get _page => settings as CLPage;
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 260);
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 220);
+
+  @override
+  bool get maintainState => true;
+
+  @override
+  Color? get barrierColor => null;
+
+  @override
+  String? get barrierLabel => null;
+
+  /// Only let a route that actually COVERS this one push it aside.
+  ///
+  /// The parallax below is driven by `secondaryAnimation`, which Navigator only
+  /// runs when this returns true for whatever was pushed on top - and the
+  /// default (ModalRoute) is true for EVERYTHING. The whole point of drifting
+  /// the outgoing page left is that an opaque incoming page hides the gap it
+  /// leaves; under a transparent route that gap is just unpainted black down the
+  /// right-hand side, with the page visibly shoved off-centre beneath the
+  /// overlay.
+  ///
+  /// `opaque` is the exact property to test, NOT "is it a PageRoute": the
+  /// message long-press preview (flutter_chat_reactions' HeroDialogRoute) IS a
+  /// PageRoute - it has to be, since Flutter's HeroController only flies heroes
+  /// between page routes - it just sets `opaque => false`. Testing for PageRoute
+  /// let it straight through.
+  ///
+  /// Note the parallax only ever applies between two of these pages anyway:
+  /// a transition needs BOTH sides to agree (`canTransitionTo` here and
+  /// `canTransitionFrom` on the incoming route), and MaterialPageRoute's
+  /// `canTransitionFrom` requires the route below to be a Material one. So the
+  /// app's few imperative MaterialPageRoute pushes (the policy viewer from
+  /// setup/signup, the call screen) never drifted the page below and still
+  /// don't - unchanged by this, and not worth becoming a Material route over.
+  @override
+  bool canTransitionTo(TransitionRoute<dynamic> nextRoute) => nextRoute.opaque;
+
+  @override
+  Widget buildPage(BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation) =>
+      _page.child;
+
+  @override
+  Widget buildTransitions(BuildContext context, Animation<double> animation,
+      Animation<double> secondaryAnimation, Widget child) {
+    // Pure slide (a transform) - deliberately NO FadeTransition. Animating
+    // opacity across a whole screen composites the entire incoming page into
+    // an offscreen layer (saveLayer) on every frame of the transition, which
+    // is a real per-navigation cost and reads as a clunky screen switch. A
+    // transform is effectively free on the raster thread. The incoming page
+    // slides fully in from the right over the (opaque) outgoing one, which
+    // drifts slightly left in parallax so there's never a see-through gap -
+    // the standard iOS push, and cheap.
+    final incoming = Tween<Offset>(
+      begin: const Offset(1.0, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    ));
+    final outgoing = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(-0.25, 0),
+    ).animate(CurvedAnimation(
+      parent: secondaryAnimation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    ));
+    return SlideTransition(
+      position: outgoing,
+      child: SlideTransition(position: incoming, child: child),
+    );
+  }
 }
 
 /// Set once by buildAppRouter, readable from anywhere - needed so

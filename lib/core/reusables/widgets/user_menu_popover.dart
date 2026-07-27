@@ -37,13 +37,25 @@ void showUserMenuPopover(
   final overlay = Overlay.of(context);
   late OverlayEntry entry;
   entry = OverlayEntry(
-    builder: (overlayContext) => _UserMenuOverlay(
-      anchorTopLeft: anchorTopLeft,
-      anchorSize: anchorSize,
-      screenSize: screenSize,
-      onClose: () => entry.remove(),
-      onOpenProfile: onOpenProfile,
-      onLogout: onLogout,
+    // An OverlayEntry is built OUTSIDE the page's widget tree, so it inherits no
+    // Material - and therefore no DefaultTextStyle. Any Text in here then falls
+    // back to DefaultTextStyle.fallback, whose yellow double-underline
+    // decoration shows through even when the Text sets its own size and colour:
+    // that's what put yellow lines under "SWITCH ACCOUNT" and "No pages to
+    // manage" (the only labels here not already inside a _MenuRow, which wraps
+    // itself in Material for its ink splash). One Material at the root covers
+    // the whole menu, including anything added to it later. transparency = no
+    // paint of its own, so the popover's own decoration is untouched.
+    builder: (overlayContext) => Material(
+      type: MaterialType.transparency,
+      child: _UserMenuOverlay(
+        anchorTopLeft: anchorTopLeft,
+        anchorSize: anchorSize,
+        screenSize: screenSize,
+        onClose: () => entry.remove(),
+        onOpenProfile: onOpenProfile,
+        onLogout: onLogout,
+      ),
     ),
   );
   overlay.insert(entry);
@@ -263,14 +275,14 @@ class _MenuContent extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                fontSize: 14,
+                                fontSize: CLType.title,
                                 fontWeight: FontWeight.w700,
                                 color: p.text),
                           ),
                           Text(user.activeHandle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 12, color: p.text2)),
+                              style: TextStyle(fontSize: CLType.caption, color: p.text2)),
                         ],
                       ),
                     ),
@@ -281,7 +293,7 @@ class _MenuContent extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
                 child: Text("SWITCH ACCOUNT",
                     style: TextStyle(
-                        fontSize: 11,
+                        fontSize: CLType.meta,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.4,
                         color: p.text3)),
@@ -302,7 +314,7 @@ class _MenuContent extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                              fontSize: 13,
+                              fontSize: CLType.bodySm,
                               fontWeight: FontWeight.w600,
                               color: !isSwitched ? p.brand : p.text)),
                     ),
@@ -327,7 +339,7 @@ class _MenuContent extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   child: Text("No pages to manage",
-                      style: TextStyle(fontSize: 12, color: p.text2)),
+                      style: TextStyle(fontSize: CLType.caption, color: p.text2)),
                 ),
               ] else ...[
                 for (final realm in realms)
@@ -350,7 +362,7 @@ class _MenuContent extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: CLType.bodySm,
                                   fontWeight: FontWeight.w600,
                                   color: user.activeEntity?.realmId == realm.id
                                       ? p.brand
@@ -377,7 +389,7 @@ class _MenuContent extends StatelessWidget {
                       const SizedBox(width: 10),
                       Text("Settings",
                           style: TextStyle(
-                              fontSize: 13,
+                              fontSize: CLType.bodySm,
                               fontWeight: FontWeight.w600,
                               color: p.text)),
                     ],
@@ -391,7 +403,7 @@ class _MenuContent extends StatelessWidget {
                     const SizedBox(width: 10),
                     Text("Logout",
                         style: TextStyle(
-                            fontSize: 13,
+                            fontSize: CLType.bodySm,
                             fontWeight: FontWeight.w600,
                             color: p.pink)),
                   ],

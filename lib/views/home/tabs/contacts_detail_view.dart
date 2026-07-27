@@ -246,10 +246,10 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
       padding: const EdgeInsets.all(14),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        mainAxisSpacing: 16,
+        mainAxisSpacing: 14,
         crossAxisSpacing: 8,
-        // Tile (60) + gap + up to two label lines.
-        mainAxisExtent: 110,
+        // Badge (54) + gap + two label lines.
+        mainAxisExtent: 96,
       ),
       itemCount: _isLoading ? 9 : _groups.length + (_isLoadingMore ? 3 : 0),
       itemBuilder: (context, index) {
@@ -271,7 +271,7 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
     final empty = _emptyState;
     final isEmpty = _isGroups ? _groups.isEmpty : _items.isEmpty;
 
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(
         title: Text(widget.section.title),

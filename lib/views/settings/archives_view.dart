@@ -5,6 +5,7 @@
 // conversation menu). Paginates with the same scroll-to-load-more as the
 // Messages/Contacts tabs.
 
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
@@ -65,7 +66,7 @@ class _ArchivesScreenState extends State<ArchivesScreen> {
   Widget build(BuildContext context) {
     final p = cl(context);
     final userID = appStore.state.userAuth.user.entityId;
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(title: const Text('Archives')),
       body: _loading

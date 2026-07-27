@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/design/tokens.dart';
 import 'dart:io';
 
 import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
@@ -111,7 +112,7 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                 child: Text(
                   content,
                   style: TextStyle(
-                      fontSize: 14,
+                      fontSize: CLType.title,
                       color: isCurrentUser ? Colors.white : Colors.black),
                 ),
               ),
@@ -537,7 +538,7 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                     child: Text(
                       content,
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Color(0xFF565656)),
+                      style: TextStyle(fontSize: CLType.caption, color: Color(0xFF565656)),
                     ),
                   ),
                 ),
@@ -644,7 +645,7 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                         Expanded(
                             child: Text(
                           _fileNamePart(content),
-                          style: TextStyle(fontSize: 14, color: Colors.black),
+                          style: TextStyle(fontSize: CLType.title, color: Colors.black),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ))
@@ -726,7 +727,7 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                     Text(
                       "...sending",
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: CLType.caption,
                         color: Color(0xFF565656),
                       ),
                       overflow: TextOverflow.ellipsis,

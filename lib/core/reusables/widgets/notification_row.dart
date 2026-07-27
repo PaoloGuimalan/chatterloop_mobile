@@ -141,7 +141,7 @@ class CLNotificationRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   timeLabel,
-                  style: TextStyle(fontSize: 11, color: p.text3),
+                  style: TextStyle(fontSize: CLType.meta, color: p.text3),
                 ),
               ],
             ),

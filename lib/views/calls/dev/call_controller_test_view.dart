@@ -11,6 +11,7 @@
 // `Navigator.push(context, MaterialPageRoute(builder: (_) =>
 // const CallControllerTestView()))`.
 
+import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:flutter/material.dart';
 
@@ -80,7 +81,7 @@ class CallControllerTestView extends StatelessWidget {
                   "participants: ${controller.joinedParticipants.length}\n"
                   "remote consumers: ${controller.consumers.length}\n"
                   "lastError: ${controller.lastError ?? '-'}",
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  style: const TextStyle(fontSize: CLType.caption, fontFamily: 'monospace'),
                 ),
               ),
               const Divider(),
@@ -93,7 +94,7 @@ class CallControllerTestView extends StatelessWidget {
                             "muted=${controller.participantStatuses[p.clientId]?.muted ?? false} "
                             "cameraOff=${controller.participantStatuses[p.clientId]?.cameraOff ?? false}",
                             style: const TextStyle(
-                                fontSize: 12, fontFamily: 'monospace'),
+                                fontSize: CLType.caption, fontFamily: 'monospace'),
                           ))
                       .toList(),
                 ),

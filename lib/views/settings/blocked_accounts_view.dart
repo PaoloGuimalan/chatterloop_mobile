@@ -53,7 +53,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(title: const Text('Blocked Accounts')),
       body: RefreshIndicator(
@@ -63,7 +63,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
           children: [
             Text(
               "Accounts you've blocked can't contact you, see your posts, or find your profile in search.",
-              style: TextStyle(fontSize: 14, color: p.text2),
+              style: TextStyle(fontSize: CLType.body, color: p.text2),
             ),
             const SizedBox(height: 16),
             if (_loading)
@@ -115,7 +115,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
                 Text(
                   acc.displayName.isEmpty ? '@${acc.username}' : acc.displayName,
                   style: TextStyle(
-                      fontSize: 13,
+                      fontSize: CLType.bodySm,
                       fontWeight: FontWeight.w600,
                       color: p.text),
                   maxLines: 1,
@@ -123,7 +123,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text('@${acc.username}',
-                    style: TextStyle(fontSize: 12, color: p.text2),
+                    style: TextStyle(fontSize: CLType.caption, color: p.text2),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
               ],
@@ -149,7 +149,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
             borderRadius: BorderRadius.circular(CLRadii.sm)),
       ),
       child: Text(busy ? 'Unblocking…' : 'Unblock',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          style: const TextStyle(fontSize: CLType.caption, fontWeight: FontWeight.w600)),
     );
   }
 }

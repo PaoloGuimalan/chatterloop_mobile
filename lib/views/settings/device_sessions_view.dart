@@ -3,6 +3,7 @@
 // the user sign out of any that isn't the current device (DELETE
 // /api/user/devices {sessionID}).
 
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/requests/settings_api.dart';
 import 'package:chatterloop_app/models/user_models/device_session_model.dart';
@@ -58,7 +59,7 @@ class _DeviceSessionsScreenState extends State<DeviceSessionsScreen> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(title: const Text('Device Sessions')),
       body: RefreshIndicator(
@@ -68,7 +69,7 @@ class _DeviceSessionsScreenState extends State<DeviceSessionsScreen> {
           children: [
             Text(
               "See where you're logged in and sign out of devices you don't recognize.",
-              style: TextStyle(fontSize: 14, color: p.text2),
+              style: TextStyle(fontSize: CLType.body, color: p.text2),
             ),
             const SizedBox(height: 16),
             if (_loading)
@@ -120,13 +121,13 @@ class _DeviceSessionsScreenState extends State<DeviceSessionsScreen> {
                     TextSpan(
                         text: '${s.browser} on ${s.os}',
                         style: TextStyle(
-                            fontSize: 13,
+                            fontSize: CLType.bodySm,
                             fontWeight: FontWeight.w600,
                             color: p.text)),
                     if (s.isCurrentDevice)
                       TextSpan(
                           text: '  · This device',
-                          style: TextStyle(fontSize: 11, color: p.brand)),
+                          style: TextStyle(fontSize: CLType.meta, color: p.brand)),
                   ]),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -134,7 +135,7 @@ class _DeviceSessionsScreenState extends State<DeviceSessionsScreen> {
                 const SizedBox(height: 2),
                 Text(
                   '${s.ip} · ${s.status ? 'Active now' : 'Last seen ${_timeSince(s.lastSeen)}'}',
-                  style: TextStyle(fontSize: 12, color: p.text2),
+                  style: TextStyle(fontSize: CLType.caption, color: p.text2),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -163,7 +164,7 @@ class _DeviceSessionsScreenState extends State<DeviceSessionsScreen> {
             borderRadius: BorderRadius.circular(CLRadii.sm)),
       ),
       child: Text(revoking ? 'Signing out…' : 'Sign out',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          style: const TextStyle(fontSize: CLType.caption, fontWeight: FontWeight.w600)),
     );
   }
 

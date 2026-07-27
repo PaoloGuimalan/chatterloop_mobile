@@ -180,7 +180,7 @@ class _IncomingCallViewState extends State<IncomingCallView> {
                             ? alert.caller.name[0].toUpperCase()
                             : "?",
                         style: const TextStyle(
-                            fontSize: 40,
+                            fontSize: CLType.display,
                             color: Colors.white,
                             fontWeight: FontWeight.w600),
                       ),
@@ -192,7 +192,7 @@ class _IncomingCallViewState extends State<IncomingCallView> {
                     : alert.caller.name,
                 style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 24,
+                    fontSize: CLType.hero,
                     fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
@@ -200,7 +200,7 @@ class _IncomingCallViewState extends State<IncomingCallView> {
                 alert.callType == "video"
                     ? "Incoming video call"
                     : "Incoming voice call",
-                style: const TextStyle(color: Colors.white70, fontSize: 16),
+                style: const TextStyle(color: Colors.white70, fontSize: CLType.sectionTitle),
               ),
               const Spacer(flex: 3),
               Padding(
@@ -261,7 +261,7 @@ class _CallActionButton extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: CLType.bodySm)),
       ],
     );
   }

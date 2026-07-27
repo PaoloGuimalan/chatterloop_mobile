@@ -54,6 +54,69 @@ class CLColors {
   static const text3Dark = Color(0xFF6B7488);
 }
 
+/// The app's type scale. Every piece of UI text picks a step from here instead
+/// of an ad-hoc literal.
+///
+/// The steps are the ones the redesigned Notifications screen established, and
+/// the rest of the app was unified onto them - before this the app used ~21
+/// distinct sizes (9, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15,
+/// 16, 17, 18, 19, 20, 22, 24, 26, 40), most of them one-offs that only
+/// differed from a neighbour by half a point.
+///
+/// Sizes only, deliberately not whole TextStyles: weight and colour vary
+/// independently of size at every step (a [title] is w700 on `p.text` in a row
+/// but w600 on `p.text2` in a chip), so bundling them would need a token per
+/// combination rather than per step.
+///
+/// EMOJI are deliberately NOT tokenized. A mood glyph or a reaction is content
+/// sized to its container, not text in the hierarchy, so those keep literals.
+class CLType {
+  // ─── Body scale ──────────────────────────────────────────────────────────
+
+  /// A section heading inside a screen - "Activity", "Group chats", "People".
+  static const double sectionTitle = 15;
+
+  /// A row's or card's primary line: a person's name, a conversation title.
+  /// Also the step for text the user actually READS at length - a message
+  /// bubble, a post caption, a diary entry - and for text they type into a
+  /// field. Those want the largest comfortable body step, not the densest.
+  static const double title = 14;
+
+  /// Default running text.
+  static const double body = 13.5;
+
+  /// Denser running text - for rows that must also fit an action beside it.
+  static const double bodySm = 13;
+
+  /// Buttons, chips and inline links ("See all 38").
+  static const double label = 12.5;
+
+  /// The secondary line under a title - handles, counts, descriptions.
+  static const double caption = 12;
+
+  /// Timestamps and badge counts; the smallest step that stays readable.
+  static const double meta = 11;
+
+  // ─── Display scale ───────────────────────────────────────────────────────
+  // Above the body scale, for text that IS a screen's heading rather than
+  // content inside one.
+
+  /// Every screen title, app-wide: the tab bar's header, each AppBar, dialog
+  /// titles, empty-state headings. Deliberately ONE size - an ordinary screen
+  /// and a pushed detail screen reading at the same weight is most of what
+  /// makes them feel like the same app. Also the size the mobile design
+  /// specifies for a top bar.
+  static const double screenTitle = 17;
+
+  /// A line that owns its whole screen - the wordmark and headings on the auth
+  /// screens, a caller's name mid-call.
+  static const double hero = 24;
+
+  /// The marketing headline on the brand panel, and the single giant avatar
+  /// initial on the incoming-call screen.
+  static const double display = 40;
+}
+
 class CLRadii {
   static const xs = 8.0;
   static const sm = 10.0;
@@ -232,6 +295,16 @@ ThemeData buildCLTheme(Brightness brightness) {
       foregroundColor: p.text,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
+      // Set explicitly, or every AppBar falls back to Material's titleLarge
+      // (22) - which made a pushed screen's header noticeably bigger than the
+      // tab bar's own header on the screen it was pushed from. One screen-title
+      // size, everywhere.
+      titleTextStyle: TextStyle(
+        fontFamily: 'Inter',
+        fontSize: CLType.screenTitle,
+        fontWeight: FontWeight.w700,
+        color: p.text,
+      ),
     ),
   );
 }

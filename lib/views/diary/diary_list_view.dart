@@ -93,7 +93,7 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
   Widget build(BuildContext context) {
     final p = cl(context);
 
-    return Scaffold(
+    return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(title: const Text("Diary")),
       floatingActionButton: FloatingActionButton(
@@ -166,6 +166,7 @@ class _EntryCard extends StatelessWidget {
                 children: [
                   if (entry.mood != null) ...[
                     Text(entry.mood!.emoji,
+                        // Emoji glyph sized to its container - not a CLType step.
                         style: const TextStyle(fontSize: 18)),
                     const SizedBox(width: 8),
                   ],
@@ -177,7 +178,7 @@ class _EntryCard extends StatelessWidget {
                       style: TextStyle(
                           color: p.text,
                           fontWeight: FontWeight.w700,
-                          fontSize: 15),
+                          fontSize: CLType.sectionTitle),
                     ),
                   ),
                   // Private is the default, so the lock marks the norm rather
@@ -193,7 +194,7 @@ class _EntryCard extends StatelessWidget {
                   preview,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: p.text2, fontSize: 13, height: 1.35),
+                  style: TextStyle(color: p.text2, fontSize: CLType.bodySm, height: 1.35),
                 ),
               ],
               const SizedBox(height: 10),
@@ -205,14 +206,14 @@ class _EntryCard extends StatelessWidget {
                     entry.entryDate != null
                         ? _formatEntryDate(entry.entryDate!)
                         : "",
-                    style: TextStyle(color: p.text3, fontSize: 11.5),
+                    style: TextStyle(color: p.text3, fontSize: CLType.caption),
                   ),
                   if (entry.attachments.isNotEmpty) ...[
                     const SizedBox(width: 12),
                     Icon(Icons.attachment, size: 13, color: p.text3),
                     const SizedBox(width: 4),
                     Text("${entry.attachments.length}",
-                        style: TextStyle(color: p.text3, fontSize: 11.5)),
+                        style: TextStyle(color: p.text3, fontSize: CLType.caption)),
                   ],
                   if (entry.mood != null) ...[
                     const SizedBox(width: 12),
@@ -221,7 +222,7 @@ class _EntryCard extends StatelessWidget {
                         entry.mood!.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: p.text3, fontSize: 11.5),
+                        style: TextStyle(color: p.text3, fontSize: CLType.caption),
                       ),
                     ),
                   ],

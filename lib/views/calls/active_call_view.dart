@@ -271,18 +271,18 @@ class _ActiveCallViewState extends State<ActiveCallView> {
         Text(
           controller.isGroup ? "Group call" : "Call",
           style: const TextStyle(
-              color: Colors.white, fontSize: 22, fontWeight: FontWeight.w600),
+              color: Colors.white, fontSize: CLType.hero, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
         Text(statusText,
-            style: const TextStyle(color: Colors.white70, fontSize: 15)),
+            style: const TextStyle(color: Colors.white70, fontSize: CLType.sectionTitle)),
         if (controller.joinedParticipants.isNotEmpty) ...[
           const SizedBox(height: 24),
           ...controller.joinedParticipants.map((p) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text(
                   p.username.isNotEmpty ? p.username : p.clientId,
-                  style: const TextStyle(color: Colors.white60, fontSize: 14),
+                  style: const TextStyle(color: Colors.white60, fontSize: CLType.body),
                 ),
               )),
         ],
@@ -305,7 +305,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                 ? Center(
                     child: Text(statusText,
                         style: const TextStyle(
-                            color: Colors.white70, fontSize: 15)))
+                            color: Colors.white70, fontSize: CLType.sectionTitle)))
                 : _tileGrid(tiles),
           ),
         ),
@@ -480,7 +480,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              color: Colors.white70, fontSize: 13),
+                              color: Colors.white70, fontSize: CLType.bodySm),
                         ),
                       ),
                     ],
@@ -549,7 +549,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                  style: const TextStyle(color: Colors.white, fontSize: CLType.meta),
                 ),
               ),
             ),
@@ -628,7 +628,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
               const SizedBox(width: 8),
               const Expanded(
                 child: Text("Video couldn't connect",
-                    style: TextStyle(color: Colors.white, fontSize: 12)),
+                    style: TextStyle(color: Colors.white, fontSize: CLType.caption)),
               ),
               TextButton(
                 onPressed: () => controller.retryVideo(),
@@ -637,7 +637,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                 child: const Text("Retry",
                     style: TextStyle(
                         color: CLColors.brand300,
-                        fontSize: 12,
+                        fontSize: CLType.caption,
                         fontWeight: FontWeight.w600)),
               ),
             ],

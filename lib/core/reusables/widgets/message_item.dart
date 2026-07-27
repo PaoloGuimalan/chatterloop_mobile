@@ -128,7 +128,7 @@ class MessageItemView extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: CLType.title,
                                   color: _typeIcon != null ? p.brand : p.text,
                                   fontWeight: FontWeight.w700)),
                         ),
@@ -142,7 +142,7 @@ class MessageItemView extends StatelessWidget {
                     Text(_previewText(data.isTyping),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 13, color: p.text2)),
+                        style: TextStyle(fontSize: CLType.bodySm, color: p.text2)),
                   ],
                 ),
               ),
@@ -153,7 +153,7 @@ class MessageItemView extends StatelessWidget {
                   Text(_timeLabel(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: p.text3)),
+                      style: TextStyle(fontSize: CLType.meta, color: p.text3)),
                   if (message.unread > 0) ...[
                     const SizedBox(height: 6),
                     _UnreadDot(count: message.unread),
@@ -201,7 +201,7 @@ class _UnreadDot extends StatelessWidget {
         count.toString(),
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 11,
+          fontSize: CLType.meta,
           fontWeight: FontWeight.w700,
         ),
       ),

@@ -196,7 +196,7 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
                 Text(
                   _formatDuration(
                       _position > Duration.zero ? _position : _duration),
-                  style: TextStyle(fontSize: 11, color: textColor),
+                  style: TextStyle(fontSize: CLType.meta, color: textColor),
                 ),
               ],
             ),

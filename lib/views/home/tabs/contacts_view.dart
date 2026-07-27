@@ -285,8 +285,9 @@ class _ContactsViewState extends State<ContactsView> {
   Widget _groupsSection() {
     return CLRailSection(
       title: "Group chats",
-      // Tile (60) + gap (8) + a two-line-safe label.
-      height: 100,
+      // Tighter than the 12 the card rails use - these tiles are small, so a
+      // wide gap between them reads as a hole rather than as separation.
+      gap: 8,
       actionLabel: _groups.total > _groups.items.length
           ? "See all ${_groups.total}"
           : null,
@@ -340,41 +341,41 @@ class _ContactsViewState extends State<ContactsView> {
       ),
     ];
 
+    // Bare Scaffold with NO SafeArea, deliberately - see the same note in
+    // search_view.dart. This is a tab: HomeTabScaffold's header and bottom nav
+    // already consume both insets, and insetting again left a dead strip the
+    // height of the Android nav buttons above the nav bar.
     return Scaffold(
       backgroundColor: p.bg,
-      // top: false - the shell's global header already reserves the status bar.
-      body: SafeArea(
-        top: false,
-        child: StoreConnector<AppState, Map<String, PresenceInfo>>(
-          distinct: true,
-          converter: (store) => store.state.presence,
-          builder: (context, presence) => RefreshIndicator(
-            onRefresh: _load,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-              children: [
-                CLChipsRail(
-                  children: chips
-                      .map((chip) => CLChip(
-                            label: "${chip.$3} · ${chip.$4}",
-                            icon: chip.$2,
-                            onTap: () => _openDetail(chip.$1),
-                          ))
-                      .toList(),
-                ),
-                const SizedBox(height: 24),
-                _groupsSection(),
-                const SizedBox(height: 26),
-                _peopleSection(NetworkSection.connections,
-                    overview?.connections, presence),
-                const SizedBox(height: 26),
-                _peopleSection(
-                    NetworkSection.followers, overview?.followers, presence),
-                const SizedBox(height: 26),
-                _peopleSection(
-                    NetworkSection.following, overview?.following, presence),
-              ],
-            ),
+      body: StoreConnector<AppState, Map<String, PresenceInfo>>(
+        distinct: true,
+        converter: (store) => store.state.presence,
+        builder: (context, presence) => RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+            children: [
+              CLChipsRail(
+                children: chips
+                    .map((chip) => CLChip(
+                          label: "${chip.$3} · ${chip.$4}",
+                          icon: chip.$2,
+                          onTap: () => _openDetail(chip.$1),
+                        ))
+                    .toList(),
+              ),
+              const SizedBox(height: 24),
+              _groupsSection(),
+              const SizedBox(height: 26),
+              _peopleSection(
+                  NetworkSection.connections, overview?.connections, presence),
+              const SizedBox(height: 26),
+              _peopleSection(
+                  NetworkSection.followers, overview?.followers, presence),
+              const SizedBox(height: 26),
+              _peopleSection(
+                  NetworkSection.following, overview?.following, presence),
+            ],
           ),
         ),
       ),

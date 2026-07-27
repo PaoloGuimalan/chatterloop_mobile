@@ -24,7 +24,16 @@ class ConversationsApi {
   /// sent as headers, not query params - that's how the real endpoint
   /// reads them. Response is plain JSON at response.data.result (NOT the
   /// JWT-signed-token-wrapped shape most other /m and /u endpoints use).
-  Future<({List<MessageItem> items, int total, String? next})?>
+  ///
+  /// `hasNext` is a BOOL, not a cursor: the server computes it as
+  /// `total - range * page > 0` and sends a plain boolean (routes/messages/
+  /// index.js's GET /conversations). This used to be exposed as
+  /// `String? next` via `result["next"]?.toString()`, which turned a `false`
+  /// into the non-null string "false" - so "is there another page" was
+  /// permanently true, and the Messages list re-fetched a nonexistent page
+  /// every single time it was scrolled to the bottom. Parsed the same way as
+  /// getArchivesRequest below, which always had it right.
+  Future<({List<MessageItem> items, int total, bool hasNext})?>
       getConversationListRequest(
           {String type = "common", int page = 1, int range = 20}) async {
     ContentValidator()
@@ -49,7 +58,7 @@ class ConversationsApi {
                 (item) => MessageItem.fromJson(Map<String, dynamic>.from(item)))
             .toList(),
         total: _intValue(result["total"]),
-        next: result["next"]?.toString(),
+        hasNext: result["next"] == true,
       );
     } catch (e) {
       if (kDebugMode) {

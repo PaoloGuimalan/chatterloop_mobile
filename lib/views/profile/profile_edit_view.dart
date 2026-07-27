@@ -186,7 +186,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       builder: (context, state) {
         _initFrom(state.userAuth.user);
 
-        return Scaffold(
+        return CLScreen(
           backgroundColor: p.bg,
           appBar: AppBar(title: const Text("Edit Profile")),
           body: SingleChildScrollView(
@@ -229,7 +229,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(infoMessage!,
-                        style: TextStyle(color: p.brand, fontSize: 12)),
+                        style: TextStyle(color: p.brand, fontSize: CLType.caption)),
                   ),
                 const SizedBox(height: 20),
                 CLField(
@@ -252,7 +252,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 Text('Gender',
                     style: TextStyle(
                         color: p.text2,
-                        fontSize: 12,
+                        fontSize: CLType.caption,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 Row(
@@ -277,7 +277,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                             child: Text(g,
                                 style: TextStyle(
                                     color: active ? Colors.white : p.text2,
-                                    fontSize: 13.5,
+                                    fontSize: CLType.body,
                                     fontWeight: FontWeight.w600)),
                           ),
                         ),
@@ -297,14 +297,14 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     (_original.email == null || _original.email!.isEmpty)
                         ? "No email on file"
                         : "${_original.email} (changing email is temporarily disabled)",
-                    style: TextStyle(color: p.text3, fontSize: 12),
+                    style: TextStyle(color: p.text3, fontSize: CLType.caption),
                   ),
                 ),
                 if (errorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: Text(errorMessage!,
-                        style: TextStyle(color: p.pink, fontSize: 13)),
+                        style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
                   ),
                 const SizedBox(height: 18),
                 CLBtn(
