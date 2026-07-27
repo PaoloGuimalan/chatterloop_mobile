@@ -1,192 +1,154 @@
+// Notifications - the redesigned screen. Ported from webapp's
+// src/app/tabs/feed/Notifications.tsx at the mobile layout from the mockup:
+// three stacked section cards (Activity / Connections / System), each showing a
+// short preview with its own unread pill and a "See all" into the paginated
+// detail screen (notifications_detail_view.dart).
+//
+// Fed by the sectioned v2 Node endpoints - one overview call settles all three
+// on load. The v1 flow (/u/getNotifications + the redux notifications slice) is
+// untouched and still drives the topbar badge and the SSE refresh, which is
+// also what this screen listens to for live updates.
 // ignore_for_file: use_build_context_synchronously
 
 import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
-import 'package:chatterloop_app/core/redux/state.dart';
-import 'package:chatterloop_app/core/redux/store.dart';
-import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
-import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
-import 'package:chatterloop_app/models/http_models/response_models.dart';
-import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
-import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
-import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/core/reusables/widgets/notification_row.dart';
+import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:go_router/go_router.dart';
+
+/// One value for the preview AND the per-page size, so the server's Mongo
+/// $skip arithmetic stays aligned across loads (page 2 starts at item 11).
+const int kNotificationsRange = 10;
+
+/// How many of a section's preview rows the card shows. The overview fetches
+/// [kNotificationsRange] so the See-all screen's first page is already warm.
+const int _kPreviewRows = 3;
+
+/// Section chrome. System's purple has no palette token - it's the one accent
+/// in the design that isn't part of the brand/green/gold/pink set.
+const Color _kSystemColor = Color(0xFF8B5CF6);
 
 class NotificationsView extends StatefulWidget {
   const NotificationsView({super.key});
 
   @override
-  NotificationsStateView createState() => NotificationsStateView();
+  State<NotificationsView> createState() => _NotificationsViewState();
 }
 
-class NotificationsStateView extends State<NotificationsView> {
-  /// Matches webapp's Notifications.tsx (page starts at 1, range fixed).
-  static const int _range = 20;
-
-  /// How close to the bottom triggers the next page. Roughly one card's
-  /// height, so the fetch starts before the spinner is actually reached.
-  static const double _loadMoreThreshold = 320;
-
-  final ScrollController _scrollController = ScrollController();
+class _NotificationsViewState extends State<NotificationsView> {
   StreamSubscription<SSEModel>? _eventBusSubscription;
 
-  int _page = 1;
-  bool isNotificationsInitialized = false;
-  bool isReadNotificationsInitialized = false;
-  bool _isLoadingMore = false;
-  bool _hasNext = false;
+  NotificationsOverviewV2? _overview;
+  bool _isLoading = true;
+
+  /// Auto-read on open is kept behavior - fire once per visit, after the first
+  /// successful load. The topbar badge re-syncs by itself: /u/readnotifications
+  /// triggers the notifications_reload SSE, which refreshes the redux slice.
+  bool _hasAutoRead = false;
 
   /// referenceIDs (connection ids) with an accept/decline in flight. Keyed per
   /// item rather than one global flag so acting on one request doesn't freeze
-  /// the buttons on every other one in the list.
+  /// the buttons on every other one.
   final Set<String> _pendingActions = <String>{};
-
-  /// referenceIDs resolved during this session. The server flips
-  /// referenceStatus, but the already-fetched list in Redux still carries the
-  /// old value, so without this the buttons would linger until a full reload.
-  final Set<String> _locallyHandled = <String>{};
 
   @override
   void initState() {
     super.initState();
-    // Kicked off here rather than from build()'s post-frame callback: this
-    // screen is a StoreConnector, so every unrelated Redux change rebuilds it,
-    // and a build-time guard re-enters until the async response lands.
-    _loadPage(1);
-    _scrollController.addListener(_onScroll);
-    _eventBusSubscription = eventBus.on<SSEModel>().listen((SSEModel event) {
+    _load();
+    // Live updates with no extra plumbing: a NEW notification raises the
+    // "notifications" SSE event, which re-settles all three sections. Reading
+    // them raises "notifications_reload" instead, which is deliberately NOT
+    // handled here - it fires moments after the auto-read below and refetching
+    // then would instantly wipe the unread highlights the user came to see.
+    _eventBusSubscription = eventBus.on<SSEModel>().listen((event) {
       if (event.event != "notifications") return;
-      readNotificationsProcess();
-      // A newly arrived notification belongs at the top. Only refresh when the
-      // user hasn't paged further in - otherwise this would yank pages 2..n
-      // out from under them mid-scroll.
-      if (_page == 1) _loadPage(1);
+      _load();
     });
   }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
     _eventBusSubscription?.cancel();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!_hasNext || _isLoadingMore || !isNotificationsInitialized) return;
-    final position = _scrollController.position;
-    if (position.pixels >= position.maxScrollExtent - _loadMoreThreshold) {
-      _loadPage(_page + 1);
-    }
-  }
-
-  /// Fetches one page. Page 1 replaces the list; later pages append.
-  ///
-  /// The server pages properly (`$skip: (page-1)*range, $limit: range`), so a
-  /// later page contains ONLY its own slice - it has to be merged with what's
-  /// already in Redux, deduped by notificationID exactly like webapp's
-  /// SET_NOTIFICATIONS_LIST reducer does.
-  Future<void> _loadPage(int page) async {
-    if (_isLoadingMore) return;
-    if (mounted) setState(() => _isLoadingMore = true);
-
-    final EncodedResponse? response = await NotificationsApi()
-        .getNotificationsListRequest(page: page, range: _range);
-
+  Future<void> _load() async {
+    final result = await NotificationsApi()
+        .notificationsOverviewV2Request(range: kNotificationsRange);
     if (!mounted) return;
-
-    if (response == null) {
-      setState(() {
-        _isLoadingMore = false;
-        isNotificationsInitialized = true;
-      });
-      return;
-    }
-
-    final Map<String, dynamic>? decoded = JwtCodec.decode(response.result);
-    final List<dynamic> raw = (decoded?["notifications"] as List?) ?? const [];
-    final List<NotificationsItemModel> incoming =
-        raw.map((n) => NotificationsItemModel.fromJson(n)).toList();
-
-    final existing = page == 1
-        ? const <NotificationsItemModel>[]
-        : appStore.state.notificationsstate.notificationsList;
-
-    final merged = <NotificationsItemModel>[...existing];
-    final seen = merged.map((n) => n.notificationID).toSet();
-    for (final item in incoming) {
-      if (seen.add(item.notificationID)) merged.add(item);
-    }
-
     setState(() {
-      _page = page;
-      _hasNext = decoded?["next"] == true;
-      _isLoadingMore = false;
-      isNotificationsInitialized = true;
+      if (result != null) _overview = result;
+      _isLoading = false;
     });
-
-    StoreProvider.of<AppState>(context).dispatch(DispatchModel(
-        setNotificationsListT,
-        NotificationsStateModel(
-          merged,
-          decoded?["totalunread"] ?? 0,
-          decoded?["total"] ?? merged.length,
-          _hasNext,
-        )));
-
-    if (!isReadNotificationsInitialized &&
-        (decoded?["totalunread"] ?? 0) > 0) {
-      readNotificationsProcess();
+    if (result != null && !_hasAutoRead) {
+      _hasAutoRead = true;
+      NotificationsApi().readNotificationsRequest();
     }
   }
 
-  Future<void> readNotificationsProcess() async {
-    if (mounted) {
-      setState(() => isReadNotificationsInitialized = true);
-    }
-    await NotificationsApi().readNotificationsRequest();
+  /// Rebuilds every section through [transform] - a read/handled flip can
+  /// affect any of them, and a notification's section isn't known here.
+  void _mapSections(
+      NotificationV2 Function(NotificationV2 item) transform,
+      {bool zeroUnread = false}) {
+    final overview = _overview;
+    if (overview == null) return;
+    NotificationSectionData patch(NotificationSectionData section) =>
+        NotificationSectionData(
+          items: section.items.map(transform).toList(),
+          total: section.total,
+          unread: zeroUnread ? 0 : section.unread,
+          hasNext: section.hasNext,
+        );
+    setState(() {
+      _overview = NotificationsOverviewV2(
+        activity: patch(overview.activity),
+        connections: patch(overview.connections),
+        system: patch(overview.system),
+      );
+    });
   }
 
-  /// A contact request is actionable only while it's still pending -
-  /// referenceStatus flips to true once it's been accepted. Same condition as
-  /// webapp's `isContactRequest && !ntfs.referenceStatus`.
-  bool _showsActions(NotificationsItemModel notif) =>
-      notif.type == "contact_request" &&
-      !notif.referenceStatus &&
-      !_locallyHandled.contains(notif.referenceID);
+  void _markAllRead() {
+    NotificationsApi().readNotificationsRequest();
+    _mapSections((item) => item.copyWith(isRead: true), zeroUnread: true);
+  }
 
-  Future<void> _respondToContactRequest(
-    NotificationsItemModel notif, {
-    required bool accept,
-  }) async {
-    if (_pendingActions.contains(notif.referenceID)) return;
-    setState(() => _pendingActions.add(notif.referenceID));
+  /// Accept/decline reuse the SAME contact endpoints as everywhere else;
+  /// referenceStatus flips locally so the buttons disappear immediately rather
+  /// than lingering until a refetch.
+  Future<void> _respond(NotificationV2 item, {required bool accept}) async {
+    if (_pendingActions.contains(item.referenceID)) return;
+    setState(() => _pendingActions.add(item.referenceID));
 
+    final api = ContactsApi();
     final ok = accept
-        ? await ContactsApi().acceptContactRequest(
-            connectionId: notif.referenceID,
-            entityId: notif.fromUserID,
+        ? await api.acceptContactRequest(
+            connectionId: item.referenceID,
+            entityId: item.fromUserID,
           )
         // "decline" rejects an incoming request; "remove" is for cancelling a
         // sent one, which isn't reachable from this screen.
-        : await ContactsApi().declineContactRequest(
-            connectionId: notif.referenceID,
-            entityId: notif.fromUserID,
+        : await api.declineContactRequest(
+            connectionId: item.referenceID,
+            entityId: item.fromUserID,
             action: "decline",
           );
 
     if (!mounted) return;
-    setState(() {
-      _pendingActions.remove(notif.referenceID);
-      if (ok) _locallyHandled.add(notif.referenceID);
-    });
+    setState(() => _pendingActions.remove(item.referenceID));
+    if (ok) {
+      _mapSections((candidate) => candidate.referenceID == item.referenceID
+          ? candidate.copyWith(referenceStatus: true)
+          : candidate);
+    }
 
     final label = accept ? "accepted" : "declined";
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -197,136 +159,178 @@ class NotificationsStateView extends State<NotificationsView> {
     ));
   }
 
+  // -------- sections ---------------------------------------------------------
+
+  ({IconData icon, Color color, String emptyText}) _chrome(
+      NotificationSection section, CLPalette p) {
+    return switch (section) {
+      NotificationSection.activity => (
+          icon: Icons.bolt,
+          color: p.brand,
+          emptyText: "New reactions, comments and shares land here."
+        ),
+      NotificationSection.connections => (
+          icon: Icons.person,
+          color: p.green,
+          emptyText: "Contact requests and new followers land here."
+        ),
+      NotificationSection.system => (
+          icon: Icons.campaign,
+          color: _kSystemColor,
+          emptyText: "Updates from ChatterLoop land here."
+        ),
+    };
+  }
+
+  Widget _unreadPill(int count, CLPalette p) {
+    if (count <= 0) return const SizedBox.shrink();
+    return Container(
+      constraints: const BoxConstraints(minWidth: 19),
+      height: 19,
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: p.pink,
+        borderRadius: BorderRadius.circular(CLRadii.pill),
+      ),
+      child: Text(
+        "$count",
+        style: const TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionCard(NotificationSection section, CLPalette p) {
+    final data = _overview?.section(section) ?? NotificationSectionData.empty;
+    final chrome = _chrome(section, p);
+    final visible = data.items.take(_kPreviewRows).toList();
+
+    return CLCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(chrome.icon, size: 19, color: chrome.color),
+              const SizedBox(width: 8),
+              Text(
+                section.title,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.15,
+                  color: p.text,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _unreadPill(data.unread, p),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_isLoading)
+            ...List.generate(
+              _kPreviewRows,
+              (_) => const CLNotificationRowSkeleton(),
+            )
+          else if (visible.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+              child: Column(
+                children: [
+                  Icon(chrome.icon, size: 32, color: p.text3),
+                  const SizedBox(height: 6),
+                  Text(
+                    "You're all caught up!",
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: p.text),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    chrome.emptyText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: p.text3),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...visible.map((item) => Padding(
+                  padding:
+                      EdgeInsets.only(bottom: item == visible.last ? 0 : 8),
+                  child: CLNotificationRow(
+                    notification: item,
+                    busy: _pendingActions.contains(item.referenceID),
+                    onAccept: (target) => _respond(target, accept: true),
+                    onDecline: (target) => _respond(target, accept: false),
+                  ),
+                )),
+          if (!_isLoading && data.total > visible.length) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: InkWell(
+                onTap: () => context.push('/notifications/${section.slug}'),
+                borderRadius: BorderRadius.circular(CLRadii.xs),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Text(
+                    "See all ${data.total} →",
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: p.brand,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState,
-            ({NotificationsStateModel notificationsstate})>(
-        distinct: true,
-        converter: (store) =>
-            (notificationsstate: store.state.notificationsstate),
-        builder: (context, state) {
-          final notificationslist = state.notificationsstate.notificationsList;
-
-          return Scaffold(
-            backgroundColor: p.bg,
-            appBar: AppBar(title: const Text("Notifications")),
-            body: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: !isNotificationsInitialized
-                  ? const Padding(
-                      key: ValueKey('loading'),
-                      padding: EdgeInsets.all(12),
-                      child: CLListSkeleton(),
-                    )
-                  : notificationslist.isEmpty
-                      ? Center(
-                          key: const ValueKey('empty'),
-                          child: Text("No notifications yet",
-                              style: TextStyle(color: p.text2)))
-                      : RefreshIndicator(
-                          key: const ValueKey('list'),
-                          onRefresh: () => _loadPage(1),
-                          child: ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.all(12),
-                            // One extra row for the load-more spinner.
-                            itemCount:
-                                notificationslist.length + (_hasNext ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              if (index >= notificationslist.length) {
-                                return const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 20),
-                                  child: Center(
-                                    child: SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    ),
-                                  ),
-                                );
-                              }
-                              return _buildItem(notificationslist[index], p);
-                            },
-                          ),
-                        ),
+    return Scaffold(
+      backgroundColor: p.bg,
+      appBar: AppBar(
+        title: const Text("Notifications"),
+        actions: [
+          TextButton.icon(
+            onPressed: _isLoading ? null : _markAllRead,
+            icon: Icon(Icons.done_all, size: 18, color: p.brand),
+            label: Text(
+              "Mark all read",
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: p.brand,
+              ),
             ),
-          );
-        });
-  }
-
-  Widget _buildItem(NotificationsItemModel notif, CLPalette p) {
-    final showActions = _showsActions(notif);
-    final isPending = _pendingActions.contains(notif.referenceID);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: CLCard(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.all(14),
           children: [
-            CLAvatar(
-              id: notif.fromUserID,
-              name: notif.content.headline,
-              src: notif.fromUser?.profile != null &&
-                      notif.fromUser!.profile != "none"
-                  ? notif.fromUser!.profile
-                  : null,
-              size: 46,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(notif.content.headline,
-                      style: TextStyle(
-                          color: p.text,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14)),
-                  const SizedBox(height: 3),
-                  Text(notif.content.details,
-                      style: TextStyle(color: p.text2, fontSize: 13)),
-                  const SizedBox(height: 4),
-                  Text("${notif.date.date} · ${notif.date.time}",
-                      style: TextStyle(color: p.text3, fontSize: 11)),
-                  if (showActions) ...[
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        CLBtn(
-                          label: "Confirm",
-                          size: CLBtnSize.sm,
-                          onPressed: isPending
-                              ? null
-                              : () => _respondToContactRequest(notif,
-                                  accept: true),
-                        ),
-                        const SizedBox(width: 8),
-                        CLBtn(
-                          label: "Decline",
-                          size: CLBtnSize.sm,
-                          variant: CLBtnVariant.outline,
-                          onPressed: isPending
-                              ? null
-                              : () => _respondToContactRequest(notif,
-                                  accept: false),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (!notif.isRead)
-              Container(
-                width: 8,
-                height: 8,
-                margin: const EdgeInsets.only(top: 4),
-                decoration:
-                    BoxDecoration(shape: BoxShape.circle, color: p.brand),
-              ),
+            _sectionCard(NotificationSection.activity, p),
+            const SizedBox(height: 16),
+            _sectionCard(NotificationSection.connections, p),
+            const SizedBox(height: 16),
+            _sectionCard(NotificationSection.system, p),
           ],
         ),
       ),

@@ -34,7 +34,10 @@ import 'package:go_router/go_router.dart';
 
 // Three branches only - the profile is no longer a tab, it's a pushed screen
 // (see _openOwnProfile), so the fourth nav button is purely a menu trigger.
-const List<String> _tabTitles = ["Messages", "Contacts", "Search"];
+// "Explore" rather than "Search": the third tab is no longer a single search
+// box, it's a sectioned discovery screen (people / realms / content), and the
+// redesign names it accordingly.
+const List<String> _tabTitles = ["Messages", "Contacts", "Explore"];
 
 class HomeTabScaffold extends StatefulWidget {
   final StatefulNavigationShell navigationShell;

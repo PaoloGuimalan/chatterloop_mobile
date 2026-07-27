@@ -15,13 +15,18 @@ import 'package:chatterloop_app/views/calls/active_call_view.dart';
 import 'package:chatterloop_app/views/calls/incoming_call_view.dart';
 import 'package:chatterloop_app/views/auth/signup_view.dart';
 import 'package:chatterloop_app/views/auth/verify_email_view.dart';
+import 'package:chatterloop_app/views/home/tabs/contacts_detail_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
 import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
+import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
+import 'package:chatterloop_app/views/notifications/notifications_detail_view.dart';
 import 'package:chatterloop_app/views/notifications/notifications_view.dart';
 import 'package:chatterloop_app/views/profile/profile_edit_view.dart';
 import 'package:chatterloop_app/views/profile/realm_profile_view.dart';
 import 'package:chatterloop_app/views/profile/user_profile_view.dart';
+import 'package:chatterloop_app/views/search/post_preview_view.dart';
+import 'package:chatterloop_app/views/search/search_detail_view.dart';
 import 'package:chatterloop_app/views/search/search_view.dart';
 import 'package:chatterloop_app/views/settings/archives_view.dart';
 import 'package:chatterloop_app/views/settings/blocked_accounts_view.dart';
@@ -238,6 +243,63 @@ GoRouter buildAppRouter(AuthController authController) {
           GoRoute(
               path: '/notifications',
               pageBuilder: (c, s) => _clPage(s, const NotificationsView())),
+          // The three redesigned screens each push a "See all" detail view for
+          // one section. All of them live OUTSIDE the StatefulShellRoute above
+          // (like /conversation and /notifications) so they replace the tab
+          // content and its bottom nav - the design gives them their own header
+          // with a back button and a total-count pill.
+          //
+          // An unknown section slug redirects back to its parent screen rather
+          // than rendering an empty list, so a stale deep link degrades to
+          // something usable.
+          GoRoute(
+            path: '/notifications/:section',
+            redirect: (c, s) =>
+                NotificationSectionSlug.fromSlug(s.pathParameters['section']!) ==
+                        null
+                    ? '/notifications'
+                    : null,
+            pageBuilder: (c, s) => _clPage(
+                s,
+                NotificationsDetailScreen(
+                  section: NotificationSectionSlug.fromSlug(
+                      s.pathParameters['section']!)!,
+                )),
+          ),
+          GoRoute(
+            path: '/contacts/:section',
+            redirect: (c, s) =>
+                ContactsDetailSectionMeta.fromSlug(s.pathParameters['section']!) ==
+                        null
+                    ? '/contacts'
+                    : null,
+            pageBuilder: (c, s) => _clPage(
+                s,
+                ContactsDetailScreen(
+                  section: ContactsDetailSectionMeta.fromSlug(
+                      s.pathParameters['section']!)!,
+                )),
+          ),
+          // ?q= carries the query the section was opened for - the detail
+          // screen pages the same search, it doesn't start a new one.
+          GoRoute(
+            path: '/search/:kind',
+            redirect: (c, s) =>
+                SearchDetailKindMeta.fromSlug(s.pathParameters['kind']!) == null
+                    ? '/search'
+                    : null,
+            pageBuilder: (c, s) => _clPage(
+                s,
+                SearchDetailScreen(
+                  kind: SearchDetailKindMeta.fromSlug(s.pathParameters['kind']!)!,
+                  query: s.uri.queryParameters['q'] ?? '',
+                )),
+          ),
+          GoRoute(
+            path: '/post/:postId',
+            pageBuilder: (c, s) =>
+                _clPage(s, PostPreviewScreen(postId: s.pathParameters['postId']!)),
+          ),
           // Diary. Gated on module.diary.access, mirroring webapp's
           // ProfileContainer.tsx: while acting as a page the module simply
           // isn't part of that context, so the redirect goes home rather than

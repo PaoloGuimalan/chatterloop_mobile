@@ -1,189 +1,383 @@
-// ignore_for_file: use_build_context_synchronously
+// Contacts - the redesigned network screen. Ported from webapp's
+// src/app/tabs/feed/Contacts.tsx at the mobile layout from
+// "ChatterLoop Mobile.dc.html".
+//
+// Four sections: a rail of group-chat shortcuts plus Connections / Followers /
+// Following, each with a preview and its own paginated "See all"
+// (contacts_detail_view.dart). Two services feed it and they load
+// independently, so a slow query on one never holds up the other: the three
+// graph sections come from Django (/api/entity/network/*), ranked by
+// interaction score so the people you actually deal with sit on top, while
+// group chats come from Node (/m/v2/group-shortcuts) - shortcuts into
+// conversations you're really in, newest activity first, NOT a realm directory.
+//
+// This replaced a flat /api/user/contacts list. That endpoint is untouched and
+// still fetched by the tab shell.
 
+import 'package:chatterloop_app/core/design/rails.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
-import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/contacts_api.dart';
-import 'package:chatterloop_app/core/reusables/widgets/contacts_item.dart';
-import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
-import 'package:chatterloop_app/models/user_models/contact_model.dart';
-import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/core/requests/network_api.dart';
+import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/reusables/widgets/entity_row.dart';
+import 'package:chatterloop_app/core/reusables/widgets/group_tile.dart';
+import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/models/user_models/network_models.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
+import 'package:chatterloop_app/views/home/tabs/contacts_detail_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:go_router/go_router.dart';
+
+/// The server previews 6 rows per graph section. Three is what fits on a phone
+/// without any one section pushing the others off screen - "See all" covers
+/// the rest.
+const int _kSectionPreview = 3;
+
+/// Enough tiles that the rail is worth scrolling, without over-fetching for a
+/// preview.
+const int _kGroupsPreview = 10;
+
+/// Subtitle line + online dot for a row, from the presence state (keyed on
+/// ENTITY id, contacts-scoped, kept live by the "active_users" SSE events).
+/// Pages are skipped entirely - a page is never "active now".
+({bool online, String? label}) _presenceFor(
+  NetworkEntityResult item,
+  Map<String, PresenceInfo> presence,
+) {
+  if (item.isRealm) return (online: false, label: null);
+  final info = presence[item.entityId];
+  if (info == null) return (online: false, label: null);
+  if (info.online) return (online: true, label: "Active now");
+  return (
+    online: false,
+    label: info.lastSeen != null ? timeSince(info.lastSeen!) : null
+  );
+}
+
+/// Connections show mutuals - the metric that makes a person recognisable.
+/// Follow rows show the handle instead, since a mutual count isn't what you're
+/// scanning for there. Presence is appended when known, so a row reads
+/// "214 mutual · Active now".
+String networkRowSubtitle(
+  NetworkEntityResult item,
+  NetworkSection section,
+  String? presenceLabel,
+) {
+  final base = section == NetworkSection.connections
+      ? "${item.mutualCount ?? 0} mutual"
+      : "@${item.handle}";
+  return presenceLabel == null ? base : "$base · $presenceLabel";
+}
 
 class ContactsView extends StatefulWidget {
   const ContactsView({super.key});
 
   @override
-  ContactsStateView createState() => ContactsStateView();
+  State<ContactsView> createState() => _ContactsViewState();
 }
 
-class ContactsStateView extends State<ContactsView> {
-  bool isContactsInitialized = false;
-  int _page = 1;
-  bool _hasNext = false;
-  bool _loadingMore = false;
+class _ContactsViewState extends State<ContactsView> {
+  NetworkOverview? _overview;
+  bool _isLoading = true;
 
-  Future<void> getContactsProcess(BuildContext context) async {
-    final result = await ContactsApi().getContactsRequest();
+  GroupShortcutsPage _groups = GroupShortcutsPage.empty;
+  bool _isGroupsLoading = true;
 
-    if (!mounted) return;
-    setState(() {
-      isContactsInitialized = true;
-      _page = 1;
-      _hasNext = result.hasNext;
-    });
+  final Set<String> _followBusy = <String>{};
 
-    StoreProvider.of<AppState>(context)
-        .dispatch(DispatchModel(setContactsListT, result.results));
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  /// Fetch the next page of raw contact rows and APPEND to Redux (deduped for
-  /// display in _dedupedContacts). Guarded against overlapping requests.
-  Future<void> _loadMore(BuildContext context) async {
-    if (!_hasNext || _loadingMore) return;
-    setState(() => _loadingMore = true);
-    final store = StoreProvider.of<AppState>(context);
-    final result = await ContactsApi().getContactsRequest(page: _page + 1);
-    if (!mounted) return;
-    store.dispatch(DispatchModel(
-        setContactsListT, [...store.state.contacts, ...result.results]));
+  Future<void> _load() async {
+    final api = NetworkApi();
+
     setState(() {
-      _page += 1;
-      _hasNext = result.hasNext;
-      _loadingMore = false;
+      _isLoading = true;
+      _isGroupsLoading = true;
+    });
+
+    // Each section applies its own result the moment its service answers, so a
+    // slow Mongo query never holds up the graph sections (or vice versa). The
+    // two are only joined at the end so pull-to-refresh's spinner runs until
+    // BOTH have actually landed rather than stopping on the first one.
+    final graph = api.networkOverviewRequest().then((result) {
+      if (!mounted) return;
+      setState(() {
+        _overview = result;
+        _isLoading = false;
+      });
+    });
+
+    final groups =
+        api.groupShortcutsRequest(page: 1, range: _kGroupsPreview).then((result) {
+      if (!mounted) return;
+      setState(() {
+        _groups = result;
+        _isGroupsLoading = false;
+      });
+    });
+
+    await Future.wait([graph, groups]);
+  }
+
+  // -------- follow -----------------------------------------------------------
+
+  /// Optimistic: the button flips immediately and only reverts if the request
+  /// fails. Follow back / Unfollow reuse the entity-generic follow endpoint -
+  /// there is no network-specific write route.
+  Future<void> _toggleFollow(NetworkEntityResult item) async {
+    if (_followBusy.contains(item.entityId)) return;
+    final isFollowing = item.followsRightNow;
+
+    setState(() {
+      _followBusy.add(item.entityId);
+      _overview = _overview?.patchFollow(item.entityId, !isFollowing);
+    });
+
+    final ok = await ProfileApi().setEntityFollowRequest(
+      entityId: item.entityId,
+      follow: !isFollowing,
+    );
+    if (!mounted) return;
+    setState(() {
+      _followBusy.remove(item.entityId);
+      if (!ok) _overview = _overview?.patchFollow(item.entityId, isFollowing);
     });
   }
 
-  /// Both sides of a contact pair are stored as separate rows sharing the
-  /// same connection_id (server_service/user/views.py's UserContacts.post -
-  /// one row per direction, so each user's own "who acted" perspective is
-  /// consistent) - the Django list endpoint returns both rows for either
-  /// party, so dedupe by connection_id here the way webapp's Contacts.tsx
-  /// implicitly assumes a single row per relationship.
-  List<Contact> _dedupedContacts(List<Contact> raw) {
-    final seen = <String>{};
-    final result = <Contact>[];
-    for (final c in raw) {
-      if (c.type != "single") continue;
-      if (!seen.add(c.connectionId)) continue;
-      result.add(c);
-    }
-    return result;
+  // -------- navigation -------------------------------------------------------
+
+  void _openEntity(NetworkEntityResult item) {
+    if (item.handle.isEmpty) return;
+    context.push(item.isRealm ? '/realm/${item.handle}' : '/user/${item.handle}');
+  }
+
+  void _openConversation(String? conversationId) {
+    if (conversationId == null || conversationId.isEmpty) return;
+    context.push('/conversation/$conversationId');
+  }
+
+  /// A group's conversationID IS its realm id, so this opens the thread.
+  void _openGroup(GroupShortcut group) =>
+      context.push('/conversation/${group.targetId}');
+
+  void _openDetail(ContactsDetailSection section) =>
+      context.push('/contacts/${section.slug}');
+
+  // -------- rows -------------------------------------------------------------
+
+  Widget _row(
+    NetworkEntityResult item,
+    NetworkSection section,
+    Map<String, PresenceInfo> presence,
+  ) {
+    final status = _presenceFor(item, presence);
+    final busy = _followBusy.contains(item.entityId);
+
+    final action = switch (section) {
+      NetworkSection.connections => CLRowIconAction(
+          icon: Icons.forum,
+          tooltip: "Message",
+          onPressed: item.connectionId == null
+              ? null
+              : () => _openConversation(item.connectionId),
+        ),
+      NetworkSection.followers => CLMiniBtn(
+          label: item.isFollowedBack == true ? "Following" : "Follow back",
+          variant: item.isFollowedBack == true
+              ? CLBtnVariant.soft
+              : CLBtnVariant.primary,
+          onPressed: busy ? null : () => _toggleFollow(item),
+        ),
+      NetworkSection.following => CLMiniBtn(
+          label: "Unfollow",
+          variant: CLBtnVariant.outline,
+          onPressed: busy ? null : () => _toggleFollow(item),
+        ),
+    };
+
+    return CLEntityRow(
+      entityId: item.entityId,
+      displayName: item.displayName,
+      subtitle: networkRowSubtitle(item, section, status.label),
+      profile: item.profile,
+      isVerified: item.isVerified,
+      isRealm: item.isRealm,
+      online: status.online,
+      onOpen: () => _openEntity(item),
+      action: action,
+    );
+  }
+
+  ({IconData icon, String title, String subtitle}) _emptyFor(
+      NetworkSection section) {
+    return switch (section) {
+      NetworkSection.connections => (
+          icon: Icons.group,
+          title: "No connections yet",
+          subtitle: "People you connect with land here."
+        ),
+      NetworkSection.followers => (
+          icon: Icons.person_add,
+          title: "No followers yet",
+          subtitle: "When someone follows you, they'll show here."
+        ),
+      NetworkSection.following => (
+          icon: Icons.how_to_reg,
+          title: "Not following anyone yet",
+          subtitle: "Follow people to see them here."
+        ),
+    };
+  }
+
+  Widget _peopleSection(
+    NetworkSection section,
+    NetworkOverviewSection? data,
+    Map<String, PresenceInfo> presence,
+  ) {
+    final results = (data?.results ?? const <NetworkEntityResult>[])
+        .take(_kSectionPreview)
+        .toList();
+    final total = data?.total ?? 0;
+    final empty = _emptyFor(section);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CLSectionHeader(
+          title: section.title,
+          actionLabel: total > results.length ? "See all $total" : null,
+          onAction: total > results.length
+              ? () => _openDetail(ContactsDetailSection.values
+                  .firstWhere((value) => value.slug == section.slug))
+              : null,
+        ),
+        if (_isLoading)
+          ...List.generate(
+            _kSectionPreview,
+            (index) => Padding(
+              padding: EdgeInsets.only(
+                  bottom: index == _kSectionPreview - 1 ? 0 : 10),
+              child: const CLEntityRowSkeleton(),
+            ),
+          )
+        else if (results.isEmpty)
+          CLSectionEmpty(
+            icon: empty.icon,
+            title: empty.title,
+            subtitle: empty.subtitle,
+          )
+        else
+          ...results.map((item) => Padding(
+                padding:
+                    EdgeInsets.only(bottom: item == results.last ? 0 : 10),
+                child: _row(item, section, presence),
+              )),
+      ],
+    );
+  }
+
+  Widget _groupsSection() {
+    return CLRailSection(
+      title: "Group chats",
+      // Tile (60) + gap (8) + a two-line-safe label.
+      height: 100,
+      actionLabel: _groups.total > _groups.items.length
+          ? "See all ${_groups.total}"
+          : null,
+      onAction: _groups.total > _groups.items.length
+          ? () => _openDetail(ContactsDetailSection.groups)
+          : null,
+      empty: _isGroupsLoading
+          ? null
+          : const CLSectionEmpty(
+              icon: Icons.groups,
+              title: "No group chats yet",
+              subtitle: "Group conversations you join show up here.",
+            ),
+      children: _isGroupsLoading
+          ? List.generate(4, (_) => const CLGroupTileSkeleton())
+          : _groups.items
+              .map((group) => CLGroupTile(group: group, onOpen: _openGroup))
+              .toList(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    // The whole contacts list previously re-deduped + rebuilt on every
-    // dispatch. Narrow to the three slices used (contacts + own id + presence)
-    // so it only rebuilds when a contact changes or a contact's presence
-    // flips - not on message/typing/notification traffic.
-    return StoreConnector<
-        AppState,
-        ({
-          List<Contact> contacts,
-          UserAuth userAuth,
-          Map<String, PresenceInfo> presence
-        })>(
-        distinct: true,
-        builder: (context, state) {
-      List<Contact> contactsList = _dedupedContacts(state.contacts);
-      if (!isContactsInitialized) {
-        getContactsProcess(context);
-      }
-      return Scaffold(
-        backgroundColor: p.bg,
-        body: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: !isContactsInitialized
-              ? const Padding(
-                  key: ValueKey('loading'),
-                  padding: EdgeInsets.all(12),
-                  child: CLListSkeleton(),
-                )
-              : contactsList.isEmpty
-                  ? Center(
-                      key: const ValueKey('empty'),
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          "No contacts yet - use search to find people and send a contact request.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: p.text2),
-                        ),
-                      ),
-                    )
-                  : Padding(
-                      key: const ValueKey('list'),
-                      padding: const EdgeInsets.all(12),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: p.surface,
-                          border: Border.all(color: p.border),
-                          borderRadius: BorderRadius.circular(CLRadii.md),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (n) {
-                            if (n.metrics.pixels >=
-                                n.metrics.maxScrollExtent - 240) {
-                              _loadMore(context);
-                            }
-                            return false;
-                          },
-                          child: ListView.separated(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            itemCount:
-                                contactsList.length + (_loadingMore ? 1 : 0),
-                            separatorBuilder: (context, index) =>
-                                Divider(height: 1, color: p.border),
-                            itemBuilder: (context, index) {
-                              if (index >= contactsList.length) {
-                                return const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 16),
-                                  child: Center(
-                                      child: SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                              strokeWidth: 2))),
-                                );
-                              }
-                              final contact = contactsList[index];
-                              // Orient on the ACTING entity id, not the
-                              // account id - a counterpart can be a page, and
-                              // this also stays correct while acting as one.
-                              final myEntityId = state.userAuth.user.entityId;
-                              final other = contact.other(myEntityId);
-                              final otherEntityId =
-                                  contact.otherEntityId(myEntityId);
-                              final otherIsRealm =
-                                  contact.otherIsRealm(myEntityId);
-                              return ContactsItemWidget(
-                                contact: contact,
-                                other: other,
-                                isRealm: otherIsRealm,
-                                // Presence is a human concept - a page is
-                                // never "online".
-                                online: otherIsRealm
-                                    ? false
-                                    : state.presence[otherEntityId]?.online ??
-                                        false,
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
+    final overview = _overview;
+
+    final chips = <(ContactsDetailSection, IconData, String, int)>[
+      (
+        ContactsDetailSection.groups,
+        Icons.groups,
+        "Group chats",
+        _groups.total
+      ),
+      (
+        ContactsDetailSection.connections,
+        Icons.group,
+        "Connections",
+        overview?.connections.total ?? 0
+      ),
+      (
+        ContactsDetailSection.followers,
+        Icons.person_add,
+        "Followers",
+        overview?.followers.total ?? 0
+      ),
+      (
+        ContactsDetailSection.following,
+        Icons.how_to_reg,
+        "Following",
+        overview?.following.total ?? 0
+      ),
+    ];
+
+    return Scaffold(
+      backgroundColor: p.bg,
+      // top: false - the shell's global header already reserves the status bar.
+      body: SafeArea(
+        top: false,
+        child: StoreConnector<AppState, Map<String, PresenceInfo>>(
+          distinct: true,
+          converter: (store) => store.state.presence,
+          builder: (context, presence) => RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+              children: [
+                CLChipsRail(
+                  children: chips
+                      .map((chip) => CLChip(
+                            label: "${chip.$3} · ${chip.$4}",
+                            icon: chip.$2,
+                            onTap: () => _openDetail(chip.$1),
+                          ))
+                      .toList(),
+                ),
+                const SizedBox(height: 24),
+                _groupsSection(),
+                const SizedBox(height: 26),
+                _peopleSection(NetworkSection.connections,
+                    overview?.connections, presence),
+                const SizedBox(height: 26),
+                _peopleSection(
+                    NetworkSection.followers, overview?.followers, presence),
+                const SizedBox(height: 26),
+                _peopleSection(
+                    NetworkSection.following, overview?.following, presence),
+              ],
+            ),
+          ),
         ),
-      );
-    }, converter: (store) => (
-          contacts: store.state.contacts,
-          userAuth: store.state.userAuth,
-          presence: store.state.presence,
-        ));
+      ),
+    );
   }
 }

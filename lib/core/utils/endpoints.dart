@@ -82,6 +82,63 @@ class Endpoints {
   /// `search` above (which is user-only). Takes :query then
   /// ?types=user,realm&realm_types=page.
   String entitySearch = '/api/entity/search/'; // :query
+
+  // ─── Search v2 (redesigned Explore screen) ───────────────────────────────
+  // One overview call settles all three section previews for a query, then
+  // each section pages its OWN endpoint for the "See all" infinite scroll.
+  // All NEW routes - `search`/`entitySearch` above stay exactly as they were.
+
+  /// {status, result: {people, realms, posts}}, each section
+  /// {has_more, results}. Takes :query.
+  String searchOverviewV2 = '/api/entity/search/v2/overview/'; // :query
+
+  /// DRF-paginated ({count, next, previous, results}). Takes :query then
+  /// ?page=&page_size=.
+  String searchPeopleV2 = '/api/entity/search/v2/people/'; // :query
+
+  /// DRF-paginated. Takes :query then ?page=&page_size=&realm_types=all.
+  /// Only page/server/group can ever surface - channel/conference/voice are
+  /// filtered out server side no matter what realm_types asks for.
+  String searchRealmsV2 = '/api/entity/search/v2/realms/'; // :query
+
+  /// DRF-paginated, ranked by PostScore.ranking_score. Takes :query then
+  /// ?page=&page_size=.
+  String searchPostsV2 = '/api/newsfeed/search/v2/posts/'; // :query
+
+  /// One-click join for a PUBLIC GROUP realm ({realm_id}). Returns
+  /// {already_member, conversation_id, realm_id} - a group's conversationID
+  /// IS its realm_id, so conversation_id feeds straight into
+  /// `/conversation/<id>`. Private groups stay invite-only (server enforced).
+  String realmJoinV2 = '/api/realm/join/v2';
+
+  // ─── Network v2 (redesigned Contacts screen) ─────────────────────────────
+  // The three graph sections (connections/followers/following), ranked by
+  // interaction score. NEW routes - /api/user/contacts stays untouched.
+
+  /// {connections, followers, following}, each {has_more, total, results}.
+  String networkOverview = '/api/entity/network/overview';
+
+  /// DRF-paginated. Append connections | followers | following, then
+  /// ?page=&page_size=.
+  String network = '/api/entity/network/'; // :section
+
+  /// Group chat shortcuts for the Contacts screen's rail - a different
+  /// service from the sections above (conversations live in Mongo on the
+  /// NODE side). These are shortcuts into threads you're actually in, not a
+  /// realm directory: strictly conversationType "group", newest activity
+  /// first. page/range are headers, jwt-signed result {items, total, next}.
+  String groupShortcuts = '/m/v2/group-shortcuts';
+
+  /// Notifications v2 (redesigned Notifications screen) - append `overview`
+  /// (all three section previews in one call) or activity | connections |
+  /// system (paginated, page/range as headers). jwt-signed like v1;
+  /// `getNotifications`/`readNotifications` above stay untouched and keep
+  /// serving the topbar badge + SSE flow.
+  String notificationsV2 = '/u/v2/notifications/'; // :section
+
+  /// One post in full (references/reactions/entity), for the read-only post
+  /// preview opened from an Explore content card. Append :postID.
+  String postPreview = '/api/newsfeed/preview/'; // :postID
   String publicProfile = '/api/user/auth/'; // :username
   String contacts = '/api/user/contacts';
   String poke = '/api/user/poke';

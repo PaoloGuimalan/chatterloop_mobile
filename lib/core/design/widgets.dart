@@ -32,6 +32,28 @@ String _initials(String name) {
   return parts.take(2).map((p) => p[0].toUpperCase()).join();
 }
 
+/// The same id-hashed gradient CLAvatar uses for its no-photo placeholder,
+/// exposed for surfaces that need the gradient WITHOUT an avatar - a realm
+/// card's banner, a group tile's rounded-square badge. Mirrors webapp's
+/// `entityGradient`/`gradFor`: hashing off the id means a given entity always
+/// gets the same colours wherever it appears.
+List<Color> clEntityGradient(String id) =>
+    _avatarGradients[_avHash(id) % _avatarGradients.length];
+
+/// "1.2k" / "3.4M" - mirrors webapp's compactCount (searchShared.ts), used for
+/// the follower/member reach line on realm cards.
+String clCompactCount(int n) {
+  if (n >= 1000000) {
+    final value = (n / 1000000).toStringAsFixed(1);
+    return "${value.endsWith('.0') ? value.substring(0, value.length - 2) : value}M";
+  }
+  if (n >= 1000) {
+    final value = (n / 1000).toStringAsFixed(1);
+    return "${value.endsWith('.0') ? value.substring(0, value.length - 2) : value}k";
+  }
+  return "$n";
+}
+
 class CLAvatar extends StatelessWidget {
   final String? id;
   final String? name;
@@ -39,6 +61,10 @@ class CLAvatar extends StatelessWidget {
   final double size;
   final bool online;
   final bool ring;
+
+  /// Rounded-square instead of a circle. Group chat tiles use this (a squared
+  /// tile reads as "a room", not "a person"); everything else leaves it null.
+  final double? cornerRadius;
 
   const CLAvatar({
     super.key,
@@ -48,6 +74,7 @@ class CLAvatar extends StatelessWidget {
     this.size = 40,
     this.online = false,
     this.ring = false,
+    this.cornerRadius,
   });
 
   @override
@@ -59,7 +86,10 @@ class CLAvatar extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        shape: cornerRadius == null ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: cornerRadius == null
+            ? null
+            : BorderRadius.circular(cornerRadius!),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -87,9 +117,14 @@ class CLAvatar extends StatelessWidget {
         ? (size * MediaQuery.devicePixelRatioOf(context)).ceil()
         : null;
 
+    Widget clip(Widget child) => cornerRadius == null
+        ? ClipOval(child: child)
+        : ClipRRect(
+            borderRadius: BorderRadius.circular(cornerRadius!), child: child);
+
     Widget content = (src != null && src!.isNotEmpty && src != 'none')
-        ? ClipOval(
-            child: Image.network(
+        ? clip(
+            Image.network(
               src!,
               width: size,
               height: size,
@@ -564,6 +599,142 @@ class CLBtn extends StatelessWidget {
       child: Opacity(opacity: onPressed == null ? 0.55 : 1.0, child: child),
     );
     return block ? SizedBox(width: double.infinity, child: wrapped) : wrapped;
+  }
+}
+
+/// The 28px pill-height action button the redesigned Explore/Contacts cards
+/// use. Deliberately not CLBtn(size: sm): these sit inside 150px-wide cards
+/// and 42px-avatar rows, where sm's 32px height and 13px label crowd the card
+/// - the mockup specifies 28px / 11.5px for exactly that reason.
+class CLMiniBtn extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final VoidCallback? onPressed;
+
+  /// primary = filled brand, soft = brand tint, outline = bordered surface.
+  final CLBtnVariant variant;
+  final bool block;
+
+  const CLMiniBtn({
+    super.key,
+    required this.label,
+    this.icon,
+    required this.onPressed,
+    this.variant = CLBtnVariant.primary,
+    this.block = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final (bg, fg, border) = switch (variant) {
+      CLBtnVariant.primary => (p.brand, Colors.white, null),
+      CLBtnVariant.soft => (p.brandSoft, p.brand, null),
+      CLBtnVariant.ghost => (Colors.transparent, p.text, null),
+      CLBtnVariant.outline => (p.surface, p.text, p.border2),
+      CLBtnVariant.danger => (p.pink, Colors.white, null),
+    };
+
+    final child = Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(CLRadii.sm),
+        border: border != null ? Border.all(color: border) : null,
+        boxShadow: variant == CLBtnVariant.primary
+            ? [
+                BoxShadow(
+                    color: p.brand.withValues(alpha: 0.30),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2))
+              ]
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 15, color: fg),
+            const SizedBox(width: 6),
+          ],
+          // Flexible, not a bare Text: these buttons sit in 150px cards and
+          // 42px-avatar rows, so a long label - or an ordinary label at a large
+          // accessibility text scale - has to be allowed to ellipsize rather
+          // than overflow the button.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: fg,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final wrapped = InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(CLRadii.sm),
+      child: Opacity(opacity: onPressed == null ? 0.55 : 1.0, child: child),
+    );
+    return block ? SizedBox(width: double.infinity, child: wrapped) : wrapped;
+  }
+}
+
+/// Compact in-section "nothing here" panel - what a single empty SECTION shows
+/// (Explore's People/Realms/Content, Contacts' four sections), as opposed to
+/// CLEmptyState which owns a whole screen. Mirrors webapp's EmptySection.
+class CLSectionEmpty extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const CLSectionEmpty({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 14),
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border.all(color: p.border2),
+        borderRadius: BorderRadius.circular(CLRadii.md),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 30, color: p.text3),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 13.5, fontWeight: FontWeight.w700, color: p.text),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: p.text3),
+          ),
+        ],
+      ),
+    );
   }
 }
 
