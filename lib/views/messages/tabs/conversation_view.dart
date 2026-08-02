@@ -6,6 +6,9 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/utils/chat_mentions.dart';
+import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
+import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
@@ -358,7 +361,7 @@ class ConversationStateView extends State<ConversationView> {
   /// conversation from the list and leave the thread; Unarchive restores it.
   Widget _conversationMenu(CLPalette p) {
     final archived = conversationInfo?.isArchived ?? false;
-    return PopupMenuButton<String>(
+    return PopupMenuButton<ConversationAction>(
       tooltip: 'Options',
       color: p.surface,
       padding: EdgeInsets.zero,
@@ -368,44 +371,47 @@ class ConversationStateView extends State<ConversationView> {
       onSelected: _updateChatHistory,
       itemBuilder: (context) => [
         PopupMenuItem(
-          value: archived ? 'unarchive' : 'archive',
+          value: archived
+              ? ConversationAction.unarchive
+              : ConversationAction.archive,
           child: Row(children: [
             Icon(archived ? Icons.unarchive_outlined : Icons.archive_outlined,
                 size: 18, color: p.text2),
             const SizedBox(width: 10),
+            // Sized from CLType - PopupMenuItem otherwise inherits Material's
+            // 16, larger than anything in this app's scale, and out of step
+            // with the long-press sheet offering these same two options.
             Text(archived ? 'Unarchive' : 'Archive',
-                style: TextStyle(color: p.text)),
+                style: TextStyle(color: p.text, fontSize: CLType.body)),
           ]),
         ),
         PopupMenuItem(
-          value: 'clear',
+          value: ConversationAction.delete,
           child: Row(children: [
             Icon(Icons.delete_outline, size: 18, color: p.pink),
             const SizedBox(width: 10),
-            Text('Delete', style: TextStyle(color: p.pink)),
+            Text('Delete',
+                style: TextStyle(color: p.pink, fontSize: CLType.body)),
           ]),
         ),
       ],
     );
   }
 
-  Future<void> _updateChatHistory(String action) async {
-    final ok = await ConversationsApi()
-        .updateChatHistoryRequest(widget.conversationId, action);
+  /// Shares applyConversationAction with the messages list's long-press sheet
+  /// so the two entry points cannot drift on what an action actually does.
+  /// The navigation afterwards is this screen's own concern - the list has
+  /// nowhere to go.
+  Future<void> _updateChatHistory(ConversationAction action) async {
+    final ok = await applyConversationAction(widget.conversationId, action);
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Action failed. Please try again.')));
       return;
     }
-    // Refresh the conversation list so the archived/deleted conversation drops
-    // off, then leave the thread - mirrors webapp (navigate to /messages +
-    // remove the conversation from the list).
-    final res = await ConversationsApi().getConversationListRequest();
-    if (res != null) {
-      appStore.dispatch(DispatchModel(setMessagesListT, res.items));
-    }
-    if (!mounted) return;
+    // Leave the thread once it is archived or deleted - mirrors webapp
+    // (navigate to /messages + remove the conversation from the list).
     context.go('/messages');
   }
 
@@ -831,10 +837,125 @@ class ConversationStateView extends State<ConversationView> {
         _unreadMessageIds.where((id) => !seen.contains(id)).toList();
   }
 
+  /// Active "@..." suggestions, if any.
+  ///
+  /// A ValueNotifier, NOT setState: the onChanged handler below is explicit
+  /// that a keystroke must not rebuild the conversation tree - that was the
+  /// typing lag. Only the overlay listens, so only the overlay rebuilds.
+  final ValueNotifier<List<UsersContactPreview>> _mentionSuggestions =
+      ValueNotifier<List<UsersContactPreview>>(const []);
+
+  /// Where the in-progress "@query" starts, so insertMention can replace it.
+  int _mentionStart = -1;
+
+  /// Recompute suggestions from the text before the cursor. Called on every
+  /// keystroke, so it does no work beyond a regex when there is no "@".
+  void _refreshMentionSuggestions(String value) {
+    final cursor = _controller.selection.baseOffset;
+    final active = activeMentionQuery(value, cursor < 0 ? value.length : cursor);
+
+    if (active == null) {
+      _mentionStart = -1;
+      if (_mentionSuggestions.value.isNotEmpty) {
+        _mentionSuggestions.value = const [];
+      }
+      return;
+    }
+
+    _mentionStart = active.start;
+    _mentionSuggestions.value =
+        mentionSuggestions(_mentionMembers, active.query);
+  }
+
+  /// Replace the "@query" with the picked handle and close the list.
+  void _applyMention(UsersContactPreview member) {
+    if (_mentionStart < 0) return;
+    final cursor = _controller.selection.baseOffset;
+    final result = insertMention(_controller.text, _mentionStart,
+        cursor < 0 ? _controller.text.length : cursor, member);
+
+    _controller.value = TextEditingValue(
+      text: result.text,
+      selection: TextSelection.collapsed(offset: result.cursor),
+    );
+    messageValue = result.text;
+    _mentionStart = -1;
+    _mentionSuggestions.value = const [];
+  }
+
+  /// Suggestion list shown above the composer while an "@..." is in progress.
+  ///
+  /// Rebuilt by its own ValueListenableBuilder, never by setState, so typing
+  /// does not touch the message list.
+  Widget _mentionSuggestionList(CLPalette p) {
+    return ValueListenableBuilder<List<UsersContactPreview>>(
+      valueListenable: _mentionSuggestions,
+      builder: (context, suggestions, _) {
+        if (suggestions.isEmpty) return const SizedBox.shrink();
+        return Container(
+          margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+          // Capped and scrollable so a long member list cannot push the input
+          // bar off screen.
+          constraints: const BoxConstraints(maxHeight: 190),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: p.border),
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: suggestions.length,
+            itemBuilder: (context, index) {
+              final member = suggestions[index];
+              return ListTile(
+                dense: true,
+                visualDensity:
+                    const VisualDensity(horizontal: -2, vertical: -2),
+                leading: CLAvatar(
+                  id: member.entityID,
+                  name: mentionFullNameFor(member),
+                  src: member.profile != "none" ? member.profile : null,
+                  size: 28,
+                ),
+                title: Text(mentionFullNameFor(member),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: p.text, fontSize: CLType.bodySm)),
+                subtitle: Text("@${mentionLabelFor(member)}",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: p.text3, fontSize: CLType.caption)),
+                onTap: () => _applyMention(member),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  /// Participants who can be mentioned - everyone but you, deduped, and
+  /// capped at one for a DM. Empty until the conversation info loads, which
+  /// simply means nothing highlights yet.
+  List<UsersContactPreview> get _mentionMembers {
+    final info = conversationInfo;
+    if (info == null) return const [];
+    return mentionableMembers(
+      info.usersWithInfo,
+      currentEntityId:
+          StoreProvider.of<AppState>(context).state.userAuth.user.entityId,
+      conversationType: _conversationType,
+    );
+  }
+
   Future<void> postReplyAssistProcess(
-      String conversationID, List<ReplyAssistContext> messageIDs) async {
+      String conversationID, String messageID) async {
+    // v2 takes the ANCHOR message and lets the server build the surrounding
+    // window. No anchor means nothing to generate from.
+    if (messageID.isEmpty) return;
     MessageBasedResponse? postReplyAssistResponse = await ConversationsApi()
-        .postReplyAssistRequest(conversationID, messageIDs);
+        .postReplyAssistRequest(conversationID, messageID);
 
     if (postReplyAssistResponse != null) {
       _controller.text = postReplyAssistResponse.message;
@@ -1638,6 +1759,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                 conversationID:
                                                                     widget
                                                                         .conversationId,
+                                                                mentionMembers:
+                                                                    _mentionMembers,
                                                                 onPressed: (bool
                                                                         isReply,
                                                                     String
@@ -1845,6 +1968,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                   conversationID:
                                                                       widget
                                                                           .conversationId,
+                                                                  mentionMembers:
+                                                                      _mentionMembers,
                                                                   onPressed: (bool
                                                                           isReply,
                                                                       String
@@ -2244,7 +2369,7 @@ class ConversationStateView extends State<ConversationView> {
                                                           children: [
                                                             Text(
                                                               state.isUsingReplyAssist
-                                                                  ? "Select messages for context"
+                                                                  ? "Generate a reply from this message?"
                                                                   : "Use AI Reply Assist?",
                                                               style: TextStyle(
                                                                   fontSize: CLType.caption,
@@ -2282,7 +2407,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                     onPressed:
                                                                         () => {
                                                                               // ContentValidator().printer(jsonEncode(state.replyAssistContext.map((rac) => rac.toJson()).toList()))
-                                                                              postReplyAssistProcess(widget.conversationId, state.replyAssistContext)
+                                                                              postReplyAssistProcess(widget.conversationId, isReplying.replyingTo)
                                                                             },
                                                                     child: Text(
                                                                       "Generate",
@@ -2376,6 +2501,12 @@ class ConversationStateView extends State<ConversationView> {
                                     ),
                             ),
                           ),
+                          // Sits ABOVE the input bar as its sibling, not
+                          // inside it: that bar is a fixed height: 55, so a
+                          // list nested within it overflows instead of
+                          // growing. Rendering nothing when there are no
+                          // suggestions keeps the bar flush with the messages.
+                          _mentionSuggestionList(p),
                           Container(
                             decoration: BoxDecoration(
                               color: p.surface,
@@ -2527,6 +2658,10 @@ class ConversationStateView extends State<ConversationView> {
                                             // (once per typing burst), which is
                                             // cheap and still needed.
                                             messageValue = value;
+                                            // Same reasoning - drives a
+                                            // ValueNotifier, so only the
+                                            // suggestion overlay rebuilds.
+                                            _refreshMentionSuggestions(value);
                                             if (value.trim() != "" &&
                                                 conversationInfo != null) {
                                               isTypingTimeout(

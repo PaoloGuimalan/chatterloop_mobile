@@ -143,33 +143,55 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
 
   // -------- actions ----------------------------------------------------------
 
-  void _applyFollow(String entityId, bool next) {
+  /// People carry TWO flags because a follow can land pending; realms only
+  /// ever have one, since a realm is never private.
+  void _applyFollow(String entityId,
+      {required bool followed, required bool pending}) {
     setState(() {
       for (var i = 0; i < _people.length; i++) {
         if (_people[i].entityId == entityId) {
-          _people[i] = _people[i].copyWith(isFollowed: next);
+          _people[i] = _people[i]
+              .copyWith(isFollowed: followed, isFollowPending: pending);
         }
       }
       for (var i = 0; i < _realms.length; i++) {
         if (_realms[i].entityId == entityId) {
-          _realms[i] = _realms[i].copyWith(isFollower: next);
+          _realms[i] = _realms[i].copyWith(isFollower: followed);
         }
       }
     });
   }
 
-  Future<void> _toggleFollow(String entityId, bool currentlyFollowing) async {
+  /// Optimistic: the button flips at once and reverts only if the request
+  /// fails. Pending counts as "on" - cancelling a follow request is the same
+  /// DELETE as unfollowing, since it drops the row whatever its status.
+  ///
+  /// Following a PRIVATE profile does not take effect immediately, so the
+  /// optimistic "Following" is corrected to "Requested" from the response.
+  /// Reverting restores BOTH flags; assuming `!current` would lose the pending
+  /// state.
+  Future<void> _toggleFollow(String entityId, bool currentlyFollowing,
+      {bool currentlyPending = false}) async {
     if (_followBusy.contains(entityId)) return;
     setState(() => _followBusy.add(entityId));
-    _applyFollow(entityId, !currentlyFollowing);
 
-    final ok = await ProfileApi().setEntityFollowRequest(
+    final isActive = currentlyFollowing || currentlyPending;
+    _applyFollow(entityId,
+        followed: !isActive, pending: false);
+
+    final result = await ProfileApi().setEntityFollowRequest(
       entityId: entityId,
-      follow: !currentlyFollowing,
+      follow: !isActive,
     );
     if (!mounted) return;
     setState(() => _followBusy.remove(entityId));
-    if (!ok) _applyFollow(entityId, currentlyFollowing);
+
+    if (!result.ok) {
+      _applyFollow(entityId,
+          followed: currentlyFollowing, pending: currentlyPending);
+    } else if (!isActive && result.isPending) {
+      _applyFollow(entityId, followed: false, pending: true);
+    }
   }
 
   Future<void> _joinGroup(SearchRealmResult realm) async {
@@ -248,12 +270,18 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
           online: presence[person.entityId]?.online ?? false,
           onOpen: () => _openPerson(person),
           action: CLMiniBtn(
-            label: person.isFollowed ? "Following" : "Follow",
-            variant:
-                person.isFollowed ? CLBtnVariant.soft : CLBtnVariant.primary,
+            label: person.isFollowed
+                ? "Following"
+                : person.isFollowPending
+                    ? "Requested"
+                    : "Follow",
+            variant: (person.isFollowed || person.isFollowPending)
+                ? CLBtnVariant.soft
+                : CLBtnVariant.primary,
             onPressed: _followBusy.contains(person.entityId)
                 ? null
-                : () => _toggleFollow(person.entityId, person.isFollowed),
+                : () => _toggleFollow(person.entityId, person.isFollowed,
+                    currentlyPending: person.isFollowPending),
           ),
         );
       case SearchDetailKind.realms:
@@ -264,6 +292,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
           followBusy: _followBusy.contains(realm.entityId),
           joinBusy: _joinBusy.contains(realm.entityId),
           onToggleFollow: (target) =>
+              // Realms are never private, so no pending state to pass.
               _toggleFollow(target.entityId, target.isFollower),
           onJoinGroup: _joinGroup,
           onOpen: _openRealm,

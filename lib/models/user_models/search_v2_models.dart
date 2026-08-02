@@ -8,7 +8,10 @@
 // sentinels - user "none" and realm "N/A" - come back as null), so nothing
 // here needs to re-check for them.
 
-/// A person hit. `is_followed` drives the card's Follow/Following toggle;
+/// A person hit. `is_followed` and `is_follow_pending` together drive the
+/// card's Follow / Requested / Following toggle - they are mutually
+/// exclusive, and pending means a follow of a PRIVATE profile awaiting its
+/// owner's approval;
 /// the connection-state fields are carried through for parity with the v1
 /// entity search so a contact flow can be deep-linked from here later.
 class SearchPersonResult {
@@ -19,6 +22,7 @@ class SearchPersonResult {
   final bool isVerified;
   final int mutualCount;
   final bool isFollowed;
+  final bool isFollowPending;
   final String? id;
   final bool hasConnection;
   final bool connectionAccomplished;
@@ -33,6 +37,7 @@ class SearchPersonResult {
     required this.isVerified,
     required this.mutualCount,
     required this.isFollowed,
+    this.isFollowPending = false,
     this.id,
     required this.hasConnection,
     required this.connectionAccomplished,
@@ -40,7 +45,8 @@ class SearchPersonResult {
     required this.isActionByEntity,
   });
 
-  SearchPersonResult copyWith({bool? isFollowed}) => SearchPersonResult(
+  SearchPersonResult copyWith({bool? isFollowed, bool? isFollowPending}) =>
+      SearchPersonResult(
         entityId: entityId,
         displayName: displayName,
         handle: handle,
@@ -48,6 +54,7 @@ class SearchPersonResult {
         isVerified: isVerified,
         mutualCount: mutualCount,
         isFollowed: isFollowed ?? this.isFollowed,
+        isFollowPending: isFollowPending ?? this.isFollowPending,
         id: id,
         hasConnection: hasConnection,
         connectionAccomplished: connectionAccomplished,
@@ -65,6 +72,7 @@ class SearchPersonResult {
       mutualCount:
           json["mutual_count"] is num ? (json["mutual_count"] as num).toInt() : 0,
       isFollowed: json["is_followed"] == true,
+      isFollowPending: json["is_follow_pending"] == true,
       id: json["id"]?.toString(),
       hasConnection: json["has_connection"] == true,
       connectionAccomplished: json["connection_accomplished"] == true,

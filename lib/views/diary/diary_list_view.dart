@@ -121,9 +121,9 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
                   child: ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.all(12),
-                    itemCount: _entries.length + (_hasNext ? 1 : 0),
+                    itemCount: _groupedEntries.length + (_hasNext ? 1 : 0),
                     itemBuilder: (context, index) {
-                      if (index >= _entries.length) {
+                      if (index >= _groupedEntries.length) {
                         return const Padding(
                           padding: EdgeInsets.symmetric(vertical: 20),
                           child: Center(
@@ -135,11 +135,48 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
                           ),
                         );
                       }
-                      return _EntryCard(entry: _entries[index]);
+                      final group = _groupedEntries[index];
+                      return _DayGroup(
+                          date: group.date, entries: group.entries);
                     },
                   ),
                 ),
     );
+  }
+
+  /// Same-day entries collapse into ONE list item, so the list reads day by
+  /// day - each day being that day's collection of entries.
+  ///
+  /// Mirrors the webapp's `entriesByDate` memo (Diary.tsx:57), whose ordering
+  /// is easy to get subtly wrong: sort by entry_date ASCENDING with ties
+  /// broken by created_at DESCENDING, then reverse BOTH the per-day list and
+  /// the outer list. Net effect - newest day first, and within a day the
+  /// oldest entry first.
+  List<({DateTime date, List<DiaryEntry> entries})> get _groupedEntries {
+    final dated = _entries.where((e) => e.entryDate != null).toList()
+      ..sort((a, b) {
+        final byDate = a.entryDate!.compareTo(b.entryDate!);
+        if (byDate != 0) return byDate;
+        final ac = a.createdAt, bc = b.createdAt;
+        if (ac == null || bc == null) return 0;
+        return bc.compareTo(ac);
+      });
+
+    final buckets = <String, List<DiaryEntry>>{};
+    final order = <String>[];
+    for (final entry in dated) {
+      final d = entry.entryDate!;
+      final key = "${d.year}-${d.month}-${d.day}";
+      if (buckets.putIfAbsent(key, () => []).isEmpty) order.add(key);
+      buckets[key]!.add(entry);
+    }
+
+    return order.reversed
+        .map((key) => (
+              date: buckets[key]!.first.entryDate!,
+              entries: buckets[key]!.reversed.toList(),
+            ))
+        .toList();
   }
 }
 
@@ -254,5 +291,57 @@ class _EntryCard extends StatelessWidget {
       "July", "August", "September", "October", "November", "December",
     ];
     return "${ordinalSuffix(date.day)} of ${months[date.month - 1]}, ${date.year}";
+  }
+}
+
+/// One list item per DAY, holding that day's entries.
+///
+/// The grouping is display-only - nothing is merged in the data, and each
+/// entry still renders as its own card underneath the date heading.
+class _DayGroup extends StatelessWidget {
+  const _DayGroup({required this.date, required this.entries});
+
+  final DateTime date;
+  final List<DiaryEntry> entries;
+
+  static const _months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+
+  String get _label => "${_months[date.month - 1]} ${date.day}, ${date.year}";
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, top: 6, bottom: 6),
+          child: Row(
+            children: [
+              Icon(Icons.calendar_today_outlined, size: 13, color: p.text3),
+              const SizedBox(width: 6),
+              Text(
+                _label,
+                style: TextStyle(
+                  color: p.text2,
+                  fontSize: CLType.caption,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (entries.length > 1) ...[
+                const SizedBox(width: 8),
+                Text("${entries.length} entries",
+                    style: TextStyle(color: p.text3, fontSize: CLType.meta)),
+              ],
+            ],
+          ),
+        ),
+        for (final entry in entries) _EntryCard(entry: entry),
+        const SizedBox(height: 6),
+      ],
+    );
   }
 }

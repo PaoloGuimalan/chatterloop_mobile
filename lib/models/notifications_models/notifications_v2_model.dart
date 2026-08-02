@@ -109,8 +109,22 @@ class NotificationV2 {
         isRead: isRead ?? this.isRead,
       );
 
-  /// A contact request is actionable only while it's still pending.
-  bool get isActionable => type == "contact_request" && referenceStatus != true;
+  /// Types that can be answered from the row itself. Both carry
+  /// referenceStatus=false while open and flip to true once settled.
+  ///
+  /// `follow_request` is a follow of a PRIVATE profile, which lands pending
+  /// until its owner approves it. Without it here the row rendered passively
+  /// and a private-profile user had no way to approve a follow request on
+  /// mobile at all.
+  static const _answerableTypes = {"contact_request", "follow_request"};
+
+  /// A request is actionable only while it's still pending.
+  bool get isActionable =>
+      _answerableTypes.contains(type) && referenceStatus != true;
+
+  /// True when this row's buttons answer a FOLLOW request rather than a
+  /// contact request - they hit different endpoints with different ids.
+  bool get isFollowRequest => type == "follow_request";
 
   factory NotificationV2.fromJson(Map<String, dynamic> json) {
     final content = json["content"] is Map

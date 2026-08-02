@@ -47,6 +47,12 @@ class UserAccount {
   /// Same story as joinedDate - only fromPublicProfile populates this.
   final bool isBadged;
 
+  /// Settings > Data & Privacy. Carried on BOTH token shapes - Node's
+  /// usertoken (`isPrivate`, via transformers.js) and Django's
+  /// AccountSerializer (`is_private`) - so it survives a session restore and
+  /// the toggle can render its current state without an extra fetch.
+  final bool isPrivate;
+
   /// Permission codenames for the currently active entity. Populated from
   /// the sibling `allowed_modules` field returned alongside `usertoken` by
   /// both Node's /auth/jwtchecker and Django's /api/user/auth - not part of
@@ -74,6 +80,7 @@ class UserAccount {
       this.personalEntityId,
       this.joinedDate,
       this.isBadged = false,
+      this.isPrivate = false,
       this.isComplete = true,
       this.pendingConsents = const []});
 
@@ -88,6 +95,7 @@ class UserAccount {
   UserAccount copyWith({
     bool? isVerified,
     bool? isComplete,
+    bool? isPrivate,
     List<String>? pendingConsents,
     UserBirthDate? birthdate,
     String? gender,
@@ -110,6 +118,7 @@ class UserAccount {
       personalEntityId: personalEntityId,
       joinedDate: joinedDate,
       isBadged: isBadged,
+      isPrivate: isPrivate ?? this.isPrivate,
       isComplete: isComplete ?? this.isComplete,
       pendingConsents: pendingConsents ?? this.pendingConsents,
     );
@@ -191,6 +200,9 @@ class UserAccount {
             ? UserBirthDate.fromJson(
                 Map<String, dynamic>.from(json["birthdate"]))
             : null,
+        // camelCase here: this token is transformUser's output, not the
+        // Django serializer's snake_case.
+        isPrivate: json["isPrivate"] == true,
         allowedModules: allowedModules,
         activeEntity: activeEntity,
         personalEntityId: personalEntityId,
@@ -225,6 +237,7 @@ class UserAccount {
         // Only gate on an EXPLICIT is_complete:false - a response that omits
         // the field (some Django token shapes) must not be treated as
         // incomplete and bounced to /setup.
+        isPrivate: json["is_private"] == true,
         isComplete: json.containsKey("is_complete")
             ? json["is_complete"] == true
             : true,

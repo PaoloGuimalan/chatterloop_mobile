@@ -425,6 +425,37 @@ class ConversationsApi {
     }
   }
 
+  /// Set the acting entity's reaction: pass an emoji to add or change it, or
+  /// null to remove. Mirrors webapp's SetMessageReactionRequest.
+  ///
+  /// No entity id is sent - the server reads it from the JWT, which is what
+  /// makes this only ever able to touch your own reaction. `userID` is the
+  /// user_account row id, kept because the server stores it alongside for the
+  /// reactor-name lookup (see the note in _submitReaction).
+  Future<bool> setMessageReactionRequest({
+    required String conversationID,
+    required String messageID,
+    required String userID,
+    required String? emoji,
+  }) async {
+    try {
+      final response = await _dio.post(_endpoints.setReaction, data: {
+        "token": JwtCodec.sign({
+          "conversationID": conversationID,
+          "messageID": messageID,
+          "userID": userID,
+          "emoji": emoji,
+        })
+      });
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR setMessageReaction: $e");
+      }
+      return false;
+    }
+  }
+
   /// Matches webapp's DeleteMessageRequest (POST /m/deletemessage,
   /// JWT-signed body) - server enforces sender-only ownership and does a
   /// soft delete (isDeleted: true), then broadcasts it over the same
@@ -447,14 +478,24 @@ class ConversationsApi {
     }
   }
 
+  /// Reply assist v2 - sends the ANCHOR message and lets the server build the
+  /// context window itself (10 messages above, 10 below), matching the webapp
+  /// (`ReplyAssistRequest(conversationID, isReplying.replyingTo)`).
+  ///
+  /// Replaces the v1 `messageIDs` payload, where the client shipped a
+  /// hand-picked list. Two context-building paths existed server side because
+  /// of that, and the two clients produced different answers for the same
+  /// conversation. The legacy branch in server/routes/promptings/index.js can
+  /// only be deleted a release AFTER this ships - older builds keep sending
+  /// `messageIDs` until users update.
   Future<MessageBasedResponse?> postReplyAssistRequest(
-      String conversationID, List<ReplyAssistContext> messageIDs) async {
+      String conversationID, String messageID) async {
     ContentValidator().printer('${_endpoints.apiUrl}${_endpoints.replyAssist}');
     try {
       final response = await _dio.post(_endpoints.replyAssist,
           data: jsonEncode({
             "conversationID": conversationID,
-            "messageIDs": messageIDs.map((mp) => mp.toJson()).toList(),
+            "messageID": messageID,
           }));
       if (response.data["status"] == false) return null;
       return MessageBasedResponse(response.data["message"]);

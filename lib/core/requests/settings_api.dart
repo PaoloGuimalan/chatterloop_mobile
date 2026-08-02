@@ -120,6 +120,36 @@ class SettingsApi {
   /// GET /api/user/me/export - returns the full data export payload (the
   /// `data` object the webapp serializes to a downloaded JSON file), or null
   /// on failure. Mirrors webapp's ExportAccountDataRequest.
+  /// Settings > Data & Privacy > Private profile.
+  ///
+  /// Returns `ok` plus `postsRestricted`: switching ON also narrows every
+  /// existing PUBLIC post to contacts-only, and the response says how many.
+  /// Surface that number - a silent bulk rewrite of someone's back catalogue
+  /// is exactly what a settings toggle must say out loud.
+  ///
+  /// Deliberately one-way server side: switching back OFF does NOT re-publish
+  /// those posts, so the copy has to warn before the user flips it on.
+  Future<({bool ok, int postsRestricted})> setProfilePrivacy(
+      bool isPrivate) async {
+    try {
+      final response = await _dio
+          .put(_endpoints.updateProfile, data: {'is_private': isPrivate});
+      final data = response.data;
+      final ok = data is Map ? data["status"] == true : false;
+      final restricted =
+          data is Map && data["posts_restricted"] is num
+              ? (data["posts_restricted"] as num).toInt()
+              : 0;
+      return (ok: ok, postsRestricted: restricted);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return (ok: false, postsRestricted: 0);
+    }
+  }
+
   Future<dynamic> exportAccountData() async {
     try {
       final response = await _dio.get(_endpoints.dataExport);

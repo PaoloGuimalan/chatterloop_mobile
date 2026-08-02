@@ -71,6 +71,11 @@ class ProfileHeader extends StatelessWidget {
   final String? avatarSrc;
   final String? coverSrc;
   final bool isBadged;
+
+  /// Private profile - shows a lock beside the name, mirroring the webapp.
+  /// Purely an indicator; whether content is actually withheld is `canView`,
+  /// which the screen handles.
+  final bool isPrivate;
   final String? gender;
   final String? joinedLabel;
   final String? birthdateLabel;
@@ -86,6 +91,7 @@ class ProfileHeader extends StatelessWidget {
     this.avatarSrc,
     this.coverSrc,
     this.isBadged = false,
+    this.isPrivate = false,
     this.gender,
     this.joinedLabel,
     this.birthdateLabel,
@@ -181,6 +187,10 @@ class ProfileHeader extends StatelessWidget {
               if (isBadged) ...[
                 const SizedBox(width: 5),
                 Icon(Icons.verified, size: 18, color: p.brand),
+              ],
+              if (isPrivate) ...[
+                const SizedBox(width: 5),
+                Icon(Icons.lock, size: 16, color: p.text2),
               ],
             ],
           ),

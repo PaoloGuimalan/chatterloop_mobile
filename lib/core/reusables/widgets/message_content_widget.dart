@@ -1,3 +1,7 @@
+import 'package:chatterloop_app/core/reusables/widgets/message_reactions_dialog.dart';
+import 'package:chatterloop_app/core/reusables/widgets/reactions_sheet.dart';
+import 'package:chatterloop_app/core/utils/chat_mentions.dart';
+import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
@@ -14,7 +18,6 @@ import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_chat_reactions/flutter_chat_reactions.dart';
 import 'package:flutter_chat_reactions/model/menu_item.dart';
 import 'package:flutter_chat_reactions/utilities/default_data.dart';
 import 'package:flutter_chat_reactions/utilities/hero_dialog_route.dart';
@@ -35,14 +38,51 @@ final List<MenuItem> _reactionMenuItems = [
   const MenuItem(label: 'React', icon: Icons.add_reaction_outlined),
 ];
 
-/// Mirrors webapp's cl-message-reaction-pill exactly: a 20px-tall fully
-/// rounded pill, the emoji row clipped to 100px wide, and a "+N" overflow
-/// badge past 4 reactions - webapp doesn't slice the list either, it just
-/// clips it visually and shows the count alongside.
+/// The 20px-tall rounded pill under a message, based on webapp's
+/// cl-message-reaction-pill.
+///
+/// Deviates from web in one way, deliberately: reactions are GROUPED by emoji
+/// with a count instead of repeating the glyph. Ten thumbs-up used to render
+/// as ten identical emoji clipped at 100px, which read as noise and told you
+/// nothing - "👍 10" says the same thing in less space. Web still repeats
+/// them; this is the better behaviour, not a parity gap to close.
+///
+/// Distinct emoji past 3 collapse into a "+N" badge counting the REMAINING
+/// REACTIONS, not the remaining emoji kinds - the number people read it as.
+/// Collapses cosmetic code-point differences so the same visible emoji groups
+/// as one: drops the U+FE0F variation selector and any skin-tone modifier
+/// (U+1F3FB-U+1F3FF). ZWJ sequences are left alone - those join genuinely
+/// different emoji and must not be flattened.
+String normalizeEmojiKey(String emoji) => emoji
+    .replaceAll('\uFE0F', '')
+    .replaceAll(RegExp(r'[\u{1F3FB}-\u{1F3FF}]', unicode: true), '');
+
 Widget buildReactionPill(List<ReactionItem> reactions, CLPalette p) {
+  // Insertion-ordered so the pill does not reshuffle as reactions arrive.
+  // Keyed on the NORMALIZED emoji but displaying the first glyph seen: two
+  // clients can send the same emoji with different code points - a heart with
+  // a U+FE0F variation selector vs a bare one, or the same hand with
+  // different skin-tone modifiers. They render identically, so grouping on
+  // the raw string left what looked like duplicates sitting side by side.
+  final counts = <String, int>{};
+  final glyphs = <String, String>{};
+  for (final reaction in reactions) {
+    final emoji = reaction.emoji?.toString() ?? "";
+    if (emoji.isEmpty) continue;
+    final key = normalizeEmojiKey(emoji);
+    counts[key] = (counts[key] ?? 0) + 1;
+    glyphs.putIfAbsent(key, () => emoji);
+  }
+
+  const maxDistinct = 3;
+  final shown = counts.entries.take(maxDistinct).toList();
+  final hiddenReactions = counts.entries
+      .skip(maxDistinct)
+      .fold<int>(0, (sum, entry) => sum + entry.value);
+
   return Container(
     height: 20,
-    constraints: const BoxConstraints(maxWidth: 100),
+    constraints: const BoxConstraints(maxWidth: 110),
     padding: const EdgeInsets.symmetric(horizontal: 6),
     decoration: BoxDecoration(
       color: p.surface,
@@ -56,22 +96,37 @@ Widget buildReactionPill(List<ReactionItem> reactions, CLPalette p) {
           child: ClipRect(
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: reactions
-                  .map((reaction) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 1),
-                        child: Text(reaction.emoji.toString(),
-                            // Emoji glyph sized to its container - not a CLType step.
+              children: [
+                for (final entry in shown)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 1),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Emoji glyph sized to its container - not a CLType step.
+                        Text(glyphs[entry.key] ?? entry.key,
                             style: const TextStyle(fontSize: 12)),
-                      ))
-                  .toList(),
+                        // The count is dropped at 1: "👍 1" is just noise.
+                        if (entry.value > 1) ...[
+                          const SizedBox(width: 2),
+                          Text(
+                            "${entry.value}",
+                            style: TextStyle(
+                                fontSize: CLType.meta, color: p.text2),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
-        if (reactions.length > 4)
+        if (hiddenReactions > 0)
           Padding(
             padding: const EdgeInsets.only(left: 3),
             child: Text(
-              "+${reactions.length - 4}",
+              "+$hiddenReactions",
               style: TextStyle(fontSize: CLType.meta, color: p.text2),
             ),
           ),
@@ -105,6 +160,15 @@ class MessageContentWidget extends StatefulWidget {
   /// the messageID) - not used for anything else in this widget.
   final String conversationID;
 
+  /// The conversation's participants, used ONLY to highlight mentions.
+  ///
+  /// Chat mentions are plain text - nothing is stored alongside the message -
+  /// so "@anna" is only a mention if Anna is actually in this conversation.
+  /// That is why the list has to reach down here rather than being derived
+  /// from the message itself. Empty means nothing is highlighted, which is the
+  /// correct fallback before the conversation info has loaded.
+  final List<UsersContactPreview> mentionMembers;
+
   const MessageContentWidget(
       {super.key,
       required this.messageContent,
@@ -113,7 +177,8 @@ class MessageContentWidget extends StatefulWidget {
       required this.onPressed,
       required this.resolveSenderName,
       required this.isSingleConversation,
-      required this.conversationID});
+      required this.conversationID,
+      this.mentionMembers = const []});
 
   @override
   MessageContentWidgetState createState() => MessageContentWidgetState();
@@ -177,6 +242,32 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         : "File";
   }
 
+  /// Mentions and links, composed rather than exclusive: split the text into
+  /// mention / non-mention runs first, then linkify only the non-mention runs.
+  /// Linkifying a mention would try to turn "@anna" into a link.
+  ///
+  /// On your own (brand-coloured) bubble the text is already white, so the
+  /// mention is distinguished by weight alone - a second colour there would be
+  /// invisible or clash.
+  List<InlineSpan> _mentionAwareSpans(
+      String content, TextStyle baseStyle, Color mentionColor) {
+    final spans = splitMentionSpans(content, widget.mentionMembers);
+    final out = <InlineSpan>[];
+
+    for (final span in spans) {
+      if (span.isMention) {
+        out.add(TextSpan(
+          text: span.text,
+          style: baseStyle.copyWith(
+              color: mentionColor, fontWeight: FontWeight.w700),
+        ));
+      } else {
+        out.addAll(linkifySpans(span.text, baseStyle));
+      }
+    }
+    return out;
+  }
+
   /// Shared reply-assist checkbox handler - was copy-pasted near-identically
   /// across every content-type branch (text/image/video/audio/file/etc.)
   /// in this widget's build method.
@@ -196,6 +287,37 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   /// Matches webapp's EmojiPickerHandler.tsx applyReaction: optimistically
   /// appends locally, then fires the request - no rollback on failure there
   /// either, just a console.log, so this doesn't roll back locally on error.
+  /// The emoji this user currently has on this message, if any.
+  String? get _myReactionEmoji {
+    final me = StoreProvider.of<AppState>(context).state.userAuth.user.entityId;
+    final mine = _messageContent.reactions?.where((r) => r.entityID == me);
+    return (mine != null && mine.isNotEmpty)
+        ? mine.first.emoji?.toString()
+        : null;
+  }
+
+  /// Tapping the pill opens the list of who reacted - webapp parity with
+  /// ReactionsModal. Your own row removes your reaction, which goes through
+  /// the same toggle path as picking it again.
+  void _openReactionsSheet() {
+    final reactions = _messageContent.reactions;
+    if (reactions == null || reactions.isEmpty) return;
+
+    showMessageReactionsSheet(
+      context,
+      reactions: reactions,
+      reactorsInfo: _messageContent.reactionsWithInfo ?? const [],
+      selfEntityID:
+          StoreProvider.of<AppState>(context).state.userAuth.user.entityId,
+      onRemoveOwn: () {
+        final mine = _myReactionEmoji;
+        // Re-submitting the emoji you already have is the remove path, so
+        // this reuses the toggle rather than duplicating the request.
+        if (mine != null) _submitReaction(mine);
+      },
+    );
+  }
+
   void _submitReaction(String emoji) {
     final userAuth = StoreProvider.of<AppState>(context).state.userAuth.user;
     // userID here means the user_account row id, NOT the entity id and NOT
@@ -206,19 +328,45 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     // by `t2.userID === t1.userID`. Sending the username or entity id here
     // silently breaks that join server-side, so webapp can never resolve
     // the reactor's name/avatar even though the emoji itself still shows.
+    final previous = _messageContent.reactions;
+    final mine = previous?.where((r) => r.entityID == userAuth.entityId);
+    final myEmoji = (mine != null && mine.isNotEmpty) ? mine.first.emoji : null;
+
+    // Tapping the emoji you already have undoes it; a different one swaps it.
+    // Matches webapp's toggleMyReaction.
+    final next = myEmoji == emoji ? null : emoji;
+
+    // Optimistic, and a REPLACE not an append: drop my existing reaction
+    // before adding the new one. The old /m/addreaction route only ever
+    // pushed, which is how a message ended up carrying two reactions from the
+    // same person.
     setState(() {
-      _messageContent.reactions = [
-        ...?_messageContent.reactions,
-        ReactionItem(
-            userAuth.id, "", emoji, "", false, [], "", "", userAuth.entityId),
+      final withoutMine = [
+        ...?previous?.where((r) => r.entityID != userAuth.entityId),
       ];
+      _messageContent.reactions = next == null
+          ? withoutMine
+          : [
+              ...withoutMine,
+              ReactionItem(userAuth.id, "", next, "", false, [], "", "",
+                  userAuth.entityId),
+            ];
     });
-    ConversationsApi().reactToMessageRequest(IReactToMessageRequest(
-        widget.conversationID,
-        _messageContent.messageID,
-        userAuth.id,
-        userAuth.entityId,
-        emoji));
+
+    ConversationsApi()
+        .setMessageReactionRequest(
+      conversationID: widget.conversationID,
+      messageID: _messageContent.messageID,
+      userID: userAuth.id,
+      emoji: next,
+    )
+        .then((ok) {
+      // Restore on failure - the old code fired and forgot, so a failed
+      // reaction stayed on screen until the thread was reloaded.
+      if (!ok && mounted) {
+        setState(() => _messageContent.reactions = previous);
+      }
+    });
   }
 
   /// Matches webapp's MessageOptions.tsx DeleteMessageProcess: fires the
@@ -397,11 +545,12 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                         EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
                     child: Text.rich(
                       TextSpan(
-                        children: linkifySpans(
+                        children: _mentionAwareSpans(
                           content,
                           TextStyle(
                               fontSize: CLType.title,
                               color: isCurrentUser ? Colors.white : p.text),
+                          isCurrentUser ? Colors.white : p.brand,
                         ),
                       ),
                     ),
@@ -417,7 +566,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!, p),
+                        child: GestureDetector(
+                          onTap: _openReactionsSheet,
+                          child:
+                              buildReactionPill(_messageContent.reactions!, p),
+                        ),
                       )
                     : SizedBox(
                         height: 0,
@@ -624,7 +777,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!, p),
+                        child: GestureDetector(
+                          onTap: _openReactionsSheet,
+                          child:
+                              buildReactionPill(_messageContent.reactions!, p),
+                        ),
                       )
                     : SizedBox(
                         height: 0,
@@ -820,7 +977,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!, p),
+                        child: GestureDetector(
+                          onTap: _openReactionsSheet,
+                          child:
+                              buildReactionPill(_messageContent.reactions!, p),
+                        ),
                       )
                     : SizedBox(
                         height: 0,
@@ -1010,7 +1171,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!, p),
+                        child: GestureDetector(
+                          onTap: _openReactionsSheet,
+                          child:
+                              buildReactionPill(_messageContent.reactions!, p),
+                        ),
                       )
                     : SizedBox(
                         height: 0,
@@ -1266,7 +1431,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                 showReactions
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: buildReactionPill(_messageContent.reactions!, p),
+                        child: GestureDetector(
+                          onTap: _openReactionsSheet,
+                          child:
+                              buildReactionPill(_messageContent.reactions!, p),
+                        ),
                       )
                     : SizedBox(
                         height: 0,
@@ -1513,7 +1682,14 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       Navigator.of(context).push(
                         HeroDialogRoute(
                           builder: (context) {
-                            return ReactionsDialogWidget(
+                            // Our own dialog, not the package's: its context
+                            // menu hardcodes Material typography and has no
+                            // card padding. See message_reactions_dialog.dart.
+                            return CLMessageReactionsDialog(
+                              // Draws your existing pick as selected, so the
+                              // row shows the current state rather than
+                              // looking untouched.
+                              myReaction: _myReactionEmoji,
                               id: _messageContent
                                   .messageID, // unique id for message
                               reactions: _quickReactions,
@@ -1585,7 +1761,10 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                               _messageContent.sender == _currentUserID,
                               false,
                               false,
-                              isUsingReplyAssist),
+                              // Reply assist v2 takes a single anchor message,
+                              // so there is no per-message selection step and
+                              // the marking checkboxes stay off.
+                              false),
                         )),
                   )
           ],

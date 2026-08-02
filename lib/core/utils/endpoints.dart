@@ -195,6 +195,15 @@ class Endpoints {
   /// sendNewMessage above which happen to live under both routers.
   String addReaction = '/m/addreaction';
 
+  /// Set / change / remove the acting entity's reaction on a message - one
+  /// route for all three. `emoji: null` removes.
+  ///
+  /// Replaces [addReaction], which only ever PUSHES: changing a reaction
+  /// there left two on the message. This route always pulls the existing one
+  /// first, so duplicates are impossible. The entity comes from the JWT, so
+  /// you can only ever affect your own reaction.
+  String setReaction = '/m/v2/setreaction';
+
   /// Sender-only soft delete - server sets UserMessage.isDeleted = true and
   /// broadcasts it over the same "messages_list" SSE channel (payload gets
   /// a deletedMessageID field), matching webapp's DeleteMessageRequest.

@@ -154,10 +154,14 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
       patch(!isFollowing);
     });
 
-    final ok = await ProfileApi().setEntityFollowRequest(
+    // .ok only: this surface has no pending state yet. Following a private
+    // profile here still lands as a REQUEST, so the button will read
+    // "Following" until a refetch - see PLAN-mobile-parity.md 1.3.
+    final ok = (await ProfileApi().setEntityFollowRequest(
       entityId: item.entityId,
       follow: !isFollowing,
-    );
+    ))
+        .ok;
     if (!mounted) return;
     setState(() {
       _followBusy.remove(item.entityId);

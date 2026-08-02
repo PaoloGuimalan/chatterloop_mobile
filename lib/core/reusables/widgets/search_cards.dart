@@ -117,10 +117,19 @@ class SearchPersonCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             CLMiniBtn(
-              label: person.isFollowed ? "Following" : "Follow",
+              // Three states. "Requested" is a follow of a private profile
+              // waiting on its owner - already actioned, so it takes the soft
+              // variant alongside "Following"; only an untouched profile gets
+              // the primary call to action.
+              label: person.isFollowed
+                  ? "Following"
+                  : person.isFollowPending
+                      ? "Requested"
+                      : "Follow",
               block: true,
-              variant:
-                  person.isFollowed ? CLBtnVariant.soft : CLBtnVariant.primary,
+              variant: (person.isFollowed || person.isFollowPending)
+                  ? CLBtnVariant.soft
+                  : CLBtnVariant.primary,
               onPressed: busy ? null : () => onToggleFollow(person),
             ),
           ],

@@ -130,6 +130,25 @@ class PublicProfile {
   /// a page. Drives the Follow/Following button on the user profile.
   final bool isFollower;
 
+  /// A follow of a PRIVATE profile lands pending until its owner approves it.
+  /// Mutually exclusive with [isFollower] - the pair is what distinguishes
+  /// Follow / Requested / Following.
+  final bool isFollowPending;
+
+  /// This person has a private profile. Cosmetic only - it drives the lock
+  /// beside their name; [canView] is what actually gates content.
+  final bool isPrivate;
+
+  /// Whether we may see this profile's content. False for a private profile
+  /// we are neither connected to nor an approved follower of.
+  ///
+  /// The header still arrives when this is false - name, photos, gender, join
+  /// date, follow/connection state - so the profile stays identifiable enough
+  /// to send a request to. Withheld: email (sent as "...") and birthdate
+  /// (null). Null when the backend omits it (own profile, or an older
+  /// server), which reads as "no restriction".
+  final bool canView;
+
   /// The payload's own "type". /api/user/auth/:handle/ serves BOTH people and
   /// pages from one route and branches on this: "user" for a person, the
   /// realm kind ("page", ...) for a realm. A realm payload parsed as a
@@ -174,6 +193,9 @@ class PublicProfile {
     this.connectionId,
     this.isConnectionInitiator,
     this.isFollower = false,
+    this.isFollowPending = false,
+    this.isPrivate = false,
+    this.canView = true,
     this.type = "user",
     this.slug,
     this.birthMonth,
@@ -221,6 +243,12 @@ class PublicProfile {
       isConnectionInitiator:
           connection["is_user_connection_initiator"] as bool?,
       isFollower: json["is_follower"] == true,
+      isFollowPending: json["is_follow_pending"] == true,
+      isPrivate: json["isPrivate"] == true,
+      // Absent means unrestricted - do NOT default this to false, or an older
+      // server (or your own profile, where the backend omits it) would render
+      // every profile as locked.
+      canView: json["canView"] != false,
       type: (json["type"] ?? "user").toString(),
       slug: json["slug"]?.toString(),
       birthMonth: birthdate?["month"]?.toString(),

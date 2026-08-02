@@ -19,6 +19,9 @@ import 'package:flutter/material.dart';
     "shared_post_notification" => (icon: Icons.cached, color: (p) => p.brand),
     "contact_request" => (icon: Icons.person_add, color: (p) => p.brand),
     "follow" => (icon: Icons.person_add, color: (p) => p.green),
+    // A follow of a private profile, awaiting approval - distinct glyph from
+    // a plain "follow", which is already established.
+    "follow_request" => (icon: Icons.lock_person, color: (p) => p.brand),
     "info_contact_accept" => (icon: Icons.how_to_reg, color: (p) => p.green),
     "info_contact_decline" => (icon: Icons.close, color: (p) => p.text3),
     "poke" => (icon: Icons.touch_app, color: (p) => p.gold),
@@ -130,6 +133,19 @@ class CLNotificationRow extends StatelessWidget {
                       style: TextStyle(
                           fontWeight: FontWeight.w700, color: p.text),
                     ),
+                    // Verified check beside the NAME, matching the webapp.
+                    // `is_verified` on a notification sender means "show a
+                    // check" - the server maps it from is_badged for a user
+                    // and is_verified for a realm. An Account's own
+                    // is_verified is the email-confirmation gate, unrelated.
+                    if (n.fromUser?.isVerified == true)
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.middle,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 3, right: 1),
+                          child: Icon(Icons.verified, size: 13, color: p.brand),
+                        ),
+                      ),
                     if (details.isNotEmpty)
                       TextSpan(
                         text: " $details",

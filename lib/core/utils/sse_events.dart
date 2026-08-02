@@ -18,6 +18,27 @@ import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 
+/// One relationship change, pushed by the `profile_relationship_updated` SSE
+/// event.
+///
+/// A CLASS, not a bare String, and deliberately without an `==` override:
+/// ValueNotifier only notifies when the new value differs, so two consecutive
+/// events about the SAME person - request received, then accepted - would
+/// have been silently dropped with a plain String. Identity equality on a
+/// fresh instance makes every event fire.
+class ProfileRelationshipUpdate {
+  final String entityId;
+  const ProfileRelationshipUpdate(this.entityId);
+}
+
+/// Latest relationship change. A ValueNotifier rather than redux: the only
+/// thing that cares is whichever profile screen happens to be mounted, and
+/// putting it in the store would be a write-then-read of state nothing else
+/// consumes. Listeners MUST compare entityId against the profile they are
+/// showing before refetching.
+final ValueNotifier<ProfileRelationshipUpdate?> profileRelationshipUpdates =
+    ValueNotifier<ProfileRelationshipUpdate?>(null);
+
 class SseEvents {
   /// A new SseEvents() is constructed per event (see sse_connection.dart),
   /// so per-typer removal timers have to live at module/static scope to be
@@ -182,6 +203,33 @@ class SseEvents {
         }
         return;
       case "contactslist":
+        return;
+      case "profile_relationship_updated":
+        // Someone answered a request we sent - contact accept/decline/remove,
+        // or a follow-request approval. Carries result.entity_id: the OTHER
+        // party from THIS recipient's point of view.
+        //
+        // Published after commit server side, so refetching on it reads
+        // settled rows. An open profile screen listens on this notifier and
+        // refreshes only when the id matches the profile it is showing -
+        // reacting to it unconditionally would reload whatever screen happens
+        // to be open.
+        try {
+          final parsed = jsonDecode(event.data as String);
+          if (parsed is Map &&
+              parsed["auth"] == true &&
+              parsed["status"] == true) {
+            final entityId = parsed["result"] is Map
+                ? parsed["result"]["entity_id"]?.toString()
+                : null;
+            if (entityId != null && entityId.isNotEmpty) {
+              profileRelationshipUpdates.value =
+                  ProfileRelationshipUpdate(entityId);
+            }
+          }
+        } catch (_) {
+          // Malformed payload is not worth tearing the SSE loop down for.
+        }
         return;
       case "messages_list":
         // This event carries no actual data - server's MessagesTrigger

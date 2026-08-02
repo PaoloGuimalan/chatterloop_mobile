@@ -114,7 +114,10 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// A follow flip has to land in BOTH overview sections - the same entity can
   /// be a person hit and (as a page) a realm hit.
-  void _applyFollow(String entityId, bool next) {
+  /// People carry TWO flags because a follow can land pending; realms only
+  /// ever have one, since a realm is never private.
+  void _applyFollow(String entityId,
+      {required bool followed, required bool pending}) {
     final overview = _overview;
     if (overview == null) return;
     setState(() {
@@ -123,7 +126,8 @@ class _SearchScreenState extends State<SearchScreen> {
           hasMore: overview.people.hasMore,
           results: overview.people.results
               .map((person) => person.entityId == entityId
-                  ? person.copyWith(isFollowed: next)
+                  ? person.copyWith(
+                      isFollowed: followed, isFollowPending: pending)
                   : person)
               .toList(),
         ),
@@ -131,7 +135,7 @@ class _SearchScreenState extends State<SearchScreen> {
           hasMore: overview.realms.hasMore,
           results: overview.realms.results
               .map((realm) => realm.entityId == entityId
-                  ? realm.copyWith(isFollower: next)
+                  ? realm.copyWith(isFollower: followed)
                   : realm)
               .toList(),
         ),
@@ -142,18 +146,33 @@ class _SearchScreenState extends State<SearchScreen> {
   /// Optimistic: the button flips immediately and only reverts if the request
   /// fails. The follow endpoint is entity-generic, so one path covers people
   /// and pages alike.
-  Future<void> _toggleFollow(String entityId, bool currentlyFollowing) async {
+  ///
+  /// Pending counts as "on" - cancelling a follow request is the same DELETE
+  /// as unfollowing, since it drops the row whatever its status. Following a
+  /// PRIVATE profile does not take effect immediately, so the optimistic
+  /// "Following" is corrected to "Requested" from the response. Reverting
+  /// restores BOTH flags; assuming `!current` would lose the pending state.
+  Future<void> _toggleFollow(String entityId, bool currentlyFollowing,
+      {bool currentlyPending = false}) async {
     if (_followBusy.contains(entityId)) return;
     setState(() => _followBusy.add(entityId));
-    _applyFollow(entityId, !currentlyFollowing);
 
-    final ok = await ProfileApi().setEntityFollowRequest(
+    final isActive = currentlyFollowing || currentlyPending;
+    _applyFollow(entityId, followed: !isActive, pending: false);
+
+    final result = await ProfileApi().setEntityFollowRequest(
       entityId: entityId,
-      follow: !currentlyFollowing,
+      follow: !isActive,
     );
     if (!mounted) return;
     setState(() => _followBusy.remove(entityId));
-    if (!ok) _applyFollow(entityId, currentlyFollowing);
+
+    if (!result.ok) {
+      _applyFollow(entityId,
+          followed: currentlyFollowing, pending: currentlyPending);
+    } else if (!isActive && result.isPending) {
+      _applyFollow(entityId, followed: false, pending: true);
+    }
   }
 
   void _applyMember(String entityId, bool next) {
@@ -319,7 +338,8 @@ class _SearchScreenState extends State<SearchScreen> {
                     online: presence[person.entityId]?.online ?? false,
                     busy: _followBusy.contains(person.entityId),
                     onToggleFollow: (target) =>
-                        _toggleFollow(target.entityId, target.isFollowed),
+                        _toggleFollow(target.entityId, target.isFollowed,
+                            currentlyPending: target.isFollowPending),
                     onOpen: _openPerson,
                   ))
               .toList(),
@@ -348,6 +368,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     followBusy: _followBusy.contains(realm.entityId),
                     joinBusy: _joinBusy.contains(realm.entityId),
                     onToggleFollow: (target) =>
+                        // Realms are never private - no pending state.
                         _toggleFollow(target.entityId, target.isFollower),
                     onJoinGroup: _joinGroup,
                     onOpen: _openRealm,

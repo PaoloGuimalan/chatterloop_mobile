@@ -165,22 +165,31 @@ class ProfileApi {
     }
   }
 
-  /// Follows or unfollows ANY entity - a page or a person. Same endpoint
-  /// either way, distinguished by method: POST to follow, DELETE to unfollow.
+  /// Approves or declines a pending follow request addressed to the acting
+  /// entity - the answering half of [setEntityFollowRequest].
   ///
-  /// Following is entity->entity now (the backend's Follow row targets an
-  /// entity, not a realm), so this takes an entity id and a person can be
-  /// followed exactly like a page. `entity_id` is the canonical key; the
-  /// legacy `realm_id` is still accepted server side but no longer sent.
-  Future<bool> setEntityFollowRequest({
-    required String entityId,
-    required bool follow,
+  /// The acting entity is always the one being FOLLOWED (you can only answer
+  /// requests made to you), so `requesterEntityId` is the other side: the
+  /// requester's entity id, which the follow_request notification carries as
+  /// its referenceID. The action travels as a header to match the
+  /// contact-request accept/reject call.
+  ///
+  /// Idempotent server side: answering an already-settled request returns 200
+  /// with `changed: false` rather than an error, so a stale notification is
+  /// safe to tap. It also settles the notification, which is what makes the
+  /// buttons stay gone after a refetch.
+  Future<bool> answerFollowRequest({
+    required String requesterEntityId,
+    required bool approve,
   }) async {
     try {
-      final body = {'entity_id': entityId};
-      final response = follow
-          ? await _userDio.post(_endpoints.realmFollow, data: body)
-          : await _userDio.delete(_endpoints.realmFollow, data: body);
+      final response = await _userDio.put(
+        _endpoints.realmFollow,
+        data: {'target_id': requesterEntityId},
+        options: Options(
+          headers: {'action': approve ? 'approve' : 'decline'},
+        ),
+      );
       return response.data is Map
           ? response.data["status"] != false
           : response.statusCode == 200;
@@ -190,6 +199,45 @@ class ProfileApi {
         print(e);
       }
       return false;
+    }
+  }
+
+  /// Follows or unfollows ANY entity - a page or a person. Same endpoint
+  /// either way, distinguished by method: POST to follow, DELETE to unfollow.
+  ///
+  /// Following is entity->entity now (the backend's Follow row targets an
+  /// entity, not a realm), so this takes an entity id and a person can be
+  /// followed exactly like a page. `entity_id` is the canonical key; the
+  /// legacy `realm_id` is still accepted server side but no longer sent.
+  /// Returns `ok` plus `isPending`: following a PRIVATE profile does not take
+  /// effect immediately, it creates a request its owner must approve, and the
+  /// response says so. A caller that ignores `isPending` will show "Following"
+  /// for someone who cannot actually see the profile yet.
+  ///
+  /// `isPending` is always false for an unfollow, and for a realm - a realm is
+  /// never private, so a follow of one is always established at once.
+  Future<({bool ok, bool isPending})> setEntityFollowRequest({
+    required String entityId,
+    required bool follow,
+  }) async {
+    try {
+      final body = {'entity_id': entityId};
+      final response = follow
+          ? await _userDio.post(_endpoints.realmFollow, data: body)
+          : await _userDio.delete(_endpoints.realmFollow, data: body);
+      final data = response.data;
+      final ok = data is Map
+          ? data["status"] != false
+          : response.statusCode == 200;
+      final pending =
+          follow && ok && data is Map && data["is_pending"] == true;
+      return (ok: ok, isPending: pending);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return (ok: false, isPending: false);
     }
   }
 }

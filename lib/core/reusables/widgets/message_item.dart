@@ -1,4 +1,5 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
@@ -77,6 +78,27 @@ class MessageItemView extends StatelessWidget {
         _ => null,
       };
 
+  /// Long-press surfaces the same actions the conversation header's info
+  /// button offers, without having to open the thread first.
+  ///
+  /// isArchived is false because the messages list only ever shows unarchived
+  /// conversations - archiving drops a thread off it - so Unarchive is not
+  /// reachable from here.
+  Future<void> _showOptions(BuildContext context, String title) async {
+    final action = await showConversationOptionsSheet(context, title: title);
+    if (action == null || !context.mounted) return;
+
+    final ok = await applyConversationAction(message.conversationID, action);
+    if (!context.mounted) return;
+
+    // No navigation: unlike the header menu, we are already on the list, and
+    // applyConversationAction has refreshed it so the row drops off.
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Action failed. Please try again.')));
+    }
+  }
+
   void _open(BuildContext context) {
     // ConversationView only needs the id - it resolves the header name/
     // avatar itself via GET /m/conversation/:id, same as every other entry
@@ -100,6 +122,7 @@ class MessageItemView extends StatelessWidget {
 
       return InkWell(
         onTap: () => _open(context),
+        onLongPress: () => _showOptions(context, title),
         borderRadius: BorderRadius.circular(CLRadii.md),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),

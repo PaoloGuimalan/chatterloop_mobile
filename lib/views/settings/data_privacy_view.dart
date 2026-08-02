@@ -31,6 +31,7 @@ class DataPrivacyScreen extends StatefulWidget {
 }
 
 class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
+  bool _savingPrivacy = false;
   bool _exporting = false;
   bool _deleting = false;
   bool _confirmDelete = false;
@@ -39,6 +40,41 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  /// Flip the private-profile setting.
+  ///
+  /// Reads the current value from the store rather than local state so the
+  /// toggle is correct on first paint and after a session restore - both token
+  /// shapes carry isPrivate.
+  Future<void> _togglePrivacy(UserAccount account) async {
+    if (_savingPrivacy) return;
+    final next = !account.isPrivate;
+    setState(() => _savingPrivacy = true);
+
+    final result = await SettingsApi().setProfilePrivacy(next);
+    if (!mounted) return;
+    setState(() => _savingPrivacy = false);
+
+    if (!result.ok) {
+      _snack('Could not update your privacy setting.');
+      return;
+    }
+
+    // Keep the store in step - the profile header reads isPrivate for its
+    // lock, and the toggle re-reads it from here.
+    StoreProvider.of<AppState>(context).dispatch(DispatchModel(
+        setUserAuthT, UserAuth(true, account.copyWith(isPrivate: next))));
+
+    if (!next) {
+      _snack('Your profile is now public.');
+    } else if (result.postsRestricted > 0) {
+      final n = result.postsRestricted;
+      _snack('Your profile is now private. $n existing '
+          '${n == 1 ? 'post is' : 'posts are'} now visible to your contacts only.');
+    } else {
+      _snack('Your profile is now private.');
+    }
   }
 
   Future<void> _export() async {
@@ -107,6 +143,46 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            StoreConnector<AppState, UserAccount>(
+              distinct: true,
+              converter: (store) => store.state.userAuth.user,
+              builder: (context, account) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _header(
+                      p,
+                      'Private profile',
+                      p.text,
+                      'When your profile is private, only your contacts and approved followers can see your posts, diary activity, birthdate and email. Everyone else sees just your name and photo, and has to send a follow request you approve.'),
+                  const SizedBox(height: 6),
+                  // Stated up front rather than in the confirmation toast: the
+                  // post rewrite is the irreversible half of this toggle, and
+                  // the user should know before flipping it, not after.
+                  Text(
+                    'Turning this on also limits your existing public posts to your contacts. Turning it back off will not make those posts public again — you can re-share them individually.',
+                    style: TextStyle(
+                        fontSize: CLType.caption, color: p.text2, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: CLBtn(
+                      label: _savingPrivacy
+                          ? 'Saving…'
+                          : (account.isPrivate
+                              ? 'Make profile public'
+                              : 'Make profile private'),
+                      variant: CLBtnVariant.soft,
+                      size: CLBtnSize.md,
+                      onPressed: _savingPrivacy
+                          ? null
+                          : () => _togglePrivacy(account),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 30),
             _header(
                 p,
                 'Export your data',

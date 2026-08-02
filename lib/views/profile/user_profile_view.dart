@@ -5,6 +5,7 @@ import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/core/requests/settings_api.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -48,11 +49,37 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   /// Following is entity->entity now, so a person can be followed exactly
   /// like a page. Mirrored into local state so the button flips immediately.
   bool _isFollowing = false;
+
+  /// A follow of a PRIVATE profile that its owner has not approved yet.
+  /// Mutually exclusive with [_isFollowing] - together they give the button
+  /// its three states.
+  bool _isFollowPending = false;
   bool _isUpdatingFollow = false;
 
   @override
   void initState() {
     super.initState();
+    _load();
+    profileRelationshipUpdates.addListener(_onRelationshipUpdate);
+  }
+
+  @override
+  void dispose() {
+    profileRelationshipUpdates.removeListener(_onRelationshipUpdate);
+    super.dispose();
+  }
+
+  /// Refresh when the person whose profile is on screen answers a request we
+  /// sent them - a contact accept, or a follow-request approval.
+  ///
+  /// Matched against THIS profile's entity id: the event names the other
+  /// party, and refreshing on an unaddressed one would reload whatever screen
+  /// happened to be open. Without this the button keeps reading "Requested",
+  /// and a private profile stays locked, until a manual pull-to-refresh.
+  void _onRelationshipUpdate() {
+    final changed = profileRelationshipUpdates.value;
+    if (changed == null || changed.entityId.isEmpty) return;
+    if (profile?.entityId != changed.entityId) return;
     _load();
   }
 
@@ -74,6 +101,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       notFound = result == null;
       isLoading = false;
       _isFollowing = result?.isFollower ?? false;
+      _isFollowPending = result?.isFollowPending ?? false;
     });
   }
 
@@ -83,18 +111,34 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (profile == null || _isUpdatingFollow) return;
 
     final wasFollowing = _isFollowing;
+    final wasPending = _isFollowPending;
+
+    // Pending counts as "on": cancelling a request is the same DELETE as
+    // unfollowing, since it drops the row whatever its status.
+    final isActive = wasFollowing || wasPending;
+
     setState(() {
       _isUpdatingFollow = true;
-      _isFollowing = !wasFollowing;
+      _isFollowing = !isActive;
+      _isFollowPending = false;
     });
 
-    final ok = await ProfileApi().setEntityFollowRequest(
-        entityId: profile!.entityId, follow: !wasFollowing);
+    final result = await ProfileApi()
+        .setEntityFollowRequest(entityId: profile!.entityId, follow: !isActive);
 
     if (!mounted) return;
     setState(() {
       _isUpdatingFollow = false;
-      if (!ok) _isFollowing = wasFollowing;
+      if (!result.ok) {
+        // Restore BOTH flags - assuming !was would lose the pending state.
+        _isFollowing = wasFollowing;
+        _isFollowPending = wasPending;
+      } else if (!isActive && result.isPending) {
+        // This profile is private, so the follow did not take effect - it is
+        // a request awaiting approval, not an established follow.
+        _isFollowing = false;
+        _isFollowPending = true;
+      }
     });
   }
 
@@ -433,8 +477,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   /// Mirrors webapp's four connection states exactly (Profile.tsx): no
   /// connection yet -> Add; a pending request you sent -> Cancel Request;
   /// a pending request they sent -> Accept/Decline; already connected ->
-  /// Connected + Poke. Message always shows alongside, independent of
-  /// connection state.
+  /// Connected + Poke. Message shows alongside independent of connection
+  /// state, EXCEPT on a locked profile (canView false), where it is hidden.
   Widget _connectionActions(CLPalette p) {
     final rows = <Widget>[];
 
@@ -453,9 +497,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     rows.add(CLBtn(
       label: _isUpdatingFollow
           ? "…"
-          : (_isFollowing ? "Following" : "Follow"),
+          : _isFollowing
+              ? "Following"
+              : _isFollowPending
+                  ? "Requested"
+                  : "Follow",
       size: CLBtnSize.md,
-      variant: _isFollowing ? CLBtnVariant.outline : CLBtnVariant.soft,
+      // "Requested" is already actioned, so it reads like "Following" rather
+      // than an untouched call to action.
+      variant: (_isFollowing || _isFollowPending)
+          ? CLBtnVariant.outline
+          : CLBtnVariant.soft,
       onPressed: _isUpdatingFollow ? null : _toggleFollow,
     ));
 
@@ -521,16 +573,24 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ));
     }
 
+    // Message is hidden on a locked profile. canView false means private AND
+    // we are neither an accepted connection nor an approved follower - so
+    // offering to open a conversation would be offering a way around the
+    // privacy setting. Follow / Add Contact stay, since requesting access is
+    // exactly what should still be possible from here.
+    final canMessage = profile?.canView != false;
+
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 8,
       runSpacing: 8,
       children: [
-        CLBtn(
-          label: isOpeningMessage ? "Opening…" : "Message",
-          size: CLBtnSize.md,
-          onPressed: isOpeningMessage ? null : _openMessage,
-        ),
+        if (canMessage)
+          CLBtn(
+            label: isOpeningMessage ? "Opening…" : "Message",
+            size: CLBtnSize.md,
+            onPressed: isOpeningMessage ? null : _openMessage,
+          ),
         ...rows,
       ],
     );
@@ -591,6 +651,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           avatarSrc: profile!.profile,
                           coverSrc: profile!.coverphoto,
                           isBadged: profile!.isBadged,
+                          isPrivate: profile!.isPrivate,
                           gender: profile!.gender,
                           online: online,
                           joinedLabel:
@@ -606,17 +667,74 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      // Renders on anyone's profile - the totals endpoint is
-                      // public - but only links through on your own, since the
-                      // entries themselves are self-only.
-                      ProfileDiaryCard(
-                        username: profile!.username,
-                        isSelf: _isSelf(context),
-                      ),
+                      // A locked profile still renders its header above - name,
+                      // photos, join date and the follow/connect actions - so
+                      // it stays identifiable enough to send a request to. Only
+                      // the content below is withheld, and it says so rather
+                      // than showing an empty card that reads as broken.
+                      if (!profile!.canView)
+                        _LockedProfileNotice(
+                            displayName: profile!.displayName)
+                      else
+                        // Renders on anyone's profile - the totals endpoint is
+                        // public - but only links through on your own, since
+                        // the entries themselves are self-only.
+                        ProfileDiaryCard(
+                          username: profile!.username,
+                          isSelf: _isSelf(context),
+                        ),
                       const SizedBox(height: 24),
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+/// Shown in place of a locked profile's content.
+///
+/// Deliberately explains the state rather than just hiding things: the header
+/// above still renders, so without this the screen looks like a profile whose
+/// content failed to load.
+class _LockedProfileNotice extends StatelessWidget {
+  final String displayName;
+
+  const _LockedProfileNotice({required this.displayName});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final name = displayName.trim().isEmpty ? "This account" : displayName;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: CLCard(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+          child: Column(
+            children: [
+              Icon(Icons.lock_outline, size: 34, color: p.text3),
+              const SizedBox(height: 12),
+              Text(
+                "This account is private",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: p.text,
+                  fontSize: CLType.sectionTitle,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                "Follow $name to see their posts and activity. "
+                "They'll need to approve your request.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: p.text2, fontSize: CLType.bodySm),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

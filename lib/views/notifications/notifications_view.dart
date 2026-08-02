@@ -16,6 +16,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
+import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/notification_row.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
@@ -128,19 +129,36 @@ class _NotificationsViewState extends State<NotificationsView> {
     if (_pendingActions.contains(item.referenceID)) return;
     setState(() => _pendingActions.add(item.referenceID));
 
-    final api = ContactsApi();
-    final ok = accept
-        ? await api.acceptContactRequest(
-            connectionId: item.referenceID,
-            entityId: item.fromUserID,
-          )
-        // "decline" rejects an incoming request; "remove" is for cancelling a
-        // sent one, which isn't reachable from this screen.
-        : await api.declineContactRequest(
-            connectionId: item.referenceID,
-            entityId: item.fromUserID,
-            action: "decline",
-          );
+    // Two request kinds share this row and its buttons but hit different
+    // endpoints with different ids:
+    //
+    //   contact_request - referenceID is the CONNECTION id
+    //   follow_request  - referenceID is the REQUESTER'S ENTITY id, because a
+    //                     follow has no connection row to point at
+    //
+    // Branch on the type rather than the id, since the two are
+    // indistinguishable by shape.
+    final bool ok;
+    if (item.isFollowRequest) {
+      ok = await ProfileApi().answerFollowRequest(
+        requesterEntityId: item.referenceID,
+        approve: accept,
+      );
+    } else {
+      final api = ContactsApi();
+      ok = accept
+          ? await api.acceptContactRequest(
+              connectionId: item.referenceID,
+              entityId: item.fromUserID,
+            )
+          // "decline" rejects an incoming request; "remove" is for cancelling
+          // a sent one, which isn't reachable from this screen.
+          : await api.declineContactRequest(
+              connectionId: item.referenceID,
+              entityId: item.fromUserID,
+              action: "decline",
+            );
+    }
 
     if (!mounted) return;
     setState(() => _pendingActions.remove(item.referenceID));
@@ -150,10 +168,11 @@ class _NotificationsViewState extends State<NotificationsView> {
           : candidate);
     }
 
+    final kind = item.isFollowRequest ? "Follow" : "Contact";
     final label = accept ? "accepted" : "declined";
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(ok
-          ? "Contact request $label"
+          ? "$kind request $label"
           : "Couldn't ${accept ? 'accept' : 'decline'} the request. Try again."),
       duration: const Duration(seconds: 2),
     ));

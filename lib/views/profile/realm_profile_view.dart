@@ -138,7 +138,10 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     });
 
     final ok = await ProfileApi()
-        .setEntityFollowRequest(entityId: realm.entityId, follow: !wasFollowing);
+        // A realm is never private, so a follow of one is always
+        // established - there is no pending state to carry here.
+        .setEntityFollowRequest(entityId: realm.entityId, follow: !wasFollowing)
+        .then((r) => r.ok);
 
     if (!mounted) return;
     setState(() {
