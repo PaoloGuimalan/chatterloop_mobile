@@ -12,6 +12,10 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
+import 'package:chatterloop_app/core/requests/feed_api.dart';
+import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
+import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
 
@@ -91,8 +95,6 @@ class _SharePostSheetState extends State<_SharePostSheet> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    final author = widget.post.author;
-
     return SafeArea(
       top: false,
       child: Padding(
@@ -144,51 +146,15 @@ class _SharePostSheetState extends State<_SharePostSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            // The post being shared, in miniature.
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: p.surface2,
-                borderRadius: BorderRadius.circular(CLRadii.md),
-                border: Border.all(color: p.border),
-              ),
-              child: Row(
-                children: [
-                  CLAvatar(
-                    id: author.entityId,
-                    name: author.displayName,
-                    src: author.profile,
-                    size: 32,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          author.displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: CLType.caption,
-                            fontWeight: FontWeight.w700,
-                            color: p.text,
-                          ),
-                        ),
-                        Text(
-                          widget.post.caption.isEmpty
-                              ? "Shared post"
-                              : widget.post.caption,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: CLType.caption, color: p.text2),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            // Outcome preview: this is what the shared post will look like,
+            // including nested shared-post recursion (without action rows).
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: SingleChildScrollView(
+                child: _ShareOutcomePreview(
+                  source: widget.post,
+                  caption: _caption.text.trim(),
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -226,6 +192,238 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                   ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+class _ShareOutcomePreview extends StatelessWidget {
+  final PostPreview source;
+  final String caption;
+
+  const _ShareOutcomePreview({
+    required this.source,
+    required this.caption,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.md),
+        border: Border.all(color: p.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Preview',
+            style: TextStyle(
+              fontSize: CLType.caption,
+              fontWeight: FontWeight.w700,
+              color: p.text2,
+            ),
+          ),
+          if (caption.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              caption,
+              style: TextStyle(
+                fontSize: CLType.title,
+                height: 1.42,
+                color: p.text,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          _SharedPostPreviewRecursive(post: source),
+        ],
+      ),
+    );
+  }
+}
+
+class _SharedPostPreviewRecursive extends StatefulWidget {
+  final PostPreview post;
+  final int depth;
+  final int maxDepth;
+
+  const _SharedPostPreviewRecursive({
+    required this.post,
+    this.depth = 0,
+    this.maxDepth = 6,
+  });
+
+  @override
+  State<_SharedPostPreviewRecursive> createState() =>
+      _SharedPostPreviewRecursiveState();
+}
+
+class _SharedPostPreviewRecursiveState
+    extends State<_SharedPostPreviewRecursive> {
+  Future<PostPreview?>? _sharedFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSharedFuture();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SharedPostPreviewRecursive oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.post.postId != widget.post.postId ||
+        oldWidget.post.sharedPostId != widget.post.sharedPostId ||
+        oldWidget.post.isShared != widget.post.isShared ||
+        oldWidget.depth != widget.depth) {
+      _syncSharedFuture();
+    }
+  }
+
+  void _syncSharedFuture() {
+    final sharedId = widget.post.sharedPostId;
+    if (widget.post.isShared &&
+        sharedId != null &&
+        sharedId.isNotEmpty &&
+        widget.depth < widget.maxDepth) {
+      _sharedFuture = FeedApi().getPostPreviewRequest(sharedId);
+      return;
+    }
+    _sharedFuture = null;
+  }
+
+  Widget _unavailable(String text) {
+    final p = cl(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.md),
+        border: Border.all(color: p.border),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: CLType.caption, color: p.text3),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final post = widget.post;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(CLRadii.md),
+        border: Border.all(color: p.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              CLAvatar(
+                id: post.author.entityId,
+                name: post.author.displayName,
+                src: post.author.profile,
+                size: 30,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        post.author.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: CLType.caption,
+                          fontWeight: FontWeight.w700,
+                          color: p.text,
+                        ),
+                      ),
+                    ),
+                    if (post.author.isVerified) ...[
+                      const SizedBox(width: 4),
+                      Icon(Icons.verified, size: 14, color: p.brand),
+                    ],
+                  ],
+                ),
+              ),
+              if (post.datePosted != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  timeSinceShort(post.datePosted!),
+                  style: TextStyle(fontSize: CLType.caption, color: p.text3),
+                ),
+              ],
+            ],
+          ),
+          if (post.caption.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              post.caption,
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: CLType.title,
+                height: 1.42,
+                color: p.text,
+              ),
+            ),
+          ],
+          if (post.linkPreview != null) ...[
+            const SizedBox(height: 10),
+            LinkPreviewCard(preview: post.linkPreview),
+          ],
+          if (displayableReferences(post.references).isNotEmpty) ...[
+            const SizedBox(height: 10),
+            PostAttachments(references: post.references),
+          ],
+          if (post.isShared) ...[
+            const SizedBox(height: 10),
+            Builder(
+              builder: (_) {
+                if (widget.depth >= widget.maxDepth) {
+                  return _unavailable('Nested shared post limit reached.');
+                }
+                final future = _sharedFuture;
+                if (future == null) {
+                  return _unavailable('Original shared post is unavailable.');
+                }
+                return FutureBuilder<PostPreview?>(
+                  future: future,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return _unavailable('Loading shared post...');
+                    }
+                    final nested = snapshot.data;
+                    if (nested == null) {
+                      return _unavailable('Original shared post is unavailable.');
+                    }
+                    return _SharedPostPreviewRecursive(
+                      post: nested,
+                      depth: widget.depth + 1,
+                      maxDepth: widget.maxDepth,
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ],
       ),
     );
   }

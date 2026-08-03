@@ -16,6 +16,7 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
+import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
@@ -40,12 +41,25 @@ class PostCard extends StatefulWidget {
   /// Where the comment action goes. Null renders it as a plain count.
   final VoidCallback? onComment;
 
+  /// Shared-post recursion mode: false hides the reaction summary and
+  /// react/comment/share row while keeping the full body (header/caption/media).
+  final bool showEngagement;
+
+  /// Current nesting depth when rendering shared-post recursion.
+  final int sharedDepth;
+
+  /// Safety cap against accidental cyclic share chains.
+  final int maxSharedDepth;
+
   const PostCard({
     super.key,
     required this.post,
     this.onChanged,
     this.onOpen,
     this.onComment,
+    this.showEngagement = true,
+    this.sharedDepth = 0,
+    this.maxSharedDepth = 6,
   });
 
   @override
@@ -54,6 +68,41 @@ class PostCard extends StatefulWidget {
 
 class _PostCardState extends State<PostCard> {
   bool _reactionBusy = false;
+
+  Future<PostPreview?>? _sharedPostFuture;
+  String? _sharedPostId;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSharedPostFuture();
+  }
+
+  @override
+  void didUpdateWidget(covariant PostCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.post.postId != widget.post.postId ||
+        oldWidget.post.isShared != widget.post.isShared ||
+        oldWidget.post.sharedPostId != widget.post.sharedPostId) {
+      _syncSharedPostFuture();
+    }
+  }
+
+  void _syncSharedPostFuture() {
+    final sharedId = widget.post.sharedPostId;
+    if (widget.post.isShared &&
+        sharedId != null &&
+        sharedId.isNotEmpty &&
+        widget.sharedDepth < widget.maxSharedDepth) {
+      _sharedPostId = sharedId;
+      _sharedPostFuture = FeedApi().getPostPreviewRequest(sharedId);
+      return;
+    }
+
+    _sharedPostId = null;
+    _sharedPostFuture = null;
+  }
 
   PostPreview get _post => widget.post;
 
@@ -117,6 +166,92 @@ class _PostCardState extends State<PostCard> {
       content: Text("Shared to your feed"),
       duration: Duration(seconds: 2),
     ));
+  }
+
+  Widget _sharedUnavailableCard(CLPalette p, {String? label}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.md),
+        border: Border.all(color: p.border),
+      ),
+      child: Text(
+        label ?? 'Original shared post is unavailable.',
+        style: TextStyle(fontSize: CLType.caption, color: p.text3),
+      ),
+    );
+  }
+
+  Widget _sharedPostCard(CLPalette p) {
+    final future = _sharedPostFuture;
+    if (widget.sharedDepth >= widget.maxSharedDepth) {
+      return _sharedUnavailableCard(
+        p,
+        label: 'Nested shared post limit reached.',
+      );
+    }
+
+    if (future == null || _sharedPostId == null) {
+      return _sharedUnavailableCard(p);
+    }
+
+    return FutureBuilder<PostPreview?>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: p.surface2,
+              borderRadius: BorderRadius.circular(CLRadii.md),
+              border: Border.all(color: p.border),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: p.brand,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Loading shared post...',
+                  style: TextStyle(fontSize: CLType.caption, color: p.text3),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final shared = snapshot.data;
+        if (shared == null) return _sharedUnavailableCard(p);
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(CLRadii.md),
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: p.surface,
+              borderRadius: BorderRadius.circular(CLRadii.md),
+              border: Border.all(color: p.border),
+            ),
+            child: PostCard(
+              post: shared,
+              onOpen: () => context.push('/post/${shared.postId}'),
+              showEngagement: false,
+              sharedDepth: widget.sharedDepth + 1,
+              maxSharedDepth: widget.maxSharedDepth,
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _openAuthor() {
@@ -212,6 +347,11 @@ class _PostCardState extends State<PostCard> {
               ),
             ),
           ),
+        if (post.isShared)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: _sharedPostCard(p),
+          ),
         if (post.linkPreview != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -225,69 +365,76 @@ class _PostCardState extends State<PostCard> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: PostAttachments(references: post.references),
           ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-          child: Row(
-            children: [
-              ReactionSummary(reactions: post.reactions, onTap: _react),
-              const Spacer(),
-              if (post.commentsCount > 0)
-                InkWell(
-                  onTap: widget.onComment ?? widget.onOpen,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Text(
-                      "${post.commentsCount} ${post.commentsCount == 1 ? 'comment' : 'comments'}",
-                      style:
-                          TextStyle(fontSize: CLType.caption, color: p.text3),
+        if (widget.showEngagement)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            child: Row(
+              children: [
+                ReactionSummary(reactions: post.reactions, onTap: _react),
+                const Spacer(),
+                if (post.commentsCount > 0)
+                  InkWell(
+                    onTap: widget.onComment ?? widget.onOpen,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        "${post.commentsCount} ${post.commentsCount == 1 ? 'comment' : 'comments'}",
+                        style: TextStyle(
+                          fontSize: CLType.caption,
+                          color: p.text3,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Divider(height: 1, color: p.border),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: _PostAction(
-                  // Reacting reads as the primary action, so it shows WHICH
-                  // reaction is yours rather than a generic thumb.
-                  icon: Icons.emoji_emotions_outlined,
-                  glyph: ReactionPalette.glyphFor(post.entityReaction),
-                  label: post.entityReaction != null ? "Reacted" : "React",
-                  active: post.entityReaction != null,
-                  onTap: _reactionBusy ? null : _react,
-                ),
-              ),
-              Expanded(
-                child: _PostAction(
-                  icon: Icons.mode_comment_outlined,
-                  label: "Comment",
-                  onTap: widget.onComment ?? widget.onOpen,
-                ),
-              ),
-              Expanded(
-                child: _PostAction(
-                  // Webapp uses Phosphor's PiShareFat: a solid arrow pointing
-                  // right, NOT Material's share-node glyph (the three connected
-                  // dots, which on Android reads as "open the OS share sheet" -
-                  // a different action from sharing to your feed). A mirrored
-                  // reply arrow is Material's nearest equivalent.
-                  icon: Icons.reply,
-                  mirrorIcon: true,
-                  label: "Share",
-                  onTap: _share,
-                ),
-              ),
-            ],
+        if (widget.showEngagement)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Divider(height: 1, color: p.border),
           ),
-        ),
+        if (widget.showEngagement)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _PostAction(
+                    // Reacting reads as the primary action, so it shows WHICH
+                    // reaction is yours rather than a generic thumb.
+                    icon: Icons.emoji_emotions_outlined,
+                    glyph: ReactionPalette.glyphFor(post.entityReaction),
+                    label: post.entityReaction != null ? "Reacted" : "React",
+                    active: post.entityReaction != null,
+                    onTap: _reactionBusy ? null : _react,
+                  ),
+                ),
+                Expanded(
+                  child: _PostAction(
+                    icon: Icons.mode_comment_outlined,
+                    label: "Comment",
+                    onTap: widget.onComment ?? widget.onOpen,
+                  ),
+                ),
+                Expanded(
+                  child: _PostAction(
+                    // Webapp uses Phosphor's PiShareFat: a solid arrow pointing
+                    // right, NOT Material's share-node glyph (the three connected
+                    // dots, which on Android reads as "open the OS share sheet" -
+                    // a different action from sharing to your feed). A mirrored
+                    // reply arrow is Material's nearest equivalent.
+                    icon: Icons.reply,
+                    mirrorIcon: true,
+                    label: "Share",
+                    onTap: _share,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (!widget.showEngagement)
+          const SizedBox(height: 12),
       ],
     );
   }
