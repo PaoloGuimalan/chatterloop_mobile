@@ -1,23 +1,28 @@
-// Read-only post view, opened by tapping an Explore content card. Backed by
-// the same /api/newsfeed/preview/<post_id>/ endpoint webapp's PostPreviewModal
-// uses, and showing the same parts of a post: media, author, caption, link
-// preview and the reaction/comment tallies.
+// The post screen: one post in full, with its reactions, comments and share.
 //
-// Deliberately read-only. Reacting, commenting and sharing are the composer's
-// job and this app has no post-authoring surface yet - so this screen shows a
-// post rather than pretending to be a feed item. It exists because Explore
-// surfaces posts and a search hit you can't open is a dead end.
+// Reached from an Explore content card today, and from the newsfeed once that
+// ships - which is why almost nothing lives here. The post itself is [PostCard]
+// and the thread is [PostComments]; this screen only fetches the post, hosts
+// those two, and keeps its own copy of the post in step with what PostCard
+// reports. A feed row will do the same with the same widgets.
+//
+// The whole screen is one `surface` sheet - white in light mode, the card
+// colour in dark. Header, post and comments all sit on it, so there is no seam
+// under the AppBar and no floating-card outline around the post. Everything
+// that needs to stand out against it (the comment box) uses `input` instead.
+//
+// The composer is DOCKED to the bottom of the viewport rather than sitting at
+// the end of the comment list, matching the conversation screen's input - a
+// comment box you have to scroll to find isn't a comment box.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
-import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
-import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
-import 'package:chatterloop_app/core/utils/date_words.dart';
-import 'package:chatterloop_app/core/utils/linkify_text.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_card.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_comments.dart';
+import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 class PostPreviewScreen extends StatefulWidget {
   final String postId;
@@ -29,17 +34,41 @@ class PostPreviewScreen extends StatefulWidget {
 }
 
 class _PostPreviewScreenState extends State<PostPreviewScreen> {
+  final GlobalKey<PostCommentsState> _commentsKey =
+      GlobalKey<PostCommentsState>();
+  final ScrollController _scrollController = ScrollController();
+
+  /// Shared with [PostComments]: it sets this when Reply is tapped, the docked
+  /// composer below reads it.
+  final ValueNotifier<PostComment?> _replyTarget =
+      ValueNotifier<PostComment?>(null);
+
   PostPreview? _post;
   bool _isLoading = true;
-
-  /// Which media page the carousel is on - only shown when there's more than
-  /// one attachment.
-  int _mediaIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _replyTarget.dispose();
+    super.dispose();
+  }
+
+  /// The comment list is a plain Column inside this screen's scroll view, so
+  /// paging is driven from here rather than by a nested scrollable.
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 280) {
+      _commentsKey.currentState?.loadMore();
+    }
   }
 
   Future<void> _load() async {
@@ -51,197 +80,19 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
     });
   }
 
-  void _openAuthor(PostPreviewAuthor author) {
-    if (author.handle.isEmpty) return;
-    context
-        .push(author.isRealm ? '/realm/${author.handle}' : '/user/${author.handle}');
+  Future<void> _refresh() async {
+    await Future.wait([
+      _load(),
+      _commentsKey.currentState?.reload() ?? Future<void>.value(),
+    ]);
   }
 
-  Widget _media(PostPreview post, CLPalette p) {
-    // A shared post's media belongs to the post it references, not to this one.
-    if (post.isShared || post.references.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      children: [
-        Container(
-          height: 320,
-          color: p.surface2,
-          child: PageView.builder(
-            itemCount: post.references.length,
-            onPageChanged: (index) => setState(() => _mediaIndex = index),
-            itemBuilder: (context, index) {
-              final reference = post.references[index];
-              if (reference.isVideo) {
-                return VideoPlayerScreen(videoUrl: reference.reference);
-              }
-              if (reference.isImage) {
-                return CLNetworkImage(
-                  src: reference.reference,
-                  height: 320,
-                  fit: BoxFit.contain,
-                  placeholderHeight: 320,
-                );
-              }
-              // Neither image nor video - an attachment kind this screen can't
-              // render inline.
-              return Center(
-                child: Icon(Icons.insert_drive_file_outlined,
-                    size: 34, color: p.text3),
-              );
-            },
-          ),
-        ),
-        if (post.references.length > 1)
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                post.references.length,
-                (index) => Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: index == _mediaIndex ? p.brand : p.border2,
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _body(PostPreview post, CLPalette p) {
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        _media(post, p),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  InkWell(
-                    onTap: () => _openAuthor(post.author),
-                    borderRadius: BorderRadius.circular(CLRadii.pill),
-                    child: CLAvatar(
-                      id: post.author.entityId,
-                      name: post.author.displayName,
-                      src: post.author.profile,
-                      size: 38,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _openAuthor(post.author),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  post.author.displayName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: CLType.title,
-                                    fontWeight: FontWeight.w700,
-                                    color: p.text,
-                                  ),
-                                ),
-                              ),
-                              if (post.author.isVerified) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.verified, size: 14, color: p.brand),
-                              ],
-                            ],
-                          ),
-                          if (post.datePosted != null) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              timeSince(post.datePosted!),
-                              style: TextStyle(fontSize: CLType.caption, color: p.text3),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (post.caption.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Text.rich(
-                  TextSpan(
-                    children: linkifySpans(
-                      post.caption,
-                      TextStyle(fontSize: CLType.title, height: 1.45, color: p.text),
-                    ),
-                  ),
-                ),
-              ],
-              if (post.linkPreview != null) ...[
-                const SizedBox(height: 12),
-                LinkPreviewCard(preview: post.linkPreview),
-              ],
-              const SizedBox(height: 16),
-              Divider(height: 1, color: p.border),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  if (post.reactions.isNotEmpty)
-                    Expanded(
-                      child: Wrap(
-                        spacing: 10,
-                        runSpacing: 6,
-                        children: post.reactions
-                            .map((reaction) => Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(reaction.emoji,
-                                        // Emoji glyph sized to its container - not a CLType step.
-                                        style: const TextStyle(fontSize: 15)),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      "${reaction.count}",
-                                      style: TextStyle(
-                                          fontSize: CLType.label, color: p.text3),
-                                    ),
-                                  ],
-                                ))
-                            .toList(),
-                      ),
-                    )
-                  else
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Icon(Icons.favorite_border, size: 15, color: p.text3),
-                          const SizedBox(width: 4),
-                          Text("${post.likesCount}",
-                              style:
-                                  TextStyle(fontSize: CLType.label, color: p.text3)),
-                        ],
-                      ),
-                    ),
-                  Icon(Icons.mode_comment_outlined, size: 15, color: p.text3),
-                  const SizedBox(width: 4),
-                  Text("${post.commentsCount}",
-                      style: TextStyle(fontSize: CLType.label, color: p.text3)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+  void _scrollToComments() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -251,8 +102,17 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
     final post = _post;
 
     return CLScreen(
-      backgroundColor: p.bg,
-      appBar: AppBar(title: const Text("Post")),
+      backgroundColor: p.surface,
+      appBar: AppBar(
+        title: const Text("Post"),
+        // Matched to the body so the header doesn't read as its own slab.
+        backgroundColor: p.surface,
+        surfaceTintColor: Colors.transparent,
+        // Android tints a scrolled-under AppBar by default, which would
+        // reintroduce exactly the contrast this is avoiding.
+        scrolledUnderElevation: 0,
+        elevation: 0,
+      ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: p.brand))
           : post == null
@@ -270,7 +130,56 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                     ),
                   ),
                 )
-              : _body(post, p),
+              : Column(
+                  children: [
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _refresh,
+                        child: ListView(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: EdgeInsets.zero,
+                          children: [
+                            PostCard(
+                              post: post,
+                              // No onOpen: this IS the post's own screen.
+                              onComment: _scrollToComments,
+                              onChanged: (updated) =>
+                                  setState(() => _post = updated),
+                            ),
+                            Divider(height: 1, color: p.border),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                            ),
+                            PostComments(
+                              key: _commentsKey,
+                              postId: post.postId,
+                              replyTarget: _replyTarget,
+                              onCountChanged: (delta) => setState(() {
+                                _post = post.copyWith(
+                                    commentsCount: post.commentsCount + delta);
+                              }),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Rebuilds only the composer when the reply target changes,
+                    // rather than the whole screen.
+                    ValueListenableBuilder<PostComment?>(
+                      valueListenable: _replyTarget,
+                      builder: (context, replyingTo, _) => CommentComposer(
+                        replyingToName: replyingTo?.author.displayName,
+                        onCancelReply: () => _replyTarget.value = null,
+                        onSubmit: (text) async =>
+                            _commentsKey.currentState?.submitComment(text),
+                      ),
+                    ),
+                  ],
+                ),
     );
   }
 }

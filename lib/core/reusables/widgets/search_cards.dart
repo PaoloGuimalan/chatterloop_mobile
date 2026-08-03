@@ -340,82 +340,105 @@ class SearchContentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return InkWell(
-      onTap: () => onOpen(post),
-      borderRadius: BorderRadius.circular(CLRadii.md),
-      child: CLCard(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
+
+    return SizedBox(
+      width: double.infinity,
+      child: InkWell(
+        onTap: () => onOpen(post),
+        borderRadius: BorderRadius.circular(CLRadii.md),
+        child: CLCard(
+          padding: const EdgeInsets.all(12),
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                CLAvatar(
-                  id: post.author.entityId,
-                  name: post.author.displayName,
-                  src: post.author.profile,
-                  size: 28,
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    post.author.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: compact ? 12.5 : 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: p.text,
+                Row(
+                  children: [
+                    CLAvatar(
+                      id: post.author.entityId,
+                      name: post.author.displayName,
+                      src: post.author.profile,
+                      size: 28,
                     ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              post.author.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: compact ? 12.5 : 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: p.text,
+                              ),
+                            ),
+                          ),
+                          if (post.author.isVerified) ...[
+                            const SizedBox(width: 4),
+                            Icon(Icons.verified, size: 14, color: p.brand),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (post.datePosted != null) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        timeSinceShort(post.datePosted!),
+                        style: TextStyle(
+                          fontSize: compact ? 11.5 : 12,
+                          color: p.text3,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  post.caption,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
+                  textAlign: TextAlign.left,
+                  style: TextStyle(
+                    fontSize: compact ? 12.5 : 14,
+                    height: 1.45,
+                    color: p.text2,
                   ),
                 ),
-                if (post.author.isVerified) ...[
-                  const SizedBox(width: 4),
-                  Icon(Icons.verified, size: 14, color: p.brand),
-                ],
-                const Spacer(),
-                if (post.datePosted != null)
-                  Text(
-                    timeSinceShort(post.datePosted!),
-                    style: TextStyle(
-                        fontSize: compact ? 11.5 : 12, color: p.text3),
-                  ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.favorite_border,
+                        size: compact ? 13 : 14, color: p.text3),
+                    const SizedBox(width: 4),
+                    Text(
+                      "${post.likesCount}",
+                      style: TextStyle(
+                        fontSize: compact ? 11.5 : 12.5,
+                        color: p.text3,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Icon(Icons.mode_comment_outlined,
+                        size: compact ? 13 : 14, color: p.text3),
+                    const SizedBox(width: 4),
+                    Text(
+                      "${post.commentsCount}",
+                      style: TextStyle(
+                        fontSize: compact ? 11.5 : 12.5,
+                        color: p.text3,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              post.caption,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: compact ? 12.5 : 14,
-                height: 1.45,
-                color: p.text2,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                // Muted like the comment counter - a filled heart here would
-                // read as "you reacted to this", which is not what a search
-                // result means.
-                Icon(Icons.favorite_border,
-                    size: compact ? 13 : 14, color: p.text3),
-                const SizedBox(width: 4),
-                Text("${post.likesCount}",
-                    style: TextStyle(
-                        fontSize: compact ? 11.5 : 12.5, color: p.text3)),
-                const SizedBox(width: 16),
-                Icon(Icons.mode_comment_outlined,
-                    size: compact ? 13 : 14, color: p.text3),
-                const SizedBox(width: 4),
-                Text("${post.commentsCount}",
-                    style: TextStyle(
-                        fontSize: compact ? 11.5 : 12.5, color: p.text3)),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );

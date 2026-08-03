@@ -7,6 +7,7 @@
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:flutter/material.dart';
 
@@ -27,6 +28,40 @@ import 'package:flutter/material.dart';
     "poke" => (icon: Icons.touch_app, color: (p) => p.gold),
     _ => (icon: Icons.notifications, color: (p) => p.text3),
   };
+}
+
+DateTime? _parseNotificationAt(NotificationV2 n) {
+  // 1) Direct ISO support (if backend ever sends it)
+  final iso = DateTime.tryParse(n.date);
+  if (iso != null) return iso;
+
+  // 2) Parse MM/DD/YYYY + optional h:mm AM/PM
+  final dateParts = n.date.split('/');
+  if (dateParts.length != 3) return null;
+
+  final month = int.tryParse(dateParts[0]);
+  final day = int.tryParse(dateParts[1]);
+  final year = int.tryParse(dateParts[2]);
+  if (month == null || day == null || year == null) return null;
+
+  var hour = 0;
+  var minute = 0;
+
+  final rawTime = n.time?.trim();
+  if (rawTime != null && rawTime.isNotEmpty) {
+    final m =
+        RegExp(r'^(\d{1,2}):(\d{2})(?:\s*([AaPp][Mm]))?$').firstMatch(rawTime);
+    if (m != null) {
+      hour = int.tryParse(m.group(1)!) ?? 0;
+      minute = int.tryParse(m.group(2)!) ?? 0;
+      final ampm = m.group(3)?.toLowerCase();
+
+      if (ampm == 'pm' && hour < 12) hour += 12;
+      if (ampm == 'am' && hour == 12) hour = 0;
+    }
+  }
+
+  return DateTime(year, month, day, hour, minute);
 }
 
 class CLNotificationRow extends StatelessWidget {
@@ -67,8 +102,13 @@ class CLNotificationRow extends StatelessWidget {
       details = details.replaceFirst(
           RegExp('^@$handle\\s+', caseSensitive: false), "");
     }
-    final timeLabel =
-        (n.time != null && n.time!.isNotEmpty) ? "${n.date} · ${n.time}" : n.date;
+    final parsedAt = _parseNotificationAt(n);
+    final timeLabel = parsedAt != null
+        ? timeSince(
+            parsedAt) // or timeSinceShort(parsedAt) if you want shorter labels
+        : ((n.time != null && n.time!.isNotEmpty)
+            ? "${n.date} · ${n.time}"
+            : n.date);
 
     final avatarSize = detail ? 44.0 : 38.0;
 
@@ -130,8 +170,8 @@ class CLNotificationRow extends StatelessWidget {
                   TextSpan(children: [
                     TextSpan(
                       text: senderName,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, color: p.text),
+                      style:
+                          TextStyle(fontWeight: FontWeight.w700, color: p.text),
                     ),
                     // Verified check beside the NAME, matching the webapp.
                     // `is_verified` on a notification sender means "show a

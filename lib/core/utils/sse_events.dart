@@ -257,13 +257,27 @@ class SseEvents {
           final details = parsedresponse["message"];
           final senderEntityId =
               details is Map ? details["entityID"]?.toString() : null;
+          // Non-null only for the receivers the message actually @mentioned -
+          // the server evaluates that per receiver and nulls it for everyone
+          // else (routes/users/index.js's sendMessage), so its presence alone
+          // means "this one is about you".
+          final isMentioned =
+              details is Map && details["mentioner"] is Map;
           if (senderEntityId != null &&
               senderEntityId != userAuth.user.entityId) {
+            AudioPlayer audioPlayer = AudioPlayer();
             if (parsedresponse["onseen"] == true) {
-              AudioPlayer audioPlayer = AudioPlayer();
               audioPlayer.play(AssetSource('sounds/seen_alert.mp3'));
+            } else if (isMentioned) {
+              // The mention tone, matching both the mention PUSH (which rides
+              // the Activity channel, sound notification_alert) and webapp,
+              // which plays this same file for a mention rather than its
+              // ordinary message tone. A push can't cover this case: pushes
+              // only target sessions with status:false, and an app with a live
+              // SSE connection is by definition not one of those - so without
+              // this branch being mentioned while the app is OPEN is silent.
+              audioPlayer.play(AssetSource('sounds/notification_alert.mp3'));
             } else {
-              AudioPlayer audioPlayer = AudioPlayer();
               audioPlayer.play(AssetSource('sounds/message_alert.mp3'));
             }
           }

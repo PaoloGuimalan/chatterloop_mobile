@@ -935,9 +935,20 @@ class ConversationStateView extends State<ConversationView> {
     );
   }
 
-  /// Participants who can be mentioned - everyone but you, deduped, and
-  /// capped at one for a DM. Empty until the conversation info loads, which
-  /// simply means nothing highlights yet.
+  /// Participants whose @handle highlights when it appears in a message -
+  /// everyone, INCLUDING you. Being mentioned yourself is the case that most
+  /// needs to stand out, and passing [_mentionMembers] here (which drops you,
+  /// correctly, for the composer) meant your own name was the only handle in
+  /// the conversation that never highlighted.
+  List<UsersContactPreview> get _mentionHighlightMembers {
+    final info = conversationInfo;
+    if (info == null) return const [];
+    return mentionHighlightMembers(info.usersWithInfo);
+  }
+
+  /// Participants the composer can OFFER to mention - everyone but you,
+  /// deduped, and capped at one for a DM. Empty until the conversation info
+  /// loads, which simply means nothing is suggested yet.
   List<UsersContactPreview> get _mentionMembers {
     final info = conversationInfo;
     if (info == null) return const [];
@@ -1760,7 +1771,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                     widget
                                                                         .conversationId,
                                                                 mentionMembers:
-                                                                    _mentionMembers,
+                                                                    _mentionHighlightMembers,
                                                                 onPressed: (bool
                                                                         isReply,
                                                                     String
@@ -1969,7 +1980,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                       widget
                                                                           .conversationId,
                                                                   mentionMembers:
-                                                                      _mentionMembers,
+                                                                      _mentionHighlightMembers,
                                                                   onPressed: (bool
                                                                           isReply,
                                                                       String

@@ -39,6 +39,28 @@ String mentionFullNameFor(UsersContactPreview member) {
 /// A "single" conversation is capped at one, matching the webapp - there is
 /// only ever one other participant, and duplicates in the payload would
 /// otherwise show them twice.
+/// Everyone whose @handle should HIGHLIGHT when it appears in a message -
+/// which is every participant, including yourself.
+///
+/// Deliberately not [mentionableMembers]. That one answers "who can I mention",
+/// so it drops you (you don't @ yourself) and caps a DM at the other person.
+/// Rendering asks a different question, and using the suggestion list for it
+/// meant the one mention that matters most - your own name - was the only one
+/// that never lit up.
+List<UsersContactPreview> mentionHighlightMembers(
+  List<UsersContactPreview> members,
+) {
+  final seen = <String>{};
+  final result = <UsersContactPreview>[];
+  for (final member in members) {
+    if (!seen.add(member.entityID)) continue;
+    result.add(member);
+  }
+  return result;
+}
+
+/// Who the composer offers when you type "@" - everyone BUT you, deduped, and
+/// capped at one for a DM.
 List<UsersContactPreview> mentionableMembers(
   List<UsersContactPreview> members, {
   required String currentEntityId,

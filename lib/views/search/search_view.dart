@@ -234,8 +234,7 @@ class _SearchScreenState extends State<SearchScreen> {
   void _openDetail(SearchDetailKind kind) {
     final query = _query.trim();
     if (query.isEmpty) return;
-    context.push(
-        '/search/${kind.slug}?q=${Uri.encodeQueryComponent(query)}');
+    context.push('/search/${kind.slug}?q=${Uri.encodeQueryComponent(query)}');
   }
 
   // -------- sections ---------------------------------------------------------
@@ -337,9 +336,9 @@ class _SearchScreenState extends State<SearchScreen> {
                     person: person,
                     online: presence[person.entityId]?.online ?? false,
                     busy: _followBusy.contains(person.entityId),
-                    onToggleFollow: (target) =>
-                        _toggleFollow(target.entityId, target.isFollowed,
-                            currentlyPending: target.isFollowPending),
+                    onToggleFollow: (target) => _toggleFollow(
+                        target.entityId, target.isFollowed,
+                        currentlyPending: target.isFollowPending),
                     onOpen: _openPerson,
                   ))
               .toList(),
@@ -405,8 +404,7 @@ class _SearchScreenState extends State<SearchScreen> {
           )
         else
           ...visible.map((post) => Padding(
-                padding: EdgeInsets.only(
-                    bottom: post == visible.last ? 0 : 10),
+                padding: EdgeInsets.only(bottom: post == visible.last ? 0 : 10),
                 child: SearchContentCard(
                     post: post, onOpen: _openPost, compact: true),
               )),

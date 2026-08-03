@@ -136,9 +136,36 @@ class Endpoints {
   /// serving the topbar badge + SSE flow.
   String notificationsV2 = '/u/v2/notifications/'; // :section
 
-  /// One post in full (references/reactions/entity), for the read-only post
-  /// preview opened from an Explore content card. Append :postID.
+  /// One post in full (references/reactions/entity), for the post screen
+  /// opened from an Explore content card. Append :postID.
   String postPreview = '/api/newsfeed/preview/'; // :postID
+
+  // ─── Newsfeed interactions (Django) ──────────────────────────────────────
+  // Reactions and comments. All three reaction routes share ONE url and
+  // differ by VERB: POST adds, PUT swaps, DELETE removes.
+
+  /// The reaction palette. Plain list, no pagination envelope.
+  String newsfeedEmojis = '/api/newsfeed/emojis';
+
+  /// POST/PUT/DELETE {post_id, emoji_id}.
+  String newsfeedReaction = '/api/newsfeed/reaction';
+
+  /// Authoritative [{emoji, count}] for a post. Append :postID.
+  String newsfeedTotalReactions = '/api/newsfeed/total_reactions/'; // :postID
+
+  /// GET ?post_id=&parent_id=&page=&page_size= (DRF-paginated) to list, POST
+  /// {post_id, parent_id?, new_comment, new_attachment?} to add. Omitting
+  /// parent_id lists TOP-LEVEL comments; passing one lists that comment's
+  /// replies - threads are only ever two levels deep.
+  String newsfeedComments = '/api/newsfeed/comments';
+
+  /// POST/PUT/DELETE {comment_id, emoji_id} - a reaction on a comment.
+  String newsfeedCommentReaction = '/api/newsfeed/comment_reaction';
+
+  /// Node, not Django: post creation, which a share goes through with a
+  /// single "shared_post" reference pointing at the original post's id.
+  /// Body is a JWT-signed {token}.
+  String createPost = '/posts/createpost';
   String publicProfile = '/api/user/auth/'; // :username
   String contacts = '/api/user/contacts';
   String poke = '/api/user/poke';

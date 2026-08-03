@@ -68,4 +68,39 @@ void main() {
             .length,
         1);
   });
+
+  // The two member lists answer DIFFERENT questions and must not be swapped:
+  //
+  //   mentionableMembers      "who can I mention"        -> excludes you
+  //   mentionHighlightMembers "whose @handle lights up"  -> includes you
+  //
+  // Rendering used the first, so your own name was the one handle in the
+  // conversation that never highlighted - the mention that matters most.
+  group('mentionHighlightMembers', () {
+    test('includes you, unlike the suggestion list', () {
+      final all = [anna, annabelle];
+      expect(mentionHighlightMembers(all).map((m) => m.userID),
+          ["anna", "annabelle"]);
+    });
+
+    test('dedupes but never caps a single conversation', () {
+      // mentionableMembers trims a DM to one suggestion; doing that while
+      // rendering would drop a real participant's mentions.
+      expect(mentionHighlightMembers([anna, annabelle, anna]).length, 2);
+    });
+
+    test('your own handle highlights', () {
+      // anna is the viewer here (currentEntityId E1).
+      final spans =
+          splitMentionSpans("hey @anna check this", mentionHighlightMembers([anna, annabelle]));
+      expect(spans.where((s) => s.isMention).single.text, "@anna");
+    });
+
+    test('regression: the suggestion list could not highlight the viewer', () {
+      final suggestions = mentionableMembers([anna, annabelle],
+          currentEntityId: "E1", conversationType: "group");
+      final spans = splitMentionSpans("hey @anna check this", suggestions);
+      expect(spans.any((s) => s.isMention), isFalse);
+    });
+  });
 }

@@ -119,9 +119,19 @@ class PostPreview {
   final int commentsCount;
 
   /// A shared post's own media lives on the referenced post, not here - web
-  /// hides the carousel entirely in that case, so this does too.
+  /// hides the carousel entirely in that case, so this does too. The shared
+  /// post's id travels as a reference with mediaType "shared_post"; see
+  /// [sharedPostId].
   final bool isShared;
   final LinkPreviewData? linkPreview;
+
+  /// The emoji id the VIEWER reacted with, or null if they haven't. Drives
+  /// which reaction the action bar shows as active, and whether tapping one
+  /// POSTs (first reaction), PUTs (swap) or DELETEs (same one again).
+  final String? entityReaction;
+
+  /// Whether the viewer has saved this post.
+  final bool isSaved;
 
   const PostPreview({
     required this.postId,
@@ -134,7 +144,46 @@ class PostPreview {
     required this.commentsCount,
     required this.isShared,
     this.linkPreview,
+    this.entityReaction,
+    this.isSaved = false,
   });
+
+  /// The post this one shares, when [isShared]. Stored as a reference row
+  /// whose media type is "shared_post" and whose `reference` is the original
+  /// post's id - the same shape the composer sends when creating a share.
+  String? get sharedPostId {
+    for (final reference in references) {
+      if (reference.mediaType == "shared_post") return reference.reference;
+    }
+    return null;
+  }
+
+  /// Total reactions across every emoji - what the summary row counts.
+  int get reactionTotal =>
+      reactions.fold(0, (sum, reaction) => sum + reaction.count);
+
+  PostPreview copyWith({
+    List<PostReactionCount>? reactions,
+    String? entityReaction,
+    bool clearEntityReaction = false,
+    int? commentsCount,
+    bool? isSaved,
+  }) =>
+      PostPreview(
+        postId: postId,
+        caption: caption,
+        datePosted: datePosted,
+        references: references,
+        reactions: reactions ?? this.reactions,
+        author: author,
+        likesCount: likesCount,
+        commentsCount: commentsCount ?? this.commentsCount,
+        isShared: isShared,
+        linkPreview: linkPreview,
+        entityReaction:
+            clearEntityReaction ? null : (entityReaction ?? this.entityReaction),
+        isSaved: isSaved ?? this.isSaved,
+      );
 
   factory PostPreview.fromJson(Map<String, dynamic> json) {
     final references = json["references"];
@@ -169,6 +218,8 @@ class PostPreview {
           ? (score["comments_count"] as num).toInt()
           : 0,
       isShared: json["is_shared"] == true,
+      entityReaction: json["entity_reaction"]?.toString(),
+      isSaved: json["is_saved"] == true,
       linkPreview: linkPreview is Map
           ? LinkPreviewData.fromJson(Map<String, dynamic>.from(linkPreview))
           : null,
