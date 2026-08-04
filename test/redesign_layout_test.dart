@@ -344,6 +344,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // A photo that isn't square must arrive at its natural proportions and be
+  // CROPPED by BoxFit.cover - not squeezed into the box.
+  //
+  // Image.network's cacheWidth AND cacheHeight together mean
+  // ResizeImagePolicy.exact, which decodes to precisely WxH and distorts the
+  // aspect ratio. That handed cover an already-square bitmap with nothing left
+  // to crop, and every landscape group-chat photo rendered squished across -
+  // on the messages list and the contacts group rail alike, since both are
+  // CLAvatar.
+  testWidgets('an avatar decodes without distorting its aspect ratio',
+      (tester) async {
+    await _pump(
+      tester,
+      const CLAvatar(
+        id: 'e1',
+        name: _longName,
+        src: 'https://example.invalid/wide.jpg',
+        size: 54,
+        cornerRadius: 16,
+      ),
+    );
+
+    final image = tester.widget<Image>(find.byType(Image));
+    expect(image.fit, BoxFit.cover);
+
+    final provider = image.image;
+    expect(provider, isA<ResizeImage>());
+    expect((provider as ResizeImage).policy, ResizeImagePolicy.fit);
+
+    // Both caps set with `fit` bounds the LONG edge; the short edge - the one
+    // cover has to fill - lands under it, so the cap carries 2x headroom.
+    expect(provider.width, 108);
+    expect(provider.height, 108);
+  });
+
   testWidgets('a scrollable chips rail shows both chevrons, never a hole',
       (tester) async {
     tester.view.physicalSize = const Size(360, 780);

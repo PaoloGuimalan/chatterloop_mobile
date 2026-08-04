@@ -144,6 +144,18 @@ class Endpoints {
   // Reactions and comments. All three reaction routes share ONE url and
   // differ by VERB: POST adds, PUT swaps, DELETE removes.
 
+  /// A profile's posts - user OR realm, resolved from one handle. POST (the
+  /// body carries `viewcache`), DRF-paginated, append :handle.
+  String newsfeedProfile = '/api/newsfeed/profile/'; // :handle
+
+  /// Post mutation. PUT {post_id, fields} updates (archive/unarchive lives
+  /// here as fields.is_archived); DELETE {post_ids} - note the PLURAL, it takes
+  /// a list even for one post.
+  String newsfeedPost = '/api/newsfeed/default';
+
+  /// Saved posts. POST {post_id} saves, DELETE {post_id} unsaves.
+  String newsfeedSaves = '/api/newsfeed/saves';
+
   /// The reaction palette. Plain list, no pagination envelope.
   String newsfeedEmojis = '/api/newsfeed/emojis';
 

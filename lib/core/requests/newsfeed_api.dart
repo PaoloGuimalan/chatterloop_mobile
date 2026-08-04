@@ -207,6 +207,132 @@ class NewsfeedApi {
     }
   }
 
+  /// One page of a profile's posts - the feed under a user OR a realm.
+  ///
+  /// Three things about this endpoint are easy to get wrong:
+  ///  - it is a **POST**, not a GET, because the body carries `viewcache`
+  ///    (which posts the viewer has seen, for engagement scoring);
+  ///  - `handle` resolves as an Account **username** OR a Realm **slug**, so
+  ///    one call serves both profile kinds;
+  ///  - page/page_size are QUERY params while `archive` is a separate one.
+  ///
+  /// `viewcache` is sent empty: it's fed by web's localforage view tracker,
+  /// which has no mobile equivalent yet. The server treats an empty list as
+  /// "nothing to record" rather than erroring.
+  Future<PagedResult<PostPreview>> getProfilePostsRequest({
+    required String handle,
+    int page = 1,
+    int pageSize = 10,
+    bool archive = false,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '${_endpoints.newsfeedProfile}${Uri.encodeComponent(handle)}/',
+        data: {'viewcache': const []},
+        queryParameters: {
+          'page': page,
+          'page_size': pageSize,
+          'archive': archive,
+        },
+      );
+      return PagedResult.fromDrf(response.data, PostPreview.fromJson);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return PagedResult.empty();
+    }
+  }
+
+  /// Save / unsave a post. Available to ANYONE who can see it, not just the
+  /// author - it's a bookmark, not an authorship action.
+  Future<bool> setPostSavedRequest({
+    required String postId,
+    required bool saved,
+  }) async {
+    try {
+      final response = saved
+          ? await _dio.post(_endpoints.newsfeedSaves, data: {'post_id': postId})
+          : await _dio.delete(_endpoints.newsfeedSaves,
+              data: {'post_id': postId});
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Archive / unarchive - AUTHOR only (the server enforces it too).
+  ///
+  /// Goes through the generic post update, which takes a `fields` map rather
+  /// than named columns.
+  Future<bool> setPostArchivedRequest({
+    required String postId,
+    required bool archived,
+  }) async {
+    try {
+      final response = await _dio.put(
+        _endpoints.newsfeedPost,
+        data: {
+          'post_id': postId,
+          'fields': {'is_archived': archived},
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Delete a post - AUTHOR only.
+  ///
+  /// The endpoint takes `post_ids`, PLURAL, even for a single post: it's a
+  /// bulk delete that the UI only ever calls with one.
+  Future<bool> deletePostRequest(String postId) async {
+    try {
+      final response = await _dio.delete(
+        _endpoints.newsfeedPost,
+        data: {
+          'post_ids': [postId]
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Delete a comment - its AUTHOR only. Soft-deleted server side, which also
+  /// enforces ownership (assert_owns), so the client gate is only about not
+  /// offering a button that would 403.
+  Future<bool> deleteCommentRequest(String commentId) async {
+    try {
+      final response = await _dio.delete(
+        _endpoints.newsfeedComments,
+        data: {'comment_id': commentId},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
   /// Share a post onto the viewer's own feed, with an optional caption.
   ///
   /// A share is an ordinary post whose single reference points at the original

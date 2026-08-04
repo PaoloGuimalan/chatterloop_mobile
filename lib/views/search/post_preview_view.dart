@@ -146,6 +146,16 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                               onComment: _scrollToComments,
                               onChanged: (updated) =>
                                   setState(() => _post = updated),
+                              // Nothing left to show once it's deleted, so the
+                              // screen leaves rather than rendering "Post
+                              // unavailable" at the user who just deleted it.
+                              onDeleted: () {
+                                if (Navigator.of(context).canPop()) {
+                                  Navigator.of(context).pop();
+                                } else {
+                                  setState(() => _post = null);
+                                }
+                              },
                             ),
                             Divider(height: 1, color: p.border),
                             Padding(

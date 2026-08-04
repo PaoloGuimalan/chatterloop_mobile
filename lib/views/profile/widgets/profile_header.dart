@@ -170,7 +170,7 @@ class ProfileHeader extends StatelessWidget {
         ),
         SizedBox(height: _avatarSize / 2 + 14),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -208,7 +208,7 @@ class ProfileHeader extends StatelessWidget {
         if (hasInfoCard) ...[
           const SizedBox(height: 16),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
             child: CLCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

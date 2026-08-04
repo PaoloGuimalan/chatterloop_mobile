@@ -73,7 +73,7 @@ class _ProfileDiaryCardState extends State<ProfileDiaryCard> {
     final total = _total;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
       child: InkWell(
         borderRadius: BorderRadius.circular(CLRadii.md),
         onTap: widget.isSelf ? () => context.push('/diary') : null,

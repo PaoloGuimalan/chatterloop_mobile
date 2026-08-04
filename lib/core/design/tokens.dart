@@ -126,6 +126,15 @@ class CLRadii {
 }
 
 class CLSpacing {
+  /// Left/right gutter for every content section on a scrolling content
+  /// screen - a profile's actions, its details, its posts.
+  ///
+  /// Shared because sections that stack vertically have to share an edge:
+  /// the profile screens used 20 above the feed's 14, and a 6px step in the
+  /// middle of a scroll reads as one of the two blocks being misaligned. Any
+  /// new section on those screens uses this rather than its own number.
+  static const contentGutter = 14.0;
+
   static const railWidth = 76.0;
   static const headerHeight = 60.0;
   static const bottomnavHeight = 60.0;

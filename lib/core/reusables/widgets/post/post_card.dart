@@ -19,6 +19,7 @@ import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_share.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
@@ -43,6 +44,11 @@ class PostCard extends StatefulWidget {
   /// Where the comment action goes. Null renders it as a plain count.
   final VoidCallback? onComment;
 
+  /// Fired after the options menu deletes this post. A feed drops the row; the
+  /// post screen pops. Null hides nothing - the menu still offers Delete, it
+  /// just leaves the caller to notice, so surfaces that can react pass this.
+  final VoidCallback? onDeleted;
+
   /// Shared-post recursion mode: false hides the reaction summary and
   /// react/comment/share row while keeping the full body (header/caption/media).
   final bool showEngagement;
@@ -59,6 +65,7 @@ class PostCard extends StatefulWidget {
     this.onChanged,
     this.onOpen,
     this.onComment,
+    this.onDeleted,
     this.showEngagement = true,
     this.sharedDepth = 0,
     this.maxSharedDepth = 6,
@@ -327,20 +334,55 @@ class _PostCardState extends State<PostCard> {
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (post.datePosted != null) ...[
+                    if (post.datePosted != null || post.isArchived) ...[
                       const SizedBox(height: 2),
                       GestureDetector(
                         onTap: _openAuthor,
-                        child: Text(
-                          timeSince(post.datePosted!),
-                          style: TextStyle(
-                              fontSize: CLType.caption, color: p.text3),
+                        // Spans rather than a Row for the same reason the line
+                        // above uses them: "2h ago · Archived" has to be able
+                        // to wrap, and a Row can't.
+                        child: Text.rich(
+                          TextSpan(
+                            style: TextStyle(
+                                fontSize: CLType.caption, color: p.text3),
+                            children: [
+                              if (post.datePosted != null)
+                                TextSpan(text: timeSince(post.datePosted!)),
+                              // Archiving doesn't remove the row from the
+                              // author's own profile, so without this the
+                              // menu's only feedback would be the label
+                              // flipping to "Unarchive" next time it's opened.
+                              if (post.isArchived) ...[
+                                if (post.datePosted != null)
+                                  const TextSpan(text: " · "),
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 3),
+                                    child: Icon(Icons.archive_outlined,
+                                        size: 12, color: p.text3),
+                                  ),
+                                ),
+                                const TextSpan(text: "Archived"),
+                              ],
+                            ],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
+              // Hidden inside a nested shared post: its options belong to the
+              // original, which the reader can open in its own right.
+              if (widget.showEngagement)
+                PostOptionsButton(
+                  post: post,
+                  onChanged: widget.onChanged,
+                  onDeleted: widget.onDeleted,
+                ),
             ],
           ),
         ),
@@ -503,12 +545,20 @@ class _PostAction extends StatelessWidget {
               else
                 Icon(icon, size: 18, color: color),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: CLType.label,
-                  fontWeight: FontWeight.w600,
-                  color: color,
+              // Flexible so the label ellipsizes rather than overflowing: the
+              // three actions split the row evenly, and the slot narrows with
+              // anything wrapping the card (PostItem's border) or at a large
+              // text scale. Same reason CLMiniBtn's label is flexible.
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: CLType.label,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
                 ),
               ),
             ],

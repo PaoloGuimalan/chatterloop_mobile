@@ -133,6 +133,10 @@ class PostPreview {
   /// Whether the viewer has saved this post.
   final bool isSaved;
 
+  /// Archived posts are hidden from feeds but still reachable by their author.
+  /// Only the author can archive, and Save is hidden while archived.
+  final bool isArchived;
+
   /// Entities tagged on the post - "is with A, B and C" in the header. Users
   /// AND realms/pages, which is why they reuse the author shape: `tagging[]`
   /// rows carry a full EntitySerializer, same as the post's own entity.
@@ -151,6 +155,7 @@ class PostPreview {
     this.linkPreview,
     this.entityReaction,
     this.isSaved = false,
+    this.isArchived = false,
     this.tagged = const [],
   });
 
@@ -174,6 +179,7 @@ class PostPreview {
     bool clearEntityReaction = false,
     int? commentsCount,
     bool? isSaved,
+    bool? isArchived,
   }) =>
       PostPreview(
         postId: postId,
@@ -189,6 +195,7 @@ class PostPreview {
         entityReaction:
             clearEntityReaction ? null : (entityReaction ?? this.entityReaction),
         isSaved: isSaved ?? this.isSaved,
+        isArchived: isArchived ?? this.isArchived,
         tagged: tagged,
       );
 
@@ -227,6 +234,7 @@ class PostPreview {
       isShared: json["is_shared"] == true,
       entityReaction: json["entity_reaction"]?.toString(),
       isSaved: json["is_saved"] == true,
+      isArchived: json["is_archived"] == true,
       tagged: json["tagging"] is List
           ? (json["tagging"] as List)
               .whereType<Map>()

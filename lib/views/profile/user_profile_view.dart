@@ -11,6 +11,7 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/diary_card.dart';
+import 'package:chatterloop_app/views/profile/widgets/profile_feed.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
@@ -39,6 +40,20 @@ class UserProfileScreen extends StatefulWidget {
 }
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
+  /// The feed renders as a section of THIS screen's scroll view (see
+  /// ProfileFeed), so paging is driven from here rather than by a nested
+  /// scrollable of its own.
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey<ProfileFeedState> _feedKey = GlobalKey<ProfileFeedState>();
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 400) {
+      _feedKey.currentState?.loadMore();
+    }
+  }
+
   PublicProfile? profile;
   bool isLoading = true;
   bool notFound = false;
@@ -60,11 +75,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   void initState() {
     super.initState();
     _load();
+    _scrollController.addListener(_onScroll);
     profileRelationshipUpdates.addListener(_onRelationshipUpdate);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     profileRelationshipUpdates.removeListener(_onRelationshipUpdate);
     super.dispose();
   }
@@ -636,6 +654,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   child: Text("This profile is unavailable",
                       style: TextStyle(color: p.text2)))
               : SingleChildScrollView(
+                  controller: _scrollController,
                   child: Column(
                     children: [
                       StoreConnector<AppState, bool>(
@@ -661,7 +680,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               profile!.birthDay,
                               profile!.birthYear),
                           actions: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
                             child: _connectionActions(p),
                           ),
                         ),
@@ -683,6 +702,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           username: profile!.username,
                           isSelf: _isSelf(context),
                         ),
+                      // Posts only on a profile you're allowed to see - the
+                      // endpoint enforces this too, but asking for a locked
+                      // profile's feed just to render an empty section is a
+                      // request that can only ever come back empty.
+                      if (profile!.canView) ...[
+                        const SizedBox(height: 16),
+                        ProfileFeed(
+                          key: _feedKey,
+                          handle: profile!.username,
+                          emptyMessage: _isSelf(context)
+                              ? "Posts you share will show up here."
+                              : "${profile!.displayName} hasn't posted anything yet.",
+                        ),
+                      ],
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -707,7 +740,7 @@ class _LockedProfileNotice extends StatelessWidget {
     final name = displayName.trim().isEmpty ? "This account" : displayName;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
       child: CLCard(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),

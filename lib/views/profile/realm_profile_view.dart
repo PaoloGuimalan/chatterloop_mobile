@@ -3,15 +3,16 @@
 // hero so the two read as one screen with different content rather than two
 // designs. Mirrors webapp's RealmProfile.tsx.
 //
-// The posts feed webapp shows below this is not built on mobile yet: there is
-// no post-card UI anywhere in the app (feed_view.dart only fetches into
-// Redux), so that is its own feature rather than something trimmed out here.
+// The posts feed below the header is ProfileFeed - the same widget the user
+// profile uses, because /api/newsfeed/profile/<handle>/ resolves a realm SLUG
+// and an account USERNAME identically and returns the same paginated shape.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
+import 'package:chatterloop_app/views/profile/widgets/profile_feed.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -35,10 +36,31 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
   int _followers = 0;
   bool _isUpdatingFollow = false;
 
+  /// The feed is a section of this screen's scroll view, so paging is driven
+  /// from here - see ProfileFeed.
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey<ProfileFeedState> _feedKey = GlobalKey<ProfileFeedState>();
+
   @override
   void initState() {
     super.initState();
     _load();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 400) {
+      _feedKey.currentState?.loadMore();
+    }
   }
 
   Future<void> _load() async {
@@ -207,6 +229,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                   ),
                 )
               : SingleChildScrollView(
+                  controller: _scrollController,
                   child: Column(
                     children: [
                       ProfileHeader(
@@ -216,12 +239,22 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                         avatarSrc: realm.profile,
                         coverSrc: realm.coverPhoto,
                         actions: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
                           child: _actions(p, realm),
                         ),
                       ),
                       const SizedBox(height: 10),
                       _details(p, realm),
+                      const SizedBox(height: 16),
+                      // Keyed on the slug, which is what the endpoint resolves;
+                      // realm.id is the fallback the header already uses when a
+                      // realm has no slug.
+                      ProfileFeed(
+                        key: _feedKey,
+                        handle: realm.slug ?? realm.id,
+                        emptyMessage:
+                            "${realm.name} hasn't posted anything yet.",
+                      ),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -326,7 +359,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
   Widget _details(CLPalette p, RealmProfile realm) {
     final description = realm.description;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
       child: CLCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

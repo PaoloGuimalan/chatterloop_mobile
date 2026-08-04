@@ -6,13 +6,19 @@
 // you use the app.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_card.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_comments.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_item.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -42,6 +48,8 @@ PostPreview _post({
   bool isShared = false,
   int comments = 0,
   List<PostPreviewAuthor> tagged = const [],
+  bool saved = false,
+  bool archived = false,
 }) =>
     PostPreview(
       postId: 'p1',
@@ -55,6 +63,8 @@ PostPreview _post({
       isShared: isShared,
       entityReaction: entityReaction,
       tagged: tagged,
+      isSaved: saved,
+      isArchived: archived,
     );
 
 void main() {
@@ -376,12 +386,183 @@ void main() {
       expect(find.text('0'), findsNothing);
     });
 
+    testWidgets('a feed row lays out and opens the post', (tester) async {
+      // PostItem is PostCard inside feed chrome - the tap target and the card
+      // surface are what it adds, so both are checked here rather than
+      // re-testing the body.
+      var opened = false;
+      await pump(
+        tester,
+        PostItem(
+          post: _post(comments: 2, tagged: [_tag('Bea')]),
+          onOpen: () => opened = true,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+
+      // The caption is the body's tap target for opening.
+      await tester.tap(find.textContaining('Sunrise run'));
+      await tester.pump();
+      expect(opened, isTrue);
+    });
+
+    testWidgets('a feed row skeleton lays out', (tester) async {
+      await pump(tester, const PostItemSkeleton());
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('a reacted post shows its own glyph slot', (tester) async {
       await pump(tester, PostCard(post: _post(entityReaction: 'e_like')));
       // Palette hasn't loaded in a test, so glyphFor is null and the action
       // falls back to the icon + "Reacted" - which must still lay out.
       expect(find.text('Reacted'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  // Which ⋯ entries each viewer gets. The gate is the ACTING ENTITY id, not the
+  // account id, which is what lets a page manage its own posts while you're
+  // acting as that page - and what stops your personal account managing them
+  // when you switch back. Every one of these would 403 server-side anyway; the
+  // point is not to offer a button that can't work.
+  group('post and comment options', () {
+    setUp(() => ReactionPalette.seed(const []));
+
+    /// Switch the store's acting entity, the way an entity switch does.
+    void actAs(String entityId) {
+      appStore.dispatch(DispatchModel(
+        setUserAuthT,
+        UserAuth(
+          true,
+          UserAccount('account-1', 'me', 'Me', '', 'Mine', null, true, true,
+              null, null, null, null,
+              personalEntityId: entityId),
+        ),
+      ));
+    }
+
+    // Back to signed-out, so a later test never inherits an acting entity.
+    tearDown(() => actAs(''));
+
+    Future<void> pump(WidgetTester tester, Widget child) async {
+      tester.view.physicalSize = const Size(360, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: Scaffold(body: SingleChildScrollView(child: child)),
+      ));
+      await tester.pump();
+    }
+
+    Future<void> openMenu(WidgetTester tester) async {
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the author gets save, archive and delete', (tester) async {
+      actAs(_author.entityId);
+      await pump(tester, PostCard(post: _post()));
+      await openMenu(tester);
+
+      expect(find.text('Save'), findsOneWidget);
+      expect(find.text('Archive'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+    });
+
+    testWidgets('anyone else gets save only', (tester) async {
+      actAs('somebody-else');
+      await pump(tester, PostCard(post: _post()));
+      await openMenu(tester);
+
+      expect(find.text('Save'), findsOneWidget);
+      expect(find.text('Archive'), findsNothing);
+      expect(find.text('Delete'), findsNothing);
+    });
+
+    testWidgets('the labels flip with the post state', (tester) async {
+      actAs(_author.entityId);
+      await pump(tester, PostCard(post: _post(saved: true)));
+      await openMenu(tester);
+
+      expect(find.text('Unsave'), findsOneWidget);
+      expect(find.text('Save'), findsNothing);
+    });
+
+    testWidgets('an archived post offers no save at all', (tester) async {
+      // Saving is a bookmark for something in a feed; an archived post is in
+      // nobody's.
+      actAs(_author.entityId);
+      await pump(tester, PostCard(post: _post(archived: true)));
+      await openMenu(tester);
+
+      expect(find.text('Save'), findsNothing);
+      expect(find.text('Unsave'), findsNothing);
+      expect(find.text('Unarchive'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+    });
+
+    testWidgets("a stranger's archived post has no menu button", (tester) async {
+      // Nothing left to offer - so no ⋯ rather than one that opens empty.
+      actAs('somebody-else');
+      await pump(tester, PostCard(post: _post(archived: true)));
+      expect(find.byIcon(Icons.more_horiz), findsNothing);
+    });
+
+    testWidgets('a nested shared post carries no options', (tester) async {
+      // showEngagement false is the shared-post recursion mode: the embedded
+      // original is a quotation, and it can be opened in its own right.
+      actAs(_author.entityId);
+      await pump(
+          tester, PostCard(post: _post(), showEngagement: false));
+      expect(find.byIcon(Icons.more_horiz), findsNothing);
+    });
+
+    testWidgets('a comment ⋯ appears only on your own', (tester) async {
+      final mine = PostComment(
+        commentId: 'c1',
+        text: 'Mine',
+        author: _author,
+        createdAt: DateTime.now(),
+        reactions: const [],
+        replyCount: 0,
+      );
+
+      actAs(_author.entityId);
+      await pump(
+        tester,
+        CommentRow(comment: mine, busy: false, onReact: () {}, onDelete: () {}),
+      );
+      expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+
+      actAs('somebody-else');
+      await pump(
+        tester,
+        CommentRow(comment: mine, busy: false, onReact: () {}, onDelete: () {}),
+      );
+      expect(find.byIcon(Icons.more_horiz), findsNothing);
+    });
+
+    testWidgets('a comment with no delete handler has no ⋯', (tester) async {
+      // A read-only surface (a feed preview) passes no handler even for your
+      // own comment.
+      actAs(_author.entityId);
+      await pump(
+        tester,
+        CommentRow(
+          comment: PostComment(
+            commentId: 'c1',
+            text: 'Mine',
+            author: _author,
+            createdAt: DateTime.now(),
+            reactions: const [],
+            replyCount: 0,
+          ),
+          busy: false,
+          onReact: () {},
+        ),
+      );
+      expect(find.byIcon(Icons.more_horiz), findsNothing);
     });
   });
 }

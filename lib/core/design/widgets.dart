@@ -113,8 +113,22 @@ class CLAvatar extends StatelessWidget {
     // it is often 500-1000px+, and without a cap the full bitmap is decoded
     // into the image cache for EVERY avatar in a list. isFinite-guarded so a
     // non-finite size can never reach ceil() (throws on Infinity/NaN).
+    //
+    // The cap is 2x the display size, and the resize is done through an
+    // explicit ResizeImage rather than Image.network's cacheWidth/cacheHeight,
+    // because BOTH of those together mean ResizeImagePolicy.exact - which
+    // resizes to precisely WxH and DISTORTS the aspect ratio. A landscape
+    // group photo squeezed into a square is what that looked like: the image
+    // arrived already squished, so the BoxFit.cover below had a square bitmap
+    // to work with and nothing left to crop. `fit` keeps the proportions and
+    // lets cover do the cropping, which is the whole point of asking for it.
+    //
+    // 2x rather than 1x because `fit` scales the LONG edge down to the cap, so
+    // the short edge - the one cover then has to fill - lands under it. The
+    // headroom keeps ordinary 4:3/16:9 photos sharp; memory is still a small
+    // fraction of decoding the original.
     final int? avatarDecodePx = size.isFinite
-        ? (size * MediaQuery.devicePixelRatioOf(context)).ceil()
+        ? (size * MediaQuery.devicePixelRatioOf(context) * 2).ceil()
         : null;
 
     Widget clip(Widget child) => cornerRadius == null
@@ -122,15 +136,24 @@ class CLAvatar extends StatelessWidget {
         : ClipRRect(
             borderRadius: BorderRadius.circular(cornerRadius!), child: child);
 
+    ImageProvider<Object> avatarProvider(String url) {
+      final provider = NetworkImage(url);
+      if (avatarDecodePx == null) return provider;
+      return ResizeImage(
+        provider,
+        width: avatarDecodePx,
+        height: avatarDecodePx,
+        policy: ResizeImagePolicy.fit,
+      );
+    }
+
     Widget content = (src != null && src!.isNotEmpty && src != 'none')
         ? clip(
-            Image.network(
-              src!,
+            Image(
+              image: avatarProvider(src!),
               width: size,
               height: size,
               fit: BoxFit.cover,
-              cacheWidth: avatarDecodePx,
-              cacheHeight: avatarDecodePx,
               // Same gradient+initials placeholder for "still downloading"
               // as for "failed to load" - previously there was no
               // loadingBuilder at all, so the circle was simply blank

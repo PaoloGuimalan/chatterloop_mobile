@@ -16,6 +16,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/linkify_text.dart';
@@ -72,6 +73,9 @@ class PostCommentsState extends State<PostComments> {
 
   /// Reaction taps in flight, keyed by comment id.
   final Set<String> _reactionBusy = <String>{};
+
+  /// Deletes in flight, keyed by comment id.
+  final Set<String> _deleteBusy = <String>{};
 
   PostComment? get _replyingTo => widget.replyTarget?.value;
 
@@ -187,6 +191,58 @@ class PostCommentsState extends State<PostComments> {
     });
   }
 
+  /// Optimistic delete, mirroring webapp's DeleteCommentProcess.
+  ///
+  /// Deleting a TOP-LEVEL comment soft-deletes its whole thread server-side and
+  /// the post's count comes back down by all of it, so the count delta is
+  /// `1 + replyCount`, not 1. A reply only ever takes itself.
+  Future<void> _delete(PostComment comment, {required bool isReply}) async {
+    final id = comment.commentId;
+    if (_deleteBusy.contains(id)) return;
+
+    final removed = isReply ? 1 : 1 + comment.replyCount;
+    final parentId = comment.parentId;
+
+    // Kept so a failed call can put the row back where it was.
+    final index = isReply
+        ? (_replies[parentId] ?? const <PostComment>[])
+            .indexWhere((entry) => entry.commentId == id)
+        : _comments.indexWhere((entry) => entry.commentId == id);
+
+    setState(() {
+      _deleteBusy.add(id);
+      if (isReply) {
+        _replies[parentId]?.removeWhere((entry) => entry.commentId == id);
+      } else {
+        _comments.removeWhere((entry) => entry.commentId == id);
+        // Its replies go with it - leaving them cached would resurrect the
+        // thread if the row above were ever re-expanded.
+        _replies.remove(id);
+        _expanded.remove(id);
+      }
+    });
+    widget.onCountChanged?.call(-removed);
+
+    final ok = await NewsfeedApi().deleteCommentRequest(id);
+    if (!mounted) return;
+
+    setState(() {
+      _deleteBusy.remove(id);
+      if (ok || index < 0) return;
+      final list = isReply ? _replies[parentId] : _comments;
+      if (list == null) return;
+      list.insert(index.clamp(0, list.length), comment);
+    });
+
+    if (!ok) {
+      widget.onCountChanged?.call(removed);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Couldn't delete that comment. Try again."),
+        duration: Duration(seconds: 2),
+      ));
+    }
+  }
+
   void _replaceComment(PostComment comment, {required bool isReply}) {
     if (isReply) {
       final parentId = comment.parentId;
@@ -263,14 +319,18 @@ class PostCommentsState extends State<PostComments> {
           ..._comments.map((comment) => _CommentTile(
                 comment: comment,
                 busy: _reactionBusy.contains(comment.commentId),
+                deleting: _deleteBusy.contains(comment.commentId),
                 expanded: _expanded.contains(comment.commentId),
                 repliesLoading: _repliesLoading.contains(comment.commentId),
                 replies: _replies[comment.commentId] ?? const [],
                 replyBusy: _reactionBusy,
+                deleteBusy: _deleteBusy,
                 onReact: () => _react(comment, isReply: false),
                 onReactToReply: (reply) => _react(reply, isReply: true),
                 onToggleReplies: () => _toggleReplies(comment),
                 onReply: () => widget.replyTarget?.value = comment,
+                onDelete: () => _delete(comment, isReply: false),
+                onDeleteReply: (reply) => _delete(reply, isReply: true),
               )),
         if (_isLoadingMore) const CLLoadMoreIndicator(),
         if (_hasNext && !_isLoadingMore)
@@ -295,26 +355,34 @@ class PostCommentsState extends State<PostComments> {
 class _CommentTile extends StatelessWidget {
   final PostComment comment;
   final bool busy;
+  final bool deleting;
   final bool expanded;
   final bool repliesLoading;
   final List<PostComment> replies;
   final Set<String> replyBusy;
+  final Set<String> deleteBusy;
   final VoidCallback onReact;
   final ValueChanged<PostComment> onReactToReply;
   final VoidCallback onToggleReplies;
   final VoidCallback onReply;
+  final VoidCallback onDelete;
+  final ValueChanged<PostComment> onDeleteReply;
 
   const _CommentTile({
     required this.comment,
     required this.busy,
+    required this.deleting,
     required this.expanded,
     required this.repliesLoading,
     required this.replies,
     required this.replyBusy,
+    required this.deleteBusy,
     required this.onReact,
     required this.onReactToReply,
     required this.onToggleReplies,
     required this.onReply,
+    required this.onDelete,
+    required this.onDeleteReply,
   });
 
   @override
@@ -328,8 +396,10 @@ class _CommentTile extends StatelessWidget {
           CommentRow(
             comment: comment,
             busy: busy,
+            deleting: deleting,
             onReact: onReact,
             onReply: onReply,
+            onDelete: onDelete,
           ),
           if (comment.replyCount > 0)
             Padding(
@@ -362,12 +432,14 @@ class _CommentTile extends StatelessWidget {
                     child: CommentRow(
                       comment: reply,
                       busy: replyBusy.contains(reply.commentId),
+                      deleting: deleteBusy.contains(reply.commentId),
                       compact: true,
                       onReact: () => onReactToReply(reply),
                       // Replying to a reply is re-parented server-side to the
                       // top-level ancestor, so the affordance stays on the
                       // parent rather than pretending to nest deeper.
                       onReply: null,
+                      onDelete: () => onDeleteReply(reply),
                     ),
                   )),
           ],
@@ -381,17 +453,27 @@ class _CommentTile extends StatelessWidget {
 class CommentRow extends StatelessWidget {
   final PostComment comment;
   final bool busy;
+
+  /// A delete in flight for this comment - greys the ⋯ out.
+  final bool deleting;
   final bool compact;
   final VoidCallback onReact;
   final VoidCallback? onReply;
+
+  /// Deletes this comment. The ⋯ appears only when this is set AND the acting
+  /// entity wrote the comment; a read-only surface (a feed preview) passes
+  /// nothing and gets no menu.
+  final VoidCallback? onDelete;
 
   const CommentRow({
     super.key,
     required this.comment,
     required this.busy,
+    this.deleting = false,
     this.compact = false,
     required this.onReact,
     this.onReply,
+    this.onDelete,
   });
 
   @override
@@ -503,6 +585,13 @@ class CommentRow extends StatelessWidget {
                         timeSince(comment.createdAt!),
                         style: TextStyle(fontSize: CLType.meta, color: p.text3),
                       ),
+                    if (onDelete != null && isOwnComment(author)) ...[
+                      const SizedBox(width: 2),
+                      CommentOptionsButton(
+                        onDelete: onDelete!,
+                        busy: deleting,
+                      ),
+                    ],
                   ],
                 ),
               ),
