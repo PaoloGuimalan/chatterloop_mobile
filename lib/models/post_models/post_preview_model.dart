@@ -137,6 +137,12 @@ class PostPreview {
   /// Only the author can archive, and Save is hidden while archived.
   final bool isArchived;
 
+  /// Who the post was published to - "public", "connections", "private" or
+  /// "custom" (Post.PRIVACY_STATUS_CHOICES). Shown as an icon in the header so
+  /// the author can see at a glance where something went; the SERVER is what
+  /// actually enforces it.
+  final String privacyStatus;
+
   /// Entities tagged on the post - "is with A, B and C" in the header. Users
   /// AND realms/pages, which is why they reuse the author shape: `tagging[]`
   /// rows carry a full EntitySerializer, same as the post's own entity.
@@ -156,6 +162,7 @@ class PostPreview {
     this.entityReaction,
     this.isSaved = false,
     this.isArchived = false,
+    this.privacyStatus = 'public',
     this.tagged = const [],
   });
 
@@ -180,6 +187,7 @@ class PostPreview {
     int? commentsCount,
     bool? isSaved,
     bool? isArchived,
+    String? privacyStatus,
   }) =>
       PostPreview(
         postId: postId,
@@ -196,6 +204,7 @@ class PostPreview {
             clearEntityReaction ? null : (entityReaction ?? this.entityReaction),
         isSaved: isSaved ?? this.isSaved,
         isArchived: isArchived ?? this.isArchived,
+        privacyStatus: privacyStatus ?? this.privacyStatus,
         tagged: tagged,
       );
 
@@ -235,6 +244,9 @@ class PostPreview {
       entityReaction: json["entity_reaction"]?.toString(),
       isSaved: json["is_saved"] == true,
       isArchived: json["is_archived"] == true,
+      // Defaulted rather than nullable: the column has a default of "public"
+      // server-side, so an absent value means public rather than unknown.
+      privacyStatus: (json["privacy_status"] ?? 'public').toString(),
       tagged: json["tagging"] is List
           ? (json["tagging"] as List)
               .whereType<Map>()

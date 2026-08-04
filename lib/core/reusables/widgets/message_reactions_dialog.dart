@@ -1,9 +1,14 @@
 // Long-press message dialog - quick reactions, the message itself, and the
 // context menu (Reply / Copy / Delete / React).
 //
-// A thin re-implementation of flutter_chat_reactions' ReactionsDialogWidget,
-// which is only ~40 lines of composition. Only its MESSAGE BUBBLE is reused;
-// the context menu and the reactions row are replaced.
+// Was a thin re-implementation of flutter_chat_reactions' ReactionsDialogWidget,
+// built on its MenuItem, MessageBubble and HeroDialogRoute. Those are now
+// defined here instead and the package is gone: between them they were ~40
+// lines (a three-field data class, an Align wrapping a Hero, and a PopupRoute),
+// and 0.2.x restructured itself so that MessageBubble is no longer exported and
+// DefaultData no longer exists. Vendoring four small pieces we already
+// half-owned beats migrating to - and then tracking - a package that supplies
+// almost nothing.
 //
 // Why replace the context menu: it hardcodes its own typography and spacing
 // and exposes no hooks. Labels render at Material's 14 with 24px icons -
@@ -22,8 +27,90 @@ import 'dart:ui';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_chat_reactions/model/menu_item.dart';
-import 'package:flutter_chat_reactions/widgets/message_bubble.dart';
+
+/// One entry in the long-press context menu.
+class MenuItem {
+  const MenuItem({
+    required this.label,
+    required this.icon,
+    this.isDestructive = false,
+  });
+
+  final String label;
+  final IconData icon;
+
+  /// Drawn in the danger colour - Delete, and nothing else so far.
+  final bool isDestructive;
+}
+
+/// The menu every message gets. Was flutter_chat_reactions' DefaultData
+/// .menuItems, which no longer exists in 0.2.x.
+const List<MenuItem> kDefaultMessageMenuItems = [
+  MenuItem(label: 'Reply', icon: Icons.reply),
+  MenuItem(label: 'Copy', icon: Icons.copy),
+  MenuItem(label: 'Delete', icon: Icons.delete_forever, isDestructive: true),
+];
+
+/// The message itself, lifted into the dialog by a Hero so it appears to rise
+/// out of the thread rather than being redrawn on top of it.
+class MessageBubble extends StatelessWidget {
+  const MessageBubble({
+    super.key,
+    required this.id,
+    required this.messageWidget,
+    required this.alignment,
+  });
+
+  final String id;
+  final Widget messageWidget;
+  final Alignment alignment;
+
+  @override
+  Widget build(BuildContext context) =>
+      Align(alignment: alignment, child: Hero(tag: id, child: messageWidget));
+}
+
+/// See-through route that lets the Hero above fly over the conversation.
+///
+/// Deliberately NOT opaque - which is also why CLPageRoute.canTransitionTo
+/// checks `nextRoute.opaque` before running its parallax: this route is a
+/// PageRoute, and treating it as one to slide under exposed a bare strip down
+/// the side of the screen.
+class HeroDialogRoute<T> extends PageRoute<T> {
+  HeroDialogRoute({required WidgetBuilder builder, super.fullscreenDialog})
+      : _builder = builder;
+
+  final WidgetBuilder _builder;
+
+  @override
+  bool get opaque => false;
+
+  @override
+  bool get barrierDismissible => true;
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 300);
+
+  @override
+  bool get maintainState => true;
+
+  @override
+  Color get barrierColor => Colors.black54;
+
+  @override
+  String get barrierLabel => 'Popup dialog open';
+
+  // No transition of its own: the Hero flight IS the animation.
+  @override
+  Widget buildTransitions(BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation, Widget child) =>
+      child;
+
+  @override
+  Widget buildPage(BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation) =>
+      _builder(context);
+}
 
 
 class CLMessageReactionsDialog extends StatefulWidget {
@@ -210,9 +297,9 @@ class _MenuRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    // The package's own field name carries this typo - kept so MenuItem stays
-    // interchangeable with DefaultData.menuItems.
-    final color = item.isDestuctive ? p.pink : p.text;
+    // Spelled correctly now - the package's own field carried a typo
+    // (isDestuctive) that had to be matched while MenuItem came from it.
+    final color = item.isDestructive ? p.pink : p.text;
 
     return InkWell(
       onTap: onTap,

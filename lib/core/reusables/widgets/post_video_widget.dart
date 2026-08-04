@@ -30,8 +30,32 @@ class SharedVideoControllers {
   static String _keyFor(String source, bool isLocalFile) =>
       '${isLocalFile ? 'file' : 'net'}:$source';
 
+  /// Disposal is DEFERRED, not immediate - see [release].
+  static final Map<String, Timer> _pendingDisposal = {};
+
+  /// How long a controller sticks around after its last viewer leaves.
+  ///
+  /// Long enough to cover swiping between a post's videos and back, short
+  /// enough that a scrolled-past video isn't holding a decoder for the session.
+  ///
+  /// ZERO means dispose synchronously, and that is the DEFAULT UNDER TEST.
+  ///
+  /// A widget test fails on any timer still pending when it ends, and this one
+  /// is created during teardown as the tree unmounts - so every test that ever
+  /// renders a video, anywhere, would fail on a timer it never asked for.
+  /// Defaulting it here rather than in each test file means a test that shows a
+  /// post with a video doesn't have to know this class exists.
+  ///
+  /// Settable so the tests that are ABOUT the grace period can opt into it.
+  @visibleForTesting
+  static Duration idleGrace = Platform.environment.containsKey('FLUTTER_TEST')
+      ? Duration.zero
+      : const Duration(seconds: 8);
+
   static SharedVideoEntry acquire(String source, {required bool isLocalFile}) {
     final key = _keyFor(source, isLocalFile);
+    // Coming back to something that was on its way out: keep it.
+    _pendingDisposal.remove(key)?.cancel();
     final entry = _entries.putIfAbsent(key, () {
       final controller = isLocalFile
           ? VideoPlayerController.file(File(source))
@@ -51,10 +75,57 @@ class SharedVideoControllers {
     if (entry == null) return;
     entry.refs--;
     if (entry.refs > 0) return;
-    _entries.remove(key);
-    // Pause first: dispose() on a playing controller has been known to leave
-    // audio running for a beat on Android.
-    entry.controller.pause().whenComplete(entry.controller.dispose);
+
+    // Pause now, dispose LATER. Tearing the decoder down the instant the last
+    // viewer left made switching between a post's videos fail: dispose() is
+    // asynchronous on Android, so opening the next video created a second
+    // decoder while the first was still releasing, and the new one came back
+    // uninitialised - "this video couldn't be played". Holding the entry for a
+    // grace period also means swiping back to a video you just left reuses the
+    // same controller, at the same position, instead of reloading it.
+    entry.controller.pause();
+    _pendingDisposal[key]?.cancel();
+    if (idleGrace == Duration.zero) {
+      _pendingDisposal.remove(key);
+      _entries.remove(key);
+      entry.controller.dispose();
+      return;
+    }
+    _pendingDisposal[key] = Timer(idleGrace, () {
+      _pendingDisposal.remove(key);
+      // Re-check: it may have been picked up again while the timer ran.
+      final current = _entries[key];
+      if (current == null || current.refs > 0) return;
+      _entries.remove(key);
+      current.controller.dispose();
+    });
+  }
+
+  /// Drop a source entirely, so the next [acquire] builds a fresh controller.
+  ///
+  /// For the retry path: an initialize() that failed leaves an entry whose
+  /// future is permanently rejected, and every later viewer would inherit that
+  /// failure however transient it was.
+  static void evict(String source, {required bool isLocalFile}) {
+    final key = _keyFor(source, isLocalFile);
+    _pendingDisposal.remove(key)?.cancel();
+    final entry = _entries.remove(key);
+    entry?.controller.dispose();
+  }
+
+  /// Dispose everything pending immediately. Test-only - the grace period
+  /// would otherwise leave counts non-deterministic between tests.
+  @visibleForTesting
+  static void disposeIdleNow() {
+    for (final timer in _pendingDisposal.values) {
+      timer.cancel();
+    }
+    _pendingDisposal.clear();
+    _entries.removeWhere((key, entry) {
+      if (entry.refs > 0) return false;
+      entry.controller.dispose();
+      return true;
+    });
   }
 
   /// Pause every other video before [keep] starts.
@@ -175,6 +246,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               message: _controller.value.errorDescription == null
                   ? "Video unavailable"
                   : "This video couldn't be played",
+              // A failure here is often transient - a decoder that was still
+              // being released, or a request that timed out. The entry caches a
+              // permanently-rejected future, so retrying has to throw the whole
+              // controller away and build a new one.
+              onRetry: () {
+                SharedVideoControllers.evict(widget.videoUrl,
+                    isLocalFile: widget.isLocalFile);
+                setState(() {
+                  _entry = SharedVideoControllers.acquire(widget.videoUrl,
+                      isLocalFile: widget.isLocalFile);
+                });
+              },
             );
           }
 
@@ -432,7 +515,8 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => _FullscreenVideoPlayerPage(controller: widget.controller),
+        builder: (_) =>
+            _FullscreenVideoPlayerPage(controller: widget.controller),
       ),
     );
   }
@@ -587,8 +671,8 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
                                       if (widget.showFullscreenButton)
                                         InkWell(
                                           onTap: _openFullscreen,
-                                          borderRadius:
-                                              BorderRadius.circular(CLRadii.pill),
+                                          borderRadius: BorderRadius.circular(
+                                              CLRadii.pill),
                                           child: const Padding(
                                             padding: EdgeInsets.all(7),
                                             child: Icon(
@@ -640,10 +724,10 @@ class _FullscreenVideoPlayerPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final aspectRatio = controller.value.isInitialized &&
-            controller.value.aspectRatio > 0
-        ? controller.value.aspectRatio
-        : (16 / 9);
+    final aspectRatio =
+        controller.value.isInitialized && controller.value.aspectRatio > 0
+            ? controller.value.aspectRatio
+            : (16 / 9);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -688,6 +772,7 @@ class _FullscreenVideoPlayerPage extends StatelessWidget {
     );
   }
 }
+
 /// Shown when a video cannot be played at all.
 ///
 /// Sized like the loading placeholder so a card doesn't jump when the failure
@@ -695,8 +780,9 @@ class _FullscreenVideoPlayerPage extends StatelessWidget {
 /// full-width Container.
 class _Unavailable extends StatelessWidget {
   final String message;
+  final VoidCallback? onRetry;
 
-  const _Unavailable({required this.message});
+  const _Unavailable({required this.message, this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -714,9 +800,109 @@ class _Unavailable extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: CLType.caption, color: p.text3),
             ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: onRetry,
+                child: Text(
+                  "Try again",
+                  style: TextStyle(fontSize: CLType.label, color: p.brand),
+                ),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A video's FIRST FRAME, as a still - no controls, no playback.
+///
+/// Used wherever a video is advertised rather than watched: the multi-media
+/// grid, the share preview, the composer's picked files. Those all used to be a
+/// flat surface colour with a play glyph, which told you nothing about which
+/// video you were looking at - and a post with two videos was two identical
+/// grey tiles.
+///
+/// It goes through the same shared registry as the player, so a tile and the
+/// full player for one source share a controller rather than each holding
+/// their own decoder. The controller is initialised and never played: a
+/// video_player showing an initialised, unplayed controller IS its first frame.
+class VideoFirstFrame extends StatefulWidget {
+  final String source;
+  final bool isLocalFile;
+
+  /// Drawn over the frame. Off for a tile that already has its own play glyph.
+  final bool showPlayBadge;
+
+  const VideoFirstFrame({
+    super.key,
+    required this.source,
+    this.isLocalFile = false,
+    this.showPlayBadge = true,
+  });
+
+  @override
+  State<VideoFirstFrame> createState() => _VideoFirstFrameState();
+}
+
+class _VideoFirstFrameState extends State<VideoFirstFrame> {
+  late SharedVideoEntry _entry;
+
+  @override
+  void initState() {
+    super.initState();
+    _entry = SharedVideoControllers.acquire(widget.source,
+        isLocalFile: widget.isLocalFile);
+  }
+
+  @override
+  void dispose() {
+    SharedVideoControllers.release(widget.source,
+        isLocalFile: widget.isLocalFile);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Container(color: p.surface2),
+        FutureBuilder(
+          future: _entry.ready,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done ||
+                snapshot.hasError ||
+                !_entry.controller.value.isInitialized) {
+              // No frame to show yet (or ever) - the badge below still says
+              // "video", so this stays a sensible tile either way.
+              return const SizedBox.shrink();
+            }
+            // Cover, matching the image tiles it sits beside in the grid.
+            return FittedBox(
+              fit: BoxFit.cover,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: _entry.controller.value.aspectRatio * 1000,
+                height: 1000,
+                child: VideoPlayer(_entry.controller),
+              ),
+            );
+          },
+        ),
+        if (widget.showPlayBadge)
+          Center(
+            child: Icon(
+              Icons.play_circle_fill,
+              size: 40,
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+          ),
+      ],
     );
   }
 }

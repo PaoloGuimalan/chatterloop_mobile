@@ -65,6 +65,7 @@ PostPreview _post({
   List<PostPreviewAuthor> tagged = const [],
   bool saved = false,
   bool archived = false,
+  String privacy = 'public',
 }) =>
     PostPreview(
       postId: 'p1',
@@ -80,6 +81,7 @@ PostPreview _post({
       tagged: tagged,
       isSaved: saved,
       isArchived: archived,
+      privacyStatus: privacy,
     );
 
 void main() {
@@ -436,6 +438,32 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('the header shows the audience as an icon', (tester) async {
+      // Icon only - a word on every post would be noise, since most are public.
+      // The icons come from the composer's own table (postPrivacyIcon), so the
+      // one on a post always matches the chip that published it.
+      for (final (status, icon) in [
+        ('public', Icons.public),
+        ('connections', Icons.group),
+        ('private', Icons.lock_outline),
+      ]) {
+        await pump(tester, PostCard(post: _post(privacy: status)));
+        expect(find.byIcon(icon), findsOneWidget, reason: status);
+        expect(tester.takeException(), isNull, reason: status);
+      }
+    });
+
+    testWidgets('the audience icon is as small as the archived one',
+        (tester) async {
+      await pump(
+        tester,
+        PostCard(post: _post(privacy: 'private', archived: true)),
+      );
+      final privacy = tester.getSize(find.byIcon(Icons.lock_outline));
+      final archived = tester.getSize(find.byIcon(Icons.archive_outlined));
+      expect(privacy, archived);
+    });
+
     testWidgets('a reacted post shows its own glyph slot', (tester) async {
       await pump(tester, PostCard(post: _post(entityReaction: 'e_like')));
       // Palette hasn't loaded in a test, so glyphFor is null and the action
@@ -727,10 +755,14 @@ void main() {
         expect(find.byIcon(Icons.close), findsNWidgets(6));
       });
 
-      testWidgets('a video attachment says so rather than showing a frame',
+      testWidgets('a video attachment shows a play badge and its size',
           (tester) async {
-        // Pulling a real frame means a decoder per attachment - the same cost
-        // the feed rows avoid. The size carries the useful information.
+        // The tile now renders the clip's own first frame (VideoFirstFrame)
+        // with this badge over it - two picked videos used to be two identical
+        // grey squares. No frame is available here, since nothing fakes the
+        // video platform in this file, so what's asserted is the part that
+        // holds either way: it reads as a video, and the size is shown because
+        // that's the number that can hit the upload cap.
         await pump(
           tester,
           CLRailSection(

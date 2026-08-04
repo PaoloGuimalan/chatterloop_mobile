@@ -25,6 +25,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
@@ -39,6 +40,23 @@ const List<(String, String, IconData)> _kPrivacyOptions = [
   ('connections', 'Contacts only', Icons.group),
   ('private', 'Only me', Icons.lock_outline),
 ];
+
+/// The icon for a post's privacy status, or null when there is nothing worth
+/// showing.
+///
+/// Reads from the same table the composer's chips are built from, so the icon
+/// on a post always matches the one you picked when you published it - the two
+/// drifting apart would be worse than showing nothing.
+IconData? postPrivacyIcon(String status) {
+  for (final option in _kPrivacyOptions) {
+    if (option.$1 == status) return option.$3;
+  }
+  // "custom" is a real server value with no composer chip yet (it needs an
+  // allow-list picker). It IS restricted, so it gets the closest honest icon
+  // rather than falling through to nothing.
+  if (status == 'custom') return Icons.groups_outlined;
+  return null;
+}
 
 /// Whether [entityId] is the identity you are currently posting AS.
 ///
@@ -156,7 +174,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   }
 
   Future<void> _pickMedia() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.media,
       allowMultiple: true,
     );
@@ -467,9 +485,12 @@ class PostMediaPreviewTile extends StatelessWidget {
                     child: Container(
                       color: p.surface2,
                       child: item.isVideo
-                          ? Center(
-                              child: Icon(Icons.play_circle_fill,
-                                  size: 30, color: p.text3),
+                          // The picked file's own first frame - it is a local
+                          // path, so this costs no download. Same reason as the
+                          // grid: two chosen clips were two identical tiles.
+                          ? VideoFirstFrame(
+                              source: item.path,
+                              isLocalFile: true,
                             )
                           : Image.file(
                               File(item.path),

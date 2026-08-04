@@ -132,7 +132,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   }
 
   Future<void> _pickAttachments() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    final result = await FilePicker.pickFiles(allowMultiple: true);
     if (result == null || !mounted) return;
 
     final rejected = <String>[];

@@ -57,6 +57,11 @@ class RealmProfile {
   final int followersCount;
   final bool isAdmin;
 
+  /// Realm.is_verified - the same blue badge a person's profile gets. Arrives
+  /// on every realm payload (RealmSerializer is fields="__all__"); the app
+  /// simply wasn't reading it, so verified pages showed no badge anywhere.
+  final bool isVerified;
+
   /// Whether the viewing entity already follows this realm - annotated onto
   /// the serializer alongside is_admin/is_member. Drives which of
   /// Follow/Following the profile shows.
@@ -82,6 +87,7 @@ class RealmProfile {
     required this.type,
     required this.followersCount,
     required this.isAdmin,
+    this.isVerified = false,
     this.isFollower = false,
     this.hasConnection = false,
     this.connectionAccomplished,
@@ -106,6 +112,7 @@ class RealmProfile {
           ? json["followers_count"]
           : int.tryParse(json["followers_count"]?.toString() ?? '') ?? 0,
       isAdmin: json["is_admin"] == true,
+      isVerified: json["is_verified"] == true,
       isFollower: json["is_follower"] == true,
       hasConnection: connection["is_connection_present"] == true,
       connectionAccomplished: connection["is_connection_handshaked"] as bool?,

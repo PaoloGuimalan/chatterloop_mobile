@@ -130,7 +130,7 @@ class NotificationRenderer {
   static Future<void> dismissConversation(String conversationId) async {
     try {
       await NotificationThreadStore.clear(conversationId);
-      await _plugin.cancel(notificationIdFor(conversationId));
+      await _plugin.cancel(id: notificationIdFor(conversationId));
     } catch (e) {
       if (kDebugMode) debugPrint('[FCM] dismiss failed: $e');
     }
@@ -207,12 +207,12 @@ class NotificationRenderer {
     );
 
     await _plugin.show(
-      notificationIdFor(conversationId),
+      id: notificationIdFor(conversationId),
       // MessagingStyle supplies its own text on Android, but these are the
       // fallback if the style can't be applied - worth keeping sensible.
-      payload.conversationName ?? senderName,
-      payload.body,
-      NotificationDetails(
+      title: payload.conversationName ?? senderName,
+      body: payload.body,
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           channelId,
           channelName,
@@ -280,10 +280,10 @@ class NotificationRenderer {
       // No stable per-thread identity here, so these get a rotating id and
       // stack as separate rows rather than replacing one another - two contact
       // requests are two things to act on, unlike two messages in one chat.
-      DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff),
-      payload.title ?? 'Chatterloop',
-      payload.body,
-      NotificationDetails(
+      id: DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff),
+      title: payload.title ?? 'Chatterloop',
+      body: payload.body,
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           activityChannelId,
           activityChannelName,
@@ -325,7 +325,7 @@ class NotificationRenderer {
     _initialized = true;
 
     await _plugin.initialize(
-      const InitializationSettings(
+      settings: const InitializationSettings(
         android: AndroidInitializationSettings(_smallIcon),
       ),
     );
@@ -348,7 +348,7 @@ class NotificationRenderer {
     if (android == null) return;
 
     for (final legacy in _legacyChannelIds) {
-      await android.deleteNotificationChannel(legacy);
+      await android.deleteNotificationChannel(channelId: legacy);
     }
 
     await android.createNotificationChannel(

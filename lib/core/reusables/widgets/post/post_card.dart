@@ -19,6 +19,7 @@ import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_share.dart';
@@ -281,6 +282,7 @@ class _PostCardState extends State<PostCard> {
   Widget build(BuildContext context) {
     final p = cl(context);
     final post = _post;
+    final privacyIcon = postPrivacyIcon(post.privacyStatus);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -344,7 +346,9 @@ class _PostCardState extends State<PostCard> {
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (post.datePosted != null || post.isArchived) ...[
+                    if (post.datePosted != null ||
+                        post.isArchived ||
+                        privacyIcon != null) ...[
                       const SizedBox(height: 2),
                       GestureDetector(
                         onTap: _openAuthor,
@@ -356,6 +360,20 @@ class _PostCardState extends State<PostCard> {
                             style: TextStyle(
                                 fontSize: CLType.caption, color: p.text3),
                             children: [
+                              // Before the date, at the same size as the
+                              // Archived marker beside it - an icon on its own,
+                              // since a word for every post's audience would be
+                              // noise on the common case (public).
+                              if (privacyIcon != null) ...[
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 4),
+                                    child: Icon(privacyIcon,
+                                        size: 12, color: p.text3),
+                                  ),
+                                ),
+                              ],
                               if (post.datePosted != null)
                                 TextSpan(text: timeSince(post.datePosted!)),
                               // Archiving doesn't remove the row from the

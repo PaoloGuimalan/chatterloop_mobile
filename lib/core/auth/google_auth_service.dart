@@ -37,14 +37,30 @@ class GoogleAuthService {
   GoogleAuthService._();
   static final GoogleAuthService instance = GoogleAuthService._();
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: const ['email', 'profile', 'openid'],
-    // Empty -> null so google_sign_in falls back to platform defaults rather
-    // than throwing; we still guard on it in signIn() below, since without a
-    // real web client id the token can't be verified server-side anyway.
-    serverClientId:
-        kGoogleServerClientId.isEmpty ? null : kGoogleServerClientId,
-  );
+  /// google_sign_in 7 replaced the constructor with a singleton: configuration
+  /// moved from `GoogleSignIn(...)` into a one-off [GoogleSignIn.initialize]
+  /// call, and scopes moved to the authenticate call.
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+
+  /// initialize() has to complete before authenticate(), and is per-process
+  /// rather than per-sign-in - so the future is cached. Cleared on failure so a
+  /// transient error doesn't permanently poison sign-in.
+  Future<void>? _initialization;
+
+  Future<void> _ensureInitialized() {
+    return _initialization ??= _googleSignIn
+        .initialize(
+      // Empty -> null so it falls back to platform defaults rather than
+      // throwing; isConfigured guards the real case below, since without a web
+      // client id the token can't be verified server-side anyway.
+      serverClientId:
+          kGoogleServerClientId.isEmpty ? null : kGoogleServerClientId,
+    )
+        .catchError((Object error) {
+      _initialization = null;
+      throw error;
+    });
+  }
 
   bool get isConfigured => kGoogleServerClientId.isNotEmpty;
 
@@ -57,21 +73,34 @@ class GoogleAuthService {
           'Google sign-in isn\'t configured (missing web client id).');
     }
     try {
+      await _ensureInitialized();
+
       // Sign out first so the account chooser always appears instead of
       // silently reusing the last account.
       await _googleSignIn.signOut();
 
-      final account = await _googleSignIn.signIn();
-      if (account == null) return null; // user dismissed the chooser
+      // authenticate() replaces signIn(): scopes are a hint passed here rather
+      // than constructor config, it never returns null, and `authentication` is
+      // a plain getter now instead of a future.
+      final account = await _googleSignIn.authenticate(
+        scopeHint: const ['email', 'profile', 'openid'],
+      );
 
-      final auth = await account.authentication;
-      final idToken = auth.idToken;
+      final idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
         throw GoogleAuthException('Google did not return an ID token.');
       }
       return idToken;
     } on GoogleAuthException {
       rethrow;
+    } on GoogleSignInException catch (e) {
+      // A dismissed chooser is an EXCEPTION in v7 where v6 simply returned
+      // null. Callers still treat null as "changed their mind" and anything
+      // thrown as a failure worth showing, so it's translated back here rather
+      // than leaking a package type - and so a cancel never shows an error.
+      if (e.code == GoogleSignInExceptionCode.canceled) return null;
+      if (kDebugMode) print('[GoogleAuthService] sign-in failed: $e');
+      throw GoogleAuthException('Could not sign in with Google.');
     } catch (e) {
       if (kDebugMode) print('[GoogleAuthService] sign-in failed: $e');
       // ApiException 10 (DEVELOPER_ERROR) shows up here when the Android

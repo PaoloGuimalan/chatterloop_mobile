@@ -169,9 +169,7 @@ class _SingleAttachment extends StatelessWidget {
             width: double.infinity,
             height: 200,
             color: p.surface2,
-            alignment: Alignment.center,
-            child: Icon(Icons.play_circle_fill,
-                size: 52, color: Colors.white.withValues(alpha: 0.85)),
+            child: VideoFirstFrame(source: reference.reference),
           ),
         );
       }
@@ -231,13 +229,13 @@ class _AttachmentTile extends StatelessWidget {
               height: double.infinity,
             )
           else
-            // A grid tile never plays inline - initialising several video
-            // controllers at once in a scrolling feed is the reliable way to
-            // stutter it. The tile advertises the video and the viewer plays it.
-            Center(
-              child: Icon(Icons.play_circle_fill,
-                  size: 40, color: Colors.white.withValues(alpha: 0.85)),
-            ),
+            // A grid tile never PLAYS inline, but it does show the video's
+            // first frame - two videos in one post were otherwise two identical
+            // grey rectangles with no clue which was which. The frame comes
+            // from the shared registry, so a tile and the full player for the
+            // same source share one controller rather than each holding a
+            // decoder.
+            VideoFirstFrame(source: reference.reference),
           if (overflow > 0)
             Container(
               color: Colors.black.withValues(alpha: 0.45),

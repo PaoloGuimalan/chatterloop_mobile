@@ -1171,7 +1171,7 @@ class ConversationStateView extends State<ConversationView> {
   /// local placeholder so the staged-preview/pending-message widgets pick
   /// the generic file-card branch instead of misreading it as text/image.
   Future<void> _pickFiles() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    final result = await FilePicker.pickFiles(allowMultiple: true);
     final files = result?.files ?? [];
     if (files.isEmpty || !mounted) return;
     var droppedAny = false;

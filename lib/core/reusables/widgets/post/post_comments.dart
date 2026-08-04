@@ -501,105 +501,122 @@ class CommentRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          // Stack so the options button can FLOAT over the bubble's corner.
+          // Inline in the meta row below, its tap target (which is far taller
+          // than 11pt text) set that row's height - so every comment got a
+          // taller React/Reply/timestamp strip, including the ones with no
+          // button at all, since the row is laid out the same either way.
+          child: Stack(
             children: [
-              // The bubble carries name + text, the way a chat comment reads -
-              // and keeps the reaction row outside it, where it belongs.
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                decoration: BoxDecoration(
-                  color: p.surface2,
-                  borderRadius: BorderRadius.circular(CLRadii.md),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // The name opens the profile too - tapping a name and
-                    // having nothing happen, when the photo beside it works,
-                    // reads as broken.
-                    InkWell(
-                      onTap: () => _openAuthor(context, author),
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              author.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: CLType.caption,
-                                fontWeight: FontWeight.w700,
-                                color: p.text,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // The bubble carries name + text, the way a chat comment reads -
+                  // and keeps the reaction row outside it, where it belongs.
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: p.surface2,
+                      borderRadius: BorderRadius.circular(CLRadii.md),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // The name opens the profile too - tapping a name and
+                        // having nothing happen, when the photo beside it works,
+                        // reads as broken.
+                        InkWell(
+                          onTap: () => _openAuthor(context, author),
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  author.displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: CLType.caption,
+                                    fontWeight: FontWeight.w700,
+                                    color: p.text,
+                                  ),
+                                ),
+                              ),
+                              if (author.isVerified) ...[
+                                const SizedBox(width: 4),
+                                Icon(Icons.verified, size: 12, color: p.brand),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (comment.text.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text.rich(
+                            TextSpan(
+                              children: commentTextSpans(
+                                comment.text,
+                                TextStyle(
+                                    fontSize: CLType.bodySm,
+                                    height: 1.35,
+                                    color: p.text),
+                                mentionColor: p.brand,
                               ),
                             ),
                           ),
-                          if (author.isVerified) ...[
-                            const SizedBox(width: 4),
-                            Icon(Icons.verified, size: 12, color: p.brand),
-                          ],
                         ],
-                      ),
+                      ],
                     ),
-                    if (comment.text.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text.rich(
-                        TextSpan(
-                          children: commentTextSpans(
-                            comment.text,
-                            TextStyle(
-                                fontSize: CLType.bodySm,
-                                height: 1.35,
-                                color: p.text),
-                            mentionColor: p.brand,
-                          ),
+                  ),
+                  if (comment.linkPreview != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: LinkPreviewCard(preview: comment.linkPreview),
+                    ),
+                  Padding(
+                    // Added left padding so actions align nicely under the text bubble
+                    padding: const EdgeInsets.only(top: 2, left: 12, right: 12),
+                    child: Row(
+                      children: [
+                        _CommentAction(
+                          label: comment.entityReaction != null
+                              ? "Reacted"
+                              : "React",
+                          active: comment.entityReaction != null,
+                          onTap: busy ? null : onReact,
                         ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (comment.linkPreview != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: LinkPreviewCard(preview: comment.linkPreview),
-                ),
-              Padding(
-                // Added left padding so actions align nicely under the text bubble
-                padding: const EdgeInsets.only(top: 2, left: 12, right: 12),
-                child: Row(
-                  children: [
-                    _CommentAction(
-                      label:
-                          comment.entityReaction != null ? "Reacted" : "React",
-                      active: comment.entityReaction != null,
-                      onTap: busy ? null : onReact,
+                        if (onReply != null) ...[
+                          const SizedBox(width: 12),
+                          _CommentAction(label: "Reply", onTap: onReply),
+                        ],
+                        if (comment.reactions.isNotEmpty) ...[
+                          const SizedBox(width: 12),
+                          ReactionSummary(reactions: comment.reactions),
+                        ],
+                        const Spacer(),
+                        if (comment.createdAt != null)
+                          Text(
+                            timeSince(comment.createdAt!),
+                            style: TextStyle(
+                                fontSize: CLType.meta, color: p.text3),
+                          ),
+                      ],
                     ),
-                    if (onReply != null) ...[
-                      const SizedBox(width: 12),
-                      _CommentAction(label: "Reply", onTap: onReply),
-                    ],
-                    if (comment.reactions.isNotEmpty) ...[
-                      const SizedBox(width: 12),
-                      ReactionSummary(reactions: comment.reactions),
-                    ],
-                    const Spacer(),
-                    if (comment.createdAt != null)
-                      Text(
-                        timeSince(comment.createdAt!),
-                        style: TextStyle(fontSize: CLType.meta, color: p.text3),
-                      ),
-                    if (onDelete != null && isOwnComment(author)) ...[
-                      const SizedBox(width: 2),
-                      CommentOptionsButton(
-                        onDelete: onDelete!,
-                        busy: deleting,
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                ],
               ),
+              // Floated over the bubble's top-right corner: out of the layout,
+              // so its tap target can be a comfortable size without setting the
+              // height of any row. The bubble's own 12px padding keeps it clear
+              // of the text.
+              if (onDelete != null && isOwnComment(author))
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: CommentOptionsButton(
+                    onDelete: onDelete!,
+                    busy: deleting,
+                  ),
+                ),
             ],
           ),
         ),
@@ -714,8 +731,7 @@ class _CommentComposerState extends State<CommentComposer> {
       return;
     }
 
-    final active =
-        activeMentionQuery(_controller.text, selection.baseOffset);
+    final active = activeMentionQuery(_controller.text, selection.baseOffset);
     if (active == null) {
       _closeMentions();
       return;

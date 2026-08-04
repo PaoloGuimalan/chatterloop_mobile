@@ -145,6 +145,22 @@ const PostReference _video = PostReference(
 );
 
 void main() {
+  // Controllers now outlive their widgets by a grace period (see
+  // SharedVideoControllers.release), and the registry is static - so without
+  // this, one test's controller is handed to the next, which then measures the
+  // PREVIOUS video's aspect ratio. Isolation has to be explicit.
+  setUp(() {
+    // Zero = dispose synchronously, so no 8-second timer is left pending when
+    // the tree unmounts. The two tests that are ABOUT the grace period opt back
+    // into it explicitly.
+    SharedVideoControllers.idleGrace = Duration.zero;
+    SharedVideoControllers.disposeIdleNow();
+  });
+  tearDown(() {
+    SharedVideoControllers.idleGrace = Duration.zero;
+    SharedVideoControllers.disposeIdleNow();
+  });
+
   const screen = Size(360, 900);
 
   /// The card's own cap - PostAttachments' _kMaxInlineHeightFactor.
@@ -216,7 +232,8 @@ void main() {
   // both widgets look correct on their own.
   group('one controller per source', () {
     setUp(() {
-      // A leak from an earlier test would make the counts below meaningless.
+      // The file-level setUp above has already flushed; this just makes the
+      // precondition these counts depend on explicit.
       expect(SharedVideoControllers.activeCount, 0);
     });
 
@@ -299,6 +316,7 @@ void main() {
     });
 
     testWidgets('the last one out disposes it', (tester) async {
+      SharedVideoControllers.idleGrace = const Duration(seconds: 8);
       final fake = _FakeVideoPlayerPlatform(const Size(1280, 720));
       VideoPlayerPlatform.instance = fake;
       tester.view.physicalSize = screen;
@@ -320,6 +338,50 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
       await tester.pump();
 
+      // Still parked, deliberately: switching between a post's videos used to
+      // fail because the old decoder was torn down the instant its widget went,
+      // and the next one initialised while it was still releasing.
+      // (grace enabled at the top of this test)
+      expect(SharedVideoControllers.activeCount, 1);
+
+      // Gone once the grace period expires.
+      await tester.pump(const Duration(seconds: 9));
+      expect(SharedVideoControllers.activeCount, 0);
+    });
+
+    testWidgets('coming back within the grace period reuses the controller',
+        (tester) async {
+      SharedVideoControllers.idleGrace = const Duration(seconds: 8);
+      // Swiping to the next video in a post and back again - the case that
+      // reported "video cannot play". No second controller is built, so there
+      // is nothing to collide with a decoder that is still releasing.
+      final fake = _FakeVideoPlayerPlatform(const Size(1280, 720));
+      VideoPlayerPlatform.instance = fake;
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      const shown = MaterialApp(
+        home: Scaffold(body: PostAttachments(references: [_video])),
+      );
+      const hidden = MaterialApp(home: Scaffold(body: SizedBox()));
+
+      await tester.pumpWidget(shown);
+      await tester.pump();
+      await tester.pump();
+      expect(fake.created, 1);
+
+      await tester.pumpWidget(hidden);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpWidget(shown);
+      await tester.pump();
+      await tester.pump();
+
+      expect(fake.created, 1, reason: 'reused, not rebuilt');
+      expect(SharedVideoControllers.activeCount, 1);
+
+      await tester.pumpWidget(hidden);
+      await tester.pump(const Duration(seconds: 9));
       expect(SharedVideoControllers.activeCount, 0);
     });
   });

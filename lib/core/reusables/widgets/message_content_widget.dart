@@ -18,9 +18,6 @@ import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_chat_reactions/model/menu_item.dart';
-import 'package:flutter_chat_reactions/utilities/default_data.dart';
-import 'package:flutter_chat_reactions/utilities/hero_dialog_route.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 
 /// Mirrors webapp's EmojiPickerHandler.tsx QUICK_REACTIONS exactly. The
@@ -34,7 +31,7 @@ const List<String> _quickReactions = ['👍', '❤️', '😆', '😮', '😢', 
 /// Default Reply/Copy/Delete plus a "React" entry that opens the full emoji
 /// picker - real Icon(Icons.add_reaction_outlined), not an emoji character.
 final List<MenuItem> _reactionMenuItems = [
-  ...DefaultData.menuItems,
+  ...kDefaultMessageMenuItems,
   const MenuItem(label: 'React', icon: Icons.add_reaction_outlined),
 ];
 

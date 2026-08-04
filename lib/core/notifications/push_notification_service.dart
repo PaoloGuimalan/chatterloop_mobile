@@ -97,7 +97,7 @@ class PushNotificationService {
 
   Future<void> _initLocalNotifications() async {
     await _local.initialize(
-      const InitializationSettings(
+      settings: const InitializationSettings(
         android: AndroidInitializationSettings('@drawable/ic_stat_chatterloop'),
       ),
       onDidReceiveNotificationResponse: (resp) {

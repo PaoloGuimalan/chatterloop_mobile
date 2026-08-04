@@ -240,6 +240,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                         username: realm.slug ?? realm.id,
                         avatarSrc: realm.profile,
                         coverSrc: realm.coverPhoto,
+                        isBadged: realm.isVerified,
                         actions: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
                           child: _actions(p, realm),
