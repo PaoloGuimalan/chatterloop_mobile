@@ -45,6 +45,39 @@ class Emoji {
   }
 }
 
+/// One uploaded attachment on its way INTO a new post.
+///
+/// The outgoing counterpart of [PostReference], and deliberately a separate
+/// type: this is what /posts/upload hands back (a CDN url plus a name and a
+/// media type), not what the feed hands out - the read side also carries a
+/// referenceID, a post id and an order the client never sends.
+class PostMediaReference {
+  /// CDN url from the upload step - `fileDetails.data` in its response.
+  final String url;
+  final String fileName;
+
+  /// "image" or "video", as the upload response reports it.
+  final String mediaType;
+  final String caption;
+
+  const PostMediaReference({
+    required this.url,
+    required this.fileName,
+    required this.mediaType,
+    this.caption = "",
+  });
+
+  /// [index] is the 1-based position web assigns (`id: i + 1`); the server
+  /// sorts references by it.
+  Map<String, dynamic> toJson(int index) => {
+        'id': index,
+        'name': fileName,
+        'reference': url,
+        'caption': caption,
+        'referenceMediaType': mediaType,
+      };
+}
+
 /// A comment or a reply (GET/POST /api/newsfeed/comments).
 ///
 /// Threads are flattened to TWO levels server-side: a top-level comment and

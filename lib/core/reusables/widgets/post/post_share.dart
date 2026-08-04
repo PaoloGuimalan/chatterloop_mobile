@@ -399,7 +399,9 @@ class _SharedPostPreviewRecursiveState
           ],
           if (displayableReferences(post.references).isNotEmpty) ...[
             const SizedBox(height: 10),
-            PostAttachments(references: post.references),
+            // A preview of what you're about to publish - it doesn't need a
+            // decoder running behind the share sheet.
+            PostAttachments(references: post.references, playInline: false),
           ],
           if (post.isShared) ...[
             const SizedBox(height: 10),

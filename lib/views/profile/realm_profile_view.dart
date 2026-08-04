@@ -11,7 +11,9 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
+import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_feed.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
@@ -246,6 +248,24 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                       const SizedBox(height: 10),
                       _details(p, realm),
                       const SizedBox(height: 16),
+                      // A page is an entity like any other here. NOT gated on
+                      // is_admin: administering a page isn't being it. While
+                      // you're acting as your personal account this profile is
+                      // someone else's, so the composer pre-tags it and the
+                      // post lands on YOUR feed - which is what the server
+                      // would do anyway, since it resolves the author from the
+                      // acting entity. Switch to the page and the same
+                      // composer publishes as the page. See isActingEntity.
+                      if (realm.entityId.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: CLSpacing.contentGutter),
+                          child: ProfileComposerCard.forProfile(
+                            profile: _realmAsTag(realm),
+                            ownPlaceholder: "Publish a post",
+                            onPosted: () => _feedKey.currentState?.reload(),
+                          ),
+                        ),
                       // Keyed on the slug, which is what the endpoint resolves;
                       // realm.id is the fallback the header already uses when a
                       // realm has no slug.
@@ -261,6 +281,27 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                 ),
     );
   }
+
+  /// This page as a tag chip for the composer - the same shape the user
+  /// profile passes, which is what lets one rule cover both kinds.
+  ///
+  /// `type: "realm"` is what makes the picker render it as a page and the
+  /// placeholder read "page" rather than "wall"; the entity id is what the
+  /// server matches `tagging.users` on, identically for people and pages.
+  SearchResultUser _realmAsTag(RealmProfile realm) => SearchResultUser(
+        id: realm.id,
+        entityId: realm.entityId,
+        username: realm.slug ?? "",
+        firstName: realm.name,
+        middleName: "",
+        lastName: "",
+        profile: realm.profile,
+        hasConnection: false,
+        connectionAccomplished: false,
+        isActionByEntity: false,
+        type: "realm",
+        realmType: realm.type,
+      );
 
   /// Sits in the same slot the user profile fills with Add Contact / Message,
   /// so the two screens line up.

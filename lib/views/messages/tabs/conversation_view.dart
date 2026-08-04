@@ -20,6 +20,7 @@ import 'package:chatterloop_app/core/reusables/widgets/message_content_widget.da
 import 'package:chatterloop_app/core/reusables/widgets/pending_content_widget.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/requests/call_api.dart';
 import 'package:chatterloop_app/models/call_models/call_session_model.dart';
@@ -105,12 +106,6 @@ class ConversationView extends StatefulWidget {
   @override
   ConversationStateView createState() => ConversationStateView();
 }
-
-/// Matches webapp's ConversationV2.tsx MAX_ATTACHMENT_SIZE - files over
-/// this are silently dropped client-side (mirrors webapp's toast: "Cannot
-/// upload files greater than 25mb") rather than sent and rejected by the
-/// server's own equal 25MB multiparty.Form({maxFilesSize}) limit.
-const int _maxAttachmentBytes = 25 * 1024 * 1024;
 
 class ConversationStateView extends State<ConversationView> {
   StreamSubscription<SSEModel>? _eventBusSubscription;
@@ -1140,7 +1135,9 @@ class ConversationStateView extends State<ConversationView> {
   void _attachmentTooLarge() {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Cannot upload files greater than 25mb")),
+      SnackBar(
+          content:
+              Text("Cannot upload files greater than $kMaxUploadLabel")),
     );
   }
 
@@ -1155,7 +1152,7 @@ class ConversationStateView extends State<ConversationView> {
     var droppedAny = false;
     final accepted = <({String path, String messageType})>[];
     for (final file in picked) {
-      if (await File(file.path).length() > _maxAttachmentBytes) {
+      if (await File(file.path).length() > kMaxUploadBytes) {
         droppedAny = true;
         continue;
       }
@@ -1182,7 +1179,7 @@ class ConversationStateView extends State<ConversationView> {
     for (final file in files) {
       final path = file.path;
       if (path == null) continue;
-      if (await File(path).length() > _maxAttachmentBytes) {
+      if (await File(path).length() > kMaxUploadBytes) {
         droppedAny = true;
         continue;
       }
@@ -1274,7 +1271,7 @@ class ConversationStateView extends State<ConversationView> {
     if (!mounted) return;
     setState(() => _isRecordingVoice = false);
     if (path == null || conversationInfo == null) return;
-    if (await File(path).length() > _maxAttachmentBytes) {
+    if (await File(path).length() > kMaxUploadBytes) {
       _attachmentTooLarge();
       return;
     }

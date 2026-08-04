@@ -5,6 +5,7 @@
 // tally is the kind of bug that only shows up as a count that drifts the longer
 // you use the app.
 
+import 'package:chatterloop_app/core/design/rails.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
@@ -12,12 +13,14 @@ import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_comments.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_item.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,6 +35,18 @@ const _author = PostPreviewAuthor(
 
 PostReference _ref(String id, String type) =>
     PostReference(referenceId: id, reference: 'https://x/$id', mediaType: type);
+
+SearchResultUser _searchUser(String name, String entityId) => SearchResultUser(
+      id: 'a-$entityId',
+      entityId: entityId,
+      username: name.toLowerCase(),
+      firstName: name,
+      middleName: '',
+      lastName: '',
+      hasConnection: false,
+      connectionAccomplished: false,
+      isActionByEntity: false,
+    );
 
 PostPreviewAuthor _tag(String name, {bool realm = false}) => PostPreviewAuthor(
       entityId: 'e-$name',
@@ -386,24 +401,34 @@ void main() {
       expect(find.text('0'), findsNothing);
     });
 
-    testWidgets('a feed row lays out and opens the post', (tester) async {
-      // PostItem is PostCard inside feed chrome - the tap target and the card
-      // surface are what it adds, so both are checked here rather than
-      // re-testing the body.
-      var opened = false;
+    testWidgets('a feed row opens the post from its comments, and only there',
+        (tester) async {
+      // The row's body is NOT a way in. Tapping a video in a row has to play
+      // it, and tapping a link has to follow it - neither can navigate away
+      // mid-gesture - so the comment affordances are the only route into the
+      // post. Both of them count: the action bar's "Comment" and the "N
+      // comments" line above it.
+      var opened = 0;
       await pump(
         tester,
         PostItem(
           post: _post(comments: 2, tagged: [_tag('Bea')]),
-          onOpen: () => opened = true,
+          onOpen: () => opened++,
         ),
       );
       expect(tester.takeException(), isNull);
 
-      // The caption is the body's tap target for opening.
       await tester.tap(find.textContaining('Sunrise run'));
       await tester.pump();
-      expect(opened, isTrue);
+      expect(opened, 0, reason: 'the caption is not a tap target');
+
+      await tester.tap(find.text('Comment'));
+      await tester.pump();
+      expect(opened, 1);
+
+      await tester.tap(find.text('2 comments'));
+      await tester.pump();
+      expect(opened, 2);
     });
 
     testWidgets('a feed row skeleton lays out', (tester) async {
@@ -429,14 +454,17 @@ void main() {
     setUp(() => ReactionPalette.seed(const []));
 
     /// Switch the store's acting entity, the way an entity switch does.
-    void actAs(String entityId) {
+    void actAs(String entityId,
+        {bool isPrivate = false, ActiveEntity? activeEntity}) {
       appStore.dispatch(DispatchModel(
         setUserAuthT,
         UserAuth(
           true,
           UserAccount('account-1', 'me', 'Me', '', 'Mine', null, true, true,
               null, null, null, null,
-              personalEntityId: entityId),
+              personalEntityId: entityId,
+              activeEntity: activeEntity,
+              isPrivate: isPrivate),
         ),
       ));
     }
@@ -541,6 +569,206 @@ void main() {
         CommentRow(comment: mine, busy: false, onReact: () {}, onDelete: () {}),
       );
       expect(find.byIcon(Icons.more_horiz), findsNothing);
+    });
+
+    // Writing on someone's profile is a post of YOUR OWN that tags them -
+    // there is no "post to their wall" server-side. So the composer opened
+    // from a visited profile starts with that profile selected, and the one
+    // opened from your own (or anywhere else) starts empty. Removable and
+    // fully selectable either way.
+    group('composer tagging', () {
+      Future<void> openComposer(
+        WidgetTester tester, {
+        SearchResultUser? autoTag,
+      }) async {
+        await pump(
+          tester,
+          ProfileComposerCard(
+            placeholder: "Share your thoughts…",
+            autoTag: autoTag,
+            onPosted: () {},
+          ),
+        );
+        await tester.tap(find.text("Share your thoughts…"));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('a visited profile arrives pre-tagged', (tester) async {
+        actAs('me');
+        await openComposer(tester, autoTag: _searchUser('Bea', 'e-bea'));
+
+        // The picker's own summary, plus the chip itself.
+        expect(find.text("Tagged 1"), findsOneWidget);
+        expect(find.text("Bea"), findsOneWidget);
+      });
+
+      testWidgets('your own profile starts with nobody tagged',
+          (tester) async {
+        actAs('me');
+        await openComposer(tester);
+
+        expect(find.text("Tag people or pages"), findsOneWidget);
+        expect(find.text("Tagged 1"), findsNothing);
+      });
+
+      // "Mine" is the entity you are POSTING AS, and nothing else. Managing a
+      // page doesn't make its profile yours: while you're on your personal
+      // account it's another entity, so it pre-tags like a stranger's would.
+      // Anything else would be a lie about where the post lands - the server
+      // resolves the author from the acting entity, not from who administers
+      // what.
+      group('a page is only yours while you are it', () {
+        final page = SearchResultUser(
+          id: 'r1',
+          entityId: 'e-page',
+          username: 'manila-runners',
+          firstName: 'Manila Runners',
+          middleName: '',
+          lastName: '',
+          hasConnection: false,
+          connectionAccomplished: false,
+          isActionByEntity: false,
+          type: 'realm',
+        );
+
+        Future<void> pumpFor(WidgetTester tester) async {
+          await pump(
+            tester,
+            ProfileComposerCard.forProfile(
+              profile: page,
+              ownPlaceholder: "Publish a post",
+              onPosted: () {},
+            ),
+          );
+        }
+
+        testWidgets('an ADMIN on their personal account is a visitor',
+            (tester) async {
+          // The reported bug: administering the page let you post as it.
+          actAs('me');
+          await pumpFor(tester);
+
+          expect(find.text("Write on Manila Runners's page…"), findsOneWidget);
+          expect(find.text("Publish a post"), findsNothing);
+
+          await tester.tap(find.text("Write on Manila Runners's page…"));
+          await tester.pumpAndSettle();
+          expect(find.text("Tagged 1"), findsOneWidget);
+        });
+
+        testWidgets('switched to the page, it is yours', (tester) async {
+          actAs('e-page',
+              activeEntity:
+                  const ActiveEntity(id: 'e-page', type: 'realm'));
+          await pumpFor(tester);
+
+          expect(find.text("Publish a post"), findsOneWidget);
+
+          await tester.tap(find.text("Publish a post"));
+          await tester.pumpAndSettle();
+          expect(find.text("Tag people or pages"), findsOneWidget);
+          expect(find.text("Tagged 1"), findsNothing);
+        });
+      });
+
+      testWidgets('the Photo button sits on the left, Post on the right',
+          (tester) async {
+        actAs('me');
+        await pump(
+          tester,
+          ProfileComposerCard(
+            placeholder: "Share your thoughts…",
+            onPosted: () {},
+          ),
+        );
+
+        final card = tester.getRect(find.byType(ProfileComposerCard));
+        final icon = tester.getRect(find.byIcon(Icons.image_outlined));
+        final post = tester.getRect(find.text("Post"));
+
+        // BOTH edges are measured, and both against the card's own edges
+        // rather than its centre - each loose comparison passed a layout that
+        // was still wrong. A centred Photo sat left of centre anyway (it shared
+        // the row with a narrow Post), and a Post pushed inward by a Spacer's
+        // leftover slack was still right of centre.
+        expect(icon.left - card.left, lessThan(40));
+        expect(card.right - post.right, lessThan(40));
+        expect(icon.right, lessThan(post.left));
+      });
+
+      testWidgets('attachments preview as a scrollable rail of thumbnails',
+          (tester) async {
+        // Six is past what fits at 360px, which is the case that mattered: the
+        // rail scrolls instead of the sheet growing a column of rows.
+        await pump(
+          tester,
+          CLRailSection(
+            title: "6 attachments",
+            gap: 8,
+            children: [
+              for (var i = 0; i < 6; i++)
+                PostMediaPreviewTile(
+                  item: PendingMedia(
+                    path: '/tmp/photo$i.jpg',
+                    name: 'photo$i.jpg',
+                    size: 2 * 1024 * 1024,
+                  ),
+                  onRemove: () {},
+                ),
+            ],
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(PostMediaPreviewTile), findsNWidgets(6));
+        // A thumbnail each, not a filename each.
+        expect(find.text('photo0.jpg'), findsNothing);
+        // Removable in place - no need to reopen the picker to drop one.
+        expect(find.byIcon(Icons.close), findsNWidgets(6));
+      });
+
+      testWidgets('a video attachment says so rather than showing a frame',
+          (tester) async {
+        // Pulling a real frame means a decoder per attachment - the same cost
+        // the feed rows avoid. The size carries the useful information.
+        await pump(
+          tester,
+          CLRailSection(
+            title: "1 attachment",
+            children: [
+              PostMediaPreviewTile(
+                item: PendingMedia(
+                  path: '/tmp/clip.mp4',
+                  name: 'clip.mp4',
+                  size: 8 * 1024 * 1024,
+                ),
+                onRemove: () {},
+              ),
+            ],
+          ),
+        );
+
+        expect(find.byIcon(Icons.play_circle_fill), findsOneWidget);
+        expect(find.text('Video · 8.0 MB'), findsOneWidget);
+      });
+
+      // The audience a post starts with, matching what the server would apply
+      // anyway when `privacy.status` is absent - so the sheet shows what will
+      // actually happen rather than claiming Public and being overridden.
+      test('a private profile defaults to contacts only', () {
+        actAs('me');
+        expect(defaultPostPrivacy(), 'public');
+
+        actAs('me', isPrivate: true);
+        expect(defaultPostPrivacy(), 'connections');
+
+        // Profile privacy is a person-level setting; a page has none, so
+        // posting AS one is public regardless.
+        actAs('me',
+            isPrivate: true,
+            activeEntity: const ActiveEntity(id: 'e-page', type: 'realm'));
+        expect(defaultPostPrivacy(), 'public');
+      });
     });
 
     testWidgets('a comment with no delete handler has no ⋯', (tester) async {

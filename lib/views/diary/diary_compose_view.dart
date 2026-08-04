@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:chatterloop_app/views/diary/widgets/mood_picker_sheet.dart';
 import 'package:file_picker/file_picker.dart';
@@ -34,9 +35,6 @@ class DiaryComposeScreen extends StatefulWidget {
 }
 
 class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
-  /// Matches NewEntry.tsx's "Cannot upload files greater than 25mb".
-  static const int _maxFileBytes = 25 * 1024 * 1024;
-
   final FleatherController _editor = FleatherController();
   final FocusNode _editorFocus = FocusNode();
   final TextEditingController _title = TextEditingController();
@@ -141,7 +139,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     for (final file in result.files) {
       final path = file.path;
       if (path == null) continue;
-      if (file.size > _maxFileBytes) {
+      if (file.size > kMaxUploadBytes) {
         rejected.add(file.name);
         continue;
       }
@@ -151,7 +149,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
     setState(() {});
     if (rejected.isNotEmpty && mounted) {
-      _toast("Skipped ${rejected.length} file(s) over 25MB");
+      _toast("Skipped ${rejected.length} file(s) over $kMaxUploadLabel");
     }
   }
 
@@ -548,7 +546,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
               ],
             ),
             if (_attachments.isEmpty)
-              Text("Up to 25MB per file",
+              Text("Up to $kMaxUploadLabel per file",
                   style: TextStyle(color: p.text3, fontSize: CLType.caption))
             else
               ..._attachments.map((a) => Padding(

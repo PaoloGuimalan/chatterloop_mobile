@@ -1,5 +1,5 @@
-// Newsfeed interactions (Django user_service): reactions, comments, saves and
-// sharing. Verified against webapp's requests.ts (ReactionSaveRequest,
+// Newsfeed interactions (Django user_service): reactions, comments, saves,
+// post creation and sharing. Verified against webapp's requests.ts (ReactionSaveRequest,
 // CommentReactionSaveRequest, GetReactionTotalRequest, GetCommentsRequest,
 // SaveCommentRequest, CreatePostRequest) and user_service/newsfeed/views.py.
 //
@@ -324,6 +324,63 @@ class NewsfeedApi {
         data: {'comment_id': commentId},
       );
       return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Create an ordinary post - caption, optional media, optional tags.
+  ///
+  /// Same Node endpoint and same signed envelope as [sharePostRequest]; the two
+  /// differ only in what they put in `content.references` and `type`. Media has
+  /// to be uploaded FIRST (ProfileApi.uploadMediaRequest) - this takes the CDN
+  /// references that upload returns, exactly as web's composer does since the
+  /// two-step upload flow landed.
+  ///
+  /// [taggedEntityIds] are ENTITY ids and may be people OR pages.
+  ///
+  /// The author is the ACTING entity, resolved server-side from the token - so
+  /// posting while switched to a page publishes as that page. There is no
+  /// "post to someone else's wall": writing on a profile you're visiting is a
+  /// post of your own that TAGS them, which is why the composer pre-selects
+  /// that profile instead of addressing the post anywhere.
+  Future<bool> createPostRequest({
+    required String caption,
+    List<PostMediaReference> media = const [],
+    List<String> taggedEntityIds = const [],
+    String privacy = "public",
+  }) async {
+    final hasMedia = media.isNotEmpty;
+    final payload = {
+      'content': {
+        'isShared': false,
+        'references': [
+          for (var i = 0; i < media.length; i++) media[i].toJson(i + 1),
+        ],
+        'data': caption,
+      },
+      'type': {
+        'fileType': hasMedia ? 'media' : 'text',
+        'contentType': hasMedia ? 'media' : 'text',
+      },
+      'tagging': {
+        'isTagged': taggedEntityIds.isNotEmpty,
+        'users': taggedEntityIds,
+      },
+      'privacy': {'status': privacy, 'users': []},
+      'onfeed': 'feed',
+    };
+
+    try {
+      final response = await _nodeDio.post(
+        _endpoints.createPost,
+        data: {'token': JwtCodec.sign(payload)},
+      );
+      return response.data["status"] != false;
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

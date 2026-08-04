@@ -7,6 +7,7 @@ import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/core/requests/settings_api.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
@@ -447,6 +448,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return me.username == profile!.username;
   }
 
+  /// This profile as a tag chip for the composer. The picker speaks
+  /// SearchResultUser, and a profile payload carries everything it needs -
+  /// so no lookup, and the chip is there before the sheet even opens.
+  SearchResultUser? _profileAsTag() {
+    if (profile == null || profile!.entityId.isEmpty) return null;
+    return SearchResultUser(
+      id: profile!.id,
+      entityId: profile!.entityId,
+      username: profile!.username,
+      firstName: profile!.firstName,
+      middleName: profile!.middleName,
+      lastName: profile!.lastName,
+      profile: profile!.profile,
+      hasConnection: profile!.hasConnection == true,
+      connectionAccomplished: profile!.connectionAccomplished == true,
+      isActionByEntity: false,
+    );
+  }
+
   Widget _moreMenu(CLPalette p) {
     return Padding(
       padding: const EdgeInsets.only(right: 10),
@@ -708,6 +728,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       // request that can only ever come back empty.
                       if (profile!.canView) ...[
                         const SizedBox(height: 16),
+                        // Sits directly above the feed, like web's. Gated on
+                        // the same canView as the feed itself: writing on a
+                        // profile means tagging its owner in a post, and a
+                        // profile you can't see isn't one you can write on.
+                        // No entity id means nothing to tag and no way to tell
+                        // whose profile this is - so no composer, rather than
+                        // one that might post the wrong thing.
+                        if (profile!.entityId.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: CLSpacing.contentGutter),
+                            // Own-vs-visitor, the placeholder and the
+                            // pre-selected tag are all decided from the acting
+                            // entity inside the card - see isActingEntity.
+                            child: ProfileComposerCard.forProfile(
+                              profile: _profileAsTag()!,
+                              onPosted: () => _feedKey.currentState?.reload(),
+                            ),
+                          ),
                         ProfileFeed(
                           key: _feedKey,
                           handle: profile!.username,

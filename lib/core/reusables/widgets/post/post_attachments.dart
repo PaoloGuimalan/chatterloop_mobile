@@ -35,7 +35,25 @@ List<PostReference> displayableReferences(List<PostReference> references) =>
 class PostAttachments extends StatelessWidget {
   final List<PostReference> references;
 
-  const PostAttachments({super.key, required this.references});
+  /// Whether a lone video gets a live player, or a poster that opens one.
+  ///
+  /// False in a FEED row, for the same reason a grid tile has never played
+  /// inline (see [_AttachmentTile]): every player is a platform-level decoder,
+  /// and a feed is a list of them. Ten video posts scrolled past would leave
+  /// ten alive.
+  ///
+  /// It also fixed a real symptom. Opening a post FROM a feed row left that
+  /// row's player alive underneath - two controllers on the same URL at once -
+  /// and the screen's one drew nothing but its background. The same post opened
+  /// from search, with nothing playing behind it, was fine. A row that never
+  /// starts a player can't collide with the screen's.
+  final bool playInline;
+
+  const PostAttachments({
+    super.key,
+    required this.references,
+    this.playInline = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +65,11 @@ class PostAttachments extends StatelessWidget {
 
     Widget layout;
     if (media.length == 1) {
-      layout = _SingleAttachment(reference: media.first, maxHeight: maxHeight);
+      layout = _SingleAttachment(
+        reference: media.first,
+        maxHeight: maxHeight,
+        playInline: playInline,
+      );
     } else if (media.length == 2) {
       layout = SizedBox(
         height: 220,
@@ -120,17 +142,49 @@ class PostAttachments extends StatelessWidget {
 class _SingleAttachment extends StatelessWidget {
   final PostReference reference;
   final double maxHeight;
+  final bool playInline;
 
-  const _SingleAttachment({required this.reference, required this.maxHeight});
+  const _SingleAttachment({
+    required this.reference,
+    required this.maxHeight,
+    this.playInline = true,
+  });
 
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
     if (reference.isVideo) {
+      if (!playInline) {
+        // A feed row advertises the video; the viewer plays it. Tapping opens
+        // the same full-screen gallery a photo does, so media behaves the same
+        // way whichever kind it is.
+        return GestureDetector(
+          onTap: () => openPostGallery(context, [reference], 0),
+          child: Container(
+            // A fixed height, not the video's shape: that shape isn't known
+            // until a player has loaded it, and loading one is the thing this
+            // branch exists to avoid. Matches the multi-media grid, which sizes
+            // its rows the same way and for the same reason.
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            width: double.infinity,
+            height: 200,
+            color: p.surface2,
+            alignment: Alignment.center,
+            child: Icon(Icons.play_circle_fill,
+                size: 52, color: Colors.white.withValues(alpha: 0.85)),
+          ),
+        );
+      }
       return Container(
         constraints: BoxConstraints(maxHeight: maxHeight),
+        width: double.infinity,
         color: p.surface2,
-        child: VideoPlayerScreen(videoUrl: reference.reference),
+        // Full width like the image case below, rather than sized to the
+        // video's own shape - see VideoPlayerScreen.fillWidth.
+        child: VideoPlayerScreen(
+          videoUrl: reference.reference,
+          fillWidth: true,
+        ),
       );
     }
     return GestureDetector(

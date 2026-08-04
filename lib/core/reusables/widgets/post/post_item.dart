@@ -68,8 +68,10 @@ class PostItem extends StatelessWidget {
       child: PostCard(
         post: post,
         onChanged: onChanged,
-        // Passing onOpen is also what tells PostCard it is a FEED row rather
-        // than the post's own screen - it clamps the caption on that basis.
+        // onOpen marks this as a FEED row rather than the post's own screen -
+        // that's what clamps the caption. It is no longer a body tap target:
+        // onComment is the only way into the post from here, so tapping a
+        // video in a row plays it instead of navigating off it.
         onOpen: open,
         onComment: open,
         onDeleted: onDeleted,

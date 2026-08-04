@@ -37,11 +37,18 @@ class PostCard extends StatefulWidget {
   /// owner can keep its own copy - a feed's list item, or the screen's state.
   final ValueChanged<PostPreview>? onChanged;
 
-  /// Tapping the body opens the post. Null on the post screen itself, where
-  /// there is nowhere further to go.
+  /// Marks this as a ROW rather than the post's own screen, and says where
+  /// "open the post" goes. Null on the screen itself, where there is nowhere
+  /// further to go.
+  ///
+  /// It no longer makes the body tappable - only the comment affordances open
+  /// a post now, so that tapping a video plays it and tapping a link follows
+  /// it, rather than either navigating away. What this still decides is what
+  /// differs between a row and a screen: the caption clamps in a row.
   final VoidCallback? onOpen;
 
-  /// Where the comment action goes. Null renders it as a plain count.
+  /// Where the comment action goes - the ONLY route from a row into the post.
+  /// Null renders the count as plain text.
   final VoidCallback? onComment;
 
   /// Fired after the options menu deletes this post. A feed drops the row; the
@@ -389,8 +396,11 @@ class _PostCardState extends State<PostCard> {
         if (post.caption.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            // Deliberately NOT a tap target for opening the post. The comment
+            // affordances are the only way in - so a tap anywhere else in a row
+            // (a link, a video, a tagged name) does what it looks like it does
+            // instead of navigating away mid-gesture.
             child: GestureDetector(
-              onTap: widget.onOpen,
               child: Text.rich(
                 TextSpan(
                   children: linkifySpans(
@@ -423,6 +433,10 @@ class _PostCardState extends State<PostCard> {
         if (displayableReferences(post.references).isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            // Plays in place wherever it appears, feed row included - a video
+            // you have to open a screen to watch isn't a feed. Safe to do in
+            // both at once because the row and the screen share ONE controller
+            // per url; see SharedVideoControllers.
             child: PostAttachments(references: post.references),
           ),
         if (widget.showEngagement)
