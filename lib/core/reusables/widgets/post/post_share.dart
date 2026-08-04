@@ -16,7 +16,9 @@ import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:flutter/material.dart';
 
 /// Privacy options, matching the composer's `privacy.status` values on web.
@@ -63,6 +65,7 @@ class _SharePostSheetState extends State<_SharePostSheet> {
   final TextEditingController _caption = TextEditingController();
   String _privacy = 'public';
   bool _sharing = false;
+  List<SearchResultUser> _tagged = const [];
 
   @override
   void dispose() {
@@ -78,6 +81,7 @@ class _SharePostSheetState extends State<_SharePostSheet> {
       postId: widget.post.postId,
       caption: _caption.text.trim(),
       privacy: _privacy,
+      taggedEntityIds: _tagged.map((entity) => entity.entityId).toList(),
     );
     if (!mounted) return;
 
@@ -157,7 +161,12 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
+            TagEntityPicker(
+              selected: _tagged,
+              onChanged: (next) => setState(() => _tagged = next),
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 for (final option in _kPrivacyOptions)

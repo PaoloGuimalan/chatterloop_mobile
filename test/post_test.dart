@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
@@ -26,12 +27,21 @@ const _author = PostPreviewAuthor(
 PostReference _ref(String id, String type) =>
     PostReference(referenceId: id, reference: 'https://x/$id', mediaType: type);
 
+PostPreviewAuthor _tag(String name, {bool realm = false}) => PostPreviewAuthor(
+      entityId: 'e-$name',
+      type: realm ? 'realm' : 'user',
+      displayName: name,
+      handle: name.toLowerCase(),
+      isVerified: false,
+    );
+
 PostPreview _post({
   List<PostReference> references = const [],
   List<PostReactionCount> reactions = const [],
   String? entityReaction,
   bool isShared = false,
   int comments = 0,
+  List<PostPreviewAuthor> tagged = const [],
 }) =>
     PostPreview(
       postId: 'p1',
@@ -44,6 +54,7 @@ PostPreview _post({
       commentsCount: comments,
       isShared: isShared,
       entityReaction: entityReaction,
+      tagged: tagged,
     );
 
 void main() {
@@ -196,6 +207,77 @@ void main() {
     expect(comment.replyCount, 3);
   });
 
+  group('tagged entities', () {
+    test('parsed off the post payload', () {
+      final post = PostPreview.fromJson(<String, dynamic>{
+        'post_id': 'p1',
+        'caption': '',
+        'entity': {
+          'id': 'e1',
+          'type': 'user',
+          'details': {'first_name': 'Paulo', 'username': 'paulo'},
+        },
+        'tagging': [
+          {
+            'post_tag_id': 't1',
+            'entity': {
+              'id': 'e2',
+              'type': 'user',
+              'details': {'first_name': 'Bea', 'username': 'bea'},
+            }
+          },
+          // A tag whose entity didn't resolve has no name to render.
+          {'post_tag_id': 't2', 'entity': null},
+        ],
+      });
+      expect(post.tagged.length, 1);
+      expect(post.tagged.single.displayName, 'Bea');
+    });
+
+    testWidgets('names up to three, then collapses the rest', (tester) async {
+      Future<String> render(List<PostPreviewAuthor> tagged) async {
+        late List<InlineSpan> spans;
+        await tester.pumpWidget(MaterialApp(
+          theme: buildCLTheme(Brightness.light),
+          home: Builder(builder: (context) {
+            spans = taggingSummarySpans(
+              context,
+              tagged,
+              baseStyle: const TextStyle(),
+              linkColor: const Color(0xFF000000),
+            );
+            return const SizedBox.shrink();
+          }),
+        ));
+        return spans
+            .whereType<TextSpan>()
+            .map((span) => span.text ?? '')
+            .join();
+      }
+
+      expect(await render(const []), '');
+      expect(await render([_tag('Bea')]), ' is with Bea');
+      expect(await render([_tag('Bea'), _tag('Dan')]), ' is with Bea and Dan');
+      expect(await render([_tag('Bea'), _tag('Dan'), _tag('Kaye')]),
+          ' is with Bea, Dan and Kaye');
+      // Past three, the last separator stays "," because the collapse follows.
+      expect(
+        await render([_tag('Bea'), _tag('Dan'), _tag('Kaye'), _tag('Migs')]),
+        ' is with Bea, Dan, Kaye and 1 other',
+      );
+      expect(
+        await render([
+          _tag('Bea'),
+          _tag('Dan'),
+          _tag('Kaye'),
+          _tag('Migs'),
+          _tag('Ella'),
+        ]),
+        ' is with Bea, Dan, Kaye and 2 others',
+      );
+    });
+  });
+
   group('layout at 360px', () {
     // Empty by default so ReactionSummary never reaches for the network from
     // build(); a test that cares about glyphs seeds its own afterwards.
@@ -214,6 +296,22 @@ void main() {
 
     testWidgets('a post with no media lays out', (tester) async {
       await pump(tester, PostCard(post: _post(comments: 4)));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a heavily tagged header wraps instead of overflowing',
+        (tester) async {
+      await pump(
+        tester,
+        PostCard(
+          post: _post(tagged: [
+            _tag('Bartholomew Maximilian'),
+            _tag('Marisse Alonzo'),
+            _tag('Manila Runners', realm: true),
+            _tag('Kaye Sandoval'),
+          ]),
+        ),
+      );
       expect(tester.takeException(), isNull);
     });
 

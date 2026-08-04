@@ -213,10 +213,14 @@ class NewsfeedApi {
   /// post's id with media type "shared_post" - exactly what web's composer
   /// sends when `toShare` is set. The whole payload is JWT-signed because
   /// that's what Node's /posts/createpost expects.
+  /// [taggedEntityIds] are ENTITY ids and may be people OR pages - the server
+  /// resolves both through the same table, which is why there's one list
+  /// rather than a list per kind.
   Future<bool> sharePostRequest({
     required String postId,
     String caption = "",
     String privacy = "public",
+    List<String> taggedEntityIds = const [],
   }) async {
     final payload = {
       'content': {
@@ -236,7 +240,10 @@ class NewsfeedApi {
         'fileType': 'shared_post',
         'contentType': 'shared_post',
       },
-      'tagging': {'isTagged': false, 'users': []},
+      'tagging': {
+        'isTagged': taggedEntityIds.isNotEmpty,
+        'users': taggedEntityIds,
+      },
       'privacy': {'status': privacy, 'users': []},
       'onfeed': 'feed',
     };

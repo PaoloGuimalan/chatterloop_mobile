@@ -133,6 +133,11 @@ class PostPreview {
   /// Whether the viewer has saved this post.
   final bool isSaved;
 
+  /// Entities tagged on the post - "is with A, B and C" in the header. Users
+  /// AND realms/pages, which is why they reuse the author shape: `tagging[]`
+  /// rows carry a full EntitySerializer, same as the post's own entity.
+  final List<PostPreviewAuthor> tagged;
+
   const PostPreview({
     required this.postId,
     required this.caption,
@@ -146,6 +151,7 @@ class PostPreview {
     this.linkPreview,
     this.entityReaction,
     this.isSaved = false,
+    this.tagged = const [],
   });
 
   /// The post this one shares, when [isShared]. Stored as a reference row
@@ -183,6 +189,7 @@ class PostPreview {
         entityReaction:
             clearEntityReaction ? null : (entityReaction ?? this.entityReaction),
         isSaved: isSaved ?? this.isSaved,
+        tagged: tagged,
       );
 
   factory PostPreview.fromJson(Map<String, dynamic> json) {
@@ -220,6 +227,15 @@ class PostPreview {
       isShared: json["is_shared"] == true,
       entityReaction: json["entity_reaction"]?.toString(),
       isSaved: json["is_saved"] == true,
+      tagged: json["tagging"] is List
+          ? (json["tagging"] as List)
+              .whereType<Map>()
+              .map((item) => PostPreviewAuthor.fromEntityJson(
+                  Map<String, dynamic>.from(item)["entity"]))
+              // A tag whose entity didn't resolve has no name to render.
+              .where((entity) => entity.displayName.isNotEmpty)
+              .toList()
+          : const [],
       linkPreview: linkPreview is Map
           ? LinkPreviewData.fromJson(Map<String, dynamic>.from(linkPreview))
           : null,

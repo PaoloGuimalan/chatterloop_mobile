@@ -21,9 +21,11 @@ import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_share.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/linkify_text.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -285,42 +287,58 @@ class _PostCardState extends State<PostCard> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: InkWell(
-                  onTap: _openAuthor,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              post.author.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: CLType.title,
-                                fontWeight: FontWeight.w700,
-                                color: p.text,
-                              ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Author + "is with A, B and C" as ONE wrapping sentence.
+                    // Spans, not a Row of widgets: a Row can't wrap mid-phrase,
+                    // so a couple of tagged names would either overflow or push
+                    // the author's own name to an ellipsis.
+                    Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                          text: post.author.displayName,
+                          style: TextStyle(
+                            fontSize: CLType.title,
+                            fontWeight: FontWeight.w700,
+                            color: p.text,
+                          ),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = _openAuthor,
+                        ),
+                        if (post.author.isVerified)
+                          WidgetSpan(
+                            alignment: PlaceholderAlignment.middle,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 3),
+                              child: Icon(Icons.verified,
+                                  size: 14, color: p.brand),
                             ),
                           ),
-                          if (post.author.isVerified) ...[
-                            const SizedBox(width: 4),
-                            Icon(Icons.verified, size: 14, color: p.brand),
-                          ],
-                        ],
-                      ),
-                      if (post.datePosted != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
+                        ...taggingSummarySpans(
+                          context,
+                          post.tagged,
+                          baseStyle: TextStyle(
+                              fontSize: CLType.title, color: p.text2),
+                          linkColor: p.text,
+                        ),
+                      ]),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (post.datePosted != null) ...[
+                      const SizedBox(height: 2),
+                      GestureDetector(
+                        onTap: _openAuthor,
+                        child: Text(
                           timeSince(post.datePosted!),
                           style: TextStyle(
                               fontSize: CLType.caption, color: p.text3),
                         ),
-                      ],
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ],

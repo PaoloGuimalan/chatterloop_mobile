@@ -6,20 +6,24 @@
 //
 // Fed by the sectioned v2 Node endpoints - one overview call settles all three
 // on load. The v1 flow (/u/getNotifications + the redux notifications slice) is
-// untouched and still drives the topbar badge and the SSE refresh, which is
-// also what this screen listens to for live updates.
+// untouched and still drives the topbar badge, which this screen zeroes itself
+// on read - see _readAll for why nothing else can.
 // ignore_for_file: use_build_context_synchronously
 
 import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/notification_row.dart';
+import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:go_router/go_router.dart';
@@ -50,8 +54,7 @@ class _NotificationsViewState extends State<NotificationsView> {
   bool _isLoading = true;
 
   /// Auto-read on open is kept behavior - fire once per visit, after the first
-  /// successful load. The topbar badge re-syncs by itself: /u/readnotifications
-  /// triggers the notifications_reload SSE, which refreshes the redux slice.
+  /// successful load.
   bool _hasAutoRead = false;
 
   /// referenceIDs (connection ids) with an accept/decline in flight. Keyed per
@@ -65,9 +68,9 @@ class _NotificationsViewState extends State<NotificationsView> {
     _load();
     // Live updates with no extra plumbing: a NEW notification raises the
     // "notifications" SSE event, which re-settles all three sections. Reading
-    // them raises "notifications_reload" instead, which is deliberately NOT
-    // handled here - it fires moments after the auto-read below and refetching
-    // then would instantly wipe the unread highlights the user came to see.
+    // raises nothing at all (the endpoint is write-and-return), so the unread
+    // highlights this screen is showing survive the auto-read - which is the
+    // behaviour we want anyway.
     _eventBusSubscription = eventBus.on<SSEModel>().listen((event) {
       if (event.event != "notifications") return;
       _load();
@@ -90,7 +93,7 @@ class _NotificationsViewState extends State<NotificationsView> {
     });
     if (result != null && !_hasAutoRead) {
       _hasAutoRead = true;
-      NotificationsApi().readNotificationsRequest();
+      _readAll();
     }
   }
 
@@ -117,8 +120,33 @@ class _NotificationsViewState extends State<NotificationsView> {
     });
   }
 
-  void _markAllRead() {
+  /// Marks everything read AND zeroes the topbar badge.
+  ///
+  /// The badge has to be zeroed here because nothing else will:
+  /// POST /u/readnotifications only updates Mongo and returns - it emits NO
+  /// SSE (routes/users/index.js), so the redux slice that feeds the badge
+  /// never hears about it. Without this the count sat there unchanged for the
+  /// rest of the session no matter how many times you opened the screen.
+  ///
+  /// The list itself is left alone: only `totalunread` drives the badge, and
+  /// this screen renders its own v2 sections rather than that v1 list.
+  void _readAll() {
     NotificationsApi().readNotificationsRequest();
+    final current = appStore.state.notificationsstate;
+    if (current.totalunread == 0) return;
+    appStore.dispatch(DispatchModel(
+      setNotificationsListT,
+      NotificationsStateModel(
+        current.notificationsList,
+        0,
+        current.total,
+        current.next,
+      ),
+    ));
+  }
+
+  void _markAllRead() {
+    _readAll();
     _mapSections((item) => item.copyWith(isRead: true), zeroUnread: true);
   }
 
