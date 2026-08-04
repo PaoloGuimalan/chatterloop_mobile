@@ -9,6 +9,17 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # Vendored dependency - see the flutter_webrtc entry in pubspec.yaml's
+    # dependency_overrides. It is somebody else's code, held at an old version
+    # on purpose, and it is not ours to lint: its web implementation trips
+    # for_in_of_invalid_type on the current SDK's JS interop. That code is never
+    # built here (Android and iOS only), but a bare `flutter analyze` walks the
+    # whole project tree, so without this the app's own analysis is red for
+    # reasons nobody in this repo can fix.
+    - patched/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

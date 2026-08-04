@@ -132,6 +132,38 @@ dependency_overrides:
   # pin the published package is used everywhere and no local edit is needed.
   webrtc_interface: 1.1.2
 
+  # VENDORED, with one patch: the published 0.9.48+hotfix.1 still carries
+  # Flutter's V1 embedding entry point, and Flutter removed
+  # PluginRegistry.Registrar from the engine - so the Android build now fails
+  # on a method nothing has called in years:
+  #
+  #   FlutterWebRTCPlugin.java:25: error: cannot find symbol
+  #   import io.flutter.plugin.common.PluginRegistry.Registrar;
+  #
+  # patched/flutter_webrtc is that package with the import and the dead
+  # registerWith(Registrar) method deleted - ONE file, one hunk, nothing else.
+  #
+  # Why a copy rather than a version bump: mediasoup_client_flutter 0.8.5 pins
+  # flutter_webrtc ^0.9.33 (i.e. <0.10.0) and is unmaintained. The upstream
+  # commit that removed the V1 plugin (d266f02, 0.12.9) needs
+  # webrtc_interface >=1.2.1, where Rtcp.cname is already non-nullable - which
+  # mediasoup does not compile against. Verified by building it: the priority
+  # errors cleared and the cname ones did not. There is no version pair that
+  # satisfies both, so the patch has to live somewhere, and in the repo is the
+  # only place every machine sees it.
+  #
+  # Trimmed of third_party/ (57MB of libwebrtc prebuilts) and example/. Android
+  # takes libwebrtc from Maven (io.github.webrtc-sdk:android) and iOS from the
+  # WebRTC-SDK pod, so neither is used here. NOTE: those prebuilts ARE what
+  # windows/ and linux/ CMakeLists reference, so this copy cannot build the
+  # desktop embedders. Android and iOS only.
+  #
+  # This replaces a hand-edited copy that existed in ONE developer's pub cache
+  # and nowhere else - which is why the build passed there and failed on every
+  # other machine.
+  flutter_webrtc:
+    path: patched/flutter_webrtc
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

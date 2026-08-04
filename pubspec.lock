@@ -600,10 +600,9 @@ packages:
   flutter_webrtc:
     dependency: "direct main"
     description:
-      name: flutter_webrtc
-      sha256: "2f17fb96e0c9c6ff75f6b1c36d94755461fc7f36a5c28386f5ee5a18b98688c8"
-      url: "https://pub.dev"
-    source: hosted
+      path: "patched/flutter_webrtc"
+      relative: true
+    source: path
     version: "0.9.48+hotfix.1"
   flutter_widget_from_html_core:
     dependency: "direct main"
