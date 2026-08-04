@@ -57,11 +57,14 @@ List<InlineSpan> taggingSummarySpans(
         },
     ));
     if (entity.isVerified) {
-      spans.add(WidgetSpan(
-        alignment: PlaceholderAlignment.middle,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 2),
-          child: Icon(Icons.verified, size: 13, color: linkColor),
+      spans.add(const TextSpan(text: "\u00A0\u2060"));
+      spans.add(TextSpan(
+        text: String.fromCharCode(Icons.verified.codePoint),
+        style: TextStyle(
+          fontFamily: Icons.verified.fontFamily,
+          package: Icons.verified.fontPackage,
+          fontSize: 13,
+          color: linkColor,
         ),
       ));
     }

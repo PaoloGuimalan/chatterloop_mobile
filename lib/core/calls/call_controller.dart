@@ -1233,8 +1233,9 @@ class CallController extends ChangeNotifier {
     try {
       await _consumeResponseHandler(next);
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print("[CallController] Consume response handler failed: $e");
+        }
     } finally {
       pendingConsumeResponses.remove(next);
       _isConsuming = false;
@@ -1502,8 +1503,9 @@ class CallController extends ChangeNotifier {
         }
         return;
       case "transport-connect-response":
-        if (kDebugMode)
+        if (kDebugMode) {
           print("[CallController] transport-connect-response: $data");
+          }
         return;
       case "participant-joined":
         if (data['conversationID'] == conversationID &&
@@ -1737,8 +1739,9 @@ class CallController extends ChangeNotifier {
         return;
       case "consume-error":
       case "consume-transport-error":
-        if (kDebugMode)
+        if (kDebugMode) {
           print("[CallController] Consume failed: ${event.event} $data");
+          }
         return;
     }
   }

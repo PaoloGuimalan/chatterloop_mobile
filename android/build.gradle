@@ -5,7 +5,7 @@ buildscript {
     }
     dependencies {
         // Specify the Android Gradle Plugin version
-        classpath 'com.android.tools.build:gradle:8.5.0'
+        classpath 'com.android.tools.build:gradle:8.11.1'
     }
 }
 
@@ -27,4 +27,27 @@ subprojects {
 
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
+}
+
+
+// Temporary compatibility bridge for older Android library plugins (e.g.
+// flutter_webrtc 0.9.33 required by mediasoup_client_flutter) that still
+// declare only AndroidManifest package and no explicit namespace.
+subprojects { subproject ->
+    subproject.plugins.withId("com.android.library") {
+        def androidExt = subproject.extensions.findByName("android")
+        if (androidExt == null) return
+
+        def hasNamespace = androidExt.hasProperty("namespace") && androidExt.namespace != null && androidExt.namespace.toString().trim()
+        if (hasNamespace) return
+
+        def manifestFile = file("${subproject.projectDir}/src/main/AndroidManifest.xml")
+        if (!manifestFile.exists()) return
+
+        def manifest = new XmlSlurper().parse(manifestFile)
+        def manifestPackage = manifest.@package?.text()
+        if (manifestPackage) {
+            androidExt.namespace = manifestPackage
+        }
+    }
 }

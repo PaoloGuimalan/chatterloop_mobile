@@ -94,9 +94,11 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
           .writeAsString(const JsonEncoder.withIndent('  ').convert(data));
       if (!mounted) return;
       setState(() => _exporting = false);
-      await Share.shareXFiles(
-        [XFile(path, mimeType: 'application/json')],
-        subject: 'Chatterloop data export',
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(path, mimeType: 'application/json')],
+          subject: 'Chatterloop data export',
+        ),
       );
     } catch (e) {
       if (!mounted) return;

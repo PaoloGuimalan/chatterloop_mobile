@@ -3,8 +3,8 @@
 // window, confirmed as the right call for a phone - see the design
 // decision below); as soon as there's any video to show, it switches to
 // a tile-based layout that reuses webapp's actual visual language:
-// #3D4043 tile backgrounds, the exact "You"/"@username" + " • muted" +
-// " • camera off" status-suffix pattern from CallWindow.tsx, and the
+// #3D4043 tile backgrounds, the exact "You"/"@username" + " ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ muted" +
+// " ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ camera off" status-suffix pattern from CallWindow.tsx, and the
 // control bar's button shapes/colors (rounded-rect not circle, #888 for
 // the "off" state, red end-call). What's deliberately NOT copied is
 // webapp's actual page layout - it's a small floating/draggable window
@@ -101,7 +101,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
         // render.setStream(stream, trackId, ownerTag)), which is how the
         // webapp keeps camera and screen distinct.
         try {
-          await renderer.setSrcObject(
+          renderer.setSrcObject(
             stream: entry.value.consumer.stream,
             trackId: entry.value.consumer.track.id,
           );
@@ -205,9 +205,9 @@ class _ActiveCallViewState extends State<ActiveCallView> {
 
           final connecting = controller.status == CallEngineStatus.joining;
           final statusText = connecting
-              ? "Connecting…"
+              ? "Connecting..."
               : controller.joinedParticipants.isEmpty
-                  ? "Ringing…"
+                  ? "Ringing..."
                   : "Connected";
 
           final hasAnyVideo =
@@ -247,14 +247,14 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     );
   }
 
-  /// "@username" + " • muted" + " • camera off" - the EXACT suffix text
+  /// "@username" + " ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ muted" + " ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ camera off" - the EXACT suffix text
   /// and ordering from CallWindow.tsx's placeholder tiles (camera-off
   /// suffix always precedes muted).
   String _statusLabel(String name,
       {required bool cameraOff, required bool muted}) {
     final buffer = StringBuffer(name);
-    if (cameraOff) buffer.write(" • camera off");
-    if (muted) buffer.write(" • muted");
+    if (cameraOff) buffer.write(" - camera off");
+    if (muted) buffer.write(" - muted");
     return buffer.toString();
   }
 
@@ -404,7 +404,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
         ownerId != null ? controller.participantStatuses[ownerId] : null;
     final isScreen = entry.value.source == 'screen';
     final renderer = _remoteRenderers[entry.key]!;
-    final screenLabel = "$name • screen";
+    final screenLabel = "$name - screen";
     final video = RTCVideoView(
       renderer,
       // A shared screen is usually a desktop aspect ratio - `contain` so
@@ -728,3 +728,4 @@ class _CallControlButton extends StatelessWidget {
     );
   }
 }
+

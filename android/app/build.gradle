@@ -53,7 +53,7 @@ android {
         // Flutter's own default (flutter.minSdkVersion, 21) per its own
         // manifest-merger error/suggested fix. Drops support for
         // Android 5.0/5.1 devices, which are vanishingly rare at this point.
-        minSdkVersion = 23
+        minSdkVersion = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

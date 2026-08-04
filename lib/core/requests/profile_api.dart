@@ -53,7 +53,7 @@ class ProfileApi {
   }
 
   /// Same endpoint as getPublicProfileRequest above (webapp reuses the
-  /// exact same /api/user/auth/<slug>/ route for both - it branches on the
+  /// exact same `/api/user/auth/<slug>/` route for both - it branches on the
   /// response's data.type: "user" -> Profile, "page" -> RealmProfile,
   /// confirmed against ProfileContainer.tsx). Only ever called here when
   /// the caller already knows (via UserAccount.activeEntity.type == "realm")

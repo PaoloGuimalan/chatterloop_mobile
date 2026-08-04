@@ -322,12 +322,15 @@ class _PostCardState extends State<PostCard> {
                             ..onTap = _openAuthor,
                         ),
                         if (post.author.isVerified)
-                          WidgetSpan(
-                            alignment: PlaceholderAlignment.middle,
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 3),
-                              child: Icon(Icons.verified,
-                                  size: 14, color: p.brand),
+                          const TextSpan(text: "\u00A0\u2060"),
+                        if (post.author.isVerified)
+                          TextSpan(
+                            text: String.fromCharCode(Icons.verified.codePoint),
+                            style: TextStyle(
+                              fontFamily: Icons.verified.fontFamily,
+                              package: Icons.verified.fontPackage,
+                              fontSize: 14,
+                              color: p.brand,
                             ),
                           ),
                         ...taggingSummarySpans(
@@ -346,7 +349,7 @@ class _PostCardState extends State<PostCard> {
                       GestureDetector(
                         onTap: _openAuthor,
                         // Spans rather than a Row for the same reason the line
-                        // above uses them: "2h ago · Archived" has to be able
+                        // above uses them: "2h ago + Archived" has to be able
                         // to wrap, and a Row can't.
                         child: Text.rich(
                           TextSpan(
@@ -361,7 +364,7 @@ class _PostCardState extends State<PostCard> {
                               // flipping to "Unarchive" next time it's opened.
                               if (post.isArchived) ...[
                                 if (post.datePosted != null)
-                                  const TextSpan(text: " · "),
+                                  const TextSpan(text: " \u00B7 "),
                                 WidgetSpan(
                                   alignment: PlaceholderAlignment.middle,
                                   child: Padding(

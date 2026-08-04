@@ -288,10 +288,14 @@ class VideoControlsOverlay extends StatefulWidget {
   /// How long the controls linger before fading out.
   final Duration hideAfter;
 
+  /// Shows a fullscreen button next to mute.
+  final bool showFullscreenButton;
+
   const VideoControlsOverlay({
     super.key,
     required this.controller,
     this.hideAfter = const Duration(seconds: 3),
+    this.showFullscreenButton = true,
   });
 
   @override
@@ -302,7 +306,7 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
   Timer? _hideTimer;
   bool _visible = true;
 
-  // ── Is it actually stalled? ──────────────────────────────────────────────
+  // â”€â”€ Is it actually stalled? â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // isBuffering alone is not usable. A seek sets it, and the plugin clears it
   // only when playback "resumes" - which on some sources never fires, leaving
   // the flag stuck TRUE for the rest of the video. Gating the spinner on
@@ -421,6 +425,16 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
     final muted = widget.controller.value.volume == 0;
     widget.controller.setVolume(muted ? 1 : 0);
     _scheduleHide();
+  }
+
+  void _openFullscreen() {
+    _hideTimer?.cancel();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _FullscreenVideoPlayerPage(controller: widget.controller),
+      ),
+    );
   }
 
   static String _clock(Duration d) {
@@ -567,28 +581,39 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
                                       ),
                                     ),
                                   ),
-                                  // InkWell + Padding rather than IconButton:
-                                  // IconButton centres its glyph inside a
-                                  // minimum box of its own, which left the
-                                  // speaker ~21px from the edge while the clock
-                                  // opposite sat at 12 - so it read as not
-                                  // reaching the corner. 7 of padding gives the
-                                  // same 32px tap target and lands the glyph on
-                                  // the same inset as everything else.
-                                  InkWell(
-                                    onTap: _toggleMute,
-                                    borderRadius:
-                                        BorderRadius.circular(CLRadii.pill),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(7),
-                                      child: Icon(
-                                        value.volume == 0
-                                            ? Icons.volume_off
-                                            : Icons.volume_up,
-                                        size: 18,
-                                        color: Colors.white,
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (widget.showFullscreenButton)
+                                        InkWell(
+                                          onTap: _openFullscreen,
+                                          borderRadius:
+                                              BorderRadius.circular(CLRadii.pill),
+                                          child: const Padding(
+                                            padding: EdgeInsets.all(7),
+                                            child: Icon(
+                                              Icons.fullscreen,
+                                              size: 18,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      InkWell(
+                                        onTap: _toggleMute,
+                                        borderRadius:
+                                            BorderRadius.circular(CLRadii.pill),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(7),
+                                          child: Icon(
+                                            value.volume == 0
+                                                ? Icons.volume_off
+                                                : Icons.volume_up,
+                                            size: 18,
+                                            color: Colors.white,
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -608,6 +633,61 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
   }
 }
 
+class _FullscreenVideoPlayerPage extends StatelessWidget {
+  final VideoPlayerController controller;
+
+  const _FullscreenVideoPlayerPage({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final aspectRatio = controller.value.isInitialized &&
+            controller.value.aspectRatio > 0
+        ? controller.value.aspectRatio
+        : (16 / 9);
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: AspectRatio(
+                aspectRatio: aspectRatio,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    VideoPlayer(controller),
+                    VideoControlsOverlay(
+                      controller: controller,
+                      showFullscreenButton: false,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              top: 12,
+              left: 12,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.45),
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.close, size: 22, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 /// Shown when a video cannot be played at all.
 ///
 /// Sized like the loading placeholder so a card doesn't jump when the failure

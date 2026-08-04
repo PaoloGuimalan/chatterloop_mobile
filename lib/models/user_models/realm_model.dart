@@ -35,7 +35,7 @@ class RealmSummary {
   }
 }
 
-/// GET /api/user/auth/<slug>/ (Django, UserAuthentication.get) when the
+/// GET `/api/user/auth/<slug>/` (Django, UserAuthentication.get) when the
 /// looked-up account is a realm/page rather than a personal user - same
 /// RealmSerializer field shape as RealmSummary above (fields="__all__" plus
 /// the annotated counts), just with a few more display fields the read-only

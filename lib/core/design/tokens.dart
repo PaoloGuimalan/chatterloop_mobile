@@ -140,7 +140,7 @@ class CLSpacing {
   static const bottomnavHeight = 60.0;
 }
 
-/// Per-theme palette accessed via Theme.of(context).extension<CLPalette>()
+/// Per-theme palette accessed via `Theme.of(context).extension<CLPalette>()`
 @immutable
 class CLPalette extends ThemeExtension<CLPalette> {
   final Color bg;
