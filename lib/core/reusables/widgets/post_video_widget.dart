@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -53,6 +55,23 @@ class SharedVideoControllers {
     // Pause first: dispose() on a playing controller has been known to leave
     // audio running for a beat on Android.
     entry.controller.pause().whenComplete(entry.controller.dispose);
+  }
+
+  /// Pause every other video before [keep] starts.
+  ///
+  /// One at a time, app-wide. Two videos playing together is never what was
+  /// asked for - you tap a second one while the first is still going and get
+  /// both soundtracks at once, with no way to reach the one that scrolled off.
+  /// Android's audio focus makes it worse: the two decoders fight over it, and
+  /// which one survives is a race.
+  ///
+  /// Pausing rather than stopping, so the one you left keeps its position for
+  /// when you come back to it.
+  static void pauseOthers(VideoPlayerController keep) {
+    for (final entry in _entries.values) {
+      if (identical(entry.controller, keep)) continue;
+      if (entry.controller.value.isPlaying) entry.controller.pause();
+    }
   }
 
   /// How many sources are live. Test-only - a leak here is a decoder that
@@ -139,31 +158,47 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.dispose();
   }
 
-  void _togglePlayback() {
-    setState(() {
-      if (_controller.value.isPlaying) {
-        _controller.pause();
-      } else {
-        _controller.play();
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
       future: _entry.ready,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.done) {
+          // "done" also covers FAILED. initialize() completing with an error
+          // used to fall straight through to the player, which then rendered an
+          // uninitialized controller: aspect ratio 1.0, duration 0:00 and a
+          // scrubber that went nowhere. That is what "some videos always load
+          // at zero duration" was - not a timing bug, a dead source drawn as if
+          // it were fine.
+          if (snapshot.hasError || !_controller.value.isInitialized) {
+            return _Unavailable(
+              message: _controller.value.errorDescription == null
+                  ? "Video unavailable"
+                  : "This video couldn't be played",
+            );
+          }
+
           // Use AspectRatio so the widget takes the exact shape of the video file
           final aspectRatio = _controller.value.aspectRatio;
-          final player = GestureDetector(
-            onTap: _togglePlayback,
-            child: VideoPlayer(_controller),
-          );
+
+          // Controls are layered on the BOX, never inside the FittedBox below -
+          // that box scales its child to cover, which would blow the buttons up
+          // (or shrink them) along with the frame.
+          Widget withControls(Widget videoSurface) => Stack(
+                fit: StackFit.expand,
+                children: [
+                  videoSurface,
+                  VideoControlsOverlay(controller: _controller),
+                ],
+              );
+
+          final player = VideoPlayer(_controller);
 
           if (!widget.fillWidth) {
-            return AspectRatio(aspectRatio: aspectRatio, child: player);
+            return AspectRatio(
+              aspectRatio: aspectRatio,
+              child: withControls(player),
+            );
           }
 
           return LayoutBuilder(
@@ -172,7 +207,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               // this to size itself (a Row without Expanded, say), so fall back
               // rather than throw on an infinite SizedBox.
               if (!constraints.hasBoundedWidth) {
-                return AspectRatio(aspectRatio: aspectRatio, child: player);
+                return AspectRatio(
+                  aspectRatio: aspectRatio,
+                  child: withControls(player),
+                );
               }
 
               final width = constraints.maxWidth;
@@ -198,14 +236,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 // pixel size - FittedBox only reads the ratio, and a controller
                 // reporting a zero size (a failed load) would otherwise give it
                 // a zero-sized child and render nothing at all.
-                child: ClipRect(
-                  child: FittedBox(
-                    fit: BoxFit.cover,
-                    clipBehavior: Clip.hardEdge,
-                    child: SizedBox(
-                      width: aspectRatio * 1000,
-                      height: 1000,
-                      child: player,
+                child: withControls(
+                  ClipRect(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      clipBehavior: Clip.hardEdge,
+                      child: SizedBox(
+                        width: aspectRatio * 1000,
+                        height: 1000,
+                        child: player,
+                      ),
                     ),
                   ),
                 ),
@@ -228,6 +268,398 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           );
         }
       },
+    );
+  }
+}
+
+/// Play/pause, a scrubber, elapsed time and mute, layered over a video.
+///
+/// Driven by the CONTROLLER's own ValueNotifier rather than setState, because
+/// the controller is shared: pausing on the post screen has to move the button
+/// in the feed row behind it too, and a widget rebuilding only its own state
+/// would leave two players disagreeing about whether they're playing.
+///
+/// Auto-hides while playing so the frame isn't permanently covered, and stays
+/// up whenever the video is paused - a paused video with no visible play button
+/// reads as broken rather than paused.
+class VideoControlsOverlay extends StatefulWidget {
+  final VideoPlayerController controller;
+
+  /// How long the controls linger before fading out.
+  final Duration hideAfter;
+
+  const VideoControlsOverlay({
+    super.key,
+    required this.controller,
+    this.hideAfter = const Duration(seconds: 3),
+  });
+
+  @override
+  State<VideoControlsOverlay> createState() => _VideoControlsOverlayState();
+}
+
+class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
+  Timer? _hideTimer;
+  bool _visible = true;
+
+  // ── Is it actually stalled? ──────────────────────────────────────────────
+  // isBuffering alone is not usable. A seek sets it, and the plugin clears it
+  // only when playback "resumes" - which on some sources never fires, leaving
+  // the flag stuck TRUE for the rest of the video. Gating the spinner on
+  // isPlaying made that worse rather than better: the spinner then appeared
+  // exactly while the video was playing fine.
+  //
+  // So the flag is treated as a hint and corroborated against the thing the
+  // viewer can actually see: whether the POSITION is moving. Frames flowing
+  // means it isn't stalled, whatever the flag says. The controller polls
+  // position roughly twice a second while playing, so this keeps being
+  // re-evaluated during a genuine stall too.
+  Duration _lastPosition = Duration.zero;
+  Timer? _stallTimer;
+  bool _stalled = false;
+
+  /// How long the position may sit still, while buffering is claimed, before
+  /// it counts as a stall. Comfortably over the controller's ~500ms position
+  /// poll so ordinary jitter never trips it.
+  static const Duration _stallAfter = Duration(milliseconds: 900);
+
+  /// A TIMER, not a count of rebuilds, because a stall is the absence of
+  /// updates: VideoPlayerValue implements ==, so a position that doesn't move
+  /// notifies nobody. Counting rebuilds can never see the very thing it's
+  /// looking for.
+  void _onControllerValue() {
+    final value = widget.controller.value;
+    final advanced = value.position != _lastPosition;
+    if (advanced) _lastPosition = value.position;
+
+    if (!value.isBuffering || !value.isPlaying) {
+      _clearStall();
+      return;
+    }
+
+    // A WATCHDOG, armed the whole time buffering is claimed and reset by every
+    // advance. Arming it only on a frozen update would never fire: the last
+    // thing that happens before a stall is a position update, and after that
+    // there is nothing left to listen for.
+    //
+    // So with a stuck flag but healthy playback, the ~500ms position polls keep
+    // resetting a 900ms timer and it never fires. When playback genuinely
+    // stops, the resets stop with it.
+    if (advanced) {
+      _stallTimer?.cancel();
+      _stallTimer = null;
+      if (_stalled) setState(() => _stalled = false);
+    }
+    _stallTimer ??= Timer(_stallAfter, () {
+      if (mounted) setState(() => _stalled = true);
+    });
+  }
+
+  void _clearStall() {
+    _stallTimer?.cancel();
+    _stallTimer = null;
+    if (_stalled && mounted) setState(() => _stalled = false);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onControllerValue);
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoControlsOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.controller, widget.controller)) return;
+    oldWidget.controller.removeListener(_onControllerValue);
+    widget.controller.addListener(_onControllerValue);
+    _clearStall();
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerValue);
+    _stallTimer?.cancel();
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleHide() {
+    _hideTimer?.cancel();
+    // Only a PLAYING video hides its controls.
+    if (!widget.controller.value.isPlaying) return;
+    _hideTimer = Timer(widget.hideAfter, () {
+      if (mounted) setState(() => _visible = false);
+    });
+  }
+
+  void _onSurfaceTap() {
+    setState(() => _visible = !_visible);
+    if (_visible) _scheduleHide();
+  }
+
+  void _togglePlayback() {
+    final value = widget.controller.value;
+    if (value.isPlaying) {
+      widget.controller.pause();
+      _hideTimer?.cancel();
+      setState(() => _visible = true);
+      return;
+    }
+    // Rewind first when replaying a finished video: play() on a controller
+    // sitting at the end does nothing at all.
+    if (value.duration > Duration.zero && value.position >= value.duration) {
+      widget.controller.seekTo(Duration.zero);
+    }
+    // Nothing else keeps playing underneath this one.
+    SharedVideoControllers.pauseOthers(widget.controller);
+    widget.controller.play();
+    _scheduleHide();
+  }
+
+  void _toggleMute() {
+    final muted = widget.controller.value.volume == 0;
+    widget.controller.setVolume(muted ? 1 : 0);
+    _scheduleHide();
+  }
+
+  static String _clock(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60);
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, "0");
+    if (hours > 0) {
+      return "$hours:${minutes.toString().padLeft(2, "0")}:$seconds";
+    }
+    return "$minutes:$seconds";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: widget.controller,
+      builder: (context, value, _) {
+        final playing = value.isPlaying;
+        final hasDuration = value.duration > Duration.zero;
+        final finished = hasDuration && value.position >= value.duration;
+        // Tracked by the controller listener, not derived here - see
+        // _onControllerValue.
+        final stalled = _stalled;
+        // Paused always shows; playing follows the auto-hide timer.
+        final showing = _visible || !playing;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // Under the buttons, so it can't swallow their taps.
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _onSurfaceTap,
+              child: const SizedBox.expand(),
+            ),
+            // Stalled, not "buffering" - see _isStalled.
+            if (stalled)
+              const Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2.5, color: Colors.white),
+                ),
+              ),
+            IgnorePointer(
+              ignoring: !showing,
+              child: AnimatedOpacity(
+                opacity: showing ? 1 : 0,
+                duration: const Duration(milliseconds: 180),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(
+                      child: _RoundButton(
+                        icon: playing
+                            ? Icons.pause
+                            : finished
+                                ? Icons.replay
+                                : Icons.play_arrow,
+                        onTap: _togglePlayback,
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        // No left/right inset: the scrubber inside runs edge to
+                        // edge, and the clock/mute row below it carries its own.
+                        padding: const EdgeInsets.fromLTRB(0, 14, 0, 2),
+                        decoration: const BoxDecoration(
+                          // Scrim - white controls on a bright frame are
+                          // otherwise unreadable.
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Color(0x99000000)],
+                          ),
+                        ),
+                        // Scrubber on its OWN row so it spans the full width of
+                        // the video. Sharing a row with the clock and the mute
+                        // button left it about a third of the width - and the
+                        // seek bar is the one control whose usefulness scales
+                        // directly with how long it is.
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // A source with no duration (a live stream, or one
+                            // the platform couldn't measure) has nothing to
+                            // scrub along - the bar would sit at zero and
+                            // seeking it would do nothing.
+                            if (hasDuration)
+                              VideoProgressIndicator(
+                                widget.controller,
+                                // Draggable: a video you can't seek in is a
+                                // silent gif with a play button.
+                                allowScrubbing: true,
+                                // Inset to match the row below it. Running the
+                                // bar right into the corners looked like a
+                                // progress meter welded to the frame rather
+                                // than a control sitting on it.
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                                colors: VideoProgressColors(
+                                  playedColor: p.brand,
+                                  bufferedColor: Colors.white24,
+                                  backgroundColor: Colors.white30,
+                                ),
+                              ),
+                            Padding(
+                              // The mute button carries 6 of its own, so 6 here
+                              // lands its glyph on the same 12px inset as the
+                              // clock and the scrubber above.
+                              padding:
+                                  const EdgeInsets.only(left: 12, right: 6),
+                              child: Row(
+                                // spaceBetween, NOT a Spacer: Flexible is loose,
+                                // so it renders narrower than the half-share it
+                                // claims and the leftover falls AFTER the mute
+                                // button - which is what parked the speaker
+                                // short of the right edge.
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  // Flexible: this bar also renders over a chat
+                                  // bubble's thumbnail, which can be ~120px wide.
+                                  Flexible(
+                                    child: Text(
+                                      // No total when there isn't one to show -
+                                      // "0:12 / 0:00" reads as a broken player.
+                                      hasDuration
+                                          ? "${_clock(value.position)} / ${_clock(value.duration)}"
+                                          : _clock(value.position),
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      overflow: TextOverflow.fade,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: CLType.meta,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  // InkWell + Padding rather than IconButton:
+                                  // IconButton centres its glyph inside a
+                                  // minimum box of its own, which left the
+                                  // speaker ~21px from the edge while the clock
+                                  // opposite sat at 12 - so it read as not
+                                  // reaching the corner. 7 of padding gives the
+                                  // same 32px tap target and lands the glyph on
+                                  // the same inset as everything else.
+                                  InkWell(
+                                    onTap: _toggleMute,
+                                    borderRadius:
+                                        BorderRadius.circular(CLRadii.pill),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(7),
+                                      child: Icon(
+                                        value.volume == 0
+                                            ? Icons.volume_off
+                                            : Icons.volume_up,
+                                        size: 18,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Shown when a video cannot be played at all.
+///
+/// Sized like the loading placeholder so a card doesn't jump when the failure
+/// lands, and left to the parent for width - the post path wraps it in a
+/// full-width Container.
+class _Unavailable extends StatelessWidget {
+  final String message;
+
+  const _Unavailable({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return SizedBox(
+      height: 200,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.videocam_off_outlined, size: 26, color: p.text3),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: CLType.caption, color: p.text3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _RoundButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.45),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, size: 30, color: Colors.white),
+        ),
+      ),
     );
   }
 }

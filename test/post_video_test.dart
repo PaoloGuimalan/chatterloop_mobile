@@ -19,15 +19,31 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dar
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 /// Reports one fixed video size. Everything else is a no-op - nothing here
 /// plays anything.
 class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
-  _FakeVideoPlayerPlatform(this.videoSize, {this.emitInitialized = true});
+  _FakeVideoPlayerPlatform(
+    this.videoSize, {
+    this.emitInitialized = true,
+    this.failToCreate = false,
+    this.duration = const Duration(seconds: 10),
+  });
 
   final Size videoSize;
+
+  /// Makes create() throw, the way an unplayable source does. The controller's
+  /// initialize() future then completes with an ERROR - which is still
+  /// ConnectionState.done, the case that used to render a dead player.
+  final bool failToCreate;
+
+  /// Zero is what a live stream (or a source the platform can't measure)
+  /// reports.
+  final Duration duration;
 
   /// How many controllers the app actually asked the platform for - the only
   /// way to see a duplicate, since each widget looks right on its own.
@@ -50,6 +66,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 
   @override
   Future<int?> createWithOptions(VideoCreationOptions options) async {
+    if (failToCreate) throw PlatformException(code: 'VideoError');
     created++;
     final id = _nextId++;
     _events[id] = StreamController<VideoEvent>();
@@ -67,12 +84,29 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
       if (!emitInitialized || controller.isClosed) return;
       controller.add(VideoEvent(
         eventType: VideoEventType.initialized,
-        duration: const Duration(seconds: 10),
+        duration: duration,
         size: videoSize,
         rotationCorrection: 0,
       ));
     });
     return controller.stream;
+  }
+
+  /// Where getPosition() answers from - the app polls this while playing, and
+  /// a moving position is what tells the controls playback is healthy.
+  Duration position = Duration.zero;
+
+  /// Push a buffering event the way a seek does. Nothing else in this fake
+  /// sets isBuffering, and that flag is the whole subject of the seek test.
+  void emitBuffering(bool buffering) {
+    for (final controller in _events.values) {
+      if (controller.isClosed) continue;
+      controller.add(VideoEvent(
+        eventType: buffering
+            ? VideoEventType.bufferingStart
+            : VideoEventType.bufferingEnd,
+      ));
+    }
   }
 
   @override
@@ -94,7 +128,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<void> setPlaybackSpeed(int playerId, double speed) async {}
 
   @override
-  Future<Duration> getPosition(int playerId) async => Duration.zero;
+  Future<Duration> getPosition(int playerId) async => position;
 
   @override
   Future<void> setMixWithOthers(bool mixWithOthers) async {}
@@ -287,6 +321,329 @@ void main() {
       await tester.pump();
 
       expect(SharedVideoControllers.activeCount, 0);
+    });
+  });
+
+  group('controls', () {
+    testWidgets('a paused video shows play, a scrubber and a clock',
+        (tester) async {
+      await pumpVideo(tester, const Size(1280, 720));
+
+      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+      expect(find.byType(VideoProgressIndicator), findsOneWidget);
+      // 10s duration from the fake, nothing played yet.
+      expect(find.text('0:00 / 0:10'), findsOneWidget);
+      expect(find.byIcon(Icons.volume_up), findsOneWidget);
+    });
+
+    testWidgets('play flips the button, and the controls follow the CONTROLLER',
+        (tester) async {
+      await pumpVideo(tester, const Size(1280, 720));
+
+      await tester.tap(find.byIcon(Icons.play_arrow));
+      await tester.pump();
+
+      expect(find.byIcon(Icons.pause), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsNothing);
+    });
+
+    testWidgets('two widgets on one video agree on play state',
+        (tester) async {
+      // The controller is shared, so the controls have to read from IT rather
+      // than from their own state - otherwise pausing on the post screen would
+      // leave the row behind it still showing a pause button.
+      VideoPlayerPlatform.instance =
+          _FakeVideoPlayerPlatform(const Size(1280, 720));
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+          body: SingleChildScrollView(
+            child: Column(children: [
+              PostAttachments(references: [_video]),
+              PostAttachments(references: [_video]),
+            ]),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byIcon(Icons.play_arrow), findsNWidgets(2));
+
+      await tester.tap(find.byIcon(Icons.play_arrow).first);
+      await tester.pump();
+
+      // BOTH flip, from one tap.
+      expect(find.byIcon(Icons.pause), findsNWidgets(2));
+    });
+
+    testWidgets('mute toggles', (tester) async {
+      await pumpVideo(tester, const Size(1280, 720));
+
+      await tester.tap(find.byIcon(Icons.volume_up));
+      await tester.pump();
+      expect(find.byIcon(Icons.volume_off), findsOneWidget);
+    });
+
+    testWidgets('the scrubber runs the width of the video, inset at both edges',
+        (tester) async {
+      // Two bugs in one assertion. It first shared a row with the clock and the
+      // mute button, which left it about a third of the width - and the seek
+      // bar is the one control whose usefulness scales with its length. Given
+      // its own row it then ran corner to corner, which looked welded to the
+      // frame rather than sitting on it.
+      //
+      // Measured on the BAR, not the widget: VideoProgressIndicator's padding
+      // is internal, so its own box is full width either way and would report
+      // the inset as zero.
+      for (final videoSize in [const Size(1280, 720), const Size(720, 1280)]) {
+        await pumpVideo(tester, videoSize);
+
+        final player = tester.getRect(find.byType(VideoPlayerScreen));
+        final bar = tester.getRect(find.byType(LinearProgressIndicator).first);
+
+        expect(bar.left - player.left, closeTo(12, 0.5), reason: '$videoSize');
+        expect(player.right - bar.right, closeTo(12, 0.5), reason: '$videoSize');
+      }
+    });
+
+    testWidgets('the clock and the mute button sit on opposite edges',
+        (tester) async {
+      // Flexible + Spacer left the speaker short of the right edge - Flexible
+      // is loose, so it renders narrower than the half-share it claims and the
+      // leftover falls AFTER the button. Same trap as the composer row.
+      await pumpVideo(tester, const Size(1280, 720));
+
+      final player = tester.getRect(find.byType(VideoPlayerScreen));
+      final clock = tester.getRect(find.text('0:00 / 0:10'));
+      final mute = tester.getRect(find.byIcon(Icons.volume_up));
+
+      // Both on the same inset as the scrubber above them.
+      expect(clock.left - player.left, closeTo(12, 0.5));
+      expect(player.right - mute.right, closeTo(12, 1.5));
+    });
+
+    testWidgets('a source that fails to load says so, rather than showing 0:00',
+        (tester) async {
+      // initialize() completing with an ERROR is still ConnectionState.done.
+      // Falling through to the player rendered an UNINITIALISED controller:
+      // aspect ratio 1.0, "0:00 / 0:00", a scrubber that went nowhere. That is
+      // what "some videos always load at zero duration" was.
+      VideoPlayerPlatform.instance =
+          _FakeVideoPlayerPlatform(const Size(1280, 720), failToCreate: true);
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+          body: SingleChildScrollView(
+            child: PostAttachments(references: [_video]),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.textContaining('unavailable'), findsOneWidget);
+      expect(find.text('0:00 / 0:00'), findsNothing);
+      expect(find.byType(VideoProgressIndicator), findsNothing);
+    });
+
+    testWidgets('a source with no duration hides the total and the scrubber',
+        (tester) async {
+      // A live stream reports zero legitimately. "0:12 / 0:00" reads as broken,
+      // and a bar with nothing to scrub along is worse than no bar.
+      VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform(
+          const Size(1280, 720),
+          duration: Duration.zero);
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+          body: SingleChildScrollView(
+            child: PostAttachments(references: [_video]),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('0:00'), findsOneWidget);
+      expect(find.text('0:00 / 0:00'), findsNothing);
+      expect(find.byType(VideoProgressIndicator), findsNothing);
+    });
+
+    testWidgets('playing one video pauses the other', (tester) async {
+      // Two soundtracks at once is never what was asked for - and on Android
+      // the two decoders fight over audio focus, so which one survives is a
+      // race rather than a choice.
+      const other = PostReference(
+        referenceId: 'r2',
+        reference: 'https://example.invalid/other.mp4',
+        mediaType: 'video/mp4',
+      );
+      VideoPlayerPlatform.instance =
+          _FakeVideoPlayerPlatform(const Size(1280, 720));
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+          body: SingleChildScrollView(
+            child: Column(children: [
+              PostAttachments(references: [_video]),
+              PostAttachments(references: [other]),
+            ]),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      // Start the first.
+      await tester.tap(find.byIcon(Icons.play_arrow).first);
+      await tester.pump();
+      expect(find.byIcon(Icons.pause), findsOneWidget);
+
+      // Starting the second stops the first: exactly one pause button, and one
+      // play button left behind.
+      await tester.tap(find.byIcon(Icons.play_arrow).first);
+      await tester.pump();
+      expect(find.byIcon(Icons.pause), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    });
+
+    testWidgets('a stuck buffering flag does not strand the spinner',
+        (tester) async {
+      // The reported symptom, exactly: isBuffering gets set by a seek and is
+      // never cleared, so the spinner sat there for the rest of the video -
+      // WHILE it was playing perfectly well. The flag can't be trusted on its
+      // own, so it's corroborated against the position actually moving.
+      final fake = _FakeVideoPlayerPlatform(const Size(1280, 720));
+      VideoPlayerPlatform.instance = fake;
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+          body: SingleChildScrollView(
+            child: PostAttachments(references: [_video]),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.play_arrow));
+      await tester.pump();
+
+      // Buffering claimed, and it never gets cleared.
+      fake.emitBuffering(true);
+      await tester.pump();
+
+      // Frames ARE flowing: the position keeps advancing on each poll.
+      for (var i = 1; i <= 4; i++) {
+        fake.position = Duration(seconds: i);
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      expect(find.byType(CircularProgressIndicator), findsNothing,
+          reason: 'position is advancing, so it is not stalled');
+
+      // Now it genuinely stalls - same flag, but the position stops moving.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(CircularProgressIndicator), findsOneWidget,
+          reason: 'position frozen while buffering IS a stall');
+    });
+
+    testWidgets('seeking while paused does not strand the spinner',
+        (tester) async {
+      // A seek sets isBuffering, but the plugin only clears it when playback
+      // actually RESUMES - so on a paused video the spinner stayed up forever.
+      // That's the "loader never disappears when I seek" report.
+      final fake = _FakeVideoPlayerPlatform(const Size(1280, 720));
+      VideoPlayerPlatform.instance = fake;
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+          body: SingleChildScrollView(
+            child: PostAttachments(references: [_video]),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      // Paused + buffering: nothing the viewer is waiting on, so no spinner.
+      fake.emitBuffering(true);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      // Playing + buffering IS worth reporting - dropping the spinner
+      // entirely would have been the lazy fix - but only once the position has
+      // actually stopped moving for a beat. See the test above.
+      await tester.tap(find.byIcon(Icons.play_arrow));
+      await tester.pump();
+      fake.emitBuffering(true);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('the bar survives a chat-bubble-sized video', (tester) async {
+      // Same overlay renders over a message thumbnail, which can be narrower
+      // than the clock and the mute button put together.
+      VideoPlayerPlatform.instance =
+          _FakeVideoPlayerPlatform(const Size(1280, 720));
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 120,
+              child: VideoPlayerScreen(videoUrl: 'https://example.invalid/c.mp4'),
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('controls are not scaled by the cover FittedBox',
+        (tester) async {
+      // They're layered on the BOX, outside the FittedBox - inside it, a
+      // portrait video (which scales up hard to cover) would blow the buttons
+      // up with the frame.
+      await pumpVideo(tester, const Size(720, 1280));
+
+      final button = tester.getSize(find.byIcon(Icons.play_arrow));
+      expect(button.width, closeTo(30, 0.5));
+      expect(button.height, closeTo(30, 0.5));
     });
   });
 

@@ -14,14 +14,18 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
+import 'package:chatterloop_app/core/requests/network_api.dart';
+import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
+import 'package:chatterloop_app/core/utils/chat_mentions.dart';
+import 'package:chatterloop_app/core/utils/comment_mentions.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
-import 'package:chatterloop_app/core/utils/linkify_text.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -542,12 +546,13 @@ class CommentRow extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text.rich(
                         TextSpan(
-                          children: linkifySpans(
+                          children: commentTextSpans(
                             comment.text,
                             TextStyle(
                                 fontSize: CLType.bodySm,
                                 height: 1.35,
                                 color: p.text),
+                            mentionColor: p.brand,
                           ),
                         ),
                       ),
@@ -666,10 +671,167 @@ class _CommentComposerState extends State<CommentComposer> {
   final TextEditingController _controller = TextEditingController();
   bool _sending = false;
 
+  // ── @mentions ───────────────────────────────────────────────────────────
+  // The mention is plain "@handle" text; the server parses it out of the
+  // comment on write purely to notify. See comment_mentions.dart.
+
+  /// Where the in-progress "@" starts, or -1 when the cursor isn't in one.
+  int _mentionStart = -1;
+  String _mentionQuery = "";
+  List<SearchResultUser> _mentionSuggestions = const [];
+
+  /// The people you actually deal with - connections and following. What "@"
+  /// offers before you have typed anything, since a comment (unlike a
+  /// conversation) has no member list to fall back on.
+  ///
+  /// Fetched on the FIRST "@" rather than on mount: this composer exists on
+  /// every post screen, and eagerly loading it would fire the request for
+  /// everyone who never mentions anyone.
+  List<SearchResultUser> _mentionDefaults = const [];
+  bool _defaultsRequested = false;
+
+  /// Guards against an out-of-order search reply overwriting a newer one.
+  int _searchToken = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_syncMentionQuery);
+  }
+
   @override
   void dispose() {
+    _controller.removeListener(_syncMentionQuery);
     _controller.dispose();
     super.dispose();
+  }
+
+  void _syncMentionQuery() {
+    final selection = _controller.selection;
+    // A ranged selection isn't a caret, so there's no "@..." being typed.
+    if (!selection.isValid || !selection.isCollapsed) {
+      _closeMentions();
+      return;
+    }
+
+    final active =
+        activeMentionQuery(_controller.text, selection.baseOffset);
+    if (active == null) {
+      _closeMentions();
+      return;
+    }
+
+    setState(() {
+      _mentionStart = active.start;
+      _mentionQuery = active.query;
+    });
+    _loadDefaults();
+    _searchMentions(active.query);
+  }
+
+  void _closeMentions() {
+    if (_mentionStart < 0 && _mentionSuggestions.isEmpty) return;
+    setState(() {
+      _mentionStart = -1;
+      _mentionQuery = "";
+      _mentionSuggestions = const [];
+    });
+  }
+
+  Future<void> _loadDefaults() async {
+    if (_defaultsRequested) return;
+    _defaultsRequested = true;
+
+    final overview = await NetworkApi().networkOverviewRequest();
+    if (!mounted || overview == null) return;
+
+    final seen = <String>{};
+    final defaults = <SearchResultUser>[];
+    for (final row in [
+      ...overview.connections.results,
+      ...overview.following.results,
+    ]) {
+      if (row.handle.isEmpty || !seen.add(row.entityId)) continue;
+      defaults.add(SearchResultUser(
+        id: row.id,
+        entityId: row.entityId,
+        username: row.handle,
+        firstName: row.displayName,
+        middleName: "",
+        lastName: "",
+        profile: row.profile,
+        hasConnection: false,
+        connectionAccomplished: false,
+        isActionByEntity: false,
+        type: row.type,
+        realmType: row.realmType,
+      ));
+    }
+
+    setState(() => _mentionDefaults = defaults);
+    // The panel may already be open on a bare "@" waiting for exactly this.
+    if (_mentionStart >= 0 && _mentionQuery.trim().isEmpty) {
+      setState(() => _mentionSuggestions = _mentionDefaults.take(6).toList());
+    }
+  }
+
+  Future<void> _searchMentions(String query) async {
+    final trimmed = query.trim();
+    final token = ++_searchToken;
+
+    if (trimmed.isEmpty) {
+      // Bare "@" - nothing to search yet, so offer the defaults.
+      setState(() => _mentionSuggestions = _mentionDefaults.take(6).toList());
+      return;
+    }
+
+    // Local matches show instantly so the panel never blanks mid-keystroke;
+    // the search below extends them once it lands.
+    final local = _mentionDefaults
+        .where((entity) =>
+            entity.username.toLowerCase().contains(trimmed.toLowerCase()) ||
+            entity.displayName.toLowerCase().contains(trimmed.toLowerCase()))
+        .toList();
+    setState(() => _mentionSuggestions = local.take(6).toList());
+
+    // Debounced - this runs on every keystroke inside an "@..." token.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    if (!mounted || token != _searchToken) return;
+
+    // People AND pages: the backend resolves a handle against both namespaces
+    // (username / slug), so anything reachable by search is mentionable.
+    final found = await SearchApi().searchEntitiesRequest(trimmed);
+    if (!mounted || token != _searchToken) return;
+
+    final seen = <String>{};
+    final merged = <SearchResultUser>[];
+    for (final entity in [...local, ...found]) {
+      if (entity.username.isEmpty || !seen.add(entity.entityId)) continue;
+      merged.add(entity);
+    }
+    setState(() => _mentionSuggestions = merged.take(6).toList());
+  }
+
+  void _insertMention(SearchResultUser entity) {
+    if (_mentionStart < 0) return;
+    final selection = _controller.selection;
+    final cursor =
+        selection.isValid ? selection.baseOffset : _controller.text.length;
+
+    final next = insertCommentMention(
+      _controller.text,
+      _mentionStart,
+      cursor,
+      entity.username,
+    );
+
+    // value, not .text - setting text alone drops the cursor to the end, so
+    // the caret would jump away from a mention inserted mid-sentence.
+    _controller.value = TextEditingValue(
+      text: next.text,
+      selection: TextSelection.collapsed(offset: next.cursor),
+    );
+    _closeMentions();
   }
 
   Future<void> _send() async {
@@ -700,6 +862,14 @@ class _CommentComposerState extends State<CommentComposer> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Above the field, not below: the field is docked to the bottom of
+            // the viewport with the keyboard under it, so there is nowhere
+            // below to put it.
+            if (_mentionStart >= 0 && _mentionSuggestions.isNotEmpty)
+              _MentionSuggestions(
+                suggestions: _mentionSuggestions,
+                onPick: _insertMention,
+              ),
             if (replyingTo != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
@@ -778,6 +948,91 @@ class _CommentComposerState extends State<CommentComposer> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The "@" panel over the comment composer.
+///
+/// Capped and scrollable rather than sized to its contents: it sits directly
+/// above a docked input, so an unbounded list would push the field off-screen
+/// the moment six results arrived.
+class _MentionSuggestions extends StatelessWidget {
+  final List<SearchResultUser> suggestions;
+  final ValueChanged<SearchResultUser> onPick;
+
+  const _MentionSuggestions({required this.suggestions, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      constraints: const BoxConstraints(maxHeight: 210),
+      decoration: BoxDecoration(
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.md),
+        border: Border.all(color: p.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: suggestions.length,
+        itemBuilder: (context, index) {
+          final entity = suggestions[index];
+          return InkWell(
+            onTap: () => onPick(entity),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              child: Row(
+                children: [
+                  CLAvatar(
+                    id: entity.entityId,
+                    name: entity.displayName,
+                    src: entity.profile,
+                    size: 28,
+                    // Squared for a page, round for a person - the same shape
+                    // language the rest of the app uses.
+                    cornerRadius: entity.isRealm ? 9 : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          entity.displayName.isEmpty
+                              ? entity.username
+                              : entity.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: CLType.bodySm,
+                            fontWeight: FontWeight.w600,
+                            color: p.text,
+                          ),
+                        ),
+                        // The handle is what actually gets typed, so it's shown
+                        // rather than left to be guessed from the name.
+                        Text(
+                          "@${entity.username}",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              TextStyle(fontSize: CLType.meta, color: p.text3),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
