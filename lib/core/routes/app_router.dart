@@ -1,4 +1,4 @@
-// Single GoRouter config, replacing the old three-tier
+﻿// Single GoRouter config, replacing the old three-tier
 // GlobalKey<NavigatorState> / nested-MaterialApp structure in app_routes.dart
 // (outer navigatorKey, private privateNavigatorKey, and a third
 // navigatorTabKey local to home_view.dart for the bottom tab bar).
@@ -18,6 +18,7 @@ import 'package:chatterloop_app/views/auth/verify_email_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_detail_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
+import 'package:chatterloop_app/views/newsfeed/newsfeed_view.dart';
 import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:chatterloop_app/views/notifications/notifications_detail_view.dart';
@@ -192,7 +193,7 @@ GoRouter buildAppRouter(AuthController authController) {
             '/verify-email',
             '/setup',
           };
-          return gateScreens.contains(path) ? '/messages' : null;
+          return gateScreens.contains(path) ? '/newsfeed' : null;
       }
     },
     routes: [
@@ -243,6 +244,12 @@ GoRouter buildAppRouter(AuthController authController) {
             builder: (context, state, navigationShell) =>
                 HomeTabScaffold(navigationShell: navigationShell),
             branches: [
+              // FIRST branch = leftmost tab, and the app's landing screen.
+              StatefulShellBranch(routes: [
+                GoRoute(
+                    path: '/newsfeed',
+                    pageBuilder: (c, s) => _clPage(s, const NewsfeedView()))
+              ]),
               StatefulShellBranch(routes: [
                 GoRoute(
                     path: '/messages',
@@ -253,6 +260,9 @@ GoRouter buildAppRouter(AuthController authController) {
                     path: '/contacts',
                     pageBuilder: (c, s) => _clPage(s, const ContactsView()))
               ]),
+              // Search is NOT a branch any more - it moved to the header, so
+              // it is pushed like any other screen. Keeping it in the shell
+              // would give it a tab's persistent stack while having no tab.
               StatefulShellBranch(routes: [
                 GoRoute(
                     path: '/search',
@@ -414,5 +424,6 @@ const String _diaryModule = 'module.diary.access';
 /// widget exists, so there is no StoreProvider to read from yet.
 String? _diaryGuard(BuildContext context, GoRouterState state) {
   final modules = appStore.state.userAuth.user.allowedModules;
-  return modules.contains(_diaryModule) ? null : '/messages';
+  return modules.contains(_diaryModule) ? null : '/newsfeed';
 }
+

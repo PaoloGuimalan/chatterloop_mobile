@@ -32,12 +32,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
-// Three branches only - the profile is no longer a tab, it's a pushed screen
-// (see _openOwnProfile), so the fourth nav button is purely a menu trigger.
-// "Explore" rather than "Search": the third tab is no longer a single search
-// box, it's a sectioned discovery screen (people / realms / content), and the
-// redesign names it accordingly.
-const List<String> _tabTitles = ["Messages", "Contacts", "Explore"];
+// The profile is not a tab - it's a pushed screen (see _openOwnProfile), so
+// the last nav button is purely a menu trigger.
+//
+// Explore is not a tab either any more: it moved to a header icon beside the
+// theme toggle. It is still a shell BRANCH (index 3) so its stack survives,
+// but nothing in the bottom bar points at it - which is why this list is
+// shorter than the branch list, and why _tabTitles is indexed defensively
+// below rather than with [currentIndex].
+const List<String> _tabTitles = ["Newsfeed", "Messages", "Contacts", "Explore"];
 
 class HomeTabScaffold extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -270,6 +273,16 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                                 fontWeight: FontWeight.w700)),
                         Row(
                           children: [
+                            // Explore left the bottom bar to make room for the
+                            // newsfeed, so it lives here - a destination you
+                            // GO to rather than a place you dwell, which is
+                            // what the other header actions are too.
+                            CLIconBtn(
+                              icon: Icons.search,
+                              tooltip: "Explore",
+                              onPressed: () =>
+                                  widget.navigationShell.goBranch(3),
+                            ),
                             CLIconBtn(
                               icon: Theme.of(context).brightness ==
                                       Brightness.dark
@@ -327,17 +340,20 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
+                        // Leftmost, and the app's landing tab. Icons.home to
+                        // match web, whose rail renders `icon: "home"` as the
+                        // Material Icons ligature of the same name.
+                        _navButton(
+                            Icons.home,
+                            widget.navigationShell.currentIndex == 0,
+                            () => widget.navigationShell.goBranch(0)),
                         _badgeNavButton(
                             Icons.forum,
-                            widget.navigationShell.currentIndex == 0,
-                            unreadTotal,
-                            () => widget.navigationShell.goBranch(0)),
-                        _navButton(
-                            Icons.contacts,
                             widget.navigationShell.currentIndex == 1,
+                            unreadTotal,
                             () => widget.navigationShell.goBranch(1)),
                         _navButton(
-                            Icons.search,
+                            Icons.contacts,
                             widget.navigationShell.currentIndex == 2,
                             () => widget.navigationShell.goBranch(2)),
                         // Never "active": this opens a menu, it isn't a tab,

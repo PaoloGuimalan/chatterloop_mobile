@@ -293,54 +293,75 @@ class ConversationStateView extends State<ConversationView> {
     super.dispose();
   }
 
+  /// Whether the list is scrolled to where older messages get loaded.
+  ///
+  /// `reverse: true`, so the TOP of a conversation - the oldest end - is
+  /// maxScrollExtent, not zero.
+  bool get _atLoadMoreEdge {
+    if (!_scrollController.hasClients) return false;
+    final position = _scrollController.position;
+    return position.pixels >= position.maxScrollExtent - 20;
+  }
+
   void _onScroll() {
-    if (_scrollController.hasClients) {
-      final minScroll = _scrollController.position.maxScrollExtent;
-      final currentScroll = _scrollController.position.pixels;
+    if (_atLoadMoreEdge) _loadMore();
+  }
 
-      if (currentScroll >= minScroll - 20) {
-        if (!(range >= totalMessages)) {
-          if (mounted) {
-            // Was gated on conversationInfo != null - conversationInfo is
-            // participant info, unrelated to whether more messages can be
-            // fetched, and stays null for longer than expected on some
-            // conversations (see getConversationInfoRequest's fallback
-            // handling), which silently blocked load-more entirely.
-            // widget.conversationId is available immediately, matching
-            // every other initConversationProcess call site in this file.
-            if (!isRefreshed) {
-              int oldRangeAdd = range + 20;
+  /// Fetches the next page of older messages.
+  ///
+  /// Two things used to go wrong here, and between them they produced the
+  /// "spinner appears, spins, vanishes, nothing loaded - but scrolling down
+  /// and back up works" behaviour:
+  ///
+  ///  1. `isRefreshed` gates the spinner AND re-entry, but it was cleared by
+  ///     a flat `Future.delayed(2500ms)` started alongside the fetch and
+  ///     never tied to it. Any fetch slower than 2.5s had its spinner
+  ///     disappear mid-flight, and any fetch faster than 2.5s left the gate
+  ///     shut for the remainder - so a second, legitimate trigger in that
+  ///     window was dropped.
+  ///  2. Nothing retried a dropped trigger. [_onScroll] runs on scroll
+  ///     EVENTS, and a finger resting at the top of the list produces none -
+  ///     hence needing to scroll away and back to generate a fresh one.
+  ///
+  /// So the gate now opens when the request actually finishes, and the
+  /// finish re-checks the edge itself rather than waiting to be asked again.
+  void _loadMore() {
+    if (!mounted || isRefreshed) return;
+    // Was also gated on conversationInfo != null - participant info, nothing
+    // to do with whether more messages exist, and null for longer than
+    // expected on some conversations (see getConversationInfoRequest's
+    // fallback handling), which silently blocked load-more entirely.
+    if (range >= totalMessages) return;
 
-              setState(() {
-                isRefreshed = true;
-              });
-              // range only advances once the fetch actually lands (mirrors
-              // the SSE listener's own .then(...) pattern in _startLoading)
-              // - bumping it eagerly here made the "more to load" spinner
-              // (gated on range >= totalMessages) disappear the instant a
-              // scroll triggered a fetch, before the new messages had
-              // actually arrived to replace it.
-              initConversationProcess(widget.conversationId, oldRangeAdd)
-                  .then((_) {
-                if (mounted) {
-                  setState(() {
-                    range = oldRangeAdd;
-                  });
-                }
-              });
+    final nextRange = range + 20;
+    final countBefore = conversationContentList.length;
+    setState(() => isRefreshed = true);
 
-              Future.delayed(Duration(milliseconds: 2500), () {
-                if (mounted) {
-                  setState(() {
-                    isRefreshed = false;
-                  });
-                }
-              });
-            }
-          }
-        }
-      }
-    }
+    initConversationProcess(widget.conversationId, nextRange).then((ok) {
+      if (!mounted) return;
+      setState(() {
+        // Only on success. Advancing past a range that failed to load leaves
+        // a hole: the next fetch asks for range+40 with range+20 never having
+        // arrived, and those messages are simply never requested again.
+        if (ok) range = nextRange;
+        isRefreshed = false;
+      });
+
+      // Nothing else will ask. If the user held position at the top through
+      // the fetch, no scroll event fires to notice that the gate reopened.
+      //
+      // Bounded by `grew`: a successful fetch that returns nothing new adds
+      // no scroll extent, which leaves the position still at the edge - and
+      // re-triggering on that is an unbounded request loop, not pagination.
+      // A fetch that DID grow the list has usually moved the edge out of
+      // range anyway, so this mostly fires when the user really is still
+      // waiting at the top.
+      final grew = conversationContentList.length > countBefore;
+      if (!ok || !grew) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _atLoadMoreEdge) _loadMore();
+      });
+    });
   }
 
   /// The conversation's real type - only known once conversationSetup has

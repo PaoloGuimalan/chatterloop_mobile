@@ -10,6 +10,8 @@
 // Webapp parity: these mirror ConversationV2's options, minus Minimize, which
 // is desktop-only.
 
+import 'dart:math' as math;
+
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
@@ -65,13 +67,18 @@ Future<ConversationAction?> showConversationOptionsSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
-    // Flat padding, NOT viewPadding/SafeArea. Verified on device: this sheet
-    // is short enough that the system nav bar never covers Delete, and adding
-    // the inset put a visible band of empty surface under it. The reactions
-    // sheet DOES need the inset - it scrolls, so its last row can reach the
-    // bottom edge - which is why the two differ.
+    // The LARGER of a comfortable 12 and the system inset.
+    //
+    // This was flat 12, on the reasoning that the sheet is short enough that
+    // the nav bar never reaches it - which held on a device with gesture
+    // navigation and a ~0 inset, and failed on one with a real button bar,
+    // where Delete sat under it. Taking the max keeps the tight look where
+    // there is no inset (the band of dead space that flat padding was avoiding)
+    // and clears the bar where there is one.
     builder: (sheetContext) => Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(
+        bottom: math.max(12, MediaQuery.of(sheetContext).viewPadding.bottom),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

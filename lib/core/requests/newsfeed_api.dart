@@ -9,9 +9,11 @@
 // lives - it's here rather than in ProfileApi because sharing is a newsfeed
 // action, and the newsfeed ship will want it next to the rest of these.
 
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
+import 'package:chatterloop_app/core/utils/view_cache.dart';
 import 'package:chatterloop_app/models/http_models/paged_result.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
@@ -39,6 +41,20 @@ ReactionMethod reactionMethodFor({
   return currentEmojiId == tappedEmojiId
       ? ReactionMethod.remove
       : ReactionMethod.swap;
+}
+
+/// Whether a profile handle is the signed-in ACCOUNT's own username - the
+/// client half of the profile feed's `user.username != username` check.
+///
+/// Deliberately the account username and not the acting entity: the server
+/// compares `request.user.username`, which doesn't follow an entity switch.
+/// Acting as a page and opening that page's profile is therefore NOT "your
+/// own profile" by this rule, and the server does process the viewcache
+/// there - self-views among those posts are still dropped one layer down,
+/// where it compares the post's owner to the acting entity.
+bool isOwnProfileHandle(String handle) {
+  final username = appStore.state.userAuth.user.username;
+  return username.isNotEmpty && username == handle;
 }
 
 class NewsfeedApi {
@@ -216,9 +232,25 @@ class NewsfeedApi {
   ///    one call serves both profile kinds;
   ///  - page/page_size are QUERY params while `archive` is a separate one.
   ///
-  /// `viewcache` is sent empty: it's fed by web's localforage view tracker,
-  /// which has no mobile equivalent yet. The server treats an empty list as
-  /// "nothing to record" rather than erroring.
+  /// `viewcache` carries the view durations [PostViewTracker] has banked since
+  /// the last feed request, and is cleared only once the server has taken
+  /// them - see [_flushViewCache].
+  ///
+  /// Except on YOUR OWN profile, where the view drops it on the floor:
+  ///
+  ///     if user.username != username:
+  ///         save_viewcache_engagements(entity, viewcache)
+  ///
+  /// Sending it there and then clearing on a 200 would throw away every view
+  /// banked while browsing the feed, because "the request succeeded" and "the
+  /// server recorded them" are not the same thing on this endpoint. So the
+  /// condition is mirrored exactly rather than relying on the response.
+  ///
+  /// Note this is a property of the ENDPOINT, not of whose posts they are.
+  /// Individual posts are already filtered by author in [PostViewTracker],
+  /// and they have to be: profile_filter matches `tagging__entity` as well as
+  /// `entity`, so your own profile legitimately carries other people's posts
+  /// that tagged you, and someone else's carries yours.
   Future<PagedResult<PostPreview>> getProfilePostsRequest({
     required String handle,
     int page = 1,
@@ -226,15 +258,19 @@ class NewsfeedApi {
     bool archive = false,
   }) async {
     try {
+      final viewCache = isOwnProfileHandle(handle)
+          ? const <Map<String, dynamic>>[]
+          : await _pendingViewCache();
       final response = await _dio.post(
         '${_endpoints.newsfeedProfile}${Uri.encodeComponent(handle)}/',
-        data: {'viewcache': const []},
+        data: {'viewcache': viewCache},
         queryParameters: {
           'page': page,
           'page_size': pageSize,
           'archive': archive,
         },
       );
+      await _flushViewCache(viewCache);
       return PagedResult.fromDrf(response.data, PostPreview.fromJson);
     } catch (e) {
       if (kDebugMode) {
@@ -243,6 +279,88 @@ class NewsfeedApi {
       }
       return PagedResult.empty();
     }
+  }
+
+  /// The main newsfeed - everything ranked for this viewer.
+  ///
+  /// Same shape and quirks as [getProfilePostsRequest]: a POST rather than a
+  /// GET because the body carries `viewcache` (which posts the viewer has
+  /// already seen, for engagement scoring), and DRF pagination in the response.
+  ///
+  /// This is the request that most needs its `viewcache` to be real: the
+  /// server DELETES every post id it receives from this viewer's
+  /// NewsfeedIndex bucket, and that deletion is the only thing that drains
+  /// the fan-out inbox. Send an empty list forever and page 1 never moves.
+  Future<PagedResult<PostPreview>> getNewsfeedRequest({
+    int page = 1,
+    int pageSize = 10,
+  }) async {
+    try {
+      final viewCache = await _pendingViewCache();
+      final response = await _dio.post(
+        _endpoints.newsfeedDefault,
+        data: {'viewcache': viewCache},
+        queryParameters: {'page': page, 'page_size': pageSize},
+      );
+      await _flushViewCache(viewCache);
+      return PagedResult.fromDrf(response.data, PostPreview.fromJson);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return PagedResult.empty();
+    }
+  }
+
+  /// Delivers banked view durations WITHOUT wanting the posts back.
+  ///
+  /// Needed because the feed request is the only thing that carries a
+  /// viewcache and there is no endpoint that takes one on its own - so in a
+  /// session that never asks for another page, views are recorded and never
+  /// sent. That isn't a rare corner: the newsfeed lives in an IndexedStack
+  /// branch whose initState runs once per launch, so a feed short enough to
+  /// need no paging (one post will do it) has no second request in it at all.
+  ///
+  /// page_size 1 because the response is thrown away - the useful work is
+  /// save_viewcache_engagements, which the view runs before it builds the
+  /// feed queryset, so the payload comes back regardless of how little is
+  /// asked for.
+  Future<void> flushPendingViewsRequest() async {
+    try {
+      final viewCache = await _pendingViewCache();
+      if (viewCache.isEmpty) return;
+      await _dio.post(
+        _endpoints.newsfeedDefault,
+        data: {'viewcache': viewCache},
+        queryParameters: {'page': 1, 'page_size': 1},
+      );
+      await _flushViewCache(viewCache);
+    } catch (e) {
+      // Keeping the entries is the whole point of failing quietly here:
+      // they'll ride along on the next request that wants them.
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+    }
+  }
+
+  /// The view durations banked for whoever is currently acting.
+  Future<List<Map<String, dynamic>>> _pendingViewCache() =>
+      ViewCache.instance.snapshot(appStore.state.userAuth.user.entityId);
+
+  /// Clears the cache, but ONLY after a request that carried it came back
+  /// without throwing - the failure path deliberately keeps the entries so a
+  /// dropped connection doesn't silently discard view history (webapp clears
+  /// in `.then`, never in `.catch`, for the same reason).
+  ///
+  /// Skipped when nothing was sent: an empty snapshot means either there was
+  /// nothing to flush or nobody is signed in, and in the second case clearing
+  /// would throw away another entity's pending entries.
+  Future<void> _flushViewCache(List<Map<String, dynamic>> sent) async {
+    if (sent.isEmpty) return;
+    await ViewCache.instance.clear();
   }
 
   /// Save / unsave a post. Available to ANYONE who can see it, not just the

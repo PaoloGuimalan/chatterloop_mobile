@@ -9,9 +9,11 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
+import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/message_item.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class ArchivesScreen extends StatefulWidget {
   const ArchivesScreen({super.key});
@@ -109,13 +111,37 @@ class _ArchivesScreenState extends State<ArchivesScreen> {
                                         strokeWidth: 2))),
                           );
                         }
+                        final item = _items[index];
                         return MessageItemView(
-                          message: _items[index],
+                          message: item,
                           userID: userID,
                           // This screen IS the archived list, so the row's
                           // long-press menu offers Unarchive rather than a
                           // second Archive.
                           isArchived: true,
+                          onActionApplied: (action) {
+                            // An unarchived thread belongs to Messages now, so
+                            // that is where it should be shown - leaving the
+                            // user on the archive list, watching the row they
+                            // just restored disappear, says nothing about
+                            // where it went.
+                            if (action == ConversationAction.unarchive) {
+                              context.go('/messages');
+                              return;
+                            }
+                            // A deleted one belongs nowhere, so it just goes.
+                            // applyConversationAction refreshes the MESSAGES
+                            // list, which this screen isn't - without this the
+                            // row sits there until the next manual reload,
+                            // looking like the delete didn't take.
+                            if (action == ConversationAction.delete) {
+                              setState(() => _items = _items
+                                  .where((entry) =>
+                                      entry.conversationID !=
+                                      item.conversationID)
+                                  .toList());
+                            }
+                          },
                         );
                       },
                     ),

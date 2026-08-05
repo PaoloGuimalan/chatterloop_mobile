@@ -148,6 +148,12 @@ class Endpoints {
   /// body carries `viewcache`), DRF-paginated, append :handle.
   String newsfeedProfile = '/api/newsfeed/profile/'; // :handle
 
+  /// The main newsfeed. Same route as newsfeedPost below but a different verb:
+  /// POST reads the ranked feed (the body carries `viewcache`), while PUT and
+  /// DELETE mutate a post. The trailing slash matters - Django's APPEND_SLASH
+  /// would redirect a POST and drop its body.
+  String newsfeedDefault = '/api/newsfeed/default/';
+
   /// Post mutation. PUT {post_id, fields} updates (archive/unarchive lives
   /// here as fields.is_archived); DELETE {post_ids} - note the PLURAL, it takes
   /// a list even for one post.

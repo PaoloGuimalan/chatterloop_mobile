@@ -8,6 +8,33 @@
 
 import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
 
+/// Appends [incoming] to [into], dropping any post already in the list.
+/// Returns how many actually landed.
+///
+/// Every paginated feed has to go through this, because duplicates arrive
+/// from two unrelated directions and neither is a client bug:
+///
+///   - The profile feed's queryset ORs `entity` against `tagging__entity`,
+///     which is a join across a many-to-many. A post tagging three people
+///     comes back as three rows.
+///   - The default feed is RANKED, and ranking is recomputed per request. A
+///     post can be #10 when you fetch page 1 and #11 by the time you fetch
+///     page 2, so it legitimately appears in both.
+///
+/// Keeping the FIRST copy matters: later pages of a shifting feed are the
+/// stale ones, and replacing an already-rendered row would also throw away
+/// whatever local state it holds (an optimistic reaction, say).
+int appendDistinctPosts(List<PostPreview> into, Iterable<PostPreview> incoming) {
+  final seen = into.map((post) => post.postId).toSet();
+  var added = 0;
+  for (final post in incoming) {
+    if (post.postId.isEmpty || !seen.add(post.postId)) continue;
+    into.add(post);
+    added++;
+  }
+  return added;
+}
+
 /// One attached media file. `reference` is an absolute URL, ready to hand to
 /// Image.network / VideoPlayerController.
 class PostReference {

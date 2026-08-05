@@ -64,7 +64,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         setUserAuthT, UserAuth(true, user.copyWith(isVerified: true))));
 
     setState(() => _busy = false);
-    context.go('/messages');
+    context.go('/newsfeed');
   }
 
   @override

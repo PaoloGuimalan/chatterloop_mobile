@@ -29,7 +29,10 @@ class _SwitchingScreenState extends State<SwitchingScreen> {
   Future<void> _run() async {
     await widget.perform();
     if (!mounted) return;
-    context.go('/messages');
+    // Home, not messages: an entity switch reloads the whole app context, and
+    // the feed is the one screen that means the same thing for whichever
+    // identity you came out as.
+    context.go('/newsfeed');
   }
 
   @override

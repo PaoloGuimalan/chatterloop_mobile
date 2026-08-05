@@ -26,11 +26,20 @@ class MessageItemView extends StatelessWidget {
   /// that knows is the screen doing the asking.
   final bool isArchived;
 
+  /// Fired after an option is applied successfully, so the screen showing this
+  /// row can react. Both of the Archives screen's cases are here: it leaves
+  /// for Messages once a thread is unarchived, and drops the row itself once
+  /// one is deleted - because in both cases what it acted on no longer belongs
+  /// to the list it is looking at, and [applyConversationAction] only refreshes
+  /// the Messages list.
+  final void Function(ConversationAction action)? onActionApplied;
+
   const MessageItemView({
     super.key,
     required this.message,
     required this.userID,
     this.isArchived = false,
+    this.onActionApplied,
   });
 
   bool get _isCurrentUserSender => message.sender == userID;
@@ -107,12 +116,15 @@ class MessageItemView extends StatelessWidget {
     final ok = await applyConversationAction(message.conversationID, action);
     if (!context.mounted) return;
 
-    // No navigation: unlike the header menu, we are already on the list, and
-    // applyConversationAction has refreshed it so the row drops off.
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Action failed. Please try again.')));
+      return;
     }
+    // Otherwise no navigation of our own - applyConversationAction has already
+    // refreshed the list, so the row drops off. Whoever owns the screen decides
+    // whether that is the end of it.
+    onActionApplied?.call(action);
   }
 
   void _open(BuildContext context) {

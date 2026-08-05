@@ -120,7 +120,9 @@ class LoginScreenState extends State<LoginScreen> {
       _busy = false;
       _googleBusy = false;
     });
-    context.go('/messages');
+    // The home tab, not the messages tab - signing in lands you where the
+    // bottom bar starts.
+    context.go('/newsfeed');
   }
 
   @override

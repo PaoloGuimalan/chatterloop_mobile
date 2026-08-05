@@ -199,7 +199,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ))));
 
     setState(() => _busy = false);
-    context.go('/messages');
+    context.go('/newsfeed');
   }
 
   Future<void> _logout() async {

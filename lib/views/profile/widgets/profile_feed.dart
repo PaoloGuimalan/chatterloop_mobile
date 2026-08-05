@@ -59,7 +59,11 @@ class ProfileFeedState extends State<ProfileFeed> {
     _fetch(1);
   }
 
-  Future<void> _fetch(int page) async {
+  /// How many all-duplicate pages in a row to walk past before giving up.
+  /// See [_fetch].
+  static const _maxDuplicatePageSkips = 3;
+
+  Future<void> _fetch(int page, {int skips = 0}) async {
     if (page == 1) {
       setState(() => _isLoading = true);
     } else {
@@ -74,14 +78,27 @@ class ProfileFeedState extends State<ProfileFeed> {
     );
     if (!mounted) return;
 
+    int added = 0;
     setState(() {
       if (page == 1) _posts.clear();
-      _posts.addAll(result.results);
+      added = appendDistinctPosts(_posts, result.results);
       _page = page;
       _hasNext = result.hasNext;
       _isLoading = false;
       _isLoadingMore = false;
     });
+
+    // A page that dedupes away entirely adds no height, so the scroll
+    // position that asked for it is still at the bottom and nothing will ask
+    // again - infinite scroll just stops, short of the end. Pull the next
+    // page inline instead. Bounded so a server stuck returning one page
+    // can't spin here.
+    if (added == 0 &&
+        result.results.isNotEmpty &&
+        _hasNext &&
+        skips < _maxDuplicatePageSkips) {
+      return _fetch(page + 1, skips: skips + 1);
+    }
   }
 
   /// Driven by the profile screen's scroll listener.

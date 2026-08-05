@@ -715,6 +715,27 @@ class ProfileComposerCard extends StatelessWidget {
     required this.onPosted,
   });
 
+  /// The composer with NO profile context - the newsfeed.
+  ///
+  /// Nothing to be "on", so nothing to pre-tag and no wall to write on: it is
+  /// simply your own composer, wearing the acting entity's face.
+  factory ProfileComposerCard.forActingEntity({
+    Key? key,
+    required String placeholder,
+    required VoidCallback onPosted,
+  }) {
+    final user = appStore.state.userAuth.user;
+    final acting = user.activeEntity;
+    return ProfileComposerCard(
+      key: key,
+      avatarId: user.entityId,
+      avatarName: acting?.name ?? user.personalDisplayName,
+      avatarSrc: acting?.profile ?? user.profile,
+      placeholder: placeholder,
+      onPosted: onPosted,
+    );
+  }
+
   /// The composer for a profile - person or page, one rule for both.
   ///
   /// [profile] is the profile being VIEWED, in the shape the tag picker

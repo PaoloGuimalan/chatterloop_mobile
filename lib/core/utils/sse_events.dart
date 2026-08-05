@@ -5,8 +5,10 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
@@ -39,6 +41,47 @@ class ProfileRelationshipUpdate {
 final ValueNotifier<ProfileRelationshipUpdate?> profileRelationshipUpdates =
     ValueNotifier<ProfileRelationshipUpdate?>(null);
 
+/// Refetches page 1 of notifications and puts it in the store.
+///
+/// Every notification event goes through this instead of reading the payload
+/// it arrived with, because MOST OF THEM DON'T HAVE ONE. The Django service
+/// publishes `"result": ""` on every notifications event it raises - post
+/// reactions, comments, tags, mentions, follows (see user_service's
+/// newsfeed/views.py and user/views.py) - and only the Node service signs a
+/// real JWT into it. The old code here decoded `result` and read
+/// `["notifications"]` off it, which on an empty string is null being
+/// assigned to a non-nullable List: it threw, killed the handler before the
+/// dispatch, and did it silently. That's the badge sitting at its old count
+/// while activity piles up.
+///
+/// Webapp has never trusted the payload either - both its handlers call
+/// NotificationOverrideRequest(1, 10) and ignore `result` entirely (the
+/// dispatch of the decoded body is commented out in sse.ts). This is that,
+/// with the app's own page size.
+Future<void> refreshNotificationsFromSse() async {
+  final response = await NotificationsApi().getNotificationsListRequest();
+  if (response == null) return;
+  final decoded = JwtCodec.decode(response.result);
+  final raw = decoded?["notifications"];
+  final list = raw is List
+      ? raw.map((notif) => NotificationsItemModel.fromJson(notif)).toList()
+      : <NotificationsItemModel>[];
+  appStore.dispatch(DispatchModel(setNotificationsListT,
+      NotificationsStateModel(list, decoded?["totalunread"] ?? 0)));
+}
+
+/// Every event on this channel is wrapped as {auth, status, ...}. Both have
+/// to be true before the body means anything, and neither is guaranteed to be
+/// present - an unparseable frame is a dropped event, never a thrown one.
+bool _isAuthedOk(dynamic data) {
+  try {
+    final parsed = jsonDecode(data as String);
+    return parsed is Map && parsed["auth"] == true && parsed["status"] == true;
+  } catch (_) {
+    return false;
+  }
+}
+
 class SseEvents {
   /// A new SseEvents() is constructed per event (see sse_connection.dart),
   /// so per-typer removal timers have to live at module/static scope to be
@@ -48,56 +91,23 @@ class SseEvents {
   Future<void> listen(SSEModel event, bool mainListener) async {
     switch (event.event) {
       case "notifications":
-        Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
-        bool isAuth = parsedresponse["auth"] as bool;
-        bool status = parsedresponse["status"] as bool;
-
-        if (isAuth) {
-          if (status) {
-            Map<String, dynamic>? decodedResult =
-                JwtCodec.decode(parsedresponse["result"]);
-
-            List<dynamic> rawNotificationsList =
-                decodedResult?["notifications"];
-
-            List<NotificationsItemModel> spreadedNotificationsList =
-                rawNotificationsList
-                    .map((notif) => NotificationsItemModel.fromJson(notif))
-                    .toList();
-
-            AudioPlayer audioPlayer = AudioPlayer();
-            audioPlayer.play(AssetSource('sounds/notification_alert.mp3'));
-
-            appStore.dispatch(DispatchModel(
-                setNotificationsListT,
-                NotificationsStateModel(
-                    spreadedNotificationsList, decodedResult?["totalunread"])));
-          }
+        // Raised for anything that earns you a notification: reactions,
+        // comments, comment reactions, tags, mentions, contact requests,
+        // follows. The alert tone belongs here and not on the reload event -
+        // this is the one that means something NEW happened.
+        if (_isAuthedOk(event.data)) {
+          AudioPlayer audioPlayer = AudioPlayer();
+          audioPlayer.play(AssetSource('sounds/notification_alert.mp3'));
+          await refreshNotificationsFromSse();
         }
         return;
       case "notifications_reload":
-        Map<String, dynamic> parsedresponse = jsonDecode(event.data as String);
-        bool isAuth = parsedresponse["auth"] as bool;
-        bool status = parsedresponse["status"] as bool;
-
-        if (isAuth) {
-          if (status) {
-            Map<String, dynamic>? decodedResult =
-                JwtCodec.decode(parsedresponse["result"]);
-
-            List<dynamic> rawNotificationsList =
-                decodedResult?["notifications"];
-
-            List<NotificationsItemModel> spreadedNotificationsList =
-                rawNotificationsList
-                    .map((notif) => NotificationsItemModel.fromJson(notif))
-                    .toList();
-
-            appStore.dispatch(DispatchModel(
-                setNotificationsListT,
-                NotificationsStateModel(
-                    spreadedNotificationsList, decodedResult?["totalunread"])));
-          }
+        // Same refetch, no tone: this one fires when an EXISTING notification
+        // changed out from under you - a request you were shown got cancelled
+        // or answered elsewhere - so the count has to move but nothing new
+        // arrived to announce.
+        if (_isAuthedOk(event.data)) {
+          await refreshNotificationsFromSse();
         }
         return;
       case "istyping_broadcast":
@@ -203,6 +213,38 @@ class SseEvents {
         }
         return;
       case "contactslist":
+        // Was a no-op, which is why a contact request or acceptance left both
+        // the contacts list and an open profile showing stale state until
+        // something else happened to refetch them.
+        //
+        // Two jobs, in webapp's order - the relay FIRST, so a failure in the
+        // refetch can't swallow it:
+        //  1. relay result.entity_id, which user/views.py builds per
+        //     recipient and is therefore the OTHER party from this device's
+        //     point of view. A profile screen matches it against what it's
+        //     showing; an event without one names no subject and is relayed
+        //     to nobody, because "reload whatever is open" is worse than a
+        //     missed refresh.
+        //  2. refetch the contacts list into the store.
+        try {
+          final parsed = jsonDecode(event.data as String);
+          if (parsed is Map &&
+              parsed["auth"] == true &&
+              parsed["status"] == true) {
+            final entityId = parsed["result"] is Map
+                ? parsed["result"]["entity_id"]?.toString()
+                : null;
+            if (entityId != null && entityId.isNotEmpty) {
+              profileRelationshipUpdates.value =
+                  ProfileRelationshipUpdate(entityId);
+            }
+            final contacts = await ContactsApi().getContactsRequest();
+            appStore
+                .dispatch(DispatchModel(setContactsListT, contacts.results));
+          }
+        } catch (_) {
+          // Malformed payload is not worth tearing the SSE loop down for.
+        }
         return;
       case "profile_relationship_updated":
         // Someone answered a request we sent - contact accept/decline/remove,

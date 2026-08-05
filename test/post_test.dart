@@ -17,6 +17,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_item.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
+import 'package:chatterloop_app/core/utils/view_cache.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -25,6 +26,8 @@ import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 const _author = PostPreviewAuthor(
   entityId: 'e1',
@@ -88,6 +91,13 @@ PostPreview _post({
     );
 
 void main() {
+  // Every feed row now mounts a VisibilityDetector (see PostViewTracker),
+  // which schedules a 500ms timer whenever it paints. At the default interval
+  // any test that pumps a PostItem ends with that timer still pending and
+  // fails on it. Zero makes the detector report inline instead - and it's
+  // what the telemetry tests below need in order to observe anything at all.
+  VisibilityDetectorController.instance.updateInterval = Duration.zero;
+
   group('reaction verb', () {
     test('no reaction yet -> add', () {
       expect(
@@ -946,6 +956,337 @@ void main() {
         ),
       );
       expect(find.byIcon(Icons.more_horiz), findsNothing);
+    });
+  });
+
+  // Duplicate rows arrive from the server for two unrelated and legitimate
+  // reasons - the profile feed's tagging join fans out, and the ranked feed
+  // reshuffles between page fetches - so the client is the only place this
+  // can be settled.
+  group('feed pagination', () {
+    PostPreview at(String id) => PostPreview(
+          postId: id,
+          caption: '',
+          datePosted: DateTime.now(),
+          references: const [],
+          reactions: const [],
+          author: _author,
+          likesCount: 0,
+          commentsCount: 0,
+          isShared: false,
+          tagged: const [],
+          isSaved: false,
+          isArchived: false,
+          privacyStatus: 'public',
+          contentType: 'text',
+        );
+
+    test('a post already on screen is not appended twice', () {
+      final posts = [at('p1'), at('p2')];
+      final added = appendDistinctPosts(posts, [at('p2'), at('p3')]);
+
+      expect(added, 1);
+      expect(posts.map((post) => post.postId), ['p1', 'p2', 'p3']);
+    });
+
+    test('duplicates within one page collapse too', () {
+      // The tagging join fans a single post out into one row per tag, all in
+      // the same response.
+      final posts = <PostPreview>[];
+      final added = appendDistinctPosts(posts, [at('p1'), at('p1'), at('p1')]);
+
+      expect(added, 1);
+      expect(posts, hasLength(1));
+    });
+
+    test('the copy already rendered is the one kept', () {
+      // Not interchangeable: the rendered row may be carrying an optimistic
+      // reaction the server has not caught up with, and a later page of a
+      // reshuffling feed is the staler copy anyway.
+      final first = at('p1');
+      final posts = [first];
+      appendDistinctPosts(posts, [at('p1')]);
+
+      expect(identical(posts.single, first), isTrue);
+    });
+
+    test('a row with no id is dropped rather than deduped against', () {
+      // Two unrelated posts that both failed to parse an id would otherwise
+      // collapse into one.
+      final posts = <PostPreview>[];
+      final added = appendDistinctPosts(posts, [at(''), at('')]);
+
+      expect(added, 0);
+      expect(posts, isEmpty);
+    });
+  });
+
+  // The `viewcache` a feed request carries. Worth pinning because the failure
+  // mode is invisible from the client: the server drains the viewer's
+  // NewsfeedIndex bucket using exactly these post ids, so a payload that
+  // silently stops arriving doesn't error - the feed just stops moving.
+  group('view telemetry', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      ViewCache.instance.resetForTest();
+    });
+
+    tearDown(() {
+      appStore.dispatch(DispatchModel(
+        setUserAuthT,
+        UserAuth(
+            true,
+            UserAccount('account-1', 'me', 'Me', '', 'Mine', null, true, true,
+                null, null, null, null,
+                personalEntityId: '')),
+      ));
+    });
+
+    void actAs(String entityId) {
+      appStore.dispatch(DispatchModel(
+        setUserAuthT,
+        UserAuth(
+            true,
+            UserAccount('account-1', 'me', 'Me', '', 'Mine', null, true, true,
+                null, null, null, null,
+                personalEntityId: entityId)),
+      ));
+    }
+
+    test('repeat views of one post accumulate into a single entry', () async {
+      await ViewCache.instance.record('p1',
+          viewerEntityId: 'viewer-1',
+          postOwnerId: 'e1',
+          duration: 0.5,
+          createdAt: '2026-08-05T10:00:00.000Z');
+      await ViewCache.instance.record('p1',
+          viewerEntityId: 'viewer-1',
+          postOwnerId: 'e1',
+          duration: 2.25,
+          createdAt: '2026-08-05T10:05:00.000Z');
+
+      final snapshot = await ViewCache.instance.snapshot('viewer-1');
+      expect(snapshot, hasLength(1));
+      expect(snapshot.single['duration'], 2.75);
+      // The FIRST sighting is the engagement's timestamp, not the last.
+      expect(snapshot.single['created_at'], '2026-08-05T10:00:00.000Z');
+    });
+
+    test('a snapshot carries exactly what the server reads', () async {
+      await ViewCache.instance.record('p1',
+          viewerEntityId: 'viewer-1',
+          postOwnerId: 'e1',
+          duration: 1,
+          createdAt: '2026-08-05T10:00:00.000Z');
+
+      final snapshot = await ViewCache.instance.snapshot('viewer-1');
+      // save_viewcache_engagements indexes post_id/post_owner_id and .gets
+      // duration/created_at. The viewer id stays local - the server takes it
+      // from the token.
+      expect(
+        snapshot.single.keys.toSet(),
+        {'post_id', 'duration', 'post_owner_id', 'created_at'},
+      );
+    });
+
+    test('another entity never picks up your pending views', () async {
+      await ViewCache.instance.record('p1',
+          viewerEntityId: 'viewer-1',
+          postOwnerId: 'e1',
+          duration: 1,
+          createdAt: '2026-08-05T10:00:00.000Z');
+
+      expect(await ViewCache.instance.snapshot('viewer-2'), isEmpty);
+      // And nobody at all while signed out.
+      expect(await ViewCache.instance.snapshot(''), isEmpty);
+    });
+
+    test('a cleared cache stays cleared', () async {
+      await ViewCache.instance.record('p1',
+          viewerEntityId: 'viewer-1',
+          postOwnerId: 'e1',
+          duration: 1,
+          createdAt: '2026-08-05T10:00:00.000Z');
+      await ViewCache.instance.clear();
+
+      // Re-read from storage rather than trusting the in-memory map: the
+      // point of clearing is that a relaunch doesn't resurrect the entries
+      // and double-count them.
+      ViewCache.instance.resetForTest();
+      expect(await ViewCache.instance.snapshot('viewer-1'), isEmpty);
+    });
+
+    test('your own profile is not somewhere to flush views', () {
+      // The profile endpoint only calls save_viewcache_engagements when
+      // `user.username != username`. On your own profile it returns 200 and
+      // silently discards whatever you sent - so a client that cleared on
+      // success would lose every view banked while browsing the feed.
+      actAs('e1');
+      expect(isOwnProfileHandle('me'), isTrue);
+      expect(isOwnProfileHandle('someone-else'), isFalse);
+      // A realm slug is never the account username, so acting as a page and
+      // opening its profile still flushes - matching the server, which
+      // compares request.user and doesn't follow an entity switch.
+      expect(isOwnProfileHandle('some-realm'), isFalse);
+    });
+
+    test('with no username, no handle counts as yours', () {
+      // Guards the empty-string case: '' == '' would otherwise make an
+      // unresolved handle look like your own profile and start silently
+      // dropping the flush.
+      appStore.dispatch(DispatchModel(
+        setUserAuthT,
+        UserAuth(
+            false,
+            UserAccount('', '', '', '', '', null, true, true, null, null, null,
+                null,
+                personalEntityId: '')),
+      ));
+      expect(isOwnProfileHandle(''), isFalse);
+    });
+
+    testWidgets('a feed row is tracked', (tester) async {
+      actAs('viewer-1');
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: PostViewTracker(post: _post(), child: const SizedBox.expand()),
+        ),
+      ));
+      expect(find.byType(VisibilityDetector), findsOneWidget);
+      // Coming into view records straight away. Await the read first - the
+      // record lands behind the same hydrate.
+      expect(await ViewCache.instance.snapshot('viewer-1'), hasLength(1));
+
+      // Then unmount HERE rather than letting the test end on a live row.
+      // Disposal banks the open session, and that record schedules the
+      // debounced persist; if it happens during the framework's own teardown
+      // the timer is still pending when the test asserts it isn't. Any
+      // future test that mounts a feed row for a signed-in viewer needs
+      // this same drain.
+      await tester.pumpWidget(const MaterialApp(home: Scaffold()));
+      await ViewCache.instance.snapshot('viewer-1');
+      await tester.pump(const Duration(milliseconds: 300));
+    });
+
+    testWidgets('your own post is not tracked on a profile', (tester) async {
+      // _author is e1, so this is the acting entity looking at itself. On a
+      // profile the only thing a self-view could produce is the engagement
+      // log the server refuses to write, so there is nothing to send.
+      actAs('e1');
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: PostViewTracker(post: _post(), child: const SizedBox.expand()),
+        ),
+      ));
+      expect(find.byType(VisibilityDetector), findsNothing);
+      expect(await ViewCache.instance.snapshot('e1'), isEmpty);
+    });
+
+    testWidgets('your own post IS tracked in the newsfeed', (tester) async {
+      // The opposite call, for the opposite reason: the newsfeed reads from
+      // a NewsfeedIndex bucket that only a view deletes from, and your own
+      // posts are fanned into it too. Skip them and your own post never
+      // leaves the top of your feed. The server still declines to log the
+      // self-view - that rule lives there, not here.
+      actAs('e1');
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: PostViewTracker(
+            post: _post(),
+            trackOwnPosts: true,
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ));
+      expect(find.byType(VisibilityDetector), findsOneWidget);
+
+      final snapshot = await ViewCache.instance.snapshot('e1');
+      expect(snapshot, hasLength(1));
+      expect(snapshot.single['post_id'], 'p1');
+      // Sent with the author id the server compares against, so it can make
+      // the self-view call for itself.
+      expect(snapshot.single['post_owner_id'], 'e1');
+
+      await tester.pumpWidget(const MaterialApp(home: Scaffold()));
+      await ViewCache.instance.snapshot('e1');
+      await tester.pump(const Duration(milliseconds: 300));
+    });
+
+    testWidgets('time with the app in the background is not reading time',
+        (tester) async {
+      actAs('viewer-1');
+      await tester.runAsync(() async {
+        await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+            body:
+                PostViewTracker(post: _post(), child: const SizedBox.expand()),
+          ),
+        ));
+        await tester.pump();
+
+        // A moment of actual reading, which SHOULD count.
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        // Backgrounded. The row is still mounted and still "visible" as far
+        // as the detector is concerned, so nothing else closes the session.
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await ViewCache.instance.snapshot('viewer-1');
+
+        // A long spell on the lock screen, which should NOT.
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        await tester.pumpWidget(const MaterialApp(home: Scaffold()));
+        final snapshot = await ViewCache.instance.snapshot('viewer-1');
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // Entry credit plus the two short reads, and nothing like the 400ms
+        // spent away - which is what would land here if the session stayed
+        // open across the pause.
+        expect(snapshot, hasLength(1));
+        expect(snapshot.single['duration'] as double,
+            greaterThanOrEqualTo(PostViewTracker.enterCredit));
+        expect(snapshot.single['duration'] as double, lessThan(0.7));
+      });
+    });
+
+    testWidgets('a row torn down while still visible keeps its dwell time',
+        (tester) async {
+      actAs('viewer-1');
+      // Real time, because the tracker measures with the wall clock - a
+      // pumped Duration would leave the elapsed time at zero.
+      await tester.runAsync(() async {
+        await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+            body:
+                PostViewTracker(post: _post(), child: const SizedBox.expand()),
+          ),
+        ));
+        await tester.pump();
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        // Switching tabs, pushing a screen, refreshing: the row goes away
+        // while it is still the thing being looked at. Whichever path banks
+        // it - the detector's final callback or dispose - the dwell must not
+        // vanish, because it's the longest dwells that disappear this way.
+        await tester.pumpWidget(const MaterialApp(home: Scaffold()));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        final snapshot = await ViewCache.instance.snapshot('viewer-1');
+        expect(snapshot, hasLength(1));
+        expect(snapshot.single['post_id'], 'p1');
+        expect(snapshot.single['post_owner_id'], 'e1');
+        // Entry credit alone would be exactly enterCredit; anything above it
+        // is dwell time that only the dispose path could have banked.
+        expect(
+          snapshot.single['duration'] as double,
+          greaterThan(PostViewTracker.enterCredit),
+        );
+      });
     });
   });
 }

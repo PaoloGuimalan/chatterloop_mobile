@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:crypto/crypto.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
@@ -897,10 +900,53 @@ class VideoFirstFrame extends StatefulWidget {
     _inFlight.clear();
   }
 
+  /// Where extracted frames are kept between app launches.
+  ///
+  /// The in-memory map above only survives while the process does, so every
+  /// cold start re-extracted every frame in the feed - each one a native
+  /// decode of a remote video, for an image that never changes. On disk they
+  /// are read back as bytes and reused.
+  ///
+  /// The temp directory on purpose: these are derived data, cheap to rebuild,
+  /// and the OS is welcome to reclaim them under pressure.
+  static Directory? _cacheDir;
+
+  static Future<Directory?> _ensureCacheDir() async {
+    if (_cacheDir != null) return _cacheDir;
+    try {
+      final base = await getTemporaryDirectory();
+      final dir = Directory('${base.path}/video_thumbs');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return _cacheDir = dir;
+    } catch (_) {
+      // No disk cache available - fall back to memory only rather than
+      // failing to show a frame at all.
+      return null;
+    }
+  }
+
+  /// A stable filename for a source url. Hashed because a url is not a legal
+  /// filename and can be longer than the filesystem allows.
+  static String _fileNameFor(String source) =>
+      '${md5.convert(utf8.encode(source)).toString()}.jpg';
+
   static Future<Uint8List?> _frameFor(String source) {
     if (_cache.containsKey(source)) return Future.value(_cache[source]);
     return _inFlight.putIfAbsent(source, () async {
       try {
+        final dir = await _ensureCacheDir();
+        final file =
+            dir == null ? null : File('${dir.path}/${_fileNameFor(source)}');
+
+        // Already extracted on a previous run.
+        if (file != null && await file.exists()) {
+          final cached = await file.readAsBytes();
+          if (cached.isNotEmpty) {
+            _cache[source] = cached;
+            return cached;
+          }
+        }
+
         final data = await VideoThumbnail.thumbnailData(
           video: source,
           imageFormat: ImageFormat.JPEG,
@@ -910,6 +956,13 @@ class VideoFirstFrame extends StatefulWidget {
           quality: 60,
         );
         _cache[source] = data;
+        if (data != null && file != null) {
+          // Not awaited on the render path - the frame is already in memory,
+          // and writing it is only for the NEXT launch.
+          unawaited(file.writeAsBytes(data, flush: false).catchError((_) {
+            return file;
+          }));
+        }
         return data;
       } catch (_) {
         // A frame is a nicety - a source that won't give one still renders as
