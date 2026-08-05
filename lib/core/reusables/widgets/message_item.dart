@@ -19,8 +19,19 @@ class MessageItemView extends StatelessWidget {
   final MessageItem message;
   final String userID;
 
-  const MessageItemView(
-      {super.key, required this.message, required this.userID});
+  /// Whether this row is being shown in the ARCHIVED list.
+  ///
+  /// The row cannot work this out for itself: /m/conversations returns the same
+  /// shape either way and carries no per-row archived flag, so the only thing
+  /// that knows is the screen doing the asking.
+  final bool isArchived;
+
+  const MessageItemView({
+    super.key,
+    required this.message,
+    required this.userID,
+    this.isArchived = false,
+  });
 
   bool get _isCurrentUserSender => message.sender == userID;
 
@@ -81,11 +92,16 @@ class MessageItemView extends StatelessWidget {
   /// Long-press surfaces the same actions the conversation header's info
   /// button offers, without having to open the thread first.
   ///
-  /// isArchived is false because the messages list only ever shows unarchived
-  /// conversations - archiving drops a thread off it - so Unarchive is not
-  /// reachable from here.
+  /// The archive entry has to follow the LIST this row is in. The same widget
+  /// renders the Archives screen, and there it was still offering "Archive"
+  /// for a conversation that was already archived - an action that either did
+  /// nothing or re-archived it, on the one screen where Unarchive is the point.
   Future<void> _showOptions(BuildContext context, String title) async {
-    final action = await showConversationOptionsSheet(context, title: title);
+    final action = await showConversationOptionsSheet(
+      context,
+      title: title,
+      isArchived: isArchived,
+    );
     if (action == null || !context.mounted) return;
 
     final ok = await applyConversationAction(message.conversationID, action);

@@ -1,4 +1,4 @@
-// A post's inline video always spans the card's width.
+﻿// A post's inline video always spans the card's width.
 //
 // The regression this pins: a video sized purely by AspectRatio takes the width
 // on offer, derives a height, finds that height over the card's cap, and then
@@ -138,6 +138,9 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
       const SizedBox.expand();
 }
 
+const _videoUrl = 'https://example.invalid/clip.mp4';
+const _otherUrl = 'https://example.invalid/other.mp4';
+
 const PostReference _video = PostReference(
   referenceId: 'r1',
   reference: 'https://example.invalid/clip.mp4',
@@ -180,15 +183,104 @@ void main() {
       theme: buildCLTheme(Brightness.light),
       home: const Scaffold(
         body: SingleChildScrollView(
+          // The real card path, so the geometry measured is what a post
+          // actually renders - not a player pumped in isolation.
           child: PostAttachments(references: [_video]),
         ),
       ),
     ));
+    await tester.pump();
+    // A post's video is a STILL until you press play - mounting a player per
+    // row is what exhausted the platform's decoders. So every geometry test
+    // starts by activating it, exactly as a viewer would.
+    await tester.tap(find.byType(InlinePostVideo));
     // One frame to create the controller, one for the initialized event.
     await tester.pump();
     await tester.pump();
 
     return tester.getSize(find.byType(VideoPlayerScreen));
+  }
+
+  // What actually broke playback: a player per row.
+  //
+  // Every controller is a platform decoder. A feed row mounting one meant ten
+  // video posts held ten decoders, after which initialise simply failed and
+  // every video said "cannot be played" - and retrying could not help, because
+  // the decoders were still held by the rows above. So a post's video is a
+  // still frame (an extracted bitmap, no decoder) until someone presses play.
+  group('a feed of videos holds no decoders', () {
+    testWidgets('several video posts create nothing until played',
+        (tester) async {
+      final fake = _FakeVideoPlayerPlatform(const Size(1280, 720));
+      VideoPlayerPlatform.instance = fake;
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+          body: SingleChildScrollView(
+            child: Column(children: [
+              PostAttachments(references: [_video]),
+              PostAttachments(references: [
+                PostReference(
+                  referenceId: 'r2',
+                  reference: _otherUrl,
+                  mediaType: 'video/mp4',
+                ),
+              ]),
+            ]),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(InlinePostVideo), findsNWidgets(2));
+      expect(fake.created, 0, reason: 'no decoder until someone presses play');
+      expect(SharedVideoControllers.activeCount, 0);
+
+      // Play the first: exactly one decoder now exists.
+      await tester.tap(find.byType(InlinePostVideo).first);
+      await tester.pump();
+      await tester.pump();
+      expect(fake.created, 1);
+      expect(find.byType(VideoPlayerScreen), findsOneWidget);
+
+      // Play the second: the first hands the baton over and folds back to a
+      // still, so there is still only ONE live player - pausing the other
+      // would not have been enough, since a paused player keeps its decoder.
+      await tester.tap(find.byType(InlinePostVideo).last);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(VideoPlayerScreen), findsOneWidget,
+          reason: 'one live player at a time, app-wide');
+      expect(SharedVideoControllers.activeCount, 1);
+    });
+  });
+
+  /// A player mounted directly, so it starts PAUSED.
+  ///
+  /// The card path can't be used for control tests any more: activating a
+  /// post's video is a deliberate "play" gesture, so it autoplays, and every
+  /// assertion about the resting state would be measuring a playing video.
+  Future<void> pumpPlayer(WidgetTester tester, Size videoSize) async {
+    VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform(videoSize);
+    tester.view.physicalSize = screen;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: buildCLTheme(Brightness.light),
+      home: const Scaffold(
+        body: SingleChildScrollView(
+          child: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
+        ),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
   }
 
   testWidgets('a landscape video fills the card width', (tester) async {
@@ -255,8 +347,8 @@ void main() {
         home: const Scaffold(
           body: SingleChildScrollView(
             child: Column(children: [
-              PostAttachments(references: [_video]),
-              PostAttachments(references: [_video]),
+              VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
+              VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
             ]),
           ),
         ),
@@ -275,7 +367,7 @@ void main() {
         home: const Scaffold(
           body: SingleChildScrollView(
             child: Column(children: [
-              PostAttachments(references: [_video]),
+              VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
             ]),
           ),
         ),
@@ -289,11 +381,6 @@ void main() {
     testWidgets('two different videos still get one each', (tester) async {
       // Keeps the test above honest: it would also pass if the counter were
       // stuck at 1, or if every video in the app shared one controller.
-      const other = PostReference(
-        referenceId: 'r2',
-        reference: 'https://example.invalid/other.mp4',
-        mediaType: 'video/mp4',
-      );
       final fake = _FakeVideoPlayerPlatform(const Size(1280, 720));
       VideoPlayerPlatform.instance = fake;
       tester.view.physicalSize = screen;
@@ -305,8 +392,8 @@ void main() {
         home: const Scaffold(
           body: SingleChildScrollView(
             child: Column(children: [
-              PostAttachments(references: [_video]),
-              PostAttachments(references: [other]),
+              VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
+              VideoPlayerScreen(videoUrl: _otherUrl, fillWidth: true),
             ]),
           ),
         ),
@@ -329,7 +416,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         theme: buildCLTheme(Brightness.light),
         home: const Scaffold(
-          body: PostAttachments(references: [_video]),
+          body: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
         ),
       ));
       await tester.pump();
@@ -365,7 +452,7 @@ void main() {
       addTearDown(tester.view.reset);
 
       const shown = MaterialApp(
-        home: Scaffold(body: PostAttachments(references: [_video])),
+        home: Scaffold(body: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true)),
       );
       const hidden = MaterialApp(home: Scaffold(body: SizedBox()));
 
@@ -392,7 +479,7 @@ void main() {
   group('controls', () {
     testWidgets('a paused video shows play, a scrubber and a clock',
         (tester) async {
-      await pumpVideo(tester, const Size(1280, 720));
+      await pumpPlayer(tester, const Size(1280, 720));
 
       expect(find.byIcon(Icons.play_arrow), findsOneWidget);
       expect(find.byType(VideoProgressIndicator), findsOneWidget);
@@ -403,7 +490,7 @@ void main() {
 
     testWidgets('play flips the button, and the controls follow the CONTROLLER',
         (tester) async {
-      await pumpVideo(tester, const Size(1280, 720));
+      await pumpPlayer(tester, const Size(1280, 720));
 
       await tester.tap(find.byIcon(Icons.play_arrow));
       await tester.pump();
@@ -428,8 +515,8 @@ void main() {
         home: const Scaffold(
           body: SingleChildScrollView(
             child: Column(children: [
-              PostAttachments(references: [_video]),
-              PostAttachments(references: [_video]),
+              VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
+              VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
             ]),
           ),
         ),
@@ -508,7 +595,7 @@ void main() {
         theme: buildCLTheme(Brightness.light),
         home: const Scaffold(
           body: SingleChildScrollView(
-            child: PostAttachments(references: [_video]),
+            child: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
           ),
         ),
       ));
@@ -535,7 +622,7 @@ void main() {
         theme: buildCLTheme(Brightness.light),
         home: const Scaffold(
           body: SingleChildScrollView(
-            child: PostAttachments(references: [_video]),
+            child: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
           ),
         ),
       ));
@@ -551,11 +638,6 @@ void main() {
       // Two soundtracks at once is never what was asked for - and on Android
       // the two decoders fight over audio focus, so which one survives is a
       // race rather than a choice.
-      const other = PostReference(
-        referenceId: 'r2',
-        reference: 'https://example.invalid/other.mp4',
-        mediaType: 'video/mp4',
-      );
       VideoPlayerPlatform.instance =
           _FakeVideoPlayerPlatform(const Size(1280, 720));
       tester.view.physicalSize = screen;
@@ -567,8 +649,8 @@ void main() {
         home: const Scaffold(
           body: SingleChildScrollView(
             child: Column(children: [
-              PostAttachments(references: [_video]),
-              PostAttachments(references: [other]),
+              VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
+              VideoPlayerScreen(videoUrl: _otherUrl, fillWidth: true),
             ]),
           ),
         ),
@@ -605,7 +687,7 @@ void main() {
         theme: buildCLTheme(Brightness.light),
         home: const Scaffold(
           body: SingleChildScrollView(
-            child: PostAttachments(references: [_video]),
+            child: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
           ),
         ),
       ));
@@ -649,7 +731,7 @@ void main() {
         theme: buildCLTheme(Brightness.light),
         home: const Scaffold(
           body: SingleChildScrollView(
-            child: PostAttachments(references: [_video]),
+            child: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
           ),
         ),
       ));
@@ -704,7 +786,7 @@ void main() {
       // They're layered on the BOX, outside the FittedBox - inside it, a
       // portrait video (which scales up hard to cover) would blow the buttons
       // up with the frame.
-      await pumpVideo(tester, const Size(720, 1280));
+      await pumpPlayer(tester, const Size(720, 1280));
 
       final button = tester.getSize(find.byIcon(Icons.play_arrow));
       expect(button.width, closeTo(30, 0.5));
@@ -728,7 +810,7 @@ void main() {
       theme: buildCLTheme(Brightness.light),
       home: const Scaffold(
         body: SingleChildScrollView(
-          child: PostAttachments(references: [_video]),
+          child: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true),
         ),
       ),
     ));
@@ -740,3 +822,7 @@ void main() {
     expect(tester.getSize(find.byType(VideoPlayerScreen)).width, screen.width);
   });
 }
+
+
+
+

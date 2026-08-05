@@ -173,17 +173,7 @@ class _SingleAttachment extends StatelessWidget {
           ),
         );
       }
-      return Container(
-        constraints: BoxConstraints(maxHeight: maxHeight),
-        width: double.infinity,
-        color: p.surface2,
-        // Full width like the image case below, rather than sized to the
-        // video's own shape - see VideoPlayerScreen.fillWidth.
-        child: VideoPlayerScreen(
-          videoUrl: reference.reference,
-          fillWidth: true,
-        ),
-      );
+      return InlinePostVideo(source: reference.reference, maxHeight: maxHeight);
     }
     return GestureDetector(
       onTap: () => openPostGallery(context, [reference], 0),

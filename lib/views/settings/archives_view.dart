@@ -110,7 +110,13 @@ class _ArchivesScreenState extends State<ArchivesScreen> {
                           );
                         }
                         return MessageItemView(
-                            message: _items[index], userID: userID);
+                          message: _items[index],
+                          userID: userID,
+                          // This screen IS the archived list, so the row's
+                          // long-press menu offers Unarchive rather than a
+                          // second Archive.
+                          isArchived: true,
+                        );
                       },
                     ),
                   ),

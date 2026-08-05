@@ -130,6 +130,18 @@ class SharedVideoControllers {
     });
   }
 
+  /// Which inline video is currently ACTIVE - i.e. has a live player rather
+  /// than a still frame. Null means none.
+  ///
+  /// One at a time, app-wide, because a decoder is a scarce platform resource
+  /// and a feed is an unbounded list of videos. Pausing the others is not
+  /// enough: a paused player still holds its decoder, so scrolling past ten
+  /// video posts and tapping each one left ten alive and the eleventh failed
+  /// to initialise - which is what "video cannot be played" was, and why
+  /// retrying never helped.
+  static final ValueNotifier<String?> activeInlineVideo =
+      ValueNotifier<String?>(null);
+
   /// Pause every other video before [keep] starts.
   ///
   /// One at a time, app-wide. Two videos playing together is never what was
@@ -186,11 +198,17 @@ class VideoPlayerScreen extends StatefulWidget {
   /// spans the width and a video too tall for the cap is cropped to fill it.
   final bool fillWidth;
 
+  /// Start playing as soon as it is ready. Set by [InlinePostVideo], where the
+  /// player only exists because the viewer just tapped play - making them tap
+  /// a second time would be absurd.
+  final bool autoPlay;
+
   const VideoPlayerScreen({
     super.key,
     required this.videoUrl,
     this.isLocalFile = false,
     this.fillWidth = false,
+    this.autoPlay = false,
   });
 
   @override
@@ -207,6 +225,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
     _entry = SharedVideoControllers.acquire(widget.videoUrl,
         isLocalFile: widget.isLocalFile);
+    if (widget.autoPlay) _playWhenReady();
+  }
+
+  Future<void> _playWhenReady() async {
+    try {
+      await _entry.ready;
+    } catch (_) {
+      // The error state renders itself; nothing to start.
+      return;
+    }
+    if (!mounted || !_controller.value.isInitialized) return;
+    SharedVideoControllers.pauseOthers(_controller);
+    await _controller.play();
   }
 
   @override
@@ -942,6 +973,99 @@ class _VideoFirstFrameState extends State<VideoFirstFrame> {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// A post's inline video: a still frame until you press play, a real player
+/// after that, and only ONE of them alive at a time.
+///
+/// Every player is a platform decoder and a feed is an unbounded list of
+/// videos. Mounting a player per row meant ten video posts held ten decoders,
+/// after which initialise simply failed - the "video cannot be played" that
+/// survived every retry, because retrying cannot conjure a decoder that
+/// something else is holding.
+///
+/// So the default state costs nothing (the frame is an extracted bitmap, see
+/// [VideoFirstFrame]) and the player is built on demand. Starting one hands
+/// the baton over: whoever was active drops back to its still frame and
+/// releases its controller.
+class InlinePostVideo extends StatefulWidget {
+  final String source;
+  final double maxHeight;
+
+  const InlinePostVideo({
+    super.key,
+    required this.source,
+    required this.maxHeight,
+  });
+
+  @override
+  State<InlinePostVideo> createState() => _InlinePostVideoState();
+}
+
+class _InlinePostVideoState extends State<InlinePostVideo> {
+  bool _active = false;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedVideoControllers.activeInlineVideo.addListener(_onActiveChanged);
+  }
+
+  @override
+  void dispose() {
+    SharedVideoControllers.activeInlineVideo.removeListener(_onActiveChanged);
+    if (SharedVideoControllers.activeInlineVideo.value == widget.source) {
+      SharedVideoControllers.activeInlineVideo.value = null;
+    }
+    super.dispose();
+  }
+
+  /// Someone else took over - fold back to a still and let the decoder go.
+  void _onActiveChanged() {
+    final active = SharedVideoControllers.activeInlineVideo.value;
+    if (_active && active != widget.source && mounted) {
+      setState(() => _active = false);
+    }
+  }
+
+  void _activate() {
+    SharedVideoControllers.activeInlineVideo.value = widget.source;
+    setState(() => _active = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+
+    if (_active) {
+      return Container(
+        constraints: BoxConstraints(maxHeight: widget.maxHeight),
+        width: double.infinity,
+        color: p.surface2,
+        // Full width like the image case, rather than sized to the video's own
+        // shape - see VideoPlayerScreen.fillWidth.
+        child: VideoPlayerScreen(
+          videoUrl: widget.source,
+          fillWidth: true,
+          autoPlay: true,
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: _activate,
+      child: Container(
+        // A fixed height, because the video's real shape isn't known until a
+        // player has loaded it - and not loading one is the point. The player
+        // resizes to the true aspect ratio the moment it starts.
+        constraints: BoxConstraints(maxHeight: widget.maxHeight),
+        width: double.infinity,
+        height: 220,
+        color: p.surface2,
+        child: VideoFirstFrame(source: widget.source),
+      ),
     );
   }
 }
