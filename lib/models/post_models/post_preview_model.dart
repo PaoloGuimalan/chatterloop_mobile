@@ -137,6 +137,15 @@ class PostPreview {
   /// Only the author can archive, and Save is hidden while archived.
   final bool isArchived;
 
+  /// What KIND of post this is - "text", "media", "shared_post", and the two
+  /// that are really account updates: "profile" and "cover_photo". The server
+  /// writes the avatar/cover AND files a post, which is how a changed picture
+  /// shows up in the feed at all.
+  final String contentType;
+
+  bool get isProfilePicturePost => contentType == 'profile';
+  bool get isCoverPhotoPost => contentType == 'cover_photo';
+
   /// Who the post was published to - "public", "connections", "private" or
   /// "custom" (Post.PRIVACY_STATUS_CHOICES). Shown as an icon in the header so
   /// the author can see at a glance where something went; the SERVER is what
@@ -163,6 +172,7 @@ class PostPreview {
     this.isSaved = false,
     this.isArchived = false,
     this.privacyStatus = 'public',
+    this.contentType = 'text',
     this.tagged = const [],
   });
 
@@ -188,6 +198,7 @@ class PostPreview {
     bool? isSaved,
     bool? isArchived,
     String? privacyStatus,
+    String? contentType,
   }) =>
       PostPreview(
         postId: postId,
@@ -205,6 +216,7 @@ class PostPreview {
         isSaved: isSaved ?? this.isSaved,
         isArchived: isArchived ?? this.isArchived,
         privacyStatus: privacyStatus ?? this.privacyStatus,
+        contentType: contentType ?? this.contentType,
         tagged: tagged,
       );
 
@@ -247,6 +259,7 @@ class PostPreview {
       // Defaulted rather than nullable: the column has a default of "public"
       // server-side, so an absent value means public rather than unknown.
       privacyStatus: (json["privacy_status"] ?? 'public').toString(),
+      contentType: (json["content_type"] ?? 'text').toString(),
       tagged: json["tagging"] is List
           ? (json["tagging"] as List)
               .whereType<Map>()

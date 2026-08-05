@@ -150,6 +150,9 @@ void main() {
   // this, one test's controller is handed to the next, which then measures the
   // PREVIOUS video's aspect ratio. Isolation has to be explicit.
   setUp(() {
+    // Extracted frames are cached per source for the process; a stale entry
+    // would let one test's thumbnail satisfy another's.
+    VideoFirstFrame.clearCache();
     // Zero = dispose synchronously, so no 8-second timer is left pending when
     // the tree unmounts. The two tests that are ABOUT the grace period opt back
     // into it explicitly.

@@ -112,6 +112,7 @@ dependencies:
   parchment: ^1.22.0
   # Renders web-authored entry HTML on the read side.
   flutter_widget_from_html_core: ^0.17.2
+  video_thumbnail: ^0.5.6
 
 dependency_overrides:
   # PINNED, not merely constrained, because nothing in the tree constrains it

@@ -41,6 +41,45 @@ const List<(String, String, IconData)> _kPrivacyOptions = [
   ('private', 'Only me', Icons.lock_outline),
 ];
 
+/// What the composer is being used for.
+///
+/// Mirrors web, where changing an avatar or cover is a POST like any other -
+/// it just carries content_type "profile"/"cover_photo", which makes Node's
+/// /createpost write user_account.profile/.coverphoto AND file the post. That
+/// is why a changed picture shows up in the feed at all.
+///
+/// The two media modes are deliberately narrower than a normal post: ONE image
+/// (a second avatar is meaningless), no tagging, and the picked file shown at
+/// full width so you can see what you are about to publish as your face.
+enum ComposerMode { post, profilePhoto, coverPhoto }
+
+extension ComposerModeX on ComposerMode {
+  bool get isMedia => this != ComposerMode.post;
+
+  /// The value Node branches on. Null for a normal post, which derives its own.
+  String? get contentType => switch (this) {
+        ComposerMode.post => null,
+        ComposerMode.profilePhoto => 'profile',
+        ComposerMode.coverPhoto => 'cover_photo',
+      };
+
+  String get sheetTitle => switch (this) {
+        ComposerMode.post => 'Create a post',
+        ComposerMode.profilePhoto => 'Change profile picture',
+        ComposerMode.coverPhoto => 'Change cover photo',
+      };
+
+  String get submitLabel => switch (this) {
+        ComposerMode.post => 'Post',
+        _ => 'Save',
+      };
+
+  String get captionHint => switch (this) {
+        ComposerMode.post => 'Type your caption',
+        _ => 'Say something about it (optional)',
+      };
+}
+
 /// The icon for a post's privacy status, or null when there is nothing worth
 /// showing.
 ///
@@ -97,6 +136,9 @@ Future<bool> showCreatePostSheet(
 
   /// Opens straight into the media picker, like web's "Photo" button.
   bool withMedia = false,
+
+  /// Normal post, or an avatar/cover change - see [ComposerMode].
+  ComposerMode mode = ComposerMode.post,
 }) async {
   final p = cl(context);
   final result = await showModalBottomSheet<bool>(
@@ -109,9 +151,18 @@ Future<bool> showCreatePostSheet(
     builder: (sheetContext) => Padding(
       // Lifts the sheet above the keyboard - the caption field is focused on
       // open, so without this it opens already covered.
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-      child: _CreatePostSheet(autoTag: autoTag, withMedia: withMedia),
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+      child: _CreatePostSheet(
+        autoTag: autoTag,
+        // NOT forced on for the avatar/cover modes. Opening the system picker
+        // the instant the sheet appears takes the decision away - you land in
+        // the gallery before you have seen the sheet, and backing out of it
+        // leaves you staring at an empty modal wondering what happened. The
+        // "Choose a photo" button is one tap and it is yours to make.
+        withMedia: withMedia,
+        mode: mode,
+      ),
     ),
   );
   return result == true;
@@ -135,8 +186,13 @@ class PendingMedia {
 class _CreatePostSheet extends StatefulWidget {
   final SearchResultUser? autoTag;
   final bool withMedia;
+  final ComposerMode mode;
 
-  const _CreatePostSheet({this.autoTag, this.withMedia = false});
+  const _CreatePostSheet({
+    this.autoTag,
+    this.withMedia = false,
+    this.mode = ComposerMode.post,
+  });
 
   @override
   State<_CreatePostSheet> createState() => _CreatePostSheetState();
@@ -174,9 +230,12 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   }
 
   Future<void> _pickMedia() async {
+    final mode = widget.mode;
     final result = await FilePicker.pickFiles(
-      type: FileType.media,
-      allowMultiple: true,
+      // An avatar or cover is ONE image - a video can't be either, and a
+      // second file has nowhere to go.
+      type: mode.isMedia ? FileType.image : FileType.media,
+      allowMultiple: !mode.isMedia,
     );
     if (result == null || !mounted) return;
 
@@ -189,8 +248,11 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
         continue;
       }
       if (_media.any((existing) => existing.path == path)) continue;
-      _media.add(
-          PendingMedia(path: path, name: file.name, size: file.size));
+      // Picking again in a media mode REPLACES rather than appends: there is
+      // only ever one avatar.
+      if (widget.mode.isMedia) _media.clear();
+      _media.add(PendingMedia(path: path, name: file.name, size: file.size));
+      if (widget.mode.isMedia) break;
     }
 
     setState(() {});
@@ -207,7 +269,11 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
 
   Future<void> _post() async {
     final caption = _caption.text.trim();
-    if (caption.isEmpty && _media.isEmpty) {
+    if (widget.mode.isMedia && _media.isEmpty) {
+      _toast("Choose a photo first");
+      return;
+    }
+    if (!widget.mode.isMedia && caption.isEmpty && _media.isEmpty) {
       _toast("Write a caption or add a photo first");
       return;
     }
@@ -215,7 +281,8 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
 
     setState(() {
       _posting = true;
-      _progress = _media.isEmpty ? 'Posting…' : 'Uploading 1 of ${_media.length}…';
+      _progress =
+          _media.isEmpty ? 'Posting…' : 'Uploading 1 of ${_media.length}…';
     });
 
     // Media first: the post carries the resulting CDN urls, so a failed upload
@@ -253,9 +320,13 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
       // Deduped: the auto-tagged profile owner is in this list like any other
       // entity, and the picker can't add them twice, but the server takes the
       // list at face value.
-      taggedEntityIds:
-          _tagged.map((entity) => entity.entityId).toSet().toList(),
+      // No tagging in a media mode - web sends an empty list for these too.
+      taggedEntityIds: widget.mode.isMedia
+          ? const []
+          : _tagged.map((entity) => entity.entityId).toSet().toList(),
       privacy: _privacy,
+      // What turns this from "a photo post" into an account update.
+      contentType: widget.mode.contentType,
     );
     if (!mounted) return;
 
@@ -294,7 +365,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
             ),
             const SizedBox(height: 14),
             Text(
-              "Create a post",
+              widget.mode.sheetTitle,
               style: TextStyle(
                 fontSize: CLType.sectionTitle,
                 fontWeight: FontWeight.w700,
@@ -314,12 +385,15 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                       controller: _caption,
                       minLines: 3,
                       maxLines: 8,
-                      autofocus: !widget.withMedia,
+                      // Not in a media mode either: the caption is optional
+                      // there, and throwing the keyboard up covers the very
+                      // preview you opened the sheet to look at.
+                      autofocus: !widget.withMedia && !widget.mode.isMedia,
                       enabled: !_posting,
                       textCapitalization: TextCapitalization.sentences,
                       style: TextStyle(color: p.text, fontSize: CLType.title),
                       decoration: InputDecoration(
-                        hintText: "Type your caption",
+                        hintText: widget.mode.captionHint,
                         hintStyle: TextStyle(color: p.text3),
                         filled: true,
                         fillColor: p.input,
@@ -333,7 +407,62 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                         ),
                       ),
                     ),
-                    if (_media.isNotEmpty) ...[
+                    // A media mode shows the ONE picked image at full width -
+                    // you are choosing your own face or banner, and a 96px
+                    // thumbnail is not enough to judge that by. Everything else
+                    // keeps the scrolling rail.
+                    if (widget.mode.isMedia && _media.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(CLRadii.md),
+                        child: Stack(
+                          children: [
+                            // Cover for an avatar (it lands in a circle),
+                            // 3:1 for a cover photo - roughly the shape the
+                            // profile header will crop it to, so what you see
+                            // here is what you get there.
+                            AspectRatio(
+                              aspectRatio:
+                                  widget.mode == ComposerMode.coverPhoto
+                                      ? 3 / 1
+                                      : 1,
+                              child: Image.file(
+                                File(_media.first.path),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: p.surface2,
+                                  alignment: Alignment.center,
+                                  child: Icon(Icons.broken_image_outlined,
+                                      size: 26, color: p.text3),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: InkWell(
+                                onTap: _posting
+                                    ? null
+                                    : () => setState(_media.clear),
+                                borderRadius:
+                                    BorderRadius.circular(CLRadii.pill),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.55),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.close,
+                                      size: 15, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (!widget.mode.isMedia && _media.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       // The same rail the Contacts screen uses for its
                       // sections, so a strip of media reads the same way
@@ -367,9 +496,13 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                                 size: 18, color: p.green),
                             const SizedBox(width: 6),
                             Text(
-                              _media.isEmpty
-                                  ? "Add photos or videos"
-                                  : "Add more",
+                              widget.mode.isMedia
+                                  ? (_media.isEmpty
+                                      ? "Choose a photo"
+                                      : "Choose a different photo")
+                                  : (_media.isEmpty
+                                      ? "Add photos or videos"
+                                      : "Add more"),
                               style: TextStyle(
                                 fontSize: CLType.label,
                                 fontWeight: FontWeight.w600,
@@ -380,10 +513,14 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                         ),
                       ),
                     ),
-                    TagEntityPicker(
-                      selected: _tagged,
-                      onChanged: (next) => setState(() => _tagged = next),
-                    ),
+                    // Hidden for an avatar/cover change: there is nobody to
+                    // tag in a picture of yourself, and web sends an empty
+                    // tagging list for these too.
+                    if (!widget.mode.isMedia)
+                      TagEntityPicker(
+                        selected: _tagged,
+                        onChanged: (next) => setState(() => _tagged = next),
+                      ),
                     const SizedBox(height: 10),
                     Text(
                       "Who can see this post?",
@@ -421,13 +558,12 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                       child: CircularProgressIndicator(strokeWidth: 2)),
                   const SizedBox(width: 10),
                   Text(_progress,
-                      style:
-                          TextStyle(fontSize: CLType.label, color: p.text2)),
+                      style: TextStyle(fontSize: CLType.label, color: p.text2)),
                 ],
               )
             else
               CLBtn(
-                label: "Post",
+                label: widget.mode.submitLabel,
                 iconL: Icons.send,
                 block: true,
                 size: CLBtnSize.lg,
@@ -600,9 +736,8 @@ class ProfileComposerCard extends StatelessWidget {
     final user = appStore.state.userAuth.user;
     final acting = user.activeEntity;
     final own = isActingEntity(profile.entityId);
-    final name = profile.displayName.isEmpty
-        ? profile.username
-        : profile.displayName;
+    final name =
+        profile.displayName.isEmpty ? profile.username : profile.displayName;
 
     return ProfileComposerCard(
       key: key,
@@ -670,8 +805,7 @@ class ProfileComposerCard extends StatelessWidget {
                       placeholder,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style:
-                          TextStyle(fontSize: CLType.body, color: p.text3),
+                      style: TextStyle(fontSize: CLType.body, color: p.text3),
                     ),
                   ),
                 ),
@@ -699,8 +833,8 @@ class ProfileComposerCard extends StatelessWidget {
                   onTap: () => _open(context, withMedia: true),
                   borderRadius: BorderRadius.circular(CLRadii.sm),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 6, horizontal: 4),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

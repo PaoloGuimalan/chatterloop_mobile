@@ -348,11 +348,17 @@ class NewsfeedApi {
   /// "post to someone else's wall": writing on a profile you're visiting is a
   /// post of your own that TAGS them, which is why the composer pre-selects
   /// that profile instead of addressing the post anywhere.
+  /// [contentType] overrides the derived kind, and is what turns a plain photo
+  /// post into an account update: "profile" and "cover_photo" make Node's
+  /// /createpost write user_account.profile / .coverphoto as well as filing the
+  /// post - which is how a changed picture appears in the feed. Same two-step
+  /// upload-then-post flow web's UploadProfileMedia uses.
   Future<bool> createPostRequest({
     required String caption,
     List<PostMediaReference> media = const [],
     List<String> taggedEntityIds = const [],
     String privacy = "public",
+    String? contentType,
   }) async {
     final hasMedia = media.isNotEmpty;
     final payload = {
@@ -365,7 +371,7 @@ class NewsfeedApi {
       },
       'type': {
         'fileType': hasMedia ? 'media' : 'text',
-        'contentType': hasMedia ? 'media' : 'text',
+        'contentType': contentType ?? (hasMedia ? 'media' : 'text'),
       },
       'tagging': {
         'isTagged': taggedEntityIds.isNotEmpty,

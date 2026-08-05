@@ -70,6 +70,15 @@ class ProfileHeader extends StatelessWidget {
   final String? email;
   final String? avatarSrc;
   final String? coverSrc;
+
+  /// Camera buttons on the avatar and the cover. Null hides both.
+  ///
+  /// The OWNER's own profile only - web gates the same affordance on
+  /// `authentication.user.userID === userID`. Passing a handler is the whole
+  /// permission check as far as this widget is concerned; deciding it is the
+  /// screen's job, since only it knows whose profile this is.
+  final VoidCallback? onChangeAvatar;
+  final VoidCallback? onChangeCover;
   final bool isBadged;
 
   /// Private profile - shows a lock beside the name, mirroring the webapp.
@@ -90,6 +99,8 @@ class ProfileHeader extends StatelessWidget {
     this.email,
     this.avatarSrc,
     this.coverSrc,
+    this.onChangeAvatar,
+    this.onChangeCover,
     this.isBadged = false,
     this.isPrivate = false,
     this.gender,
@@ -114,11 +125,14 @@ class ProfileHeader extends StatelessWidget {
           Icon(icon, size: 19, color: p.text2),
           const SizedBox(width: 8),
           if (label.isNotEmpty)
-            Text("$label ", style: TextStyle(color: p.text, fontSize: CLType.title)),
+            Text("$label ",
+                style: TextStyle(color: p.text, fontSize: CLType.title)),
           Flexible(
             child: Text(value,
                 style: TextStyle(
-                    color: p.text, fontSize: CLType.title, fontWeight: FontWeight.w700),
+                    color: p.text,
+                    fontSize: CLType.title,
+                    fontWeight: FontWeight.w700),
                 overflow: TextOverflow.ellipsis),
           ),
         ],
@@ -135,42 +149,89 @@ class ProfileHeader extends StatelessWidget {
 
     return Column(
       children: [
-        Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomCenter,
-          children: [
-            ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(bottom: Radius.circular(20)),
-              child: (coverSrc != null &&
-                      coverSrc!.isNotEmpty &&
-                      coverSrc != "none")
-                  ? CLNetworkImage(
-                      src: coverSrc!,
-                      width: double.infinity,
-                      height: _coverHeight,
-                      errorBuilder: (_) => _coverPlaceholder(p),
-                    )
-                  : _coverPlaceholder(p),
-            ),
-            Positioned(
-              bottom: -(_avatarSize / 2),
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(shape: BoxShape.circle, color: p.bg),
-                child: CLAvatar(
-                    id: id,
-                    name: displayName,
-                    src: avatarSrc,
-                    size: _avatarSize,
-                    online: online),
+        // Tall enough to CONTAIN the avatar's overhang.
+        //
+        // The avatar used to be positioned at bottom:-(size/2), hanging outside
+        // the Stack - and Flutter does not hit-test anything drawn outside its
+        // parent's bounds, so the whole lower half of the avatar (including the
+        // camera badge on its corner) was visible but untappable. clipBehavior
+        // .none makes it VISIBLE, not interactive; that distinction is the bug.
+        SizedBox(
+          height: _coverHeight + _avatarSize / 2 + 4,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: ClipRRect(
+                  borderRadius:
+                      const BorderRadius.vertical(bottom: Radius.circular(20)),
+                  child: (coverSrc != null &&
+                          coverSrc!.isNotEmpty &&
+                          coverSrc != "none")
+                      ? CLNetworkImage(
+                          src: coverSrc!,
+                          width: double.infinity,
+                          height: _coverHeight,
+                          errorBuilder: (_) => _coverPlaceholder(p),
+                        )
+                      : _coverPlaceholder(p),
+                ),
               ),
-            ),
-          ],
+              if (onChangeCover != null)
+                Positioned(
+                  right: 12,
+                  top: MediaQuery.of(context).padding.top + 8,
+                  child: _MediaEditButton(
+                    onTap: onChangeCover!,
+                    tooltip: "Change cover photo",
+                  ),
+                ),
+              Positioned(
+                top: _coverHeight - _avatarSize / 2,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration:
+                        BoxDecoration(shape: BoxShape.circle, color: p.bg),
+                    child: Stack(
+                      children: [
+                        CLAvatar(
+                            id: id,
+                            name: displayName,
+                            src: avatarSrc,
+                            size: _avatarSize,
+                            online: online),
+                        if (onChangeAvatar != null)
+                          // INSIDE the avatar's own box, not hanging off its
+                          // corner - same hit-testing rule as above.
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: _MediaEditButton(
+                              onTap: onChangeAvatar!,
+                              tooltip: "Change profile picture",
+                              compact: true,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        SizedBox(height: _avatarSize / 2 + 14),
+        // Just breathing room now - the overhang is inside the SizedBox above
+        // rather than hanging past it, so this no longer reserves space for it.
+        const SizedBox(height: 14),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
+          padding:
+              const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -179,7 +240,9 @@ class ProfileHeader extends StatelessWidget {
                   displayName.isEmpty ? username : displayName,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: p.text, fontSize: CLType.screenTitle, fontWeight: FontWeight.w800),
+                      color: p.text,
+                      fontSize: CLType.screenTitle,
+                      fontWeight: FontWeight.w800),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -197,10 +260,12 @@ class ProfileHeader extends StatelessWidget {
         ),
         if (email != null && email!.isNotEmpty) ...[
           const SizedBox(height: 4),
-          Text(email!, style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
+          Text(email!,
+              style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
         ],
         const SizedBox(height: 2),
-        Text("@$username", style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
+        Text("@$username",
+            style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
         if (actions != null) ...[
           const SizedBox(height: 16),
           actions!,
@@ -208,7 +273,8 @@ class ProfileHeader extends StatelessWidget {
         if (hasInfoCard) ...[
           const SizedBox(height: 16),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
+            padding:
+                const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
             child: CLCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -228,6 +294,43 @@ class ProfileHeader extends StatelessWidget {
         ],
         const SizedBox(height: 8),
       ],
+    );
+  }
+}
+
+/// The camera affordance on a profile's avatar and cover.
+///
+/// Its own scrim, because it sits on whatever photo the user chose - a bare
+/// icon disappears against a light one.
+class _MediaEditButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final String tooltip;
+  final bool compact;
+
+  const _MediaEditButton({
+    required this.onTap,
+    required this.tooltip,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: p.surface,
+        shape: CircleBorder(side: BorderSide(color: p.border)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.all(compact ? 6 : 8),
+            child: Icon(Icons.photo_camera_outlined,
+                size: compact ? 16 : 18, color: p.text2),
+          ),
+        ),
+      ),
     );
   }
 }

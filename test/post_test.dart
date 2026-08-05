@@ -22,6 +22,7 @@ import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -66,6 +67,7 @@ PostPreview _post({
   bool saved = false,
   bool archived = false,
   String privacy = 'public',
+  String contentType = 'text',
 }) =>
     PostPreview(
       postId: 'p1',
@@ -82,6 +84,7 @@ PostPreview _post({
       isSaved: saved,
       isArchived: archived,
       privacyStatus: privacy,
+      contentType: contentType,
     );
 
 void main() {
@@ -453,15 +456,36 @@ void main() {
       }
     });
 
-    testWidgets('the audience icon is as small as the archived one',
+    testWidgets('the audience icon reads on its own, without dominating',
         (tester) async {
+      // Deliberately a step LARGER than the archived marker beside it: that
+      // one has a word next to it and can afford to be tiny, this one carries
+      // its whole meaning alone. Still bounded by the line's text so it stays
+      // a marker rather than a badge.
       await pump(
         tester,
         PostCard(post: _post(privacy: 'private', archived: true)),
       );
       final privacy = tester.getSize(find.byIcon(Icons.lock_outline));
       final archived = tester.getSize(find.byIcon(Icons.archive_outlined));
-      expect(privacy, archived);
+
+      expect(privacy.width, greaterThan(archived.width));
+      expect(privacy.width, lessThanOrEqualTo(16));
+    });
+
+    testWidgets('an avatar/cover post says so in the header', (tester) async {
+      // Web renders "changed profile picture" right after the name - these
+      // posts ARE the account update, so without the label a new avatar looks
+      // like someone posting a random photo of themselves.
+      await pump(tester, PostCard(post: _post(contentType: 'profile')));
+      expect(find.textContaining('changed profile picture'), findsOneWidget);
+
+      await pump(tester, PostCard(post: _post(contentType: 'cover_photo')));
+      expect(find.textContaining('changed cover photo'), findsOneWidget);
+
+      // An ordinary post says nothing extra.
+      await pump(tester, PostCard(post: _post()));
+      expect(find.textContaining('changed'), findsNothing);
     });
 
     testWidgets('a reacted post shows its own glyph slot', (tester) async {
@@ -684,6 +708,71 @@ void main() {
           expect(find.text("Tagged 1"), findsOneWidget);
         });
 
+        testWidgets('media buttons follow the same rule, not is_admin',
+            (tester) async {
+          // The header takes a HANDLER, not a flag - passing null is the whole
+          // permission check as far as it is concerned. So the gate is testable
+          // here: acting as the page gets camera buttons, an admin on their
+          // personal account does not.
+          //
+          // It matters more than it looks: the server writes profile/cover from
+          // the ACTING entity's type, so an admin on their own account pressing
+          // this would have changed THEIR avatar from the page's screen.
+          for (final (acting, expected) in [('e-page', 1), ('me', 0)]) {
+            actAs(acting,
+                activeEntity: acting == 'e-page'
+                    ? const ActiveEntity(id: 'e-page', type: 'realm')
+                    : null);
+
+            await pump(
+              tester,
+              ProfileHeader(
+                id: 'r1',
+                displayName: 'Manila Runners',
+                username: 'manila-runners',
+                onChangeAvatar: isActingEntity('e-page') ? () {} : null,
+                onChangeCover: isActingEntity('e-page') ? () {} : null,
+              ),
+            );
+
+            expect(find.byIcon(Icons.photo_camera_outlined),
+                findsNWidgets(expected * 2),
+                reason: 'acting as $acting');
+          }
+        });
+
+        testWidgets('the camera buttons are actually TAPPABLE', (tester) async {
+          // Rendering is not enough. The avatar used to hang outside its
+          // Stack's bounds (bottom: -size/2), and Flutter does not hit-test
+          // anything drawn past its parent - so both buttons were plainly
+          // visible and completely dead. clipBehavior: Clip.none makes a child
+          // VISIBLE, not interactive, and only tapping tells you which.
+          var avatarTaps = 0;
+          var coverTaps = 0;
+
+          await pump(
+            tester,
+            ProfileHeader(
+              id: 'r1',
+              displayName: 'Manila Runners',
+              username: 'manila-runners',
+              onChangeAvatar: () => avatarTaps++,
+              onChangeCover: () => coverTaps++,
+            ),
+          );
+
+          final cameras = find.byIcon(Icons.photo_camera_outlined);
+          expect(cameras, findsNWidgets(2));
+
+          await tester.tap(cameras.first);
+          await tester.pump();
+          await tester.tap(cameras.last);
+          await tester.pump();
+
+          expect(coverTaps + avatarTaps, 2,
+              reason: 'both buttons must receive their taps');
+        });
+
         testWidgets('switched to the page, it is yours', (tester) async {
           actAs('e-page',
               activeEntity:
@@ -782,6 +871,40 @@ void main() {
 
         expect(find.byIcon(Icons.play_circle_fill), findsOneWidget);
         expect(find.text('Video · 8.0 MB'), findsOneWidget);
+      });
+
+      // Changing an avatar or cover goes through the SAME composer, in a
+      // narrower mode - one image, no tagging, full-width preview - and sends
+      // content_type "profile"/"cover_photo", which is what makes Node write
+      // the account field as well as filing the post.
+      group('avatar and cover mode', () {
+        testWidgets('hides tagging and names itself', (tester) async {
+          actAs('me');
+          await pump(
+            tester,
+            Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showCreatePostSheet(context,
+                    mode: ComposerMode.profilePhoto),
+                child: const Text('open'),
+              ),
+            ),
+          );
+          await tester.tap(find.text('open'));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Change profile picture'), findsOneWidget);
+          // There is nobody to tag in a picture of yourself.
+          expect(find.text('Tag people or pages'), findsNothing);
+          expect(find.text('Save'), findsOneWidget);
+        });
+
+        test('each mode carries the content_type Node branches on', () {
+          // The whole difference between "a photo post" and "my new avatar".
+          expect(ComposerMode.post.contentType, isNull);
+          expect(ComposerMode.profilePhoto.contentType, 'profile');
+          expect(ComposerMode.coverPhoto.contentType, 'cover_photo');
+        });
       });
 
       // The audience a post starts with, matching what the server would apply

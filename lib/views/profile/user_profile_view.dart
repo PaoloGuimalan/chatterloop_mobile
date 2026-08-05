@@ -448,6 +448,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return me.username == profile!.username;
   }
 
+  /// Opens the composer in avatar/cover mode. Changing either IS a post -
+  /// Node's /createpost writes user_account.profile/.coverphoto and files the
+  /// feed entry in one call - so afterwards both the profile and its feed are
+  /// reloaded rather than just one of them.
+  Future<void> _changeProfileMedia(ComposerMode mode) async {
+    final saved = await showCreatePostSheet(context, mode: mode);
+    if (!saved || !mounted) return;
+    await _load();
+    _feedKey.currentState?.reload();
+  }
+
   /// This profile as a tag chip for the composer. The picker speaks
   /// SearchResultUser, and a profile payload carries everything it needs -
   /// so no lookup, and the chip is there before the sheet even opens.
@@ -693,6 +704,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           isPrivate: profile!.isPrivate,
                           gender: profile!.gender,
                           online: online,
+                          // OWNER ONLY, and "owner" means the acting entity
+                          // IS this profile - the same rule the composer and
+                          // the post options use. Everyone else gets no camera
+                          // button at all, so there is nothing to press; the
+                          // server enforces it too, since it writes the avatar
+                          // of whoever the token says is posting.
+                          onChangeAvatar: isActingEntity(profile!.entityId)
+                              ? () => _changeProfileMedia(
+                                  ComposerMode.profilePhoto)
+                              : null,
+                          onChangeCover: isActingEntity(profile!.entityId)
+                              ? () => _changeProfileMedia(
+                                  ComposerMode.coverPhoto)
+                              : null,
                           joinedLabel:
                               formattedDateToWords(profile!.joinedDate),
                           birthdateLabel: formattedBirthdate(

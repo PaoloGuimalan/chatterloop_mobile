@@ -335,6 +335,19 @@ class _PostCardState extends State<PostCard> {
                               color: p.brand,
                             ),
                           ),
+                        // "Marisse changed profile picture" - web puts this
+                        // right after the name, before any tagging summary.
+                        // These posts ARE the account update; the server writes
+                        // the avatar and files the post in one go.
+                        if (post.isProfilePicturePost ||
+                            post.isCoverPhotoPost)
+                          TextSpan(
+                            text: post.isProfilePicturePost
+                                ? " changed profile picture"
+                                : " changed cover photo",
+                            style: TextStyle(
+                                fontSize: CLType.title, color: p.text2),
+                          ),
                         ...taggingSummarySpans(
                           context,
                           post.tagged,
@@ -367,12 +380,19 @@ class _PostCardState extends State<PostCard> {
                               if (privacyIcon != null) ...[
                                 WidgetSpan(
                                   alignment: PlaceholderAlignment.middle,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(right: 4),
-                                    child: Icon(privacyIcon,
-                                        size: 12, color: p.text3),
-                                  ),
+                                  // A step up from the 12 it shares this line
+                                  // with: the archived marker has a WORD next
+                                  // to it, so it reads at any size, while this
+                                  // one has to carry its whole meaning alone.
+                                  child: Icon(privacyIcon,
+                                      size: 15, color: p.text3),
                                 ),
+                                // Same dot the Archived marker uses, so the
+                                // three parts of this line separate the same
+                                // way rather than one of them just sitting
+                                // next to the date.
+                                if (post.datePosted != null)
+                                  const TextSpan(text: " · "),
                               ],
                               if (post.datePosted != null)
                                 TextSpan(text: timeSince(post.datePosted!)),

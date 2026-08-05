@@ -241,6 +241,19 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                         avatarSrc: realm.profile,
                         coverSrc: realm.coverPhoto,
                         isBadged: realm.isVerified,
+                        // Same rule as everywhere else: you can change a
+                        // page's picture when you ARE the page, not when you
+                        // merely administer it. The server agrees - its
+                        // profile/cover update branches on the ACTING entity's
+                        // type and writes community_realm for a realm, so
+                        // acting as your personal account would have changed
+                        // YOUR avatar from the page's own profile screen.
+                        onChangeAvatar: isActingEntity(realm.entityId)
+                            ? () => _changeRealmMedia(ComposerMode.profilePhoto)
+                            : null,
+                        onChangeCover: isActingEntity(realm.entityId)
+                            ? () => _changeRealmMedia(ComposerMode.coverPhoto)
+                            : null,
                         actions: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
                           child: _actions(p, realm),
@@ -283,6 +296,18 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     );
   }
 
+  /// Opens the composer in avatar/cover mode for this PAGE.
+  ///
+  /// Identical to the user profile's version, and deliberately the same code
+  /// path: the server decides which table to write from the acting entity's
+  /// type, so the client does not need a realm-specific request at all.
+  Future<void> _changeRealmMedia(ComposerMode mode) async {
+    final saved = await showCreatePostSheet(context, mode: mode);
+    if (!saved || !mounted) return;
+    await _load();
+    _feedKey.currentState?.reload();
+  }
+
   /// This page as a tag chip for the composer - the same shape the user
   /// profile passes, which is what lets one rule cover both kinds.
   ///
@@ -307,11 +332,17 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
   /// Sits in the same slot the user profile fills with Add Contact / Message,
   /// so the two screens line up.
   Widget _actions(CLPalette p, RealmProfile realm) {
-    // Managing a page is a webapp-only surface for now, so admins get a
-    // disabled-looking state rather than a Follow button aimed at themselves.
-    if (realm.isAdmin) {
+    // "This is me" is the ACTING entity being this page - not administering it.
+    // An admin on their personal account is just another visitor here and gets
+    // the ordinary Follow/Message actions, which is what they'd actually want:
+    // following your own page from your own account is a real thing to do, and
+    // messaging it is how the page's inbox gets tested.
+    if (isActingEntity(realm.entityId)) {
+      // Not "you manage this page" any more - that was about is_admin. This
+      // says what is actually true now: you ARE the page, which is why there
+      // is nothing here to follow or message.
       return CLBtn(
-        label: "You manage this page",
+        label: "You're posting as this page",
         variant: CLBtnVariant.outline,
         block: true,
         onPressed: null,

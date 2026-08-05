@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 /// One [VideoPlayerController] per source, shared by every widget showing it
 /// and disposed when the last one goes away.
@@ -817,23 +819,32 @@ class _Unavailable extends StatelessWidget {
   }
 }
 
-/// A video's FIRST FRAME, as a still - no controls, no playback.
+/// A video's FIRST FRAME, as a still image.
 ///
 /// Used wherever a video is advertised rather than watched: the multi-media
-/// grid, the share preview, the composer's picked files. Those all used to be a
+/// grid, the share preview, the composer's picked files. Those used to be a
 /// flat surface colour with a play glyph, which told you nothing about which
-/// video you were looking at - and a post with two videos was two identical
-/// grey tiles.
+/// video you were looking at - a post with two videos was two identical grey
+/// tiles.
 ///
-/// It goes through the same shared registry as the player, so a tile and the
-/// full player for one source share a controller rather than each holding
-/// their own decoder. The controller is initialised and never played: a
-/// video_player showing an initialised, unplayed controller IS its first frame.
+/// EXTRACTS A BITMAP rather than holding a player. The first version of this
+/// initialised a VideoPlayerController per tile and rendered its unplayed
+/// frame, which does show the real image - but every controller is a
+/// platform-level decoder, and a post with several videos plus the player
+/// exhausted them: initialise started failing and the app showed "this video
+/// couldn't be played" in place of videos that were fine. video_thumbnail asks
+/// the platform for ONE frame and releases everything, so a grid of previews
+/// costs no decoders at all.
+///
+/// Results are cached per source for the process: extraction is not free, and
+/// the same tile is rebuilt constantly by a scrolling feed. Failures are cached
+/// too - as null - so a source that cannot produce a frame is not retried on
+/// every rebuild.
 class VideoFirstFrame extends StatefulWidget {
   final String source;
   final bool isLocalFile;
 
-  /// Drawn over the frame. Off for a tile that already has its own play glyph.
+  /// Drawn over the frame, so a still is never mistaken for a photo.
   final bool showPlayBadge;
 
   const VideoFirstFrame({
@@ -843,25 +854,62 @@ class VideoFirstFrame extends StatefulWidget {
     this.showPlayBadge = true,
   });
 
+  /// Frames already extracted, keyed by source. Null value = tried and failed.
+  static final Map<String, Uint8List?> _cache = {};
+
+  /// In-flight extractions, so four tiles of the same clip ask once.
+  static final Map<String, Future<Uint8List?>> _inFlight = {};
+
+  @visibleForTesting
+  static void clearCache() {
+    _cache.clear();
+    _inFlight.clear();
+  }
+
+  static Future<Uint8List?> _frameFor(String source) {
+    if (_cache.containsKey(source)) return Future.value(_cache[source]);
+    return _inFlight.putIfAbsent(source, () async {
+      try {
+        final data = await VideoThumbnail.thumbnailData(
+          video: source,
+          imageFormat: ImageFormat.JPEG,
+          // Tiles are small; a full-resolution frame would cost more to decode
+          // than it could ever show.
+          maxWidth: 480,
+          quality: 60,
+        );
+        _cache[source] = data;
+        return data;
+      } catch (_) {
+        // A frame is a nicety - a source that won't give one still renders as
+        // a video tile, it just doesn't show what's in it.
+        _cache[source] = null;
+        return null;
+      } finally {
+        _inFlight.remove(source);
+      }
+    });
+  }
+
   @override
   State<VideoFirstFrame> createState() => _VideoFirstFrameState();
 }
 
 class _VideoFirstFrameState extends State<VideoFirstFrame> {
-  late SharedVideoEntry _entry;
+  late Future<Uint8List?> _frame;
 
   @override
   void initState() {
     super.initState();
-    _entry = SharedVideoControllers.acquire(widget.source,
-        isLocalFile: widget.isLocalFile);
+    _frame = VideoFirstFrame._frameFor(widget.source);
   }
 
   @override
-  void dispose() {
-    SharedVideoControllers.release(widget.source,
-        isLocalFile: widget.isLocalFile);
-    super.dispose();
+  void didUpdateWidget(covariant VideoFirstFrame oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.source != widget.source) {
+      _frame = VideoFirstFrame._frameFor(widget.source);
+    }
   }
 
   @override
@@ -872,25 +920,16 @@ class _VideoFirstFrameState extends State<VideoFirstFrame> {
       fit: StackFit.expand,
       children: [
         Container(color: p.surface2),
-        FutureBuilder(
-          future: _entry.ready,
+        FutureBuilder<Uint8List?>(
+          future: _frame,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done ||
-                snapshot.hasError ||
-                !_entry.controller.value.isInitialized) {
-              // No frame to show yet (or ever) - the badge below still says
-              // "video", so this stays a sensible tile either way.
-              return const SizedBox.shrink();
-            }
-            // Cover, matching the image tiles it sits beside in the grid.
-            return FittedBox(
+            final data = snapshot.data;
+            if (data == null) return const SizedBox.shrink();
+            return Image.memory(
+              data,
               fit: BoxFit.cover,
-              clipBehavior: Clip.hardEdge,
-              child: SizedBox(
-                width: _entry.controller.value.aspectRatio * 1000,
-                height: 1000,
-                child: VideoPlayer(_entry.controller),
-              ),
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             );
           },
         ),
