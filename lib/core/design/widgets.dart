@@ -1,9 +1,52 @@
 // Shared widgets — Flutter counterparts of the webapp's design primitives
 // (Avatar, Btn, IconBtn, Card, Badge, Chip, Toggle, SegTabs, Field).
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'tokens.dart';
+
+/// Bottom padding for a modal bottom sheet's content.
+///
+/// The LARGER of a comfortable gap and the system inset - never their sum.
+/// That distinction is the whole point, and it is what every sheet in the app
+/// used to get wrong in one of two directions:
+///
+///   - flat padding (`bottom: 12`) puts the last row UNDER the navigation bar
+///     on a device that has one;
+///   - `viewPadding.bottom + 12`, or a SafeArea wrapped around content that
+///     already pads itself, stacks the two into a band of dead surface -
+///     roughly 60px of empty sheet on a three-button nav bar.
+///
+/// Taking the max gives an exact gap either way: the comfortable spacing on a
+/// gesture-nav device where the inset is ~0, and precisely enough to clear the
+/// bar where there is one.
+///
+/// A modal sheet needs this at all because it is NOT inset for you - it draws
+/// over the system bars, and `useSafeArea: true` would inset the sheet's whole
+/// surface (including its rounded top and background) rather than its content.
+///
+/// REQUIRES `useRootNavigator: true` on the sheet, which every
+/// showModalBottomSheet call in this app now passes. The default is false,
+/// which puts the sheet in the NEAREST navigator - inside the tab shell that
+/// is the branch navigator, whose bottom edge already stops above
+/// HomeTabScaffold's nav bar. MediaQuery is not reduced by the app's own nav
+/// bar widget, so the inset below still reads as the full system value and
+/// gets added to space that is already covered: the sheet floats a nav bar's
+/// height above where it should sit. That is why the same gap looked correct
+/// on the pushed Archives screen (no bottom nav, sheet at the true screen
+/// edge) and too tall on everything opened from a tab.
+///
+/// It is also just what a modal should do - cover the tab bar, not sit on it.
+/// [extra] adds breathing room ON TOP of the system inset, for a sheet whose
+/// last element is a control you press - a Post button flush against the
+/// navigation bar reads as clipped, where a list of options ending at the bar
+/// looks fine. Off by default: it is the exception, not the rule, and adding
+/// it everywhere is how the dead-space complaint started.
+double clSheetBottomGap(BuildContext context,
+        {double minimum = 12, double extra = 0}) =>
+    math.max(minimum, MediaQuery.of(context).viewPadding.bottom + extra);
 
 // -------- Avatar -------------------------------------------------------------
 
@@ -87,9 +130,8 @@ class CLAvatar extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: cornerRadius == null ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: cornerRadius == null
-            ? null
-            : BorderRadius.circular(cornerRadius!),
+        borderRadius:
+            cornerRadius == null ? null : BorderRadius.circular(cornerRadius!),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -442,8 +484,7 @@ class CLEmptyState extends StatelessWidget {
           subtitle,
           textAlign: TextAlign.center,
           style: TextStyle(
-              fontSize: compact ? CLType.caption : CLType.body,
-              color: p.text2),
+              fontSize: compact ? CLType.caption : CLType.body, color: p.text2),
         ),
       ],
     );
@@ -763,7 +804,9 @@ class CLSectionEmpty extends StatelessWidget {
             title,
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: CLType.body, fontWeight: FontWeight.w700, color: p.text),
+                fontSize: CLType.body,
+                fontWeight: FontWeight.w700,
+                color: p.text),
           ),
           const SizedBox(height: 2),
           Text(

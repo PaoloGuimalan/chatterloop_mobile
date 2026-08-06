@@ -16,6 +16,15 @@ class ConversationInfoModel {
   /// conversationinfo.chatHistory.isArchived).
   bool isArchived;
 
+  /// Whether the signed-in account administers this group.
+  ///
+  /// Comes straight from the conversation info payload's `is_admin`, which is
+  /// the same field webapp gates its Manage button on. Worth stating because
+  /// the obvious-looking alternative is wrong: a group's conversationID is a
+  /// Node group id (a 20-digit string), NOT the Django realm UUID, so it can
+  /// never be matched against the realm list to infer this.
+  bool isAdmin;
+
   ConversationInfoModel(
       this.contactID,
       this.actionBy,
@@ -25,7 +34,8 @@ class ConversationInfoModel {
       this.type,
       this.usersWithInfo,
       this.conversationfiles,
-      {this.isArchived = false});
+      {this.isArchived = false,
+      this.isAdmin = false});
 
   /// The server can legitimately return an empty/near-empty object here -
   /// e.g. opening a conversation that has no backing user_connection row
@@ -64,7 +74,8 @@ class ConversationInfoModel {
             : [],
         isArchived: (json["chatHistory"] is Map &&
                 json["chatHistory"]["isArchived"] == true) ||
-            json["isArchived"] == true);
+            json["isArchived"] == true,
+        isAdmin: json["is_admin"] == true);
   }
 }
 

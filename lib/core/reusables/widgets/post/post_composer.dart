@@ -143,14 +143,16 @@ Future<bool> showCreatePostSheet(
   final p = cl(context);
   final result = await showModalBottomSheet<bool>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: p.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(CLRadii.lg)),
     ),
     builder: (sheetContext) => Padding(
-      // Lifts the sheet above the keyboard - the caption field is focused on
-      // open, so without this it opens already covered.
+      // Lifts the sheet above the keyboard once you tap into the caption.
+      // The field no longer autofocuses, so this is for what you choose to do
+      // rather than for how the sheet arrives.
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
       child: _CreatePostSheet(
@@ -345,232 +347,233 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   Widget build(BuildContext context) {
     final p = cl(context);
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 38,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: p.border2,
-                  borderRadius: BorderRadius.circular(CLRadii.pill),
-                ),
+    // No SafeArea around this: it would inset the content and then the 16
+    // below would sit on top of the inset, which is the empty band at the
+    // bottom of the sheet. clSheetBottomGap takes the larger of the two.
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          16, 12, 16, clSheetBottomGap(context, minimum: 16, extra: 8)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: p.border2,
+                borderRadius: BorderRadius.circular(CLRadii.pill),
               ),
             ),
-            const SizedBox(height: 14),
-            Text(
-              widget.mode.sheetTitle,
-              style: TextStyle(
-                fontSize: CLType.sectionTitle,
-                fontWeight: FontWeight.w700,
-                color: p.text,
-              ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            widget.mode.sheetTitle,
+            style: TextStyle(
+              fontSize: CLType.sectionTitle,
+              fontWeight: FontWeight.w700,
+              color: p.text,
             ),
-            const SizedBox(height: 12),
-            // Everything above the action row scrolls: the caption grows, the
-            // media list grows, and the tag picker opens a results list under
-            // itself - any of which would otherwise push Post off the screen.
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextField(
-                      controller: _caption,
-                      minLines: 3,
-                      maxLines: 8,
-                      // Not in a media mode either: the caption is optional
-                      // there, and throwing the keyboard up covers the very
-                      // preview you opened the sheet to look at.
-                      autofocus: !widget.withMedia && !widget.mode.isMedia,
-                      enabled: !_posting,
-                      textCapitalization: TextCapitalization.sentences,
-                      style: TextStyle(color: p.text, fontSize: CLType.title),
-                      decoration: InputDecoration(
-                        hintText: widget.mode.captionHint,
-                        hintStyle: TextStyle(color: p.text3),
-                        filled: true,
-                        fillColor: p.input,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(CLRadii.md),
-                          borderSide: BorderSide(color: p.border),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(CLRadii.md),
-                          borderSide: BorderSide(color: p.border),
-                        ),
+          ),
+          const SizedBox(height: 12),
+          // Everything above the action row scrolls: the caption grows, the
+          // media list grows, and the tag picker opens a results list under
+          // itself - any of which would otherwise push Post off the screen.
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _caption,
+                    minLines: 3,
+                    maxLines: 8,
+                    // Never. The sheet opening and the keyboard coming up at
+                    // the same time is two animations fighting over the same
+                    // space - the sheet arrives already covered, and half of
+                    // what you opened it for (attachments, tagging, privacy)
+                    // is off screen before you have looked at it. Tapping the
+                    // field is one deliberate tap and it is yours to make.
+                    autofocus: false,
+                    enabled: !_posting,
+                    textCapitalization: TextCapitalization.sentences,
+                    style: TextStyle(color: p.text, fontSize: CLType.title),
+                    decoration: InputDecoration(
+                      hintText: widget.mode.captionHint,
+                      hintStyle: TextStyle(color: p.text3),
+                      filled: true,
+                      fillColor: p.input,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(CLRadii.md),
+                        borderSide: BorderSide(color: p.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(CLRadii.md),
+                        borderSide: BorderSide(color: p.border),
                       ),
                     ),
-                    // A media mode shows the ONE picked image at full width -
-                    // you are choosing your own face or banner, and a 96px
-                    // thumbnail is not enough to judge that by. Everything else
-                    // keeps the scrolling rail.
-                    if (widget.mode.isMedia && _media.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(CLRadii.md),
-                        child: Stack(
-                          children: [
-                            // Cover for an avatar (it lands in a circle),
-                            // 3:1 for a cover photo - roughly the shape the
-                            // profile header will crop it to, so what you see
-                            // here is what you get there.
-                            AspectRatio(
-                              aspectRatio:
-                                  widget.mode == ComposerMode.coverPhoto
-                                      ? 3 / 1
-                                      : 1,
-                              child: Image.file(
-                                File(_media.first.path),
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                errorBuilder: (_, __, ___) => Container(
-                                  color: p.surface2,
-                                  alignment: Alignment.center,
-                                  child: Icon(Icons.broken_image_outlined,
-                                      size: 26, color: p.text3),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 6,
-                              right: 6,
-                              child: InkWell(
-                                onTap: _posting
-                                    ? null
-                                    : () => setState(_media.clear),
-                                borderRadius:
-                                    BorderRadius.circular(CLRadii.pill),
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.55),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.close,
-                                      size: 15, color: Colors.white),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (!widget.mode.isMedia && _media.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      // The same rail the Contacts screen uses for its
-                      // sections, so a strip of media reads the same way
-                      // app-wide - and so a tenth attachment scrolls instead of
-                      // pushing the caption off the sheet.
-                      CLRailSection(
-                        title: _media.length == 1
-                            ? "1 attachment"
-                            : "${_media.length} attachments",
-                        gap: 8,
+                  ),
+                  // A media mode shows the ONE picked image at full width -
+                  // you are choosing your own face or banner, and a 96px
+                  // thumbnail is not enough to judge that by. Everything else
+                  // keeps the scrolling rail.
+                  if (widget.mode.isMedia && _media.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(CLRadii.md),
+                      child: Stack(
                         children: [
-                          for (final item in _media)
-                            PostMediaPreviewTile(
-                              item: item,
-                              onRemove: _posting
-                                  ? null
-                                  : () => setState(() => _media.remove(item)),
+                          // Cover for an avatar (it lands in a circle),
+                          // 3:1 for a cover photo - roughly the shape the
+                          // profile header will crop it to, so what you see
+                          // here is what you get there.
+                          AspectRatio(
+                            aspectRatio: widget.mode == ComposerMode.coverPhoto
+                                ? 3 / 1
+                                : 1,
+                            child: Image.file(
+                              File(_media.first.path),
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: p.surface2,
+                                alignment: Alignment.center,
+                                child: Icon(Icons.broken_image_outlined,
+                                    size: 26, color: p.text3),
+                              ),
                             ),
+                          ),
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: InkWell(
+                              onTap: _posting
+                                  ? null
+                                  : () => setState(_media.clear),
+                              borderRadius: BorderRadius.circular(CLRadii.pill),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.close,
+                                    size: 15, color: Colors.white),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
-                    ],
-                    const SizedBox(height: 6),
-                    InkWell(
-                      onTap: _posting ? null : _pickMedia,
-                      borderRadius: BorderRadius.circular(CLRadii.sm),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            Icon(Icons.add_photo_alternate_outlined,
-                                size: 18, color: p.green),
-                            const SizedBox(width: 6),
-                            Text(
-                              widget.mode.isMedia
-                                  ? (_media.isEmpty
-                                      ? "Choose a photo"
-                                      : "Choose a different photo")
-                                  : (_media.isEmpty
-                                      ? "Add photos or videos"
-                                      : "Add more"),
-                              style: TextStyle(
-                                fontSize: CLType.label,
-                                fontWeight: FontWeight.w600,
-                                color: p.green,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
-                    // Hidden for an avatar/cover change: there is nobody to
-                    // tag in a picture of yourself, and web sends an empty
-                    // tagging list for these too.
-                    if (!widget.mode.isMedia)
-                      TagEntityPicker(
-                        selected: _tagged,
-                        onChanged: (next) => setState(() => _tagged = next),
-                      ),
-                    const SizedBox(height: 10),
-                    Text(
-                      "Who can see this post?",
-                      style:
-                          TextStyle(fontSize: CLType.caption, color: p.text2),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                  ],
+                  if (!widget.mode.isMedia && _media.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    // The same rail the Contacts screen uses for its
+                    // sections, so a strip of media reads the same way
+                    // app-wide - and so a tenth attachment scrolls instead of
+                    // pushing the caption off the sheet.
+                    CLRailSection(
+                      title: _media.length == 1
+                          ? "1 attachment"
+                          : "${_media.length} attachments",
+                      gap: 8,
                       children: [
-                        for (final option in _kPrivacyOptions)
-                          CLChip(
-                            label: option.$2,
-                            icon: option.$3,
-                            active: _privacy == option.$1,
-                            onTap: _posting
+                        for (final item in _media)
+                          PostMediaPreviewTile(
+                            item: item,
+                            onRemove: _posting
                                 ? null
-                                : () => setState(() => _privacy = option.$1),
+                                : () => setState(() => _media.remove(item)),
                           ),
                       ],
                     ),
                   ],
-                ),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: _posting ? null : _pickMedia,
+                    borderRadius: BorderRadius.circular(CLRadii.sm),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          Icon(Icons.add_photo_alternate_outlined,
+                              size: 18, color: p.green),
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.mode.isMedia
+                                ? (_media.isEmpty
+                                    ? "Choose a photo"
+                                    : "Choose a different photo")
+                                : (_media.isEmpty
+                                    ? "Add photos or videos"
+                                    : "Add more"),
+                            style: TextStyle(
+                              fontSize: CLType.label,
+                              fontWeight: FontWeight.w600,
+                              color: p.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Hidden for an avatar/cover change: there is nobody to
+                  // tag in a picture of yourself, and web sends an empty
+                  // tagging list for these too.
+                  if (!widget.mode.isMedia)
+                    TagEntityPicker(
+                      selected: _tagged,
+                      onChanged: (next) => setState(() => _tagged = next),
+                    ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Who can see this post?",
+                    style: TextStyle(fontSize: CLType.caption, color: p.text2),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final option in _kPrivacyOptions)
+                        CLChip(
+                          label: option.$2,
+                          icon: option.$3,
+                          active: _privacy == option.$1,
+                          onTap: _posting
+                              ? null
+                              : () => setState(() => _privacy = option.$1),
+                        ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            if (_posting)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
-                  const SizedBox(width: 10),
-                  Text(_progress,
-                      style: TextStyle(fontSize: CLType.label, color: p.text2)),
-                ],
-              )
-            else
-              CLBtn(
-                label: widget.mode.submitLabel,
-                iconL: Icons.send,
-                block: true,
-                size: CLBtnSize.lg,
-                onPressed: _post,
-              ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+          if (_posting)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 10),
+                Text(_progress,
+                    style: TextStyle(fontSize: CLType.label, color: p.text2)),
+              ],
+            )
+          else
+            CLBtn(
+              label: widget.mode.submitLabel,
+              iconL: Icons.send,
+              block: true,
+              size: CLBtnSize.lg,
+              onPressed: _post,
+            ),
+        ],
       ),
     );
   }

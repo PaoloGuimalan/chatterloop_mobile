@@ -263,6 +263,28 @@ class Endpoints {
   /// Mirrors webapp's FollowRealmRequest / UnfollowRealmRequest.
   String realmFollow = '/api/realm/follow';
 
+  /// Realm roster + media, all used by the manage screen.
+  ///
+  /// Note the split: members and followers are DJANGO (paginated, ?realm_id=
+  /// &page=&page_size=&search=), while removing a member and replacing a
+  /// realm's avatar/cover are NODE. Web is the same - GetRealmMembersRequest
+  /// and GetRealmFollowersRequest hit USER_SERVICE_API, RemoveRealmMemberRequest
+  /// and UpdateRealmMediaRequest hit CHATTERLOOP_API.
+  String realmMembers = '/api/realm/members';
+
+  /// GET lists followers; DELETE {realm_id, follow_id} drops one.
+  String realmFollowers = '/api/realm/realm-followers';
+
+  /// NODE. DELETE {realm_id, account_ids} - a LIST, even for one person.
+  String realmRemoveUser = '/realms/remove-user';
+
+  /// NODE. Multipart {realm_id, realm_type, media_type, image}.
+  String realmUploadMedia = '/realms/upload-media';
+
+  /// NODE. PUT {realm_id, member_id, new_role} - "admin" or "member".
+  /// Note the /s/ prefix, not /realms/.
+  String realmMemberRole = '/s/update-member-realm-role';
+
   /// {realm_id} -> re-issues the authtoken with a different `entity` claim
   /// (same userID, acting as the page instead). Only realms of type "page"
   /// support this; server enforces OWNER/ADMIN membership.

@@ -340,6 +340,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
     showModalBottomSheet(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: p.surface,
       shape: const RoundedRectangleBorder(

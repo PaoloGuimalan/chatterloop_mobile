@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:dio/dio.dart';
@@ -145,8 +146,7 @@ class ConversationsApi {
 
     final conversationId = (item["conversationID"] ?? "").toString();
     if (type == "group") {
-      final gd =
-          item["groupdetails"] is Map ? item["groupdetails"] as Map : {};
+      final gd = item["groupdetails"] is Map ? item["groupdetails"] as Map : {};
       return {
         "id": conversationId,
         "entity_id": conversationId,
@@ -163,8 +163,7 @@ class ConversationsApi {
       "id": conversationId,
       "entity_id": conversationId,
       "username": "",
-      "display_name":
-          (sd["serverName"] ?? gd["groupName"] ?? "").toString(),
+      "display_name": (sd["serverName"] ?? gd["groupName"] ?? "").toString(),
       "profile": cleanProfile(sd["profile"]),
     };
   }
@@ -277,6 +276,27 @@ class ConversationsApi {
       }
       return null;
     }
+  }
+
+  /// [getConversationInfoRequest] decoded into a model.
+  ///
+  /// The unwrap is deliberately self-detecting rather than a fixed depth: a
+  /// normally-populated response is double-wrapped ({data: {data: {...}}}),
+  /// but the degenerate formatConnectionData([]) case yields {} with no
+  /// nested "data" to unwrap. See getConversationInfoProcess in
+  /// conversation_view.dart, which still has its own copy of this walk - the
+  /// two must agree, and this is the one new callers should use.
+  Future<ConversationInfoModel?> getConversationInfoModelRequest(
+      String conversationID, String conversationType) async {
+    final response =
+        await getConversationInfoRequest(conversationID, conversationType);
+    if (response == null) return null;
+    final decoded = JwtCodec.decode(response.result);
+    final level1 = decoded?["data"];
+    final raw =
+        (level1 is Map && level1["data"] is Map) ? level1["data"] : level1;
+    if (raw is! Map) return null;
+    return ConversationInfoModel.fromJson(Map<String, dynamic>.from(raw));
   }
 
   Future<EncodedResponse?> getConversationInfoRequest(

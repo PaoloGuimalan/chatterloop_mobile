@@ -23,6 +23,13 @@ import 'package:chatterloop_app/core/reusables/widgets/search_cards.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:chatterloop_app/models/user_models/network_models.dart';
 import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
+import 'package:chatterloop_app/models/user_models/realm_model.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/views/realm/realm_sections.dart';
+import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -136,6 +143,8 @@ Future<void> _pump(WidgetTester tester, Widget child) async {
 }
 
 void main() {
+  _rosterIdContracts();
+
   testWidgets('Explore rails and cards lay out at 360px', (tester) async {
     await _pump(
       tester,
@@ -439,7 +448,8 @@ void main() {
     /// possible for an opaque push - Overlay stops building the covered route,
     /// so there's nothing left to measure - and mid-flight is the more precise
     /// question anyway, since the parallax is a transition effect.
-    Future<double> pushAndMeasure(WidgetTester tester, Route<void> route) async {
+    Future<double> pushAndMeasure(
+        WidgetTester tester, Route<void> route) async {
       // No `home:` - it wins over onGenerateRoute for '/', so the route under
       // test would never be built.
       await tester.pumpWidget(MaterialApp(
@@ -492,12 +502,157 @@ void main() {
   // a PUSHED screen must keep its body clear of the Android nav bar, and a TAB
   // screen must NOT - the shell's bottom nav already consumed that inset, so
   // insetting again leaves a dead strip above the nav bar.
+  // Webapp's formPreset / Followers gating, transcribed. These are product
+  // decisions with no derivation behind them, so the only thing keeping the
+  // two clients in step is that they say the same thing.
+  group('manage realm varies by realm kind', () {
+    RealmProfile realm(String type, {String? parent}) => RealmProfile(
+          id: 'r1',
+          entityId: 'e1',
+          name: 'Thing',
+          type: type,
+          parent: parent,
+          followersCount: 0,
+          isAdmin: true,
+        );
+
+    test('each kind gets webapp\'s field preset', () {
+      expect(realmFormFields(realm('group')), ['name', 'privacy']);
+      expect(realmFormFields(realm('voice')), ['name']);
+      expect(realmFormFields(realm('page')),
+          ['name', 'description', 'email', 'slug']);
+      expect(
+          realmFormFields(realm('server')), ['name', 'description', 'privacy']);
+    });
+
+    test('a group with a parent is a channel, and loses privacy', () {
+      // The one derived kind. Privacy is deliberately not offered on a
+      // channel - web notes it needs every server member added on a switch
+      // to public.
+      expect(realmFormKind(realm('group', parent: 's1')), 'channel');
+      expect(realmFormFields(realm('group', parent: 's1')), ['name']);
+      // A parentless group is still a group.
+      expect(realmFormKind(realm('group')), 'group');
+    });
+
+    test('only a page has followers or a dashboard', () {
+      // Both gate a section AND, for followers, the count under the realm's
+      // name - a group has members, so "0 followers" there is a category
+      // error rather than an empty state.
+      expect(realmHasFollowers(realm('page')), isTrue);
+      expect(realmHasDashboard(realm('page')), isTrue);
+      for (final type in ['group', 'server', 'voice']) {
+        expect(realmHasFollowers(realm(type)), isFalse, reason: type);
+        expect(realmHasDashboard(realm(type)), isFalse, reason: type);
+      }
+      // A channel is a group, so it inherits the same answer.
+      expect(realmHasFollowers(realm('group', parent: 's1')), isFalse);
+      expect(realmHasDashboard(realm('group', parent: 's1')), isFalse);
+    });
+
+    test('only pages and servers have a cover photo', () {
+      // Deliberately NOT web's behaviour - it offers the cover uploader for
+      // every kind. A group, channel or voice room renders no banner, so an
+      // upload there goes nowhere.
+      expect(realmHasCoverPhoto(realm('page')), isTrue);
+      expect(realmHasCoverPhoto(realm('server')), isTrue);
+      for (final type in ['group', 'voice']) {
+        expect(realmHasCoverPhoto(realm(type)), isFalse, reason: type);
+      }
+      expect(realmHasCoverPhoto(realm('group', parent: 's1')), isFalse);
+    });
+
+    test('slug belongs to pages alone', () {
+      // A group has no slug field to show, so nothing may send one either.
+      for (final type in ['group', 'voice', 'server']) {
+        expect(realmFormFields(realm(type)), isNot(contains('slug')));
+      }
+    });
+
+    test('an unknown kind falls back to the one universal field', () {
+      expect(realmFormFields(realm('something-new')), ['name']);
+    });
+
+    test('you are never removable from your own roster', () {
+      // Removing yourself here is a demotion with no way back - you would
+      // lose the screen that does it. Leaving is a deliberate action in the
+      // conversation menu instead.
+      appStore.dispatch(DispatchModel(
+        setUserAuthT,
+        UserAuth(
+            true,
+            UserAccount('account-me', 'me', 'Me', '', 'Mine', null, true, true,
+                null, null, null, null,
+                personalEntityId: 'entity-me')),
+      ));
+
+      const me = RealmPerson(
+          entityId: 'entity-me',
+          accountId: 'account-me',
+          displayName: 'Me',
+          handle: 'me');
+      const alsoMe = RealmPerson(
+          entityId: 'entity-me',
+          accountId: '',
+          displayName: 'Me',
+          handle: 'me');
+      const someoneElse = RealmPerson(
+          entityId: 'entity-other',
+          accountId: 'account-other',
+          displayName: 'Other',
+          handle: 'other');
+
+      expect(isSelf(me), isTrue);
+      // Either id matching is enough - the two lists key on different ones.
+      expect(isSelf(alsoMe), isTrue);
+      expect(isSelf(someoneElse), isFalse);
+
+      // An unresolved row must not read as "you" just because both ids are
+      // blank.
+      const unresolved =
+          RealmPerson(entityId: '', accountId: '', displayName: '', handle: '');
+      expect(isSelf(unresolved), isFalse);
+    });
+  });
+
+  group('sheet bottom gap', () {
+    Future<double> gapUnder(WidgetTester tester, double inset,
+        {double minimum = 12}) async {
+      late double gap;
+      await tester.pumpWidget(MediaQuery(
+        data: MediaQueryData(viewPadding: EdgeInsets.only(bottom: inset)),
+        child: Builder(builder: (context) {
+          gap = clSheetBottomGap(context, minimum: minimum);
+          return const SizedBox();
+        }),
+      ));
+      return gap;
+    }
+
+    testWidgets('clears a button nav bar without stacking onto it',
+        (tester) async {
+      // The band of dead surface at the bottom of a sheet is this value being
+      // ADDED to the content's own padding instead of replacing it.
+      expect(await gapUnder(tester, 48), 48);
+      expect(await gapUnder(tester, 48, minimum: 16), 48);
+    });
+
+    testWidgets('keeps a comfortable gap where there is no inset',
+        (tester) async {
+      // Gesture navigation reports ~0, and a sheet flush against the screen
+      // edge is what the flat padding was there to avoid.
+      expect(await gapUnder(tester, 0), 12);
+      expect(await gapUnder(tester, 8), 12);
+    });
+  });
+
   group('system nav bar insets', () {
     const navBarHeight = 48.0;
     const screenHeight = 780.0;
     final bodyKey = UniqueKey();
 
-    Future<Size> pumpBody(WidgetTester tester, Widget Function(Widget) wrap) async {
+    Future<Size> pumpBody(
+        WidgetTester tester, Widget Function(Widget) wrap) async {
       tester.view.physicalSize = const Size(360, screenHeight);
       tester.view.devicePixelRatio = 1.0;
       tester.view.viewPadding = const FakeViewPadding(bottom: navBarHeight);
@@ -525,7 +680,9 @@ void main() {
   test('a contact request is actionable only while pending', () {
     expect(_notification(actionable: true).isActionable, isTrue);
     expect(
-      _notification(actionable: true).copyWith(referenceStatus: true).isActionable,
+      _notification(actionable: true)
+          .copyWith(referenceStatus: true)
+          .isActionable,
       isFalse,
     );
     // Every other type is never actionable, regardless of referenceStatus.
@@ -546,10 +703,10 @@ void main() {
   test('a follow flip patches every section it appears in', () {
     final item = _networkItem();
     final overview = NetworkOverview(
-      connections: NetworkOverviewSection(
-          hasMore: false, total: 1, results: [item]),
-      followers: NetworkOverviewSection(
-          hasMore: false, total: 1, results: [item]),
+      connections:
+          NetworkOverviewSection(hasMore: false, total: 1, results: [item]),
+      followers:
+          NetworkOverviewSection(hasMore: false, total: 1, results: [item]),
       following: NetworkOverviewSection.empty,
     );
     final patched = overview.patchFollow(item.entityId, true);
@@ -582,4 +739,48 @@ class _TransparentPageRoute extends PageRoute<void> {
   Widget buildPage(BuildContext context, Animation<double> animation,
           Animation<double> secondaryAnimation) =>
       const SizedBox.shrink();
+}
+
+// The ids each realm-roster action is keyed by. Every one of these is a
+// field name that lies about its contents, and getting one wrong produces a
+// request that SUCCEEDS and does nothing - which is exactly how remove and
+// leave failed the first time.
+void _rosterIdContracts() {
+  group('realm roster ids', () {
+    test('removing a member is keyed by entity id, not account id', () {
+      final person = RealmPerson.fromMemberJson({
+        'member_id': 'm1',
+        'realm': 'r1',
+        'role': 'admin',
+        'entity': {
+          'id': 'entity-1',
+          'details': {'id': 'account-1', 'username': 'bart'},
+        },
+      });
+
+      // `account_ids` takes this one, despite its name.
+      expect(person.removalId, 'entity-1');
+      expect(person.entityId, 'entity-1');
+      expect(person.accountId, 'account-1');
+      // The role endpoint takes the member ROW's id instead.
+      expect(person.memberId, 'm1');
+      expect(person.realmId, 'r1');
+      expect(person.isRealmAdmin, isTrue);
+    });
+
+    test('removing a follower is keyed by the follow row', () {
+      final person = RealmPerson.fromFollowerJson({
+        'follow_id': 'f1',
+        'follower': {
+          'id': 'entity-2',
+          'details': {'id': 'account-2', 'username': 'nia'},
+        },
+      });
+
+      expect(person.removalId, 'f1');
+      // A follower has no role and no member row.
+      expect(person.role, isNull);
+      expect(person.memberId, isEmpty);
+    });
+  });
 }

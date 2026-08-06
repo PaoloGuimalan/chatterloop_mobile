@@ -51,6 +51,7 @@ Future<void> showMessageReactionsSheet(
 
   return showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: p.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -60,8 +61,8 @@ Future<void> showMessageReactionsSheet(
     // it. Adding the inset explicitly keeps the gap exact - SafeArea plus the
     // sheet's own spacing stacked into a visible band of empty surface.
     builder: (sheetContext) => Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewPadding.bottom + 8),
+      padding:
+          EdgeInsets.only(bottom: clSheetBottomGap(sheetContext, minimum: 8)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -90,8 +91,7 @@ Future<void> showMessageReactionsSheet(
                 const SizedBox(width: 6),
                 Text(
                   "${reactions.length}",
-                  style:
-                      TextStyle(color: p.text3, fontSize: CLType.caption),
+                  style: TextStyle(color: p.text3, fontSize: CLType.caption),
                 ),
               ],
             ),

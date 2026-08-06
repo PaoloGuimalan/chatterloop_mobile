@@ -4,6 +4,7 @@
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
+import 'package:chatterloop_app/models/http_models/paged_result.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:dio/dio.dart';
@@ -59,9 +60,18 @@ class ProfileApi {
   /// the caller already knows (via UserAccount.activeEntity.type == "realm")
   /// that the slug in question is a page, so no branching is needed on
   /// this side - always parsed as a realm.
-  Future<RealmProfile?> getRealmProfileRequest(String slug) async {
+  ///
+  /// [handle] is a realm SLUG from a profile link, or a conversation's
+  /// contactID when coming from a group chat - the route resolves both, which
+  /// is why webapp's ManageRealmContainer can pass `params.realm_id` straight
+  /// through. [forManage] adds web's `?type=manage`.
+  Future<RealmProfile?> getRealmProfileRequest(String handle,
+      {bool forManage = false}) async {
     try {
-      final response = await _userDio.get('${_endpoints.publicProfile}$slug/');
+      final response = await _userDio.get(
+        '${_endpoints.publicProfile}$handle/',
+        queryParameters: forManage ? {'type': 'manage'} : null,
+      );
       final data = response.data["data"];
       if (data is! Map) return null;
       return RealmProfile.fromJson(Map<String, dynamic>.from(data));
@@ -71,6 +81,185 @@ class ProfileApi {
         print(e);
       }
       return null;
+    }
+  }
+
+  /// Edits a page's own details. Mirrors webapp's UpdateRealmRequest:
+  /// PUT /api/realm/my-list {realm_id, fields} - the same route that LISTS
+  /// the realms you administer, which is also how the server authorises the
+  /// edit (it is your list, so it is yours to change).
+  ///
+  /// [fields] is a partial - web sends only what actually changed, and so
+  /// does this, so an untouched field can never be overwritten by a stale
+  /// value the screen was holding.
+  Future<bool> updateRealmRequest(
+      String realmId, Map<String, dynamic> fields) async {
+    if (fields.isEmpty) return true;
+    try {
+      final response = await _userDio.put(
+        _endpoints.myRealms,
+        data: {'realm_id': realmId, 'fields': fields},
+      );
+      return response.data != null;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// A realm's members. Mirrors webapp's GetRealmMembersRequest.
+  Future<PagedResult<RealmPerson>> getRealmMembersRequest(
+    String realmId, {
+    int page = 1,
+    int pageSize = 20,
+    String? search,
+  }) async {
+    try {
+      final response = await _userDio.get(
+        _endpoints.realmMembers,
+        queryParameters: {
+          'realm_id': realmId,
+          'page': page,
+          'page_size': pageSize,
+          // Web sends null rather than "" for an empty search, and the two are
+          // not the same to the server's filter.
+          if (search != null && search.trim().isNotEmpty)
+            'search': search.trim(),
+        },
+      );
+      return PagedResult.fromDrf(response.data, RealmPerson.fromMemberJson);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return PagedResult.empty();
+    }
+  }
+
+  /// Removes members. Note this is the NODE api, not Django, and it takes a
+  /// LIST even for one person (webapp's RemoveRealmMemberRequest).
+  Future<bool> removeRealmMembersRequest(
+      String realmId, List<String> accountIds) async {
+    if (accountIds.isEmpty) return true;
+    try {
+      final response = await _mainDio.delete(
+        _endpoints.realmRemoveUser,
+        data: {'realm_id': realmId, 'account_ids': accountIds},
+      );
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Promote to admin / demote to member. NODE, and keyed by the MEMBER ROW's
+  /// id rather than by who the person is - webapp's UpdateMemberRoleRequest.
+  ///
+  /// [role] is "admin" or "member"; those two are the only values web sends.
+  Future<bool> updateRealmMemberRoleRequest({
+    required String realmId,
+    required String memberId,
+    required String role,
+  }) async {
+    try {
+      final response = await _mainDio.put(
+        _endpoints.realmMemberRole,
+        data: {'realm_id': realmId, 'member_id': memberId, 'new_role': role},
+      );
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// A realm's followers - pages only, since nothing else can be followed.
+  Future<PagedResult<RealmPerson>> getRealmFollowersRequest(
+    String realmId, {
+    int page = 1,
+    int pageSize = 20,
+    String? search,
+  }) async {
+    try {
+      final response = await _userDio.get(
+        _endpoints.realmFollowers,
+        queryParameters: {
+          'realm_id': realmId,
+          'page': page,
+          'page_size': pageSize,
+          if (search != null && search.trim().isNotEmpty)
+            'search': search.trim(),
+        },
+      );
+      return PagedResult.fromDrf(response.data, RealmPerson.fromFollowerJson);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return PagedResult.empty();
+    }
+  }
+
+  /// Drops one follower. Keyed by follow_id (the FOLLOW row), not by who they
+  /// are - see RealmPerson.removalId.
+  Future<bool> removeRealmFollowerRequest(
+      String realmId, String followId) async {
+    try {
+      await _userDio.delete(
+        _endpoints.realmFollowers,
+        data: {'realm_id': realmId, 'follow_id': followId},
+      );
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Replaces a realm's avatar or cover. One multipart POST to NODE, unlike a
+  /// user's avatar which goes through /posts/upload and then a post - a realm
+  /// has no feed post to file, so this endpoint does the whole job.
+  ///
+  /// [mediaType] is "profile" or "cover_photo", matching the content_type
+  /// values the personal-account flow uses.
+  Future<bool> updateRealmMediaRequest({
+    required String realmId,
+    required String realmType,
+    required String mediaType,
+    required String filePath,
+  }) async {
+    try {
+      final fileName = filePath.split(RegExp(r'[\\/]')).last;
+      final form = FormData.fromMap({
+        'realm_id': realmId,
+        'realm_type': realmType,
+        'media_type': mediaType,
+        'image': await MultipartFile.fromFile(filePath, filename: fileName),
+      });
+      final response =
+          await _mainDio.post(_endpoints.realmUploadMedia, data: form);
+      return response.data?["status"] == true;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
     }
   }
 
@@ -226,11 +415,9 @@ class ProfileApi {
           ? await _userDio.post(_endpoints.realmFollow, data: body)
           : await _userDio.delete(_endpoints.realmFollow, data: body);
       final data = response.data;
-      final ok = data is Map
-          ? data["status"] != false
-          : response.statusCode == 200;
-      final pending =
-          follow && ok && data is Map && data["is_pending"] == true;
+      final ok =
+          data is Map ? data["status"] != false : response.statusCode == 200;
+      final pending = follow && ok && data is Map && data["is_pending"] == true;
       return (ok: ok, isPending: pending);
     } catch (e) {
       if (kDebugMode) {

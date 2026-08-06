@@ -255,7 +255,8 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                             ? () => _changeRealmMedia(ComposerMode.coverPhoto)
                             : null,
                         actions: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: CLSpacing.contentGutter),
                           child: _actions(p, realm),
                         ),
                       ),
@@ -341,6 +342,12 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
       // Not "you manage this page" any more - that was about is_admin. This
       // says what is actually true now: you ARE the page, which is why there
       // is nothing here to follow or message.
+      //
+      // Deliberately no Manage button beside it: managing lives in the user
+      // menu, where "Settings" becomes "Manage realm" while you are acting as
+      // the page. One entry that follows the acting entity everywhere beats a
+      // second one that only exists while you happen to be standing on the
+      // page's own profile.
       return CLBtn(
         label: "You're posting as this page",
         variant: CLBtnVariant.outline,
@@ -375,8 +382,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
         iconL: Icons.how_to_reg,
         variant: CLBtnVariant.outline,
         block: true,
-        onPressed:
-            _isConnectionActionLoading ? null : _removeRealmConnection,
+        onPressed: _isConnectionActionLoading ? null : _removeRealmConnection,
       );
     }
 
@@ -440,7 +446,8 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
           children: [
             if (description != null && description.isNotEmpty) ...[
               Text(description,
-                  style: TextStyle(color: p.text, fontSize: CLType.body, height: 1.4)),
+                  style: TextStyle(
+                      color: p.text, fontSize: CLType.body, height: 1.4)),
               const SizedBox(height: 12),
             ],
             _infoRow(p, Icons.people_alt_outlined,
@@ -464,7 +471,9 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
               child: Text(value,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      color: p.text, fontSize: CLType.title, fontWeight: FontWeight.w700)),
+                      color: p.text,
+                      fontSize: CLType.title,
+                      fontWeight: FontWeight.w700)),
             ),
           ],
         ),

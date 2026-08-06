@@ -13,6 +13,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/requests/entity_api.dart';
+import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/material.dart';
@@ -181,6 +182,34 @@ class _UserMenuOverlayState extends State<_UserMenuOverlay> {
                     context.push('/settings');
                     widget.onClose();
                   },
+                  onTapManageRealm: () {
+                    final entity = StoreProvider.of<AppState>(context)
+                        .state
+                        .userAuth
+                        .user
+                        .activeEntity;
+                    // realm_id FIRST, deliberately - webapp's onSettingsClick
+                    // is `navigate(/realms/${activeEntityContext.realm_id})`,
+                    // and unlike the profile row right above (which reaches
+                    // for slug first, matching ITS webapp counterpart) the
+                    // manage route is keyed by id. A page whose active-entity
+                    // payload carries no slug would otherwise fall through to
+                    // the entity id, which is not a realm id and resolves to
+                    // nothing.
+                    final target =
+                        entity?.realmId ?? entity?.slug ?? entity?.id ?? '';
+                    if (target.isEmpty) {
+                      // Better than a tap that silently does nothing, which is
+                      // indistinguishable from a broken button.
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content:
+                              Text("Couldn't open this page's settings.")));
+                      widget.onClose();
+                      return;
+                    }
+                    openRealmManage(context, target);
+                    widget.onClose();
+                  },
                   onTapSwitchToSelf: () =>
                       _switchTo(context, () => EntityApi().switchBackRequest()),
                   onTapSwitchToPage: (realm) => _switchTo(
@@ -226,6 +255,9 @@ class _MenuContent extends StatelessWidget {
   final bool isLoadingRealms;
   final VoidCallback onTapProfile;
   final VoidCallback onTapSettings;
+
+  /// Taken instead of [onTapSettings] while acting as a page.
+  final VoidCallback onTapManageRealm;
   final VoidCallback onTapSwitchToSelf;
   final void Function(RealmSummary) onTapSwitchToPage;
   final VoidCallback onTapLogout;
@@ -235,6 +267,7 @@ class _MenuContent extends StatelessWidget {
     required this.isLoadingRealms,
     required this.onTapProfile,
     required this.onTapSettings,
+    required this.onTapManageRealm,
     required this.onTapSwitchToSelf,
     required this.onTapSwitchToPage,
     required this.onTapLogout,
@@ -282,7 +315,8 @@ class _MenuContent extends StatelessWidget {
                           Text(user.activeHandle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: CLType.caption, color: p.text2)),
+                              style: TextStyle(
+                                  fontSize: CLType.caption, color: p.text2)),
                         ],
                       ),
                     ),
@@ -339,7 +373,8 @@ class _MenuContent extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   child: Text("No pages to manage",
-                      style: TextStyle(fontSize: CLType.caption, color: p.text2)),
+                      style:
+                          TextStyle(fontSize: CLType.caption, color: p.text2)),
                 ),
               ] else ...[
                 for (final realm in realms)
@@ -376,25 +411,31 @@ class _MenuContent extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Divider(height: 1, color: p.border),
               ),
-              // Hidden while acting as a page - Settings edits the personal
-              // account, which doesn't apply here. Should eventually route
-              // to a "Manage realm" settings screen for the active page
-              // instead (not built yet), rather than just being absent.
-              if (!user.isActingAsEntity)
-                _MenuRow(
-                  onTap: onTapSettings,
-                  child: Row(
-                    children: [
-                      Icon(Icons.settings_outlined, size: 18, color: p.text2),
-                      const SizedBox(width: 10),
-                      Text("Settings",
-                          style: TextStyle(
-                              fontSize: CLType.bodySm,
-                              fontWeight: FontWeight.w600,
-                              color: p.text)),
-                    ],
-                  ),
+              // REPLACED while acting as a page, not hidden. Settings edits
+              // the personal account, which doesn't apply to a page - but
+              // managing the page does, and this menu is the one surface that
+              // already follows the acting entity, so the slot is the natural
+              // home for it. (This is what the note here used to say was
+              // missing.)
+              _MenuRow(
+                onTap: user.isActingAsEntity ? onTapManageRealm : onTapSettings,
+                child: Row(
+                  children: [
+                    Icon(
+                        user.isActingAsEntity
+                            ? Icons.tune
+                            : Icons.settings_outlined,
+                        size: 18,
+                        color: p.text2),
+                    const SizedBox(width: 10),
+                    Text(user.isActingAsEntity ? "Manage realm" : "Settings",
+                        style: TextStyle(
+                            fontSize: CLType.bodySm,
+                            fontWeight: FontWeight.w600,
+                            color: p.text)),
+                  ],
                 ),
+              ),
               _MenuRow(
                 onTap: onTapLogout,
                 child: Row(

@@ -383,6 +383,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   void _showFullEmojiPicker(BuildContext context) {
     showModalBottomSheet(
       context: context,
+    useRootNavigator: true,
       builder: (context) => SizedBox(
         height: 380,
         child: EmojiPicker(

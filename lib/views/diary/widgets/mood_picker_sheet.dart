@@ -7,6 +7,7 @@
 // paginated endpoint is there to avoid.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ Future<MoodSelection?> showMoodPickerSheet(
 }) {
   return showModalBottomSheet<MoodSelection>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     builder: (_) => _MoodPickerSheet(selected: selected),
@@ -102,8 +104,8 @@ class _MoodPickerSheetState extends State<_MoodPickerSheet> {
     final p = cl(context);
 
     return Container(
-      constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.6),
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
       decoration: BoxDecoration(
         color: p.bg,
         borderRadius:
@@ -137,7 +139,8 @@ class _MoodPickerSheetState extends State<_MoodPickerSheet> {
                     onPressed: () =>
                         Navigator.of(context).pop(const MoodSelection(null)),
                     child: Text("Clear",
-                        style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
+                        style:
+                            TextStyle(color: p.text2, fontSize: CLType.bodySm)),
                   ),
               ],
             ),
@@ -168,8 +171,8 @@ class _MoodPickerSheetState extends State<_MoodPickerSheet> {
                                 child: SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 ),
                               ),
                             );
@@ -190,13 +193,13 @@ class _MoodPickerSheetState extends State<_MoodPickerSheet> {
                             trailing: isSelected
                                 ? Icon(Icons.check, size: 18, color: p.brand)
                                 : null,
-                            onTap: () => Navigator.of(context)
-                                .pop(MoodSelection(mood)),
+                            onTap: () =>
+                                Navigator.of(context).pop(MoodSelection(mood)),
                           );
                         },
                       ),
           ),
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+          SizedBox(height: clSheetBottomGap(context, minimum: 8)),
         ],
       ),
     );

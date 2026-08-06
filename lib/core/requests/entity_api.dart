@@ -20,12 +20,19 @@ class EntityApi {
 
   /// Not wrapped in {status, result} - plain DRF paginated response, same
   /// as SearchApi.searchUsersRequest.
-  Future<List<RealmSummary>> getMyRealmsRequest() async {
+  ///
+  /// [type] is web's third GetMyRealmsRequest argument: "page" for the entity
+  /// switcher (only a page can be posted AS), "group" for the group chats you
+  /// administer.
+  Future<List<RealmSummary>> getMyRealmsRequest({
+    String type = "page",
+    int pageSize = 20,
+  }) async {
     try {
       final response = await _dio.get(_endpoints.myRealms, queryParameters: {
         "page": 1,
-        "page_size": 20,
-        "type": "page",
+        "page_size": pageSize,
+        "type": type,
       });
       final results = response.data["results"];
       if (results is! List) return const [];

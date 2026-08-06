@@ -10,13 +10,13 @@
 // Webapp parity: these mirror ConversationV2's options, minus Minimize, which
 // is desktop-only.
 
-import 'dart:math' as math;
-
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:flutter/material.dart';
 
 enum ConversationAction { archive, unarchive, delete }
@@ -24,8 +24,7 @@ enum ConversationAction { archive, unarchive, delete }
 /// The value the server's /chathistory route expects. "clear" rather than
 /// "delete" - the thread itself is kept, only this participant's view of it is
 /// dropped.
-String conversationActionSlug(ConversationAction action) =>
-    switch (action) {
+String conversationActionSlug(ConversationAction action) => switch (action) {
       ConversationAction.archive => 'archive',
       ConversationAction.unarchive => 'unarchive',
       ConversationAction.delete => 'clear',
@@ -54,15 +53,34 @@ Future<bool> applyConversationAction(
 /// `isArchived` picks Archive vs Unarchive. The messages list only ever shows
 /// unarchived conversations - archiving drops a thread off it - so callers
 /// from there pass false.
+/// Pass [conversationId] AND a non-single [conversationType] to offer the
+/// admin-only Manage entry. Unlike the conversation screen, a list row has no
+/// conversation info to read `is_admin` from, so it is fetched - only for a
+/// group, and only on a long-press, so single chats cost nothing.
 Future<ConversationAction?> showConversationOptionsSheet(
   BuildContext context, {
   required String title,
   bool isArchived = false,
-}) {
+  String? conversationId,
+  String conversationType = "single",
+}) async {
   final p = cl(context);
+
+  // Resolved BEFORE the sheet opens: a sheet that grows an extra row under the
+  // user's finger a moment after appearing is worse than one that opens a beat
+  // later with its final shape.
+  final canManage = conversationId != null &&
+      conversationId.isNotEmpty &&
+      conversationType != "single" &&
+      ((await ConversationsApi().getConversationInfoModelRequest(
+                  conversationId, conversationType))
+              ?.isAdmin ??
+          false);
+  if (!context.mounted) return null;
 
   return showModalBottomSheet<ConversationAction>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: p.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -76,9 +94,7 @@ Future<ConversationAction?> showConversationOptionsSheet(
     // there is no inset (the band of dead space that flat padding was avoiding)
     // and clears the bar where there is one.
     builder: (sheetContext) => Padding(
-      padding: EdgeInsets.only(
-        bottom: math.max(12, MediaQuery.of(sheetContext).viewPadding.bottom),
-      ),
+      padding: EdgeInsets.only(bottom: clSheetBottomGap(sheetContext)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -107,12 +123,28 @@ Future<ConversationAction?> showConversationOptionsSheet(
               ),
             ),
           const SizedBox(height: 4),
+          if (canManage)
+            ListTile(
+              dense: true,
+              visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+              horizontalTitleGap: 10,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              leading: Icon(Icons.tune, size: 18, color: p.text2),
+              minLeadingWidth: 0,
+              title: Text('Manage group',
+                  style: TextStyle(color: p.text, fontSize: CLType.body)),
+              // Closes with no action - managing isn't one of the three chat
+              // history verbs, so the caller must not treat this as one.
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                openRealmManage(context, conversationId);
+              },
+            ),
           _optionTile(
             sheetContext,
             p,
-            icon: isArchived
-                ? Icons.unarchive_outlined
-                : Icons.archive_outlined,
+            icon:
+                isArchived ? Icons.unarchive_outlined : Icons.archive_outlined,
             iconColor: p.text2,
             label: isArchived ? 'Unarchive' : 'Archive',
             labelColor: p.text,

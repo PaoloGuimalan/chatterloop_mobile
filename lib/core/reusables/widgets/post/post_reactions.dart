@@ -12,6 +12,7 @@
 // model, so this can be upgraded without touching the API layer.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
@@ -182,12 +183,16 @@ Future<Emoji?> showReactionPicker(
   final p = cl(context);
   return showModalBottomSheet<Emoji>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: p.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(CLRadii.lg)),
     ),
-    builder: (sheetContext) => SafeArea(
-      top: false,
+    // Not SafeArea: ReactionPicker pads itself, and a SafeArea on top of that
+    // stacks the nav-bar inset onto its own spacing - the empty band under
+    // the emoji row.
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.only(bottom: clSheetBottomGap(sheetContext)),
       child: ReactionPicker(
         currentEmojiId: currentEmojiId,
         onSelected: (emoji) => Navigator.of(sheetContext).pop(emoji),

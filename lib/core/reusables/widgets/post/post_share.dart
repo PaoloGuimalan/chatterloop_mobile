@@ -36,14 +36,15 @@ Future<bool> showSharePostSheet(
   final p = cl(context);
   final result = await showModalBottomSheet<bool>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: p.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(CLRadii.lg)),
     ),
     builder: (sheetContext) => Padding(
-      // Lifts the sheet above the keyboard - without this the caption field is
-      // covered the moment it's focused.
+      // Lifts the sheet above the keyboard once you tap into the caption -
+      // the field no longer autofocuses, so this only applies after you do.
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
       child: _SharePostSheet(post: post),
@@ -99,10 +100,15 @@ class _SharePostSheetState extends State<_SharePostSheet> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return SafeArea(
-      top: false,
+    // Outer supplies the system gap, inner the content padding - deliberately
+    // not a SafeArea wrapped around content that already pads itself, which
+    // stacks the two into a band of empty sheet on any device with a
+    // navigation bar.
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: clSheetBottomGap(context, minimum: 16, extra: 8)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -131,7 +137,9 @@ class _SharePostSheetState extends State<_SharePostSheet> {
               controller: _caption,
               minLines: 2,
               maxLines: 4,
-              autofocus: true,
+              // Same reason as the composer: the sheet should not arrive with
+              // the keyboard already over it, hiding the post you are sharing.
+              autofocus: false,
               textCapitalization: TextCapitalization.sentences,
               style: TextStyle(color: p.text, fontSize: CLType.title),
               decoration: InputDecoration(
@@ -205,7 +213,6 @@ class _SharePostSheetState extends State<_SharePostSheet> {
     );
   }
 }
-
 
 class _ShareOutcomePreview extends StatelessWidget {
   final PostPreview source;
@@ -422,7 +429,8 @@ class _SharedPostPreviewRecursiveState
                     }
                     final nested = snapshot.data;
                     if (nested == null) {
-                      return _unavailable('Original shared post is unavailable.');
+                      return _unavailable(
+                          'Original shared post is unavailable.');
                     }
                     return _SharedPostPreviewRecursive(
                       post: nested,

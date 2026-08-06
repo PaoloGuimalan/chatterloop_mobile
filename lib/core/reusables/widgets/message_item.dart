@@ -110,6 +110,9 @@ class MessageItemView extends StatelessWidget {
       context,
       title: title,
       isArchived: isArchived,
+      // A group's conversationID IS its realm_id, which is what makes the
+      // admin-only Manage entry resolvable from a list row.
+      conversationId: message.conversationID,
     );
     if (action == null || !context.mounted) return;
 

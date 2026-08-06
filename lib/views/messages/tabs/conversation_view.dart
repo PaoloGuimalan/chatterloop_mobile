@@ -13,6 +13,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/loaders/spinning_loader.dart';
 import 'package:chatterloop_app/core/reusables/loaders/typing_loader.dart';
@@ -29,6 +30,8 @@ import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dar
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
+import 'package:chatterloop_app/views/messages/conversation_info_view.dart';
+import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
@@ -371,6 +374,97 @@ class ConversationStateView extends State<ConversationView> {
   String get _conversationType =>
       conversationSetup?['conversationType']?.toString() ?? "single";
 
+  /// Whether to offer Manage: webapp's exact condition, `type !== "single" &&
+  /// is_admin`, read from the same conversation info payload.
+  bool get _canManageRealm =>
+      _conversationType != "single" && (conversationInfo?.isAdmin ?? false);
+
+  /// Pushes the info screen, handing it the model this screen already has.
+  /// Identity comes from the same two getters the header uses, so the two
+  /// cannot disagree about who you are talking to.
+  void _openConversationInfo() {
+    final info = conversationInfo;
+    if (info == null) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ConversationInfoScreen(
+        info: info,
+        title: _headerDisplayName,
+        profile: _headerAvatarSrc.isEmpty ? null : _headerAvatarSrc,
+        conversationType: _conversationType,
+      ),
+    ));
+  }
+
+  /// Anything you can be a MEMBER of can be left. Not gated on is_admin -
+  /// leaving is the one action a plain member most needs.
+  bool get _canLeaveRealm => _conversationType != "single";
+
+  /// "Leave group" / "Leave channel" / "Leave server"…
+  ///
+  /// Built from the conversation's own type rather than a lookup table, so a
+  /// type this app doesn't render yet still gets a sensible label instead of
+  /// the wrong noun. Unknown types fall back to the bare verb.
+  String get _leaveLabel {
+    const known = {'group', 'channel', 'server', 'voice'};
+    final type = _conversationType.toLowerCase();
+    return known.contains(type) ? 'Leave $type' : 'Leave';
+  }
+
+  /// Leaving IS removing yourself: /realms/remove-user takes account_ids, and
+  /// the server applies the same rules whether an admin removes someone or
+  /// you remove yourself. Confirmed first - it is not undoable from this side,
+  /// since a private realm needs an invitation to get back into.
+  Future<void> _leaveRealm() async {
+    final p = cl(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text('$_leaveLabel?',
+            style: TextStyle(color: p.text, fontSize: CLType.screenTitle)),
+        content: Text(
+          "You'll stop receiving messages here, and you'll need to be added "
+          "back to rejoin.",
+          style: TextStyle(color: p.text2, fontSize: CLType.body),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: p.text2))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: p.pink),
+              child: const Text('Leave')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // The ENTITY id, not the account id. remove-user's field is called
+    // `account_ids` but web passes `member.entity.id` into it - sending an
+    // account id there is a request that succeeds and removes nobody, which
+    // is exactly what "Leave doesn't work" looked like.
+    final entityId = appStore.state.userAuth.user.entityId;
+    final realmId = conversationInfo?.contactID ?? widget.conversationId;
+    final ok =
+        await ProfileApi().removeRealmMembersRequest(realmId, [entityId]);
+    if (!mounted) return;
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not leave. Please try again.')));
+      return;
+    }
+    // Refresh the list this thread just dropped off, then leave the screen -
+    // staying in a conversation you are no longer part of shows a thread that
+    // can't be posted to.
+    final refreshed = await ConversationsApi().getConversationListRequest();
+    if (refreshed != null) {
+      appStore.dispatch(DispatchModel(setMessagesListT, refreshed.items));
+    }
+    if (mounted) context.go('/messages');
+  }
+
   /// Archive / Unarchive + Delete menu - webapp's ConversationV2 options
   /// (minus Minimize, which is desktop-only). Strictly single + group only
   /// (the caller gates on _conversationType). Archive/Delete remove the
@@ -386,6 +480,36 @@ class ConversationStateView extends State<ConversationView> {
       icon: const Icon(Icons.info, color: Color(0xff1c7def), size: 24),
       onSelected: _updateChatHistory,
       itemBuilder: (context) => [
+        // First, and for every conversation type - web's menu leads with Info
+        // too. Disabled until conversationInfo has landed, since the screen is
+        // built entirely from it rather than fetching its own copy.
+        PopupMenuItem(
+          enabled: conversationInfo != null,
+          onTap: _openConversationInfo,
+          child: Row(children: [
+            Icon(Icons.info_outline, size: 18, color: p.text2),
+            const SizedBox(width: 10),
+            Text('Info',
+                style: TextStyle(color: p.text, fontSize: CLType.body)),
+          ]),
+        ),
+        // Admins only, and never for a single chat - see [_canManageRealm].
+        // Not a ConversationAction: managing the realm behind a conversation
+        // is not something that happens TO the chat history, so it doesn't
+        // belong in the enum the other two share with the long-press sheet.
+        if (_canManageRealm)
+          PopupMenuItem(
+            // contactID, the same key webapp navigates with - the profile
+            // route resolves a conversation id as readily as a slug.
+            onTap: () => openRealmManage(
+                context, conversationInfo?.contactID ?? widget.conversationId),
+            child: Row(children: [
+              Icon(Icons.tune, size: 18, color: p.text2),
+              const SizedBox(width: 10),
+              Text('Manage group',
+                  style: TextStyle(color: p.text, fontSize: CLType.body)),
+            ]),
+          ),
         PopupMenuItem(
           value: archived
               ? ConversationAction.unarchive
@@ -410,6 +534,16 @@ class ConversationStateView extends State<ConversationView> {
                 style: TextStyle(color: p.pink, fontSize: CLType.body)),
           ]),
         ),
+        if (_canLeaveRealm)
+          PopupMenuItem(
+            onTap: _leaveRealm,
+            child: Row(children: [
+              Icon(Icons.logout, size: 18, color: p.pink),
+              const SizedBox(width: 10),
+              Text(_leaveLabel,
+                  style: TextStyle(color: p.pink, fontSize: CLType.body)),
+            ]),
+          ),
       ],
     );
   }
@@ -868,7 +1002,8 @@ class ConversationStateView extends State<ConversationView> {
   /// keystroke, so it does no work beyond a regex when there is no "@".
   void _refreshMentionSuggestions(String value) {
     final cursor = _controller.selection.baseOffset;
-    final active = activeMentionQuery(value, cursor < 0 ? value.length : cursor);
+    final active =
+        activeMentionQuery(value, cursor < 0 ? value.length : cursor);
 
     if (active == null) {
       _mentionStart = -1;
@@ -1157,8 +1292,7 @@ class ConversationStateView extends State<ConversationView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content:
-              Text("Cannot upload files greater than $kMaxUploadLabel")),
+          content: Text("Cannot upload files greater than $kMaxUploadLabel")),
     );
   }
 
@@ -1435,10 +1569,9 @@ class ConversationStateView extends State<ConversationView> {
                                                   false),
                                           builder: (context, online) =>
                                               GestureDetector(
-                                            onTap:
-                                                _conversationType == "single"
-                                                    ? _openHeaderProfile
-                                                    : null,
+                                            onTap: _conversationType == "single"
+                                                ? _openHeaderProfile
+                                                : null,
                                             child: CLAvatar(
                                               id: widget.conversationId,
                                               name: _headerDisplayName,
@@ -1653,7 +1786,8 @@ class ConversationStateView extends State<ConversationView> {
                                                           color: p.text,
                                                           fontWeight:
                                                               FontWeight.w700,
-                                                          fontSize: CLType.sectionTitle)),
+                                                          fontSize: CLType
+                                                              .sectionTitle)),
                                                   const SizedBox(height: 4),
                                                   Text(
                                                       "Say hello to start the conversation.",
@@ -1661,7 +1795,8 @@ class ConversationStateView extends State<ConversationView> {
                                                           TextAlign.center,
                                                       style: TextStyle(
                                                           color: p.text2,
-                                                          fontSize: CLType.bodySm)),
+                                                          fontSize:
+                                                              CLType.bodySm)),
                                                 ],
                                               ),
                                             ),
@@ -1994,9 +2129,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                   isSingleConversation:
                                                                       _conversationType ==
                                                                           "single",
-                                                                  conversationID:
-                                                                      widget
-                                                                          .conversationId,
+                                                                  conversationID: widget
+                                                                      .conversationId,
                                                                   mentionMembers:
                                                                       _mentionHighlightMembers,
                                                                   onPressed: (bool
@@ -2215,11 +2349,16 @@ class ConversationStateView extends State<ConversationView> {
                                                             Text(
                                                               _replyingToLabel,
                                                               style: TextStyle(
-                                                                  fontSize: CLType.caption,
-                                                                  color: _quotedStyle(
-                                                                    mine: Colors.white,
-                                                                    others: Colors.black,
-                                                                    none: Colors.transparent,
+                                                                  fontSize: CLType
+                                                                      .caption,
+                                                                  color:
+                                                                      _quotedStyle(
+                                                                    mine: Colors
+                                                                        .white,
+                                                                    others: Colors
+                                                                        .black,
+                                                                    none: Colors
+                                                                        .transparent,
                                                                   ),
                                                                   fontWeight:
                                                                       FontWeight
@@ -2238,11 +2377,14 @@ class ConversationStateView extends State<ConversationView> {
                                                       Text(
                                                         _quotedPreviewText,
                                                         style: TextStyle(
-                                                          fontSize: CLType.caption,
+                                                          fontSize:
+                                                              CLType.caption,
                                                           color: _quotedStyle(
                                                             mine: Colors.white,
-                                                            others: Colors.black,
-                                                            none: Colors.transparent,
+                                                            others:
+                                                                Colors.black,
+                                                            none: Colors
+                                                                .transparent,
                                                           ),
                                                           overflow: TextOverflow
                                                               .ellipsis,
@@ -2401,11 +2543,16 @@ class ConversationStateView extends State<ConversationView> {
                                                                   ? "Generate a reply from this message?"
                                                                   : "Use AI Reply Assist?",
                                                               style: TextStyle(
-                                                                  fontSize: CLType.caption,
-                                                                  color: _quotedStyle(
-                                                                    mine: Colors.white,
-                                                                    others: Colors.black,
-                                                                    none: Colors.transparent,
+                                                                  fontSize: CLType
+                                                                      .caption,
+                                                                  color:
+                                                                      _quotedStyle(
+                                                                    mine: Colors
+                                                                        .white,
+                                                                    others: Colors
+                                                                        .black,
+                                                                    none: Colors
+                                                                        .transparent,
                                                                   ),
                                                                   fontWeight:
                                                                       FontWeight
@@ -2703,7 +2850,8 @@ class ConversationStateView extends State<ConversationView> {
                                             }
                                           },
                                           style: TextStyle(
-                                              fontSize: CLType.caption, color: p.text),
+                                              fontSize: CLType.caption,
+                                              color: p.text),
                                           decoration: InputDecoration(
                                               contentPadding: EdgeInsets.only(
                                                   top: 6,
