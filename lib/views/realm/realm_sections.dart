@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
+import 'package:chatterloop_app/views/realm/realm_add_members_view.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -209,7 +210,32 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: Text(_title)),
+      appBar: AppBar(
+        title: Text(_title),
+        actions: [
+          // Members only, and not on a public channel or voice room, whose
+          // membership follows the parent server (web's `addableMember`).
+          if (widget.members && realmAcceptsNewMembers(widget.realm))
+            IconButton(
+              tooltip: 'Add members',
+              icon: const Icon(Icons.person_add_alt),
+              onPressed: () async {
+                final added = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => RealmAddMembersScreen(
+                      realm: widget.realm,
+                      // So the picker can mark people who are already in
+                      // rather than appearing to not find them.
+                      existingEntityIds:
+                          _people.map((person) => person.entityId).toSet(),
+                    ),
+                  ),
+                );
+                if (added == true) _fetch(1);
+              },
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
