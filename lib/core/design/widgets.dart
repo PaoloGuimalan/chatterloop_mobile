@@ -991,7 +991,11 @@ class CLCard extends StatelessWidget {
 
 // -------- Badge --------------------------------------------------------------
 
-enum CLBadgeTone { brand, green, gold, pink, grey }
+/// `alert` is the SOLID one: filled pink with white text, for a count that has
+/// to be noticed rather than merely labelled. Every other tone is a soft tint on
+/// a coloured foreground - right for a status word, too quiet for an unread
+/// count.
+enum CLBadgeTone { brand, green, gold, pink, grey, alert }
 
 class CLBadge extends StatelessWidget {
   final String label;
@@ -1009,6 +1013,7 @@ class CLBadge extends StatelessWidget {
       CLBadgeTone.gold => (p.goldSoft, p.gold),
       CLBadgeTone.pink => (p.pinkSoft, p.pink),
       CLBadgeTone.grey => (p.surface3, p.text2),
+      CLBadgeTone.alert => (p.pink, Colors.white),
     };
     return Container(
       height: 22,

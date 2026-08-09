@@ -58,7 +58,15 @@ class RealmProfile {
   /// Set when this realm sits under another one - a group with a parent is a
   /// CHANNEL, which webapp treats as its own kind for the manage form (see
   /// realmFormFields). Nothing else distinguishes the two.
+  ///
+  /// The parent's ID. It arrives as an OBJECT (`{id, name, ...}`), not a string,
+  /// which is worth stating because `json["parent"]?.toString()` on a Map yields
+  /// the whole JSON - and that is what ended up printed under the realm's name
+  /// where its parent was meant to be.
   final String? parent;
+
+  /// The parent's display name, for the line under a channel's own name.
+  final String? parentName;
 
   /// Page-only contact address, and group/server privacy. Both are manage-form
   /// fields rather than profile ones, which is why they were absent until the
@@ -107,6 +115,7 @@ class RealmProfile {
     this.description,
     required this.type,
     this.parent,
+    this.parentName,
     this.email,
     this.isPrivate = false,
     required this.followersCount,
@@ -134,7 +143,14 @@ class RealmProfile {
       coverPhoto: json["cover_photo"]?.toString(),
       description: json["description"]?.toString(),
       type: (json["type"] ?? "page").toString(),
-      parent: json["parent"]?.toString(),
+      // An object, a bare id, or absent - all three arrive depending on the
+      // endpoint, so unwrap rather than stringify.
+      parent: json["parent"] is Map
+          ? (json["parent"]["id"] ?? json["parent"]["realm_id"] ?? "").toString()
+          : json["parent"]?.toString(),
+      parentName: json["parent"] is Map
+          ? json["parent"]["name"]?.toString()
+          : null,
       email: json["email"]?.toString(),
       isPrivate: json["is_private"] == true,
       followersCount: json["followers_count"] is int

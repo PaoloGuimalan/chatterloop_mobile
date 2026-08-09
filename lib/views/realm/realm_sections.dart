@@ -36,10 +36,16 @@ class RealmRosterScreen extends StatefulWidget {
   /// False = followers.
   final bool members;
 
+  /// Whether the remove action is offered at all - see
+  /// realmAllowsMemberRemoval. Roles are unaffected: a public channel's
+  /// membership is the server's business, but its admins are its own.
+  final bool allowRemoval;
+
   const RealmRosterScreen({
     super.key,
     required this.realm,
     required this.members,
+    this.allowRemoval = true,
   });
 
   @override
@@ -228,6 +234,13 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                       // rather than appearing to not find them.
                       existingEntityIds:
                           _people.map((person) => person.entityId).toSet(),
+                      // For a channel or voice room, candidates come from the
+                      // parent SERVER's members - you cannot add someone to a
+                      // channel who is not in the server that owns it. Null for
+                      // anything else, which leaves the global search.
+                      parentRealmId: realmAddsFromParent(widget.realm)
+                          ? widget.realm.parent
+                          : null,
                     ),
                   ),
                 );
@@ -299,10 +312,11 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                             return _RosterRow(
                               person: person,
                               busy: _busyId == person.removalId,
-                              onRemove:
-                                  actionable && person.removalId.isNotEmpty
-                                      ? () => _remove(person)
-                                      : null,
+                              onRemove: actionable &&
+                                      widget.allowRemoval &&
+                                      person.removalId.isNotEmpty
+                                  ? () => _remove(person)
+                                  : null,
                               // Followers have no role to change.
                               onSetRole: widget.members &&
                                       actionable &&

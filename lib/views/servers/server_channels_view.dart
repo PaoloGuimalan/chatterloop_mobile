@@ -18,9 +18,11 @@
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
+import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/views/servers/servers_view.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -49,6 +51,12 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
   List<ServerChannel> _channels = const [];
   bool _loading = true;
 
+  /// Straight off the channels payload - see getServerChannelsRequest. Web reads
+  /// `serverdetails.is_admin` from the same object, and two earlier attempts to
+  /// derive it elsewhere were both wrong: the realm-profile route cannot resolve
+  /// a server id, and my own member row does not say "admin" for an owner.
+  bool _isAdmin = false;
+
   @override
   void initState() {
     super.initState();
@@ -72,13 +80,70 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
   }
 
   Future<void> _load() async {
-    final channels =
-        await ProfileApi().getServerChannelsRequest(widget.serverId);
+    final result = await ProfileApi().getServerChannelsRequest(widget.serverId);
     if (!mounted) return;
     setState(() {
-      _channels = channels;
+      _channels = result.channels;
+      _isAdmin = result.isAdmin;
       _loading = false;
     });
+  }
+
+  PopupMenuItem<String> _menuItem(
+      CLPalette p, String value, IconData icon, String label,
+      {bool danger = false}) {
+    final color = danger ? p.pink : p.text2;
+    return PopupMenuItem(
+      value: value,
+      child: Row(children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 10),
+        Text(label,
+            style: TextStyle(
+                color: danger ? p.pink : p.text, fontSize: CLType.body)),
+      ]),
+    );
+  }
+
+  /// Leaving is removing yourself - the same call the conversation's Leave entry
+  /// makes, and it takes the ENTITY id despite the field being `account_ids`.
+  Future<void> _leaveServer() async {
+    final p = cl(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text('Leave server?',
+            style: TextStyle(color: p.text, fontSize: CLType.screenTitle)),
+        content: Text(
+          "You'll lose access to its channels, and you'll need to be added "
+          "back or join again to return.",
+          style: TextStyle(color: p.text2, fontSize: CLType.body),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: p.text2))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: p.pink),
+              child: const Text('Leave')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final ok = await ProfileApi().removeRealmMembersRequest(
+        widget.serverId, [appStore.state.userAuth.user.entityId]);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not leave. Please try again.')));
+      return;
+    }
+    // Out of the server entirely - staying on a channel list you are no longer
+    // a member of shows rooms you cannot open.
+    context.go('/servers');
   }
 
   void _open(ServerChannel channel) {
@@ -125,12 +190,39 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
                         fontWeight: FontWeight.bold,
                         color: p.text)),
               ),
-              CLIconBtn(
-                icon: Icons.info_outline,
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Server info is not built yet.')),
-                ),
+              // A menu, not a single action - the same shape the conversation
+              // header uses, and web's server header carries the same three.
+              PopupMenuButton<String>(
+                tooltip: 'Options',
+                color: p.surface,
+                icon: Icon(Icons.info_outline, size: 20, color: p.text2),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'info':
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => ServerInfoScreen(
+                          serverId: widget.serverId,
+                          serverName: widget.serverName,
+                          serverProfile: widget.serverProfile,
+                        ),
+                      ));
+                    case 'manage':
+                      openRealmManage(context, widget.serverId);
+                    case 'leave':
+                      _leaveServer();
+                  }
+                },
+                itemBuilder: (context) => [
+                  _menuItem(p, 'info', Icons.info_outline, 'Info'),
+                  // Admins only. The server refuses a non-admin's edits anyway,
+                  // but offering the entry means every non-admin who taps it
+                  // gets a screen that can only fail - and Leave, the thing they
+                  // actually want, sits right under it.
+                  if (_isAdmin)
+                    _menuItem(p, 'manage', Icons.tune, 'Manage server'),
+                  _menuItem(p, 'leave', Icons.logout, 'Leave server',
+                      danger: true),
+                ],
               ),
             ],
           ),
@@ -315,10 +407,10 @@ class _ChannelRow extends StatelessWidget {
                     label: channel.unreadCount > 99
                         ? '99+'
                         : '${channel.unreadCount}',
-                    // Red, not the surface gold: an unread count is an alert,
-                    // and the palette has no red - pink is its warning tone
-                    // (it is what Delete and Leave use).
-                    tone: CLBadgeTone.pink,
+                    // alert = FILLED pink with white text. The pink tone is a
+                    // pale tint on pink text, which reads as a label; a count
+                    // meant to be noticed needs the contrast.
+                    tone: CLBadgeTone.alert,
                   ),
                 ),
             ],
@@ -527,6 +619,199 @@ class _ServerRail extends StatelessWidget {
                   ),
                 );
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Server info - webapp's ServerInfoModal, as a pushed screen.
+///
+/// A screen rather than a modal for the same reason the conversation info is
+/// one: web's is a full-height panel, which on a phone is a screen wearing a
+/// modal's clothes. And like that screen it is DISPLAY only - the actions live
+/// in the header menu that opened it, not scattered through the list.
+class ServerInfoScreen extends StatefulWidget {
+  final String serverId;
+  final String? serverName;
+  final String? serverProfile;
+
+  const ServerInfoScreen({
+    super.key,
+    required this.serverId,
+    this.serverName,
+    this.serverProfile,
+  });
+
+  @override
+  State<ServerInfoScreen> createState() => _ServerInfoScreenState();
+}
+
+class _ServerInfoScreenState extends State<ServerInfoScreen> {
+  final List<RealmPerson> _members = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    // One page. This is a display screen, not the roster you manage - that is
+    // Manage server, which pages, searches and can remove people. Paging here
+    // would be building a second version of it.
+    final result = await ProfileApi()
+        .getRealmMembersRequest(widget.serverId, pageSize: 50);
+    if (!mounted) return;
+    setState(() {
+      _members
+        ..clear()
+        ..addAll(result.results);
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return CLScreen(
+      // surface, matching the conversation info screen: one continuous panel of
+      // identity, with nothing on it needing a darker ground to sit against.
+      backgroundColor: p.surface,
+      appBar: AppBar(),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(
+            CLSpacing.contentGutter, 8, CLSpacing.contentGutter, 24),
+        children: [
+          Center(
+            child: Column(
+              children: [
+                CLAvatar(
+                    id: widget.serverId,
+                    name: widget.serverName ?? '',
+                    src: clCleanMediaSrc(widget.serverProfile),
+                    size: 84,
+                    // Squared, like a group tile: a server is a room, not a
+                    // person.
+                    cornerRadius: CLRadii.lg),
+                const SizedBox(height: 10),
+                Text(widget.serverName ?? 'Server',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: CLType.screenTitle,
+                        fontWeight: FontWeight.w800,
+                        color: p.text)),
+                const SizedBox(height: 2),
+                Text('Server',
+                    style: TextStyle(fontSize: CLType.caption, color: p.text2)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            _loading
+                ? 'Members'
+                : _members.length == 1
+                    ? '1 member'
+                    : '${_members.length} members',
+            style: TextStyle(
+                fontSize: CLType.sectionTitle,
+                fontWeight: FontWeight.w700,
+                color: p.text),
+          ),
+          const SizedBox(height: 8),
+          if (_loading)
+            const CLListSkeleton()
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                // surface2 on a surface background - a surface card here would
+                // be an outline around nothing. Same call as the conversation
+                // info screen's member panel.
+                color: p.surface2,
+                border: Border.all(color: p.border),
+                borderRadius: BorderRadius.circular(CLRadii.md),
+              ),
+              child: _members.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: CLSectionEmpty(
+                        icon: Icons.group_outlined,
+                        title: 'No members listed',
+                        subtitle: 'Nobody could be resolved for this server.',
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        for (final member in _members)
+                          _MemberRow(member: member),
+                      ],
+                    ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemberRow extends StatelessWidget {
+  final RealmPerson member;
+  const _MemberRow({required this.member});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final role = member.role;
+    final meta = [
+      if (member.handle.isNotEmpty) '@${member.handle}',
+      if (role != null && role.isNotEmpty) role,
+    ].join(' · ');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          CLAvatar(
+              id: member.entityId,
+              name: member.displayName,
+              src: clCleanMediaSrc(member.profile),
+              size: 36),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                          member.displayName.isEmpty
+                              ? 'Unknown'
+                              : member.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: CLType.bodySm,
+                              fontWeight: FontWeight.w600,
+                              color: p.text)),
+                    ),
+                    if (member.isVerified) ...[
+                      const SizedBox(width: 4),
+                      Icon(Icons.verified, size: 13, color: p.brand),
+                    ],
+                  ],
+                ),
+                if (meta.isNotEmpty)
+                  Text(meta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          TextStyle(fontSize: CLType.caption, color: p.text2)),
+              ],
             ),
           ),
         ],

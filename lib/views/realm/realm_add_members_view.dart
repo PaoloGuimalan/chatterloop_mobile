@@ -51,10 +51,23 @@ class RealmAddMembersScreen extends StatefulWidget {
   /// is a different and more alarming answer.
   final Set<String> existingEntityIds;
 
+  /// The PARENT server's id, for a channel or voice room.
+  ///
+  /// When set, the source changes: candidates come from that server's member
+  /// list instead of a global search, because you can only add someone to a
+  /// channel who is already in the server that owns it. Web does the same -
+  /// ContactMember takes `parentRealmID` and labels the panel "People you may
+  /// want to add from server" rather than from contacts.
+  ///
+  /// Offering global search here would list people who cannot be added, and the
+  /// failure would arrive only after selecting them.
+  final String? parentRealmId;
+
   const RealmAddMembersScreen({
     super.key,
     required this.realm,
     this.existingEntityIds = const {},
+    this.parentRealmId,
   });
 
   @override
@@ -75,6 +88,13 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
   bool _searched = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Nothing to type for a server-sourced list - show it immediately.
+    if (_fromParentServer) _search();
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _query.dispose();
@@ -86,9 +106,13 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
     _debounce = Timer(const Duration(milliseconds: 350), _search);
   }
 
+  bool get _fromParentServer => (widget.parentRealmId ?? '').isNotEmpty;
+
   Future<void> _search() async {
     final query = _query.text.trim();
-    if (query.isEmpty) {
+    // A global search needs something to search FOR; the server's member list
+    // is a finite set worth showing unprompted.
+    if (query.isEmpty && !_fromParentServer) {
       setState(() {
         _results.clear();
         _searched = false;
@@ -97,10 +121,11 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
     }
 
     setState(() => _searching = true);
-    // Entities, not people - a page can be a member. realmTypes defaults to
-    // "page", which is what can hold a membership; widen it here if groups or
-    // servers ever become addable.
-    final found = await SearchApi().searchEntitiesRequest(query);
+    final found = _fromParentServer
+        ? await _parentServerMembers(query)
+        // Entities, not people - a page can be a member. realmTypes defaults to
+        // "page", which is what can hold a membership.
+        : await SearchApi().searchEntitiesRequest(query);
     if (!mounted) return;
     setState(() {
       _results
@@ -111,6 +136,34 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
     });
   }
 
+  /// The parent server's members, mapped into the same shape the global search
+  /// returns so the selection, the chips and the invite payload below need no
+  /// second code path.
+  Future<List<SearchResultUser>> _parentServerMembers(String query) async {
+    final page = await ProfileApi().getRealmMembersRequest(
+      widget.parentRealmId!,
+      pageSize: 50,
+      search: query,
+    );
+    return page.results
+        .map((member) => SearchResultUser(
+              id: member.accountId,
+              entityId: member.entityId,
+              username: member.handle,
+              // displayName is already "First Middle Last"; splitting it back
+              // out would only risk losing a part, and inviteFullName just
+              // rejoins these.
+              firstName: member.displayName,
+              middleName: '',
+              lastName: '',
+              profile: member.profile,
+              hasConnection: false,
+              connectionAccomplished: false,
+              isActionByEntity: false,
+            ))
+        .toList();
+  }
+
   Future<void> _add() async {
     if (_selected.isEmpty || _adding) return;
     setState(() => _adding = true);
@@ -119,6 +172,9 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
       // The realm id, which for a group IS its conversation id - the field web
       // calls conversationID.
       conversationId: widget.realm.id,
+      // A server takes the other endpoint, so the member also lands in its
+      // public channels - see addRealmMembersRequest.
+      isServer: widget.realm.type == 'server',
       members: _selected.values
           .map((entity) => RealmMemberInvite(
                 accountId: entity.id,
@@ -154,7 +210,9 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
                 CLSpacing.contentGutter, 12, CLSpacing.contentGutter, 8),
             child: CLField(
               controller: _query,
-              placeholder: 'Search people and pages',
+              placeholder: _fromParentServer
+                  ? 'Search server members'
+                  : 'Search people and pages',
               icon: Icons.search,
               onChanged: _onQueryChanged,
             ),
@@ -241,7 +299,9 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
           child: CLSectionEmpty(
             icon: Icons.search_off,
             title: 'No matches',
-            subtitle: 'Nobody matching that name or handle turned up.',
+            subtitle: _fromParentServer
+                ? 'Nobody in this server matches that name.'
+                : 'Nobody matching that name or handle turned up.',
           ),
         ),
       );

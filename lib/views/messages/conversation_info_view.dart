@@ -40,10 +40,23 @@ class ConversationInfoScreen extends StatelessWidget {
 
   bool get _isSingle => conversationType == 'single';
 
+  /// A channel is a room, not a person - so it shows its TYPE, the same way the
+  /// conversation header and the channels list do, rather than an avatar with
+  /// initials standing in for a face it never had.
+  bool get _isChannel =>
+      conversationType == 'channel' || conversationType == 'server';
+
+  /// Same matrix as the channels list: lock for private, hash for public.
+  IconData get _channelIcon => info.isPrivate ? Icons.lock : Icons.tag;
+
   /// Web's header label: "Channel" for a server, else "Group Chat". Extended
   /// for the kinds this app can reach that web's ternary doesn't name.
   String get _kindLabel => switch (conversationType) {
-        'server' || 'channel' => 'Channel',
+        // Private/public, as the channels list distinguishes them - "Channel"
+        // alone drops the one thing the icon is telling you.
+        'server' ||
+        'channel' =>
+          info.isPrivate ? 'Private channel' : 'Text channel',
         'voice' => 'Voice room',
         'single' => 'Direct message',
         _ => 'Group Chat',
@@ -73,15 +86,28 @@ class ConversationInfoScreen extends StatelessWidget {
           Center(
             child: Column(
               children: [
-                CLAvatar(
-                  id: info.contactID,
-                  name: title,
-                  src: profile,
-                  size: 84,
-                  // A group reads as a room, not a person - the same squared
-                  // treatment the messages list gives group rows.
-                  cornerRadius: _isSingle ? null : CLRadii.lg,
-                ),
+                if (_isChannel)
+                  Container(
+                    width: 84,
+                    height: 84,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: p.surface2,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: p.border),
+                    ),
+                    child: Icon(_channelIcon, size: 34, color: p.text2),
+                  )
+                else
+                  CLAvatar(
+                    id: info.contactID,
+                    name: title,
+                    src: clCleanMediaSrc(profile),
+                    size: 84,
+                    // A group reads as a room, not a person - the same squared
+                    // treatment the messages list gives group rows.
+                    cornerRadius: _isSingle ? null : CLRadii.lg,
+                  ),
                 const SizedBox(height: 10),
                 Text(
                   title,

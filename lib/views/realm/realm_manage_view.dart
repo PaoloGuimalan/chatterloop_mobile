@@ -113,6 +113,45 @@ String realmKindNoun(RealmProfile realm) => realmFormKind(realm);
 bool realmHasCoverPhoto(RealmProfile realm) =>
     realm.type == "page" || realm.type == "server";
 
+/// Whether a realm has media to manage AT ALL.
+///
+/// A channel and a voice room have neither an avatar nor a banner rendered
+/// anywhere - they appear as a hash, a lock or a speaker, derived from their
+/// type and privacy rather than from an uploaded image. So the whole Media
+/// section goes, not just the cover.
+bool realmHasMedia(RealmProfile realm) {
+  final kind = realmFormKind(realm);
+  return kind != "channel" && kind != "voice";
+}
+
+/// Whether new members come from the PARENT SERVER rather than a global search.
+///
+/// A channel or voice room draws from the server that owns it - membership there
+/// is a subset of the server's, so a global search would list people who cannot
+/// be added and only fail once selected. Web does the same, handing
+/// ContactMember a `parentRealmID` for exactly these kinds.
+///
+/// Needs the parent to be known; without it there is no list to draw from and
+/// the global search is the only thing left.
+bool realmAddsFromParent(RealmProfile realm) {
+  final kind = realmFormKind(realm);
+  return (kind == "channel" || kind == "voice") &&
+      (realm.parent ?? '').isNotEmpty;
+}
+
+/// Whether members can be REMOVED from this realm.
+///
+/// A public channel or voice room takes its membership from the parent server,
+/// so removing someone here would either fail or be undone on the next sync -
+/// the mirror of web's `addableMember`, which refuses to ADD to the same kinds.
+/// Roles stay editable: who is an admin is this realm's own business even when
+/// who belongs to it is not.
+bool realmAllowsMemberRemoval(RealmProfile realm) {
+  final kind = realmFormKind(realm);
+  final followsParent = kind == "channel" || kind == "voice";
+  return !(followsParent && !realm.isPrivate);
+}
+
 class RealmManageScreen extends StatefulWidget {
   final String slug;
   const RealmManageScreen({super.key, required this.slug});
@@ -173,86 +212,117 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                     ),
                   ),
                 )
-              // Not gated on isAdmin: administering is not the same as BEING
-              // the page, and the server resolves what you may edit from the
-              // acting entity in the token either way. A non-admin's PUT is
-              // refused there; hiding the screen here would only add a second,
-              // divergent copy of that rule.
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                      CLSpacing.contentGutter, 12, CLSpacing.contentGutter, 24),
-                  children: [
-                    _RealmHeader(realm: realm),
-                    const SizedBox(height: 16),
-                    _SectionTile(
-                      icon: Icons.tune,
-                      title: 'Profile Details',
-                      subtitle: realmFormFields(realm)
-                          .map((field) => _kFieldLabels[field] ?? field)
-                          .join(', '),
-                      onTap: () async {
-                        final updated = await Navigator.of(context).push<bool>(
-                          MaterialPageRoute(
-                            builder: (_) => RealmDetailsScreen(realm: realm),
-                          ),
-                        );
-                        // Re-read rather than patching locally: the server
-                        // normalises a slug, so what you typed is not always
-                        // what it stored.
-                        if (updated == true) _load();
-                      },
-                    ),
-                    if (realmHasDashboard(realm))
-                      _SectionTile(
-                        icon: Icons.insights_outlined,
-                        title: 'Dashboard',
-                        subtitle: 'Not available yet',
-                        enabled: false,
-                      ),
-                    _SectionTile(
-                      icon: Icons.photo_library_outlined,
-                      title: 'Media',
-                      subtitle: 'Profile picture and cover photo',
-                      onTap: () async {
-                        final changed = await Navigator.of(context).push<bool>(
-                          MaterialPageRoute(
-                            builder: (_) => RealmMediaScreen(realm: realm),
-                          ),
-                        );
-                        if (changed == true) _load();
-                      },
-                    ),
-                    _SectionTile(
-                      icon: Icons.group_outlined,
-                      title: 'Members',
-                      subtitle: 'Who belongs to this '
-                          '${realmKindNoun(realm)}',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              RealmRosterScreen(realm: realm, members: true),
+              // Gated on is_admin, ON TOP of the server's own check.
+              //
+              // I argued against this at first - the server refuses a
+              // non-admin's PUT regardless, so a client gate is a second copy of
+              // the rule. But the copy is worth it here: without it a non-admin
+              // reaching this screen gets a form that looks editable and fails
+              // only on save, which is a worse answer than being told plainly.
+              // is_admin is annotated by the server, so the two copies read the
+              // same field rather than each deciding for themselves.
+              : !realm.isAdmin
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: CLEmptyState(
+                          icon: Icons.lock_outline,
+                          iconBg: p.surface2,
+                          iconColor: p.text2,
+                          iconBorderColor: p.border,
+                          compact: true,
+                          title: 'Not an admin',
+                          subtitle:
+                              'Only an admin can manage this ${realmKindNoun(realm)}.',
                         ),
                       ),
-                    ),
-                    // Pages only - a group has members, not followers, and
-                    // webapp hides this button entirely for them rather than
-                    // showing an empty list.
-                    if (realmHasFollowers(realm))
-                      _SectionTile(
-                        icon: Icons.favorite_outline,
-                        title: 'Followers',
-                        subtitle:
-                            '${clCompactCount(realm.followersCount)} following '
-                            'this page',
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                RealmRosterScreen(realm: realm, members: false),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                          CLSpacing.contentGutter,
+                          12,
+                          CLSpacing.contentGutter,
+                          24),
+                      children: [
+                        _RealmHeader(realm: realm),
+                        const SizedBox(height: 16),
+                        _SectionTile(
+                          icon: Icons.tune,
+                          title: 'Profile Details',
+                          subtitle: realmFormFields(realm)
+                              .map((field) => _kFieldLabels[field] ?? field)
+                              .join(', '),
+                          onTap: () async {
+                            final updated =
+                                await Navigator.of(context).push<bool>(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    RealmDetailsScreen(realm: realm),
+                              ),
+                            );
+                            // Re-read rather than patching locally: the server
+                            // normalises a slug, so what you typed is not always
+                            // what it stored.
+                            if (updated == true) _load();
+                          },
+                        ),
+                        if (realmHasDashboard(realm))
+                          _SectionTile(
+                            icon: Icons.insights_outlined,
+                            title: 'Dashboard',
+                            subtitle: 'Not available yet',
+                            enabled: false,
+                          ),
+                        if (realmHasMedia(realm))
+                          _SectionTile(
+                            icon: Icons.photo_library_outlined,
+                            title: 'Media',
+                            subtitle: 'Profile picture and cover photo',
+                            onTap: () async {
+                              final changed =
+                                  await Navigator.of(context).push<bool>(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      RealmMediaScreen(realm: realm),
+                                ),
+                              );
+                              if (changed == true) _load();
+                            },
+                          ),
+                        _SectionTile(
+                          icon: Icons.group_outlined,
+                          title: 'Members',
+                          subtitle: 'Who belongs to this '
+                              '${realmKindNoun(realm)}',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => RealmRosterScreen(
+                                  realm: realm,
+                                  members: true,
+                                  allowRemoval:
+                                      realmAllowsMemberRemoval(realm)),
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
+                        // Pages only - a group has members, not followers, and
+                        // webapp hides this button entirely for them rather than
+                        // showing an empty list.
+                        if (realmHasFollowers(realm))
+                          _SectionTile(
+                            icon: Icons.favorite_outline,
+                            title: 'Followers',
+                            subtitle:
+                                '${clCompactCount(realm.followersCount)} following '
+                                'this page',
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => RealmRosterScreen(
+                                    realm: realm, members: false),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
     );
   }
 }
@@ -264,14 +334,47 @@ class _RealmHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    final parent = realm.parent ?? '';
+    final kind = realmFormKind(realm);
+    final isRoom = kind == 'channel' || kind == 'voice';
+    // parentNAME, not the parent id - and certainly not `parent` stringified,
+    // which is a Map and printed as raw JSON under the realm's own name.
+    final parentName = realm.parentName?.trim() ?? '';
     final subtitle = realmHasFollowers(realm)
         ? '${clCompactCount(realm.followersCount)} followers'
-        : (parent.isNotEmpty ? parent : null);
+        : (parentName.isNotEmpty ? parentName : null);
 
     return Row(
       children: [
-        CLAvatar(id: realm.id, name: realm.name, src: realm.profile, size: 52),
+        // A channel or voice room has no picture anywhere - it is a hash, a
+        // lock or a speaker, derived from type and privacy. An avatar here
+        // would invent an identity it does not have (and CLAvatar would fill
+        // it with initials, which reads as a person).
+        if (isRoom)
+          Container(
+            width: 52,
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: p.surface2,
+              shape: BoxShape.circle,
+              border: Border.all(color: p.border),
+            ),
+            child: Icon(
+              kind == 'voice'
+                  ? (realm.isPrivate
+                      ? Icons.volume_up
+                      : Icons.volume_up_outlined)
+                  : (realm.isPrivate ? Icons.lock : Icons.tag),
+              size: 22,
+              color: p.text2,
+            ),
+          )
+        else
+          CLAvatar(
+              id: realm.id,
+              name: realm.name,
+              src: clCleanMediaSrc(realm.profile),
+              size: 52),
         const SizedBox(width: 12),
         Expanded(
           child: Column(

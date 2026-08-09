@@ -289,6 +289,15 @@ class Endpoints {
   /// {token: sign({conversationID, memberstoadd, receivers})}.
   String addNewMember = '/m/addnewmember';
 
+  /// NODE, JWT-signed, and the SERVER-specific counterpart of addNewMember.
+  /// Body is {token: sign({serverID, memberstoadd, receivers})}.
+  ///
+  /// Not interchangeable with addNewMember: adding to a server fans the member
+  /// out to its public channels as well, which /m/addnewmember does not do -
+  /// that one adds to a single conversation. Web branches on
+  /// `realm.type === "server"` for exactly this reason.
+  String addNewMemberToServer = '/s/addnewmembertoserver';
+
   /// Public realm directory, DRF-paginated: ?page=&page_size=&type=&search=.
   /// `type` is "server" for the Servers tab's Top Servers list, and the same
   /// route serves other realm kinds. Webapp's GetTopRealmsRequest.

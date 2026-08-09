@@ -451,9 +451,29 @@ class ConversationStateView extends State<ConversationView> {
   /// at the call site, so the composer reads as gating a mic and not a phone.
   bool get _showsVoiceNote => _showsCallButtons;
 
-  /// Anything you can be a MEMBER of can be left. Not gated on is_admin -
-  /// leaving is the one action a plain member most needs.
-  bool get _canLeaveRealm => _conversationType != "single";
+  /// Anything you can be a MEMBER of can be left - except a PUBLIC channel,
+  /// whose membership follows the server rather than being yours to drop. That
+  /// is the same rule web applies to adding people (`addableMember` excludes a
+  /// public channel or voice room): if you cannot be individually added, you
+  /// cannot individually leave, and offering it would be a button that either
+  /// fails or silently re-adds you on the next visit.
+  ///
+  /// Not gated on is_admin - leaving is the one action a plain member most
+  /// needs.
+  bool get _canLeaveConversation {
+    if (_conversationType == "single") return false;
+    if (_isChannelType) return conversationInfo?.isPrivate ?? false;
+    return true;
+  }
+
+  /// "Manage group" / "Manage channel" / "Manage server"… Built the same way as
+  /// [_leaveLabel], from the conversation's own type, so a type this app does
+  /// not render yet still gets a sensible noun.
+  String get _manageLabel {
+    const known = {'group', 'channel', 'server', 'voice'};
+    final type = _conversationType.toLowerCase();
+    return known.contains(type) ? 'Manage $type' : 'Manage';
+  }
 
   /// "Leave group" / "Leave channel" / "Leave server"…
   ///
@@ -562,35 +582,41 @@ class ConversationStateView extends State<ConversationView> {
             child: Row(children: [
               Icon(Icons.tune, size: 18, color: p.text2),
               const SizedBox(width: 10),
-              Text('Manage group',
+              Text(_manageLabel,
                   style: TextStyle(color: p.text, fontSize: CLType.body)),
             ]),
           ),
-        PopupMenuItem(
-          value: archived
-              ? ConversationAction.unarchive
-              : ConversationAction.archive,
-          child: Row(children: [
-            Icon(archived ? Icons.unarchive_outlined : Icons.archive_outlined,
-                size: 18, color: p.text2),
-            const SizedBox(width: 10),
-            // Sized from CLType - PopupMenuItem otherwise inherits Material's
-            // 16, larger than anything in this app's scale, and out of step
-            // with the long-press sheet offering these same two options.
-            Text(archived ? 'Unarchive' : 'Archive',
-                style: TextStyle(color: p.text, fontSize: CLType.body)),
-          ]),
-        ),
-        PopupMenuItem(
-          value: ConversationAction.delete,
-          child: Row(children: [
-            Icon(Icons.delete_outline, size: 18, color: p.pink),
-            const SizedBox(width: 10),
-            Text('Delete',
-                style: TextStyle(color: p.pink, fontSize: CLType.body)),
-          ]),
-        ),
-        if (_canLeaveRealm)
+        // Archive and Delete act on YOUR COPY of a chat history. A channel has
+        // no such thing - it belongs to the server, and hiding or clearing it
+        // for yourself is not a concept the server models. So a channel's menu
+        // is Info, Manage and (conditionally) Leave, and nothing else.
+        if (!_isChannelType)
+          PopupMenuItem(
+            value: archived
+                ? ConversationAction.unarchive
+                : ConversationAction.archive,
+            child: Row(children: [
+              Icon(archived ? Icons.unarchive_outlined : Icons.archive_outlined,
+                  size: 18, color: p.text2),
+              const SizedBox(width: 10),
+              // Sized from CLType - PopupMenuItem otherwise inherits Material's
+              // 16, larger than anything in this app's scale, and out of step
+              // with the long-press sheet offering these same two options.
+              Text(archived ? 'Unarchive' : 'Archive',
+                  style: TextStyle(color: p.text, fontSize: CLType.body)),
+            ]),
+          ),
+        if (!_isChannelType)
+          PopupMenuItem(
+            value: ConversationAction.delete,
+            child: Row(children: [
+              Icon(Icons.delete_outline, size: 18, color: p.pink),
+              const SizedBox(width: 10),
+              Text('Delete',
+                  style: TextStyle(color: p.pink, fontSize: CLType.body)),
+            ]),
+          ),
+        if (_canLeaveConversation)
           PopupMenuItem(
             onTap: _leaveRealm,
             child: Row(children: [
@@ -1836,37 +1862,18 @@ class ConversationStateView extends State<ConversationView> {
                                           // Unarchive + Delete) for single/group -
                                           // no separate options button. For other
                                           // types it stays a plain info button.
-                                          (_conversationType == "single" ||
-                                                  _conversationType == "group")
-                                              ? _conversationMenu(p)
-                                              : ConstrainedBox(
-                                                  constraints: BoxConstraints(
-                                                      maxWidth: 40,
-                                                      maxHeight: 40),
-                                                  child: ElevatedButton(
-                                                      style: ElevatedButton
-                                                          .styleFrom(
-                                                              backgroundColor:
-                                                                  Colors
-                                                                      .transparent,
-                                                              elevation: 0,
-                                                              padding: EdgeInsets
-                                                                  .only(
-                                                                      top: 0,
-                                                                      bottom: 0,
-                                                                      left: 0,
-                                                                      right:
-                                                                          0)),
-                                                      onPressed: () {},
-                                                      child: Center(
-                                                        child: Icon(
-                                                          Icons.info,
-                                                          color: _accentFor(
-                                                              cl(context)),
-                                                          size: 24,
-                                                        ),
-                                                      )),
-                                                ),
+                                          // Every type gets the menu. The old
+                                          // ternary gave single and group the
+                                          // real one and everything else a
+                                          // decorative info icon with an empty
+                                          // onPressed - so a channel's header
+                                          // had a button that did nothing at
+                                          // all. Info, Manage and Leave apply
+                                          // to a channel as much as to a group,
+                                          // and each entry already gates itself
+                                          // (Manage on is_admin, Leave on being
+                                          // non-single).
+                                          _conversationMenu(p),
                                         ],
                                       )
                                     ],

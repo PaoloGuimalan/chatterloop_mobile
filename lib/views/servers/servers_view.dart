@@ -24,7 +24,6 @@ import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
-import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
@@ -176,27 +175,22 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
     });
   }
 
-  Future<void> _toggleMembership(RealmProfile server) async {
+  /// JOIN only - the card no longer offers to leave, so this no longer has to
+  /// branch on membership.
+  Future<void> _join(RealmProfile server) async {
     if (_busyId != null) return;
     setState(() => _busyId = server.id);
 
-    final ok = server.isMember
-        // Leaving is removing yourself - the same call the conversation's Leave
-        // entry makes, and it takes the ENTITY id despite the field name.
-        ? await ProfileApi().removeRealmMembersRequest(
-            server.id, [appStore.state.userAuth.user.entityId])
-        : (await SearchApi().joinGroupRealmRequest(server.id)) != null;
-
+    final joined = await SearchApi().joinGroupRealmRequest(server.id);
     if (!mounted) return;
     setState(() => _busyId = null);
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(server.isMember
-              ? 'Could not leave. Please try again.'
-              : 'Could not join. Please try again.')));
+
+    if (joined == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not join. Please try again.')));
       return;
     }
-    // The card's action flips, so re-read the directory.
+    // The card's action flips from Join to Open, so re-read the directory.
     await _fetch(1);
   }
 
@@ -312,7 +306,7 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
                   server: server,
                   busy: _busyId == server.id,
                   onOpen: () => widget.onOpenServer(server),
-                  onToggleMembership: () => _toggleMembership(server),
+                  onJoin: () => _join(server),
                 );
               },
             ),
@@ -330,13 +324,13 @@ class _ServerCard extends StatelessWidget {
   final RealmProfile server;
   final bool busy;
   final VoidCallback onOpen;
-  final VoidCallback onToggleMembership;
+  final VoidCallback onJoin;
 
   const _ServerCard({
     required this.server,
     required this.busy,
     required this.onOpen,
-    required this.onToggleMembership,
+    required this.onJoin,
   });
 
   @override
@@ -442,14 +436,22 @@ class _ServerCard extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: CLMiniBtn(
+                        // Open, not Leave. A directory is where you go to FIND
+                        // servers, so the action on one you are already in is to
+                        // go there - offering to leave is answering a question
+                        // nobody browsing has asked, one destructive tap away
+                        // from Join on the card beside it. Leaving lives inside
+                        // the server, in its header menu, where you are by
+                        // definition looking at what you would be giving up.
                         label: busy
                             ? '…'
                             : server.isMember
-                                ? 'Leave'
+                                ? 'Open'
                                 : 'Join',
                         // Gold, like every other action on this surface.
                         variant: CLBtnVariant.gold,
-                        onPressed: busy ? null : onToggleMembership,
+                        onPressed:
+                            busy ? null : (server.isMember ? onOpen : onJoin),
                       ),
                     ),
                   ],

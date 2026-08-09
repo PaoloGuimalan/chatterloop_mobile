@@ -179,17 +179,25 @@ class ProfileApi {
     }
   }
 
-  /// A server's channels - webapp's InitServerChannelsRequest.
+  /// A server's channels AND whether you administer it - webapp's
+  /// InitServerChannelsRequest.
   ///
-  /// The decoded payload is a LIST, and the channels hang off its FIRST entry
-  /// (`response.data[0].channels`). Defensive at every step: a server with no
-  /// channels yields an empty list rather than throwing, which is a real state
-  /// - web has a whole NoChannel screen for it.
-  Future<List<ServerChannel>> getServerChannelsRequest(String serverId) async {
+  /// Both, because they arrive on the SAME object and web reads both off it.
+  ///
+  /// `response.data[0]` is the server itself - `serverName`, `profile`,
+  /// `is_admin`, `channels`. ServerInfoModal gates its Manage button on
+  /// `serverdetails.is_admin` from exactly this payload. Reading only
+  /// `channels` and then asking a second endpoint who the admins are was both
+  /// an extra round trip and the wrong answer: the member-role check missed
+  /// owners, and the realm-profile route cannot resolve a server id at all.
+  Future<({List<ServerChannel> channels, bool isAdmin})>
+      getServerChannelsRequest(String serverId) async {
     try {
       final response =
           await _mainDio.get('${_endpoints.initServerChannels}$serverId');
-      if (response.data?["status"] == false) return const [];
+      if (response.data?["status"] == false) {
+        return (channels: const <ServerChannel>[], isAdmin: false);
+      }
       final decoded =
           JwtCodec.decode(response.data["result"]?.toString() ?? '');
       // DOUBLE-wrapped, and this is where it was going wrong. Web request
@@ -208,29 +216,35 @@ class ProfileApi {
           print("[channels] no rows. level1=${level1.runtimeType} "
               "keys=${level1 is Map ? level1.keys.toList() : 'n/a'}");
         }
-        return const [];
+        return (channels: const <ServerChannel>[], isAdmin: false);
       }
       final first = rows.first;
+      final isAdmin = first is Map && first["is_admin"] == true;
       final channels = first is Map ? first["channels"] : null;
       if (channels is! List) {
         if (kDebugMode) {
           print("[channels] first row has no channels list. "
               "keys=${first is Map ? first.keys.toList() : first.runtimeType}");
         }
-        return const [];
+        return (channels: const <ServerChannel>[], isAdmin: isAdmin);
       }
-      if (kDebugMode) print("[channels] parsed ${channels.length}");
-      return channels
-          .whereType<Map>()
-          .map(
-              (item) => ServerChannel.fromJson(Map<String, dynamic>.from(item)))
-          .toList();
+      if (kDebugMode) {
+        print("[channels] parsed ${channels.length}, is_admin=$isAdmin");
+      }
+      return (
+        channels: channels
+            .whereType<Map>()
+            .map((item) =>
+                ServerChannel.fromJson(Map<String, dynamic>.from(item)))
+            .toList(),
+        isAdmin: isAdmin,
+      );
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");
         print(e);
       }
-      return const [];
+      return (channels: const <ServerChannel>[], isAdmin: false);
     }
   }
 
@@ -298,19 +312,28 @@ class ProfileApi {
   ///
   /// [conversationId] is the realm id - for a group that IS its conversation
   /// id, which is what web passes as `conversationID`.
+  ///
+  /// [isServer] switches to /s/addnewmembertoserver, which also fans the member
+  /// out to the server's PUBLIC CHANNELS. /m/addnewmember adds to one
+  /// conversation only, so using it for a server would leave the person in the
+  /// server and in none of its channels - present but unable to see anything.
+  /// Web branches on `realm.type === "server"` at the same point.
   Future<bool> addRealmMembersRequest({
     required String conversationId,
     required List<RealmMemberInvite> members,
+    bool isServer = false,
   }) async {
     if (members.isEmpty) return true;
     try {
-      final payload = {
-        'conversationID': conversationId,
+      final payload = <String, dynamic>{
+        // The id's KEY changes with the endpoint - serverID there,
+        // conversationID here - even though the value is the same realm id.
+        (isServer ? 'serverID' : 'conversationID'): conversationId,
         'memberstoadd': members.map((m) => m.toJson()).toList(),
         'receivers': members.map((m) => m.accountId).toList(),
       };
       final response = await _mainDio.post(
-        _endpoints.addNewMember,
+        isServer ? _endpoints.addNewMemberToServer : _endpoints.addNewMember,
         data: {'token': JwtCodec.sign(payload)},
       );
       return response.data?["status"] != false;
