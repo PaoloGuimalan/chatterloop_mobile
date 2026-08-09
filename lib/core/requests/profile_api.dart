@@ -1,6 +1,7 @@
 // Own-profile update, avatar/cover upload, and other-user profile lookup.
 // Split out from AuthApi since these aren't session/credential concerns.
 
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
@@ -287,6 +288,128 @@ class ProfileApi {
       final response = await _mainDio.delete(
         _endpoints.realmRemoveUser,
         data: {'realm_id': realmId, 'account_ids': accountIds},
+      );
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Joining a public server - webapp's PublicServerItem.joinServerProcess.
+  ///
+  /// There is no join endpoint for a server. Joining IS adding yourself, so this
+  /// posts the same /s/addnewmembertoserver web does, with one entry describing
+  /// the ACTING entity - which is also what gets you into the server's public
+  /// channels.
+  ///
+  /// Not /api/realm/join/v2: that route is strictly conversationType "group"
+  /// (see endpoints), so it accepted the call and did nothing for a server -
+  /// which is exactly how the button looked, busy then unchanged.
+  ///
+  /// Only entityID matters to the community_member row it creates; userID and
+  /// fullName are cosmetic, feeding the notification text, and web fills them
+  /// from the page's slug/name when acting as one.
+  Future<bool> joinServerRequest(String serverId) async {
+    try {
+      final user = appStore.state.userAuth.user;
+      final acting = user.activeEntity;
+      final asPage = user.isActingAsEntity;
+      final payload = {
+        'serverID': serverId,
+        'memberstoadd': [
+          {
+            'userID': asPage
+                ? (acting?.slug ?? acting?.name ?? user.username)
+                : user.username,
+            'entityID': user.entityId,
+            'fullName': asPage
+                ? (acting?.name ?? user.personalDisplayName)
+                : user.personalDisplayName,
+          }
+        ],
+        // The ENTITY id here, which is what web sends for a self-join - the
+        // admin-driven add path sends account ids instead. It only drives SSE
+        // fan-out, and the one person to notify is you.
+        'receivers': [user.entityId],
+      };
+      final response = await _mainDio.post(
+        _endpoints.addNewMemberToServer,
+        data: {'token': JwtCodec.sign(payload)},
+      );
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Creates a SERVER - webapp's CreateServerRequest.
+  ///
+  /// [memberEntityIds] are ENTITY ids. Web's picker stores `id: cnts.entityID`
+  /// and then sends `otherUsers: markedMembers.map(m => m.id)`, so despite the
+  /// name that list has always been entity ids - the same contract the rest of
+  /// the realm endpoints use (see removeRealmMembersRequest).
+  ///
+  /// The creator is not in the list; the server makes them owner.
+  Future<bool> createServerRequest({
+    required String name,
+    required bool isPrivate,
+    List<String> memberEntityIds = const [],
+  }) async {
+    try {
+      final response = await _mainDio.post(
+        _endpoints.createServer,
+        data: {
+          'token': JwtCodec.sign({
+            // Web calls it groupName even for a server - a server IS a realm
+            // with a conversation behind it.
+            'groupName': name,
+            'privacy': isPrivate,
+            'otherUsers': memberEntityIds,
+          })
+        },
+      );
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
+  /// Creates a channel inside a server - webapp's CreateChannelRequest.
+  ///
+  /// [type] is "channel" (text) or "voice", matching web's select values.
+  /// [memberEntityIds] are ENTITY ids, as above; web only collects them for a
+  /// PRIVATE channel, since a public one takes its membership from the server.
+  Future<bool> createChannelRequest({
+    required String serverId,
+    required String name,
+    required bool isPrivate,
+    required String type,
+    List<String> memberEntityIds = const [],
+  }) async {
+    try {
+      final response = await _mainDio.post(
+        _endpoints.createChannel,
+        data: {
+          'token': JwtCodec.sign({
+            'serverID': serverId,
+            'groupName': name,
+            'privacy': isPrivate,
+            'otherUsers': memberEntityIds,
+            'type': type,
+          })
+        },
       );
       return response.data?["status"] != false;
     } catch (e) {

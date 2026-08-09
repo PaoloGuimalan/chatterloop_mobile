@@ -303,6 +303,20 @@ class Endpoints {
   /// route serves other realm kinds. Webapp's GetTopRealmsRequest.
   String realmTop = '/api/realm/top';
 
+  /// NODE, JWT-signed. Creates a SERVER: {token: sign({groupName, privacy,
+  /// otherUsers})}, where otherUsers is a list of ENTITY ids.
+  ///
+  /// Note the /u/ prefix - server creation lives on the users router, not /s/.
+  String createServer = '/u/createserver';
+
+  /// NODE, JWT-signed. Creates a channel INSIDE a server: {token:
+  /// sign({serverID, groupName, privacy, otherUsers, type})} - type is
+  /// "channel" (text) or "voice", otherUsers again ENTITY ids.
+  ///
+  /// A voice channel is provisioned asynchronously, which is why web waits 2s
+  /// before refetching the channel list after creating one.
+  String createChannel = '/u/createchannel';
+
   /// NODE. The servers YOU are in - the rail down the side of web's Servers
   /// screen. JWT-wrapped: result decodes to {data: [...]}.
   String initServerList = '/s/initserverlist';

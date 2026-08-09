@@ -11,18 +11,24 @@
 // reason. What differs is the header - see conversation_view's call gating,
 // which drops the call buttons for a channel.
 //
-// NOT here: creating channels (web's CreateChannelModal, 378 lines) and voice
-// channels. Voice is listed but not enterable - it needs the mediasoup stack,
-// which is the unmaintained dependency we already flagged, so offering a room
-// that cannot be joined would be worse than saying so.
+// Creating channels lives in create_realm_view.dart, reached from the + beside
+// the Channels heading.
+//
+// NOT here: voice channels themselves. One can be CREATED - the server does that
+// work, and a channel you cannot enter from a phone is still a channel your
+// members use from the web - but it is listed and not enterable, because it
+// needs the mediasoup stack, the unmaintained dependency we already flagged.
+// Offering a room that silently fails to connect would be worse than saying so.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
+import 'package:chatterloop_app/models/http_models/paged_result.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
+import 'package:chatterloop_app/views/servers/create_realm_view.dart';
 import 'package:chatterloop_app/views/servers/servers_view.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -36,11 +42,17 @@ class ServerChannelsPane extends StatefulWidget {
   final String? serverName;
   final String? serverProfile;
 
+  /// Called after LEAVING, so the shell can drop the server from the rail and
+  /// swap this pane back to the directory. The shell owns both, and leaving
+  /// should not take you out of the servers screen - you are still browsing.
+  final void Function(String serverId)? onLeave;
+
   const ServerChannelsPane({
     super.key,
     required this.serverId,
     this.serverName,
     this.serverProfile,
+    this.onLeave,
   });
 
   @override
@@ -53,8 +65,10 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
 
   /// Straight off the channels payload - see getServerChannelsRequest. Web reads
   /// `serverdetails.is_admin` from the same object, and two earlier attempts to
-  /// derive it elsewhere were both wrong: the realm-profile route cannot resolve
-  /// a server id, and my own member row does not say "admin" for an owner.
+  /// derive it elsewhere were both wrong: the realm profile looked up by SLUG
+  /// cannot resolve a server (servers have no slug - `forManage: true` is what
+  /// switches that lookup to realm_id), and my own member row does not say
+  /// "admin" for an owner.
   bool _isAdmin = false;
 
   @override
@@ -141,9 +155,31 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
           const SnackBar(content: Text('Could not leave. Please try again.')));
       return;
     }
-    // Out of the server entirely - staying on a channel list you are no longer
-    // a member of shows rooms you cannot open.
-    context.go('/servers');
+    // Back to the directory, NOT out to the Servers tab. You have left one
+    // server, which is no reason to close the whole screen - Top Servers is
+    // where you would go next anyway. The shell also drops it from the rail:
+    // refetching /s/initserverlist would work but is a round trip to learn
+    // something already known, and until it landed the rail would still show a
+    // server you are no longer in.
+    widget.onLeave?.call(widget.serverId);
+  }
+
+  /// Pushes the create form, then re-reads the channel list.
+  ///
+  /// A VOICE channel gets a second read two seconds later, exactly as web does:
+  /// the room is provisioned asynchronously by the media service, so the list
+  /// fetched immediately after the create call usually does not have it yet.
+  Future<void> _createChannel() async {
+    final created = await Navigator.of(context).push<CreatedRealmKind>(
+      MaterialPageRoute(
+          builder: (_) => CreateRealmScreen.channel(serverId: widget.serverId)),
+    );
+    if (created == null || !mounted) return;
+    await _load();
+    if (created == 'voice') {
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) await _load();
+    }
   }
 
   void _open(ServerChannel channel) {
@@ -267,15 +303,37 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: CLEmptyState(
-            icon: Icons.tag,
-            iconBg: p.surface2,
-            iconColor: p.text2,
-            iconBorderColor: p.border,
-            compact: true,
-            title: 'No channels yet',
-            subtitle: 'This server has no channels.'
-                ' They can be created from the web app.',
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CLEmptyState(
+                icon: Icons.tag,
+                iconBg: p.surface2,
+                iconColor: p.text2,
+                iconBorderColor: p.border,
+                compact: true,
+                title: 'No channels yet',
+                subtitle: _isAdmin
+                    ? 'Create the first one and it shows up here.'
+                    : 'This server has no channels yet.'
+                        ' An admin can create the first one.',
+              ),
+              // The one case web cannot reach at all: its + only renders
+              // alongside the Channels heading, which only renders when there
+              // ARE channels - so a brand new server has no way to get its
+              // first one. Here the empty state carries the action, the same
+              // shape the Servers tab uses for Open Servers.
+              if (_isAdmin) ...[
+                const SizedBox(height: 18),
+                CLBtn(
+                  label: 'Create channel',
+                  iconL: Icons.add,
+                  variant: CLBtnVariant.gold,
+                  size: CLBtnSize.md,
+                  onPressed: _createChannel,
+                ),
+              ],
+            ],
           ),
         ),
       );
@@ -294,14 +352,13 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
               child: Row(
                 children: [
                   const Expanded(child: _SectionLabel(label: 'Channels')),
-                  CLIconBtn(
-                    icon: Icons.add,
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'Creating channels is not available on mobile yet.')),
-                    ),
-                  ),
+                  // Admins only, like Manage server in the header menu. Web
+                  // shows the + to everyone, but the server refuses a
+                  // non-admin's create - so the entry would only ever fail for
+                  // them, on the surface where the useful action (opening a
+                  // channel) is every row below it.
+                  if (_isAdmin)
+                    CLIconBtn(icon: Icons.add, onPressed: _createChannel),
                 ],
               ),
             );
@@ -472,6 +529,18 @@ class _ServerScreenState extends State<ServerScreen> {
         _serverProfile = null;
       });
 
+  /// After leaving: drop it from the rail and land on the directory.
+  ///
+  /// The rail is patched locally rather than refetched, for the same reason a
+  /// joined card flips locally - the answer is already known, and a refetch
+  /// leaves the server you just left sitting in the rail until it returns.
+  void _onLeft(String serverId) => setState(() {
+        _mine = _mine.where((server) => server.id != serverId).toList();
+        _serverId = null;
+        _serverName = null;
+        _serverProfile = null;
+      });
+
   /// Back always lands on the Servers TAB, never one frame up the stack.
   ///
   /// go(), not pop(): this screen is reached from the tab, but the rail also
@@ -508,7 +577,11 @@ class _ServerScreenState extends State<ServerScreen> {
             Container(width: 1, color: p.border),
             Expanded(
               child: _serverId == null
-                  ? ServersDirectoryPane(onOpenServer: _select)
+                  ? ServersDirectoryPane(
+                      onOpenServer: _select,
+                      // A newly created server has to appear in the rail too.
+                      onServersChanged: _loadMine,
+                    )
                   : ServerChannelsPane(
                       // Keyed so switching servers in the rail rebuilds the
                       // pane and refetches, instead of leaving the previous
@@ -517,6 +590,7 @@ class _ServerScreenState extends State<ServerScreen> {
                       serverId: _serverId!,
                       serverName: _serverName,
                       serverProfile: _serverProfile,
+                      onLeave: _onLeft,
                     ),
             ),
           ],
@@ -651,6 +725,14 @@ class ServerInfoScreen extends StatefulWidget {
 
 class _ServerInfoScreenState extends State<ServerInfoScreen> {
   final List<RealmPerson> _members = [];
+
+  /// The server's own description. NOT on the channels payload web builds this
+  /// screen from - ServerChannelsListInterface carries serverName, profile,
+  /// is_admin, channels and usersWithInfo and nothing else, which is why web's
+  /// ServerInfoModal shows no description at all. It lives on the Django realm,
+  /// so it takes a second request.
+  String? _description;
+
   bool _loading = true;
 
   @override
@@ -660,16 +742,29 @@ class _ServerInfoScreenState extends State<ServerInfoScreen> {
   }
 
   Future<void> _load() async {
-    // One page. This is a display screen, not the roster you manage - that is
-    // Manage server, which pages, searches and can remove people. Paging here
-    // would be building a second version of it.
-    final result = await ProfileApi()
-        .getRealmMembersRequest(widget.serverId, pageSize: 50);
+    // Both at once - the description is a display detail, and making the member
+    // list wait for a serial second request would be paying for it twice.
+    //
+    // forManage: true is what lets a SERVER be looked up at all. It is not an
+    // authorisation mode despite the name: it only switches the realm lookup
+    // from `slug=` to `realm_id=`, and a server has no slug. Without it this
+    // request 404s, which is the same wall the earlier is_admin attempt hit.
+    final results = await Future.wait([
+      // One page. This is a display screen, not the roster you manage - that is
+      // Manage server, which pages, searches and can remove people. Paging here
+      // would be building a second version of it.
+      ProfileApi().getRealmMembersRequest(widget.serverId, pageSize: 50),
+      ProfileApi().getRealmProfileRequest(widget.serverId, forManage: true),
+    ]);
     if (!mounted) return;
+
+    final page = results[0] as PagedResult<RealmPerson>;
+    final realm = results[1] as RealmProfile?;
     setState(() {
       _members
         ..clear()
-        ..addAll(result.results);
+        ..addAll(page.results);
+      _description = realm?.description;
       _loading = false;
     });
   }
@@ -707,6 +802,61 @@ class _ServerInfoScreenState extends State<ServerInfoScreen> {
                 const SizedBox(height: 2),
                 Text('Server',
                     style: TextStyle(fontSize: CLType.caption, color: p.text2)),
+                // Under the identity block and above the members, because that
+                // is the order you read it in: what this place is, then who is
+                // in it. Not truncated - an info screen is where the whole
+                // description belongs, unlike the directory card that clamps it.
+                if (_loading)
+                  // Shaped like the justified paragraph it stands in for: four
+                  // full-width lines and a half line to end on, left aligned so
+                  // the ragged edge is at the bottom right where a paragraph's
+                  // is. It sits where the real text will, which is what stops
+                  // the members heading below from jumping when it arrives.
+                  const Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 12, not 9: the bars run the full column width, and at
+                        // 9 that width made each one read as a tube rather than
+                        // a line of text. 12 with a 6 gap is about the 13/1.35
+                        // line box the real description occupies.
+                        CLSkeleton(width: double.infinity, height: 12),
+                        SizedBox(height: 6),
+                        CLSkeleton(width: double.infinity, height: 12),
+                        SizedBox(height: 6),
+                        CLSkeleton(width: double.infinity, height: 12),
+                        SizedBox(height: 6),
+                        CLSkeleton(width: double.infinity, height: 12),
+                        SizedBox(height: 6),
+                        // A FRACTION, not a fixed width: the last line has to
+                        // stay half the column on any screen, and a 140px bar
+                        // is most of a narrow phone and a third of a wide one.
+                        FractionallySizedBox(
+                          widthFactor: 0.5,
+                          child: CLSkeleton(width: double.infinity, height: 12),
+                        ),
+                      ],
+                    ),
+                  )
+                else if ((_description ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  // Full width, so justify has something to justify against -
+                  // the Column above centres its children, which would size a
+                  // short description to its own text and make the alignment
+                  // moot.
+                  SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      _description!.trim(),
+                      textAlign: TextAlign.justify,
+                      style: TextStyle(
+                          fontSize: CLType.bodySm,
+                          color: p.text2,
+                          height: 1.35),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

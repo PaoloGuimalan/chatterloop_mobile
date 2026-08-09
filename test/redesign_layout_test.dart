@@ -30,6 +30,8 @@ import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/views/realm/realm_sections.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
+import 'package:chatterloop_app/views/servers/create_realm_view.dart';
+import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -781,6 +783,52 @@ void _rosterIdContracts() {
       // A follower has no role and no member row.
       expect(person.role, isNull);
       expect(person.memberId, isEmpty);
+    });
+  });
+
+  group('creating a server or a channel', () {
+    test('a server picks members globally', () {
+      // Both privacies: a private SERVER still starts with only you in it, so
+      // it still asks. Only a channel's privacy decides whether it asks at all.
+      for (final isPrivate in [true, false]) {
+        expect(
+          createRealmMemberSource(isChannel: false, isPrivate: isPrivate),
+          CreateRealmMemberSource.globalEntities,
+          reason: 'private=$isPrivate',
+        );
+      }
+    });
+
+    test('a private channel picks from the parent server only', () {
+      // The product rule: you can only add someone to a channel who is
+      // already in the server that owns it, so a global search here would
+      // list people who cannot be added and fail only after selecting them.
+      expect(
+        createRealmMemberSource(isChannel: true, isPrivate: true),
+        CreateRealmMemberSource.parentServerMembers,
+      );
+    });
+
+    test('a public channel picks nobody', () {
+      // Membership follows the server, which is why web hides the picker
+      // entirely - and why the payload must carry no members even if some were
+      // ticked before the privacy was switched back.
+      expect(
+        createRealmMemberSource(isChannel: true, isPrivate: false),
+        CreateRealmMemberSource.none,
+      );
+    });
+
+    test('the two create endpoints are the ones webapp posts to', () {
+      // Both live on the /u/ router, not /s/ - and they are separate routes,
+      // which is the mistake worth pinning: a channel posted to createserver
+      // would create a top-level server named after the channel.
+      final endpoints = Endpoints();
+      expect(endpoints.createServer, '/u/createserver');
+      expect(endpoints.createChannel, '/u/createchannel');
+      // And the server-specific add, which fans out to the public channels.
+      expect(endpoints.addNewMemberToServer, '/s/addnewmembertoserver');
+      expect(endpoints.addNewMember, '/m/addnewmember');
     });
   });
 }

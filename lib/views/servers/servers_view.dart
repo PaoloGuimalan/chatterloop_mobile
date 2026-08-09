@@ -16,18 +16,18 @@
 // The Create Server button it sat under is kept, since that is the one action
 // the directory offers.
 //
-// NOT built: creating servers or channels (web's two modals, ~750 lines) and
-// voice channels, which need the media stack. Both appear in the UI as web has
-// them and say so when tapped, rather than failing quietly.
+// NOT built: voice channels, which need the media stack - they are listed but
+// not enterable, and say so when tapped rather than failing quietly. Creating
+// servers and channels IS built, in create_realm_view.dart.
 
 import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
-import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
+import 'package:chatterloop_app/views/servers/create_realm_view.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -92,7 +92,12 @@ class ServersDirectoryPane extends StatefulWidget {
   /// rail in place - which is the entire reason the rail is there.
   final void Function(RealmProfile server) onOpenServer;
 
-  const ServersDirectoryPane({super.key, required this.onOpenServer});
+  /// Fired after a server is CREATED, so the shell can refetch the rail: the
+  /// new server has to appear down the side, and only the shell owns that list.
+  final VoidCallback? onServersChanged;
+
+  const ServersDirectoryPane(
+      {super.key, required this.onOpenServer, this.onServersChanged});
 
   @override
   State<ServersDirectoryPane> createState() => _ServersScreenState();
@@ -102,6 +107,10 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
   final ScrollController _scroll = ScrollController();
   final TextEditingController _search = TextEditingController();
   final List<RealmProfile> _servers = [];
+
+  /// Servers joined in THIS session - see _join. Merged with the payload's
+  /// is_member so a card flips without the list reordering under the finger.
+  final Set<String> _joined = {};
 
   Timer? _searchDebounce;
   int _page = 1;
@@ -177,21 +186,41 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
 
   /// JOIN only - the card no longer offers to leave, so this no longer has to
   /// branch on membership.
+  ///
+  /// joinServerRequest, not the group join: a server has no join route, and the
+  /// group one silently no-ops on a server. See joinServerRequest.
   Future<void> _join(RealmProfile server) async {
     if (_busyId != null) return;
     setState(() => _busyId = server.id);
 
-    final joined = await SearchApi().joinGroupRealmRequest(server.id);
+    final joined = await ProfileApi().joinServerRequest(server.id);
     if (!mounted) return;
-    setState(() => _busyId = null);
+    setState(() {
+      _busyId = null;
+      // Flip THIS card, rather than re-reading the directory. The list is
+      // ranked and reshuffles between requests, so a refetch moved the card you
+      // just acted on somewhere else on screen - web keeps its own isJoined
+      // flag for the same reason.
+      if (joined) _joined.add(server.id);
+    });
+    // The server is yours now, so it belongs in the rail beside this pane.
+    if (joined) widget.onServersChanged?.call();
 
-    if (joined == null) {
+    if (!joined) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not join. Please try again.')));
-      return;
     }
-    // The card's action flips from Join to Open, so re-read the directory.
+  }
+
+  /// Pushes the create form and, if something was created, re-reads both lists:
+  /// the directory (a public server belongs in it) and the rail, via the shell.
+  Future<void> _create() async {
+    final created = await Navigator.of(context).push<CreatedRealmKind>(
+      MaterialPageRoute(builder: (_) => const CreateRealmScreen.server()),
+    );
+    if (created == null || !mounted) return;
     await _fetch(1);
+    widget.onServersChanged?.call();
   }
 
   @override
@@ -221,11 +250,7 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
             variant: CLBtnVariant.gold,
             size: CLBtnSize.md,
             block: true,
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content:
-                      Text('Creating servers is not available on mobile yet.')),
-            ),
+            onPressed: _create,
           ),
           const SizedBox(height: 18),
 
@@ -304,6 +329,7 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
                 final server = _servers[index];
                 return _ServerCard(
                   server: server,
+                  isMember: server.isMember || _joined.contains(server.id),
                   busy: _busyId == server.id,
                   onOpen: () => widget.onOpenServer(server),
                   onJoin: () => _join(server),
@@ -322,12 +348,17 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
 /// overlapping it, name, member count and Join/Leave.
 class _ServerCard extends StatelessWidget {
   final RealmProfile server;
+
+  /// Passed in rather than read off `server`, so a join can flip one card
+  /// without refetching the whole ranked list - see _join.
+  final bool isMember;
   final bool busy;
   final VoidCallback onOpen;
   final VoidCallback onJoin;
 
   const _ServerCard({
     required this.server,
+    required this.isMember,
     required this.busy,
     required this.onOpen,
     required this.onJoin,
@@ -445,13 +476,22 @@ class _ServerCard extends StatelessWidget {
                         // definition looking at what you would be giving up.
                         label: busy
                             ? '…'
-                            : server.isMember
+                            : isMember
                                 ? 'Open'
                                 : 'Join',
-                        // Gold, like every other action on this surface.
-                        variant: CLBtnVariant.gold,
-                        onPressed:
-                            busy ? null : (server.isMember ? onOpen : onJoin),
+                        // Deliberately NOT the same button twice. Two cards side
+                        // by side, one joined and one not, were identical gold
+                        // blocks you had to READ to tell apart - which is the
+                        // one thing a directory should convey at a glance.
+                        //
+                        // Join is the offer, so it stays filled gold and reads
+                        // as the thing to do. Open is quiet: you are already in,
+                        // and the whole card opens it anyway. No icons - fill
+                        // and border already carry that difference, and at this
+                        // card width a glyph only steals room from the label.
+                        variant:
+                            isMember ? CLBtnVariant.outline : CLBtnVariant.gold,
+                        onPressed: busy ? null : (isMember ? onOpen : onJoin),
                       ),
                     ),
                   ],
