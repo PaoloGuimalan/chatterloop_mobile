@@ -19,7 +19,6 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 class ConversationInfoScreen extends StatelessWidget {
   final ConversationInfoModel info;
@@ -183,14 +182,14 @@ class _PersonRow extends StatelessWidget {
       person.fullname.lastName,
     ].where((part) => part.trim().isNotEmpty && part != 'N/A').join(' ');
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(CLRadii.md),
-      // userID is the USERNAME despite the name (see UsersContactPreview), so
-      // it is what the profile route wants.
-      onTap: person.userID.isEmpty
-          ? null
-          : () => context.push('/user/${person.userID}'),
-      child: Padding(
+    // NOT tappable, though web's rows navigate to the member's profile.
+    //
+    // This screen and the server info screen are both display only, and they
+    // now agree: a member list here tells you WHO is in the conversation, and
+    // that is all it does. Half the rows leading somewhere and half not - a page
+    // member has no user profile route - is worse than none of them leading
+    // anywhere, and the profile is a tap away from any message they have sent.
+    return Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
@@ -228,8 +227,6 @@ class _PersonRow extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
+        ));
   }
 }

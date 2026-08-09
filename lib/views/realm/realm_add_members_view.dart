@@ -275,7 +275,20 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
   }
 
   Widget _resultsBody(CLPalette p) {
-    if (_searching) return const CLListSkeleton();
+    // Inset and sized to line up with the real rows: the list pads by
+    // contentGutter and each row by another 4, and CLListRowSkeleton already
+    // carries 6 of its own - so 12 here puts the placeholder avatar at the same
+    // 18px from the edge. Unpadded it sat against the screen edge and the whole
+    // list appeared to shift right once the results arrived.
+    if (_searching) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(
+            CLSpacing.contentGutter - 2, 4, CLSpacing.contentGutter - 2, 8),
+        // 38, matching CLAvatar in the rows below - the default 46 made the
+        // text bars start further right than the real names do.
+        child: CLListSkeleton(avatarSize: 38),
+      );
+    }
 
     if (!_searched) {
       return Center(

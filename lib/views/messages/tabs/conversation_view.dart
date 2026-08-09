@@ -202,7 +202,7 @@ class ConversationStateView extends State<ConversationView> {
     if (setup == null) {
       setState(() {
         isSettingUp = false;
-        conversationLoadError = "This conversation could not be loaded.";
+        conversationLoadError = _accessErrorTitle;
       });
       return;
     }
@@ -216,7 +216,7 @@ class ConversationStateView extends State<ConversationView> {
     if (!mounted) return;
     if (!loadedMessages) {
       setState(() {
-        conversationLoadError = "This conversation could not be loaded.";
+        conversationLoadError = _accessErrorTitle;
       });
       return;
     }
@@ -442,9 +442,76 @@ class ConversationStateView extends State<ConversationView> {
     // beat and then pulled them out from under the user on every channel. Absent
     // is the honest answer before the type is known, and it is also the quieter
     // one - a control appearing is far less jarring than one vanishing.
-    if (conversationSetup == null) return false;
+    if (!_conversationReady) return false;
     return !_isChannelType;
   }
+
+  /// Whether this screen's CONTROLS should work at all.
+  ///
+  /// Every control here acts on a conversation - calling its people, opening its
+  /// info, sending into it. None of that has a subject until the thread has
+  /// actually loaded, and none of it can succeed if it failed to. A live-looking
+  /// button on a thread that is not there is the worst of the three states: it
+  /// invites a tap and then either does nothing or throws.
+  ///
+  /// isInitialized as well as the two flags, so this also covers the window
+  /// between setup landing and messages arriving - a send in there has no
+  /// conversationInfo to resolve recipients from.
+  bool get _conversationReady =>
+      conversationLoadError == null &&
+      conversationSetup != null &&
+      isInitialized;
+
+  /// A round placeholder the size of one icon button.
+  ///
+  /// Skeletons, not absent controls: the composer and the header are FIXED
+  /// furniture, and a bar that arrives a piece at a time reads as broken. This
+  /// says "a button is coming here" and holds the space, which is the same
+  /// contract the header avatar and the message list already keep.
+  Widget _controlSkeleton({double size = 30}) => CLSkeleton(
+        width: size,
+        height: size,
+        borderRadius: BorderRadius.circular(size / 2),
+      );
+
+  /// The same, boxed to the 40x40 an icon button occupies.
+  ///
+  /// The box is the point, in the header as much as the composer: a real button
+  /// is a 24px icon inside a 40px hit area, so its neighbours sit ~18px apart. A
+  /// bare 30px circle with the same 2px gap between them looked crammed together
+  /// - the gap was right and the padding around it was missing.
+  Widget _controlSkeletonBox() => SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(child: _controlSkeleton()),
+      );
+
+  /// What to call this place in prose - "channel", "group chat"...
+  ///
+  /// Falls back to the generic noun while the type is unknown, which is exactly
+  /// the case for a setup failure: nothing has told us what we failed to open
+  /// yet, and guessing "channel" there is a worse answer than not saying.
+  String get _conversationNoun {
+    if (conversationSetup == null) return 'conversation';
+    return switch (_conversationType.toLowerCase()) {
+      'channel' || 'server' => 'channel',
+      'voice' => 'voice channel',
+      'group' => 'group chat',
+      _ => 'conversation',
+    };
+  }
+
+  /// Webapp's wording for a channel it could not open - ServerConversation
+  /// renders "You do not have access to this channel" - generalised to the
+  /// other kinds here.
+  ///
+  /// It is the likeliest cause by far, a private channel you are not in or a
+  /// realm you were removed from, and the only one the user can act on. The same
+  /// request error also covers a transport failure, which is what the second
+  /// line below leaves room for rather than asserting access is the only
+  /// explanation.
+  String get _accessErrorTitle =>
+      'You do not have access to this $_conversationNoun';
 
   /// Voice notes go the same way as calls in a channel: a room is not somebody
   /// you leave a voice message for. Aliased rather than reusing the call getter
@@ -1684,7 +1751,19 @@ class ConversationStateView extends State<ConversationView> {
                                                     : null,
                                                 // A channel has no face - it gets
                                                 // its type icon, as web does.
-                                                child: !_showsCallButtons
+                                                //
+                                                // _isChannelType, NOT
+                                                // !_showsCallButtons: that is
+                                                // false while the thread is
+                                                // still loading too, so every
+                                                // normal conversation wore a
+                                                // hash for a beat before its
+                                                // avatar arrived. This branch is
+                                                // already inside the
+                                                // conversationSetup == null
+                                                // guard above, which is the only
+                                                // thing _isChannelType needs.
+                                                child: _isChannelType
                                                     ? Container(
                                                         width: 40,
                                                         height: 40,
@@ -1796,6 +1875,13 @@ class ConversationStateView extends State<ConversationView> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.center,
                                         children: [
+                                          if (!_conversationReady) ...[
+                                            _controlSkeletonBox(),
+                                            SizedBox(width: 2),
+                                            _controlSkeletonBox(),
+                                            SizedBox(width: 2),
+                                            _controlSkeletonBox(),
+                                          ],
                                           if (_showsCallButtons)
                                             ConstrainedBox(
                                               constraints: BoxConstraints(
@@ -1873,7 +1959,18 @@ class ConversationStateView extends State<ConversationView> {
                                           // and each entry already gates itself
                                           // (Manage on is_admin, Leave on being
                                           // non-single).
-                                          _conversationMenu(p),
+                                          // ABSENT, not disabled, until the
+                                          // conversation has loaded. Nothing in
+                                          // this menu means anything before then
+                                          // - Info is built from
+                                          // conversationInfo, Manage and Leave
+                                          // act on the realm behind it, Archive
+                                          // and Delete on a history that may not
+                                          // exist - and a greyed control still
+                                          // asserts what KIND of place this is
+                                          // before the answer is in.
+                                          if (_conversationReady)
+                                            _conversationMenu(p),
                                         ],
                                       )
                                     ],
@@ -1888,10 +1985,26 @@ class ConversationStateView extends State<ConversationView> {
                                           child: Column(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              Icon(Icons.error_outline,
+                                              // A lock, not a warning triangle:
+                                              // this is about permission, and an
+                                              // error glyph reads as "something
+                                              // broke, try again".
+                                              Icon(Icons.lock_outline,
                                                   size: 40, color: p.text3),
                                               const SizedBox(height: 10),
                                               Text(conversationLoadError!,
+                                                  textAlign: TextAlign.center,
+                                                  style: TextStyle(
+                                                      color: p.text,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      fontSize:
+                                                          CLType.sectionTitle)),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                  'It may be private, or you may '
+                                                  'no longer be a member. Check '
+                                                  'your connection and try again.',
                                                   textAlign: TextAlign.center,
                                                   style: TextStyle(
                                                       color: p.text2,
@@ -2801,57 +2914,71 @@ class ConversationStateView extends State<ConversationView> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.center,
                                           children: [
-                                            ConstrainedBox(
-                                              constraints: BoxConstraints(
-                                                  maxWidth: 40, maxHeight: 40),
-                                              child: ElevatedButton(
-                                                  style:
-                                                      ElevatedButton.styleFrom(
-                                                          backgroundColor:
-                                                              Colors
-                                                                  .transparent,
-                                                          elevation: 0,
-                                                          padding:
-                                                              EdgeInsets.only(
-                                                                  top: 0,
-                                                                  bottom: 0,
-                                                                  left: 0,
-                                                                  right: 0)),
-                                                  onPressed: _pickFiles,
-                                                  child: Center(
-                                                    child: Icon(
-                                                      Icons.add_circle_rounded,
-                                                      color: _accentFor(p),
-                                                      size: 22,
-                                                    ),
-                                                  )),
-                                            ),
-                                            ConstrainedBox(
-                                              constraints: BoxConstraints(
-                                                  maxWidth: 40, maxHeight: 40),
-                                              child: ElevatedButton(
-                                                  style:
-                                                      ElevatedButton.styleFrom(
-                                                          backgroundColor:
-                                                              Colors
-                                                                  .transparent,
-                                                          elevation: 0,
-                                                          padding:
-                                                              EdgeInsets.only(
-                                                                  top: 0,
-                                                                  bottom: 0,
-                                                                  left: 0,
-                                                                  right: 0)),
-                                                  onPressed: _pickImages,
-                                                  child: Center(
-                                                    child: Icon(
-                                                      Icons
-                                                          .add_photo_alternate_rounded,
-                                                      color: _accentFor(p),
-                                                      size: 24,
-                                                    ),
-                                                  )),
-                                            ),
+                                            if (!_conversationReady) ...[
+                                              _controlSkeletonBox(),
+                                              _controlSkeletonBox(),
+                                              // The mic, which a loaded channel
+                                              // will not have - but until the
+                                              // type is known the composer shows
+                                              // the shape a conversation has.
+                                              _controlSkeletonBox(),
+                                            ],
+                                            if (_conversationReady)
+                                              ConstrainedBox(
+                                                constraints: BoxConstraints(
+                                                    maxWidth: 40,
+                                                    maxHeight: 40),
+                                                child: ElevatedButton(
+                                                    style: ElevatedButton
+                                                        .styleFrom(
+                                                            backgroundColor:
+                                                                Colors
+                                                                    .transparent,
+                                                            elevation: 0,
+                                                            padding:
+                                                                EdgeInsets.only(
+                                                                    top: 0,
+                                                                    bottom: 0,
+                                                                    left: 0,
+                                                                    right: 0)),
+                                                    onPressed: _pickFiles,
+                                                    child: Center(
+                                                      child: Icon(
+                                                        Icons
+                                                            .add_circle_rounded,
+                                                        color: _accentFor(p),
+                                                        size: 22,
+                                                      ),
+                                                    )),
+                                              ),
+                                            if (_conversationReady)
+                                              ConstrainedBox(
+                                                constraints: BoxConstraints(
+                                                    maxWidth: 40,
+                                                    maxHeight: 40),
+                                                child: ElevatedButton(
+                                                    style: ElevatedButton
+                                                        .styleFrom(
+                                                            backgroundColor:
+                                                                Colors
+                                                                    .transparent,
+                                                            elevation: 0,
+                                                            padding:
+                                                                EdgeInsets.only(
+                                                                    top: 0,
+                                                                    bottom: 0,
+                                                                    left: 0,
+                                                                    right: 0)),
+                                                    onPressed: _pickImages,
+                                                    child: Center(
+                                                      child: Icon(
+                                                        Icons
+                                                            .add_photo_alternate_rounded,
+                                                        color: _accentFor(p),
+                                                        size: 24,
+                                                      ),
+                                                    )),
+                                              ),
                                             if (_isRecordingVoice)
                                               ConstrainedBox(
                                                 constraints: BoxConstraints(
@@ -2924,158 +3051,180 @@ class ConversationStateView extends State<ConversationView> {
                                         Expanded(
                                             child: Padding(
                                           padding: EdgeInsets.all(5),
-                                          child: Container(
-                                            height: 45,
-                                            decoration: BoxDecoration(
-                                                color: p.input,
-                                                borderRadius:
-                                                    BorderRadius.circular(10)),
-                                            child: TextField(
-                                              controller: _controller,
-                                              onChanged: (value) {
-                                                if (!mounted) return;
-                                                // Plain assignment, NOT setState:
-                                                // messageValue is only read at send
-                                                // time (the button's onPressed),
-                                                // never during build/layout, so a
-                                                // keystroke must not rebuild the
-                                                // whole conversation tree - that was
-                                                // the typing lag. isTypingTimeout
-                                                // does its own throttled setState
-                                                // (once per typing burst), which is
-                                                // cheap and still needed.
-                                                messageValue = value;
-                                                // Same reasoning - drives a
-                                                // ValueNotifier, so only the
-                                                // suggestion overlay rebuilds.
-                                                _refreshMentionSuggestions(
-                                                    value);
-                                                if (value.trim() != "" &&
-                                                    conversationInfo != null) {
-                                                  isTypingTimeout(
-                                                      widget.conversationId,
-                                                      conversationInfo!.users
-                                                          .map((user) => user
-                                                              .entityID
-                                                              .toString())
-                                                          .toList());
-                                                }
-                                              },
-                                              style: TextStyle(
-                                                  fontSize: CLType.caption,
-                                                  color: p.text),
-                                              decoration: InputDecoration(
-                                                  contentPadding:
-                                                      EdgeInsets.only(
-                                                          top: 6,
-                                                          bottom: 6,
-                                                          left: 8,
-                                                          right: 8),
-                                                  hintText:
-                                                      'Write a message....',
-                                                  hintStyle:
-                                                      TextStyle(color: p.text3),
-                                                  border: InputBorder.none),
-                                            ),
-                                          ),
+                                          // A bar of the same height and corner
+                                          // radius as the input it stands in
+                                          // for. Rendering the real field
+                                          // disabled instead left the composer
+                                          // looking finished while everything
+                                          // around it was still arriving.
+                                          child: !_conversationReady
+                                              ? CLSkeleton(
+                                                  width: double.infinity,
+                                                  height: 45,
+                                                  borderRadius:
+                                                      BorderRadius.circular(10))
+                                              : Container(
+                                                  height: 45,
+                                                  decoration: BoxDecoration(
+                                                      color: p.input,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              10)),
+                                                  child: TextField(
+                                                    controller: _controller,
+                                                    onChanged: (value) {
+                                                      if (!mounted) return;
+                                                      // Plain assignment, NOT setState:
+                                                      // messageValue is only read at send
+                                                      // time (the button's onPressed),
+                                                      // never during build/layout, so a
+                                                      // keystroke must not rebuild the
+                                                      // whole conversation tree - that was
+                                                      // the typing lag. isTypingTimeout
+                                                      // does its own throttled setState
+                                                      // (once per typing burst), which is
+                                                      // cheap and still needed.
+                                                      messageValue = value;
+                                                      // Same reasoning - drives a
+                                                      // ValueNotifier, so only the
+                                                      // suggestion overlay rebuilds.
+                                                      _refreshMentionSuggestions(
+                                                          value);
+                                                      if (value.trim() != "" &&
+                                                          conversationInfo !=
+                                                              null) {
+                                                        isTypingTimeout(
+                                                            widget
+                                                                .conversationId,
+                                                            conversationInfo!
+                                                                .users
+                                                                .map((user) => user
+                                                                    .entityID
+                                                                    .toString())
+                                                                .toList());
+                                                      }
+                                                    },
+                                                    style: TextStyle(
+                                                        fontSize:
+                                                            CLType.caption,
+                                                        color: p.text),
+                                                    decoration: InputDecoration(
+                                                        contentPadding:
+                                                            EdgeInsets.only(
+                                                                top: 6,
+                                                                bottom: 6,
+                                                                left: 8,
+                                                                right: 8),
+                                                        hintText:
+                                                            'Write a message....',
+                                                        hintStyle: TextStyle(
+                                                            color: p.text3),
+                                                        border:
+                                                            InputBorder.none),
+                                                  ),
+                                                ),
                                         )),
                                         SizedBox(
                                           width: 0,
                                         ),
-                                        ConstrainedBox(
-                                          constraints: BoxConstraints(
-                                              maxWidth: 45, maxHeight: 40),
-                                          child: ElevatedButton(
-                                              key: ValueKey(
-                                                  "${combinedPendingAndMessagesList.length}_${pendingMessagesList.length}_${conversationContentList.length}"),
-                                              style: ElevatedButton.styleFrom(
-                                                  backgroundColor:
-                                                      Colors.transparent,
-                                                  elevation: 0,
-                                                  padding: EdgeInsets.only(
-                                                      top: 0,
-                                                      bottom: 0,
-                                                      left: 0,
-                                                      right: 0)),
-                                              onPressed: () {
-                                                if (conversationInfo == null) {
-                                                  return;
-                                                }
-                                                final hasText = messageValue
-                                                    .trim()
-                                                    .isNotEmpty;
-                                                final hasFiles =
-                                                    _stagedFiles.isNotEmpty;
-                                                if (!hasText && !hasFiles) {
-                                                  return;
-                                                }
+                                        if (!_conversationReady)
+                                          _controlSkeletonBox(),
+                                        if (_conversationReady)
+                                          ConstrainedBox(
+                                            constraints: BoxConstraints(
+                                                maxWidth: 45, maxHeight: 40),
+                                            child: ElevatedButton(
+                                                key: ValueKey(
+                                                    "${combinedPendingAndMessagesList.length}_${pendingMessagesList.length}_${conversationContentList.length}"),
+                                                style: ElevatedButton.styleFrom(
+                                                    backgroundColor:
+                                                        Colors.transparent,
+                                                    elevation: 0,
+                                                    padding: EdgeInsets.only(
+                                                        top: 0,
+                                                        bottom: 0,
+                                                        left: 0,
+                                                        right: 0)),
+                                                onPressed: () {
+                                                  if (conversationInfo ==
+                                                      null) {
+                                                    return;
+                                                  }
+                                                  final hasText = messageValue
+                                                      .trim()
+                                                      .isNotEmpty;
+                                                  final hasFiles =
+                                                      _stagedFiles.isNotEmpty;
+                                                  if (!hasText && !hasFiles) {
+                                                    return;
+                                                  }
 
-                                                // Captured before either send
-                                                // call - sendMessageProcess
-                                                // resets isReplying via
-                                                // setState synchronously (the
-                                                // part of an async function
-                                                // before its first await runs
-                                                // immediately), so reading
-                                                // isReplying again afterward
-                                                // for the files send would see
-                                                // it already cleared.
-                                                final wasReplying =
-                                                    isReplying.isReply;
-                                                final replyingToId =
-                                                    isReplying.replyingTo;
+                                                  // Captured before either send
+                                                  // call - sendMessageProcess
+                                                  // resets isReplying via
+                                                  // setState synchronously (the
+                                                  // part of an async function
+                                                  // before its first await runs
+                                                  // immediately), so reading
+                                                  // isReplying again afterward
+                                                  // for the files send would see
+                                                  // it already cleared.
+                                                  final wasReplying =
+                                                      isReplying.isReply;
+                                                  final replyingToId =
+                                                      isReplying.replyingTo;
 
-                                                if (hasText) {
-                                                  sendMessageProcess(
-                                                      state.userAuth.user
-                                                          .entityId,
-                                                      widget.conversationId,
-                                                      conversationInfo!.users
-                                                          .map((user) =>
-                                                              user.entityID)
-                                                          .toList(),
-                                                      "text",
-                                                      conversationInfo?.type
-                                                          as String,
-                                                      messageValue,
-                                                      wasReplying,
-                                                      replyingToId);
-                                                }
-                                                if (hasFiles) {
-                                                  final filesToSend =
-                                                      _stagedFiles;
-                                                  setState(
-                                                      () => _stagedFiles = []);
-                                                  sendFilesProcess(
-                                                      state.userAuth.user
-                                                          .entityId,
-                                                      widget.conversationId,
-                                                      conversationInfo?.type
-                                                          as String,
-                                                      filesToSend,
-                                                      wasReplying,
-                                                      replyingToId);
-                                                }
-                                                StoreProvider.of<AppState>(
-                                                        context)
-                                                    .dispatch(DispatchModel(
-                                                        setIsUsingReplyAssistT,
-                                                        false));
-                                                StoreProvider.of<AppState>(
-                                                        context)
-                                                    .dispatch(DispatchModel(
-                                                        clearReplyAssistContextT,
-                                                        []));
-                                              },
-                                              child: Center(
-                                                child: Icon(
-                                                  Icons.send_rounded,
-                                                  color:
-                                                      _accentFor(cl(context)),
-                                                  size: 24,
-                                                ),
-                                              )),
-                                        )
+                                                  if (hasText) {
+                                                    sendMessageProcess(
+                                                        state.userAuth.user
+                                                            .entityId,
+                                                        widget.conversationId,
+                                                        conversationInfo!.users
+                                                            .map((user) =>
+                                                                user.entityID)
+                                                            .toList(),
+                                                        "text",
+                                                        conversationInfo?.type
+                                                            as String,
+                                                        messageValue,
+                                                        wasReplying,
+                                                        replyingToId);
+                                                  }
+                                                  if (hasFiles) {
+                                                    final filesToSend =
+                                                        _stagedFiles;
+                                                    setState(() =>
+                                                        _stagedFiles = []);
+                                                    sendFilesProcess(
+                                                        state.userAuth.user
+                                                            .entityId,
+                                                        widget.conversationId,
+                                                        conversationInfo?.type
+                                                            as String,
+                                                        filesToSend,
+                                                        wasReplying,
+                                                        replyingToId);
+                                                  }
+                                                  StoreProvider.of<AppState>(
+                                                          context)
+                                                      .dispatch(DispatchModel(
+                                                          setIsUsingReplyAssistT,
+                                                          false));
+                                                  StoreProvider.of<AppState>(
+                                                          context)
+                                                      .dispatch(DispatchModel(
+                                                          clearReplyAssistContextT,
+                                                          []));
+                                                },
+                                                child: Center(
+                                                  child: Icon(
+                                                    Icons.send_rounded,
+                                                    color:
+                                                        _accentFor(cl(context)),
+                                                    size: 24,
+                                                  ),
+                                                )),
+                                          )
                                       ],
                                     ),
                                   ),

@@ -282,10 +282,10 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
                 crossAxisCount: 2,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
-                childAspectRatio: 0.82,
+                childAspectRatio: 0.78,
               ),
               itemCount: 4,
-              itemBuilder: (context, index) => const _ServerCardSkeleton(),
+              itemBuilder: (context, index) => const ServerCardSkeleton(),
             )
           else if (_servers.isEmpty)
             Padding(
@@ -320,14 +320,21 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
                 // Slightly taller than wide. 0.66 made each card half again as
                 // tall as its width, which read as a column rather than a card.
                 // Tuned WITH the content below - banner height and description
-                // lines - because a Spacer absorbs slack but overflows if the
-                // content is taller than the cell.
-                childAspectRatio: 0.82,
+                // lines - because the cell is fixed and the content has to fit
+                // inside it.
+                //
+                // 0.78, down from 0.82 when the card had no description at
+                // all. Not lower: the description shrinks rather than
+                // overflowing (see the Expanded in ServerCard), so a taller card
+                // only buys the third line of a long description - and it costs
+                // every card the height, which is what "do not make them taller"
+                // rules out. Three lines show when the cell has room for them.
+                childAspectRatio: 0.78,
               ),
               itemCount: _servers.length,
               itemBuilder: (context, index) {
                 final server = _servers[index];
-                return _ServerCard(
+                return ServerCard(
                   server: server,
                   isMember: server.isMember || _joined.contains(server.id),
                   busy: _busyId == server.id,
@@ -345,8 +352,13 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
 }
 
 /// A directory card - webapp's PublicServerItem: cover banner, avatar
-/// overlapping it, name, member count and Join/Leave.
-class _ServerCard extends StatelessWidget {
+/// overlapping it with the name beside it, description, member count and
+/// Join/Open.
+///
+/// Public only so redesign_layout_test can pump one in the grid cell it
+/// actually lives in - the cell is a FIXED size, so whether the content fits is
+/// a question worth a test rather than a look.
+class ServerCard extends StatelessWidget {
   final RealmProfile server;
 
   /// Passed in rather than read off `server`, so a join can flip one card
@@ -356,7 +368,8 @@ class _ServerCard extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onJoin;
 
-  const _ServerCard({
+  const ServerCard({
+    super.key,
     required this.server,
     required this.isMember,
     required this.busy,
@@ -407,20 +420,57 @@ class _ServerCard extends StatelessWidget {
                       ),
                     ),
             ),
-            // Avatar straddling the banner's bottom edge.
+            // Avatar straddling the banner's bottom edge, with the NAME beside
+            // it rather than under it.
+            //
+            // That is the whole point of this arrangement: the name used to own
+            // a line of its own below the avatar, and moving it into the empty
+            // space to the avatar's right buys back that line for the
+            // description without making the card any taller.
             Transform.translate(
               offset: const Offset(0, -12),
               child: Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration:
-                      BoxDecoration(color: p.surface, shape: BoxShape.circle),
-                  child: CLAvatar(
-                      id: server.id,
-                      name: server.name,
-                      src: clCleanMediaSrc(server.profile),
-                      size: 32),
+                padding: const EdgeInsets.only(left: 8, right: 8),
+                child: Row(
+                  // Bottom aligned, so the name sits on the avatar's lower edge
+                  // where the banner ends - centring it would float it up into
+                  // the banner over the cover photo.
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                          color: p.surface, shape: BoxShape.circle),
+                      child: CLAvatar(
+                          id: server.id,
+                          name: server.name,
+                          src: clCleanMediaSrc(server.profile),
+                          size: 32),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(server.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: CLType.bodySm,
+                                      fontWeight: FontWeight.w700,
+                                      color: p.text)),
+                            ),
+                            if (server.isVerified) ...[
+                              const SizedBox(width: 3),
+                              Icon(Icons.verified, size: 13, color: p.brand),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -434,30 +484,34 @@ class _ServerCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(server.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: CLType.bodySm,
-                                  fontWeight: FontWeight.w700,
-                                  color: p.text)),
-                        ),
-                        if (server.isVerified) ...[
-                          const SizedBox(width: 4),
-                          Icon(Icons.verified, size: 14, color: p.brand),
-                        ],
-                      ],
+                    // The description takes the flex: it owns whatever the cell
+                    // has left after the count and the button, up to its three
+                    // lines, and shortens instead of overflowing on a narrow
+                    // phone. The full text is on the server's own info screen.
+                    Expanded(
+                      child: Text(
+                        (server.description ?? '').trim().isEmpty
+                            ? 'No description'
+                            : server.description!.trim(),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: CLType.caption,
+                            color: (server.description ?? '').trim().isEmpty
+                                ? p.text3
+                                : p.text2,
+                            height: 1.3),
+                      ),
                     ),
-                    // No description on the small card. Banner + avatar + name
-                    // + count + button already fills the cell, and one more
-                    // line overflowed it - which is what the render errors
-                    // were. The description is on the server itself.
-                    const Spacer(),
-                    // Stacked, not side by side: at half width the count and the
-                    // button fight for the same room and the label truncates.
+                    const SizedBox(height: 6),
+                    // The count belongs to the BUTTON, not to the description -
+                    // it stays right above the action whatever the description's
+                    // length, so the bottom of every card in the grid reads the
+                    // same. Any slack lands in the description's slot above.
+                    //
+                    // Stacked rather than beside the button: at half width the
+                    // count and the button fight for the same room and the label
+                    // truncates.
                     Text(
                       '${clCompactCount(server.membersCount)} member/s',
                       style:
@@ -505,10 +559,10 @@ class _ServerCard extends StatelessWidget {
   }
 }
 
-/// A card-shaped placeholder, matching _ServerCard so the grid does not reflow
+/// A card-shaped placeholder, matching ServerCard so the grid does not reflow
 /// when the real thing arrives.
-class _ServerCardSkeleton extends StatelessWidget {
-  const _ServerCardSkeleton();
+class ServerCardSkeleton extends StatelessWidget {
+  const ServerCardSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -527,14 +581,28 @@ class _ServerCardSkeleton extends StatelessWidget {
               width: double.infinity,
               height: 44,
               borderRadius: BorderRadius.zero),
+          // Avatar and name side by side, as the card now has them - a
+          // placeholder that promises the old stacked layout made the content
+          // jump sideways when it arrived.
           Transform.translate(
             offset: const Offset(0, -12),
             child: const Padding(
-              padding: EdgeInsets.only(left: 8),
-              child: CLSkeleton(
-                  width: 34,
-                  height: 34,
-                  borderRadius: BorderRadius.all(Radius.circular(17))),
+              padding: EdgeInsets.only(left: 8, right: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  CLSkeleton(
+                      width: 34,
+                      height: 34,
+                      borderRadius: BorderRadius.all(Radius.circular(17))),
+                  SizedBox(width: 6),
+                  Expanded(
+                      child: Padding(
+                    padding: EdgeInsets.only(bottom: 5),
+                    child: CLSkeleton(width: double.infinity, height: 11),
+                  )),
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -543,9 +611,15 @@ class _ServerCardSkeleton extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
-                  CLSkeleton(width: 88, height: 11),
-                  SizedBox(height: 6),
+                  // Three description lines, the last short, so it reads as a
+                  // wrapped sentence rather than a stack of fields - then the
+                  // slack, then the count sitting on the button, as the card
+                  // has it.
                   CLSkeleton(width: double.infinity, height: 9),
+                  SizedBox(height: 5),
+                  CLSkeleton(width: double.infinity, height: 9),
+                  SizedBox(height: 5),
+                  CLSkeleton(width: 70, height: 9),
                   Spacer(),
                   CLSkeleton(width: 56, height: 9),
                   SizedBox(height: 6),

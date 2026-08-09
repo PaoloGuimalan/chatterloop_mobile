@@ -1043,16 +1043,23 @@ class CLChip extends StatelessWidget {
   final bool active;
   final VoidCallback? onTap;
 
+  /// The fill an ACTIVE chip takes. Defaults to the app blue; the servers
+  /// surface passes its gold, because a chip is a control like any other and
+  /// nothing on that surface is blue.
+  final Color? accent;
+
   const CLChip(
       {super.key,
       required this.label,
       this.icon,
       this.active = false,
+      this.accent,
       this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
+    final fill = accent ?? p.brand;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(CLRadii.pill),
@@ -1060,7 +1067,7 @@ class CLChip extends StatelessWidget {
         height: 34,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: active ? p.brand : p.surface,
+          color: active ? fill : p.surface,
           borderRadius: BorderRadius.circular(CLRadii.pill),
           border: Border.all(color: active ? Colors.transparent : p.border2),
         ),

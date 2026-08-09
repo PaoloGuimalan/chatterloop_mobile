@@ -31,6 +31,7 @@ import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/views/realm/realm_sections.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/views/servers/create_realm_view.dart';
+import 'package:chatterloop_app/views/servers/servers_view.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -783,6 +784,74 @@ void _rosterIdContracts() {
       // A follower has no role and no member row.
       expect(person.role, isNull);
       expect(person.memberId, isEmpty);
+    });
+  });
+
+  group('server directory card', () {
+    // The real cell: two up at 0.78, in the width the pane actually has on a
+    // 360px phone once the 60px rail and the list gutters are taken out.
+    Future<void> pumpCards(WidgetTester tester, Widget card) => _pump(
+          tester,
+          SizedBox(
+            width: 360 - 61 - 28,
+            child: GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 0.78,
+              children: [card, card],
+            ),
+          ),
+        );
+
+    RealmProfile server({String? description}) => RealmProfile(
+          id: 'srv-1',
+          entityId: 'ent-1',
+          name: _longName,
+          type: 'server',
+          description: description,
+          followersCount: 0,
+          membersCount: 12840,
+          isVerified: true,
+          isAdmin: false,
+        );
+
+    testWidgets('fits a long name and a long description', (tester) async {
+      await pumpCards(
+          tester,
+          ServerCard(
+            server: server(
+                description: 'A very long server description that goes on '
+                    'well past the three lines this card can show, to prove '
+                    'the cell clips it instead of growing.'),
+            isMember: false,
+            busy: false,
+            onOpen: () {},
+            onJoin: () {},
+          ));
+      expect(find.text('Join'), findsNWidgets(2));
+    });
+
+    testWidgets('fits with no description at all', (tester) async {
+      await pumpCards(
+          tester,
+          ServerCard(
+            server: server(),
+            isMember: true,
+            busy: false,
+            onOpen: () {},
+            onJoin: () {},
+          ));
+      // A member gets Open, and the placeholder stands in for the description
+      // so the button does not float up to the avatar.
+      expect(find.text('Open'), findsNWidgets(2));
+      expect(find.text('No description'), findsNWidgets(2));
+    });
+
+    testWidgets('the skeleton fits the same cell', (tester) async {
+      await pumpCards(tester, const ServerCardSkeleton());
     });
   });
 

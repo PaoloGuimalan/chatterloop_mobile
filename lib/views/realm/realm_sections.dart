@@ -264,7 +264,17 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
           ),
           Expanded(
             child: _loading
-                ? const CLListSkeleton()
+                // Row-shaped, in the list's own gutters. A bare CLListSkeleton
+                // sits 6px from the screen edge with a 46px avatar, where these
+                // rows are bordered cards whose avatar starts at 27 - so the
+                // whole list appeared to shift right as it loaded.
+                ? ListView(
+                    padding: const EdgeInsets.fromLTRB(CLSpacing.contentGutter,
+                        4, CLSpacing.contentGutter, 24),
+                    children: [
+                      for (var i = 0; i < 6; i++) const _RosterRowSkeleton(),
+                    ],
+                  )
                 : _people.isEmpty
                     ? Center(
                         child: Padding(
@@ -327,6 +337,49 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                           },
                         ),
                       ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A roster row placeholder, shaped like the row itself - the same bordered
+/// card, the same 40px avatar, the same two text lines in the same places.
+///
+/// Every dimension here is copied from the row below rather than approximated,
+/// because the only job a skeleton has is to occupy exactly the space its
+/// content will.
+class _RosterRowSkeleton extends StatelessWidget {
+  const _RosterRowSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border.all(color: p.border),
+        borderRadius: BorderRadius.circular(CLRadii.md),
+      ),
+      child: Row(
+        children: const [
+          CLSkeleton(
+              width: 40,
+              height: 40,
+              borderRadius: BorderRadius.all(Radius.circular(20))),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CLSkeleton(width: 130, height: 11),
+                SizedBox(height: 7),
+                CLSkeleton(width: 84, height: 9),
+              ],
+            ),
           ),
         ],
       ),

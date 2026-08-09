@@ -873,35 +873,48 @@ class _ServerInfoScreenState extends State<ServerInfoScreen> {
                 color: p.text),
           ),
           const SizedBox(height: 8),
-          if (_loading)
-            const CLListSkeleton()
-          else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                // surface2 on a surface background - a surface card here would
-                // be an outline around nothing. Same call as the conversation
-                // info screen's member panel.
-                color: p.surface2,
-                border: Border.all(color: p.border),
-                borderRadius: BorderRadius.circular(CLRadii.md),
-              ),
-              child: _members.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: CLSectionEmpty(
-                        icon: Icons.group_outlined,
-                        title: 'No members listed',
-                        subtitle: 'Nobody could be resolved for this server.',
-                      ),
-                    )
-                  : Column(
-                      children: [
-                        for (final member in _members)
-                          _MemberRow(member: member),
-                      ],
-                    ),
+          // The panel is drawn while loading too, with placeholder rows INSIDE
+          // it. A bare CLListSkeleton in its place started 6px from the screen
+          // edge with no panel around it, so the whole list jumped inwards and
+          // grew a border when the members arrived.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              // surface2 on a surface background - a surface card here would
+              // be an outline around nothing. Same call as the conversation
+              // info screen's member panel.
+              color: p.surface2,
+              border: Border.all(color: p.border),
+              borderRadius: BorderRadius.circular(CLRadii.md),
             ),
+            child: _loading
+                // 36 and the 6px vertical rhythm are _MemberRow's, so the bars
+                // land where the names will.
+                ? Column(
+                    children: [
+                      for (var i = 0; i < 5; i++)
+                        const CLListRowSkeleton(
+                            avatarSize: 36,
+                            padding: EdgeInsets.symmetric(
+                                vertical: 6, horizontal: 0)),
+                    ],
+                  )
+                : _members.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: CLSectionEmpty(
+                          icon: Icons.group_outlined,
+                          title: 'No members listed',
+                          subtitle: 'Nobody could be resolved for this server.',
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          for (final member in _members)
+                            _MemberRow(member: member),
+                        ],
+                      ),
+          ),
         ],
       ),
     );
