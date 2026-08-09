@@ -31,6 +31,7 @@ import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/views/realm/realm_sections.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/views/servers/create_realm_view.dart';
+import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/views/servers/servers_view.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:flutter/material.dart';
@@ -784,6 +785,50 @@ void _rosterIdContracts() {
       // A follower has no role and no member row.
       expect(person.role, isNull);
       expect(person.memberId, isEmpty);
+    });
+  });
+
+  group('removed from a realm', () {
+    test('the removal is keyed by realm_id, and the kind comes with it', () {
+      // The Node payload, verbatim from routes/realms/index.js - published to
+      // events_<entity_id> for each removed member, which is why nothing
+      // downstream checks whether it is about you.
+      final removal = realmRemovalFromSseEvent({
+        'status': true,
+        'auth': true,
+        'onseen': false,
+        'message': 'User removed from realm realm-9',
+        'result': {
+          'realm_id': 'realm-9',
+          'entityID': 'entity-me',
+          'type': 'server',
+        },
+      });
+
+      expect(removal, isNotNull);
+      // realm_id, not id - the screens compare this against the server they are
+      // showing, so reading the wrong key means never getting out of it.
+      expect(removal!.realmId, 'realm-9');
+      expect(removal.type, 'server');
+    });
+
+    test('anything without a realm_id is ignored', () {
+      expect(realmRemovalFromSseEvent({'status': true}), isNull);
+      expect(realmRemovalFromSseEvent({'result': 'not a map'}), isNull);
+      expect(
+          realmRemovalFromSseEvent({
+            'result': {'type': 'server'}
+          }),
+          isNull);
+    });
+
+    test('two removals of the same realm both notify', () {
+      // Identity equality, deliberately: ValueNotifier drops an equal value, so
+      // being removed, added back and removed again would fire once with a
+      // value type.
+      final first = RealmRemoval('r1', 'server');
+      final second = RealmRemoval('r1', 'server');
+      expect(first == second, isFalse);
     });
   });
 

@@ -509,6 +509,34 @@ class _ServerScreenState extends State<ServerScreen> {
   void initState() {
     super.initState();
     _loadMine();
+    // Being removed from the server you are looking at - web's Channels.tsx
+    // navigates to /servers on the same event.
+    realmRemovals.addListener(_onRealmRemoval);
+  }
+
+  @override
+  void dispose() {
+    realmRemovals.removeListener(_onRealmRemoval);
+    super.dispose();
+  }
+
+  void _onRealmRemoval() {
+    final removal = realmRemovals.value;
+    if (!mounted || removal == null) return;
+    // Only the server this screen is inside. A channel removal is handled by
+    // the channels list refetching, and another server's is none of this
+    // screen's business - it will be gone from the rail on the next _loadMine.
+    if (removal.realmId != _serverId) return;
+
+    // Anything pushed ON TOP of this screen is a room inside the server that
+    // was just taken away - a channel conversation, its info screen - so it
+    // goes too. Without this the user stays in a channel of a server they are
+    // no longer in, with a composer that looks live and sends that fail.
+    final own = ModalRoute.of(context);
+    if (own != null && !own.isCurrent) {
+      Navigator.of(context).popUntil((route) => route == own);
+    }
+    _onLeft(removal.realmId);
   }
 
   Future<void> _loadMine() async {
@@ -529,7 +557,8 @@ class _ServerScreenState extends State<ServerScreen> {
         _serverProfile = null;
       });
 
-  /// After leaving: drop it from the rail and land on the directory.
+  /// After leaving OR being removed: drop it from the rail and land on the
+  /// directory.
   ///
   /// The rail is patched locally rather than refetched, for the same reason a
   /// joined card flips locally - the answer is already known, and a refetch

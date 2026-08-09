@@ -21,6 +21,7 @@ import 'package:chatterloop_app/core/reusables/widgets/message_content_widget.da
 import 'package:chatterloop_app/core/reusables/widgets/pending_content_widget.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/requests/call_api.dart';
@@ -174,6 +175,7 @@ class ConversationStateView extends State<ConversationView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollController.addListener(_onScroll);
     });
+    realmRemovals.addListener(_onRealmRemoval);
     _startLoading();
   }
 
@@ -289,6 +291,7 @@ class ConversationStateView extends State<ConversationView> {
 
   @override
   void dispose() {
+    realmRemovals.removeListener(_onRealmRemoval);
     _eventBusSubscription?.cancel();
     _seenDebounceTimer?.cancel();
     _scrollController.dispose();
@@ -915,6 +918,52 @@ class ConversationStateView extends State<ConversationView> {
     // fixable from here). A 36-char uuid is a worse fallback than a short,
     // honestly-unresolved label.
     return "Member ${entityId.length >= 4 ? entityId.substring(entityId.length - 4) : entityId}";
+  }
+
+  /// Removed from the realm behind this conversation, live - a group chat, a
+  /// channel, any type.
+  ///
+  /// Leaves the screen, the same way [_leaveRealm] does. Staying put with an
+  /// explanation was the wrong call: this is a thread you can no longer read or
+  /// post to, and it has already been dropped from the conversation list behind
+  /// you, so there is nothing here to come back to.
+  ///
+  /// pop, not a fixed destination: this screen is pushed from wherever you
+  /// opened it, so back is the messages list for a conversation and the server's
+  /// channel list for a channel. go('/messages') only as a floor for the case
+  /// where there is nothing to pop.
+  ///
+  /// conversationLoadError is set first anyway - if navigation cannot happen for
+  /// any reason, the screen at least says why and every control stays disabled
+  /// through [_conversationReady], rather than offering a send the server will
+  /// refuse.
+  ///
+  /// Compared against BOTH ids because they are not always the same value: a
+  /// group's realm id IS its conversation id, but a channel's is not, and
+  /// contactID is the realm id the Manage and Leave entries already use.
+  void _onRealmRemoval() {
+    final removal = realmRemovals.value;
+    if (!mounted || removal == null) return;
+    final mine = {widget.conversationId, conversationInfo?.contactID};
+    if (!mine.contains(removal.realmId)) return;
+
+    final noun = _conversationNoun;
+    setState(() =>
+        conversationLoadError = 'You are no longer a member of this $noun');
+
+    // Resolved BEFORE the pop: afterwards this context is defunct. The messenger
+    // is the app-level one, so the message survives the navigation and lands on
+    // whatever screen you end up on - otherwise the thread would simply vanish
+    // with no explanation at all.
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      context.go('/messages');
+    }
+    messenger.showSnackBar(
+        SnackBar(content: Text('You were removed from this $noun.')));
   }
 
   /// The message the composer is quoting, or null when it isn't in the loaded

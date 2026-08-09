@@ -41,6 +41,51 @@ class ProfileRelationshipUpdate {
 final ValueNotifier<ProfileRelationshipUpdate?> profileRelationshipUpdates =
     ValueNotifier<ProfileRelationshipUpdate?>(null);
 
+/// You have been removed from a realm - a server, a channel, a group.
+///
+/// A CLASS with identity equality, for the same reason as
+/// [ProfileRelationshipUpdate]: being removed from the same realm twice (added
+/// back in between) has to fire twice, and a plain String would coalesce them.
+class RealmRemoval {
+  /// The realm you are no longer a member of.
+  final String realmId;
+
+  /// Its kind, straight off the payload - "server", "group", "page", "voice".
+  /// A CHANNEL arrives as "group", since that is what a channel is.
+  final String type;
+
+  const RealmRemoval(this.realmId, this.type);
+}
+
+/// The realm you were most recently removed from.
+///
+/// A ValueNotifier rather than redux, like profileRelationshipUpdates: the only
+/// things that care are whichever screens happen to be showing that realm.
+/// Listeners MUST compare realmId against what they are displaying.
+final ValueNotifier<RealmRemoval?> realmRemovals =
+    ValueNotifier<RealmRemoval?>(null);
+
+/// Pulls the removal out of a `removed_user_notif` payload, or null if it is not
+/// one.
+///
+/// The shape is the Node service's, from routes/realms/index.js:
+///
+///     {status, auth, onseen, message,
+///      result: {realm_id, entityID, type}}
+///
+/// Top-level and pure so the id contract is pinned by a test rather than by
+/// reading it - `realm_id`, not `id`, and the entityID on it is YOURS (the
+/// event is published per removed member to `events_<entity_id>`, so it only
+/// ever arrives at the person it happened to - which is why nothing downstream
+/// checks whether it is about you).
+RealmRemoval? realmRemovalFromSseEvent(Map<String, dynamic> parsed) {
+  final result = parsed["result"];
+  if (result is! Map) return null;
+  final realmId = result["realm_id"]?.toString() ?? '';
+  if (realmId.isEmpty) return null;
+  return RealmRemoval(realmId, result["type"]?.toString() ?? '');
+}
+
 /// Refetches page 1 of notifications and puts it in the store.
 ///
 /// Every notification event goes through this instead of reading the payload
@@ -356,6 +401,34 @@ class SseEvents {
         // Announce it regardless of whether the conversation list moved - see
         // messagesListSignals. A channel message changes nothing in that list.
         messagesListSignals.value++;
+        return;
+      case "removed_user_notif":
+        // An admin removed you from a realm. Published only to the removed
+        // member's own channel (routes/realms/index.js publishes per entity id
+        // in account_ids), so its arrival IS the fact - there is nobody else's
+        // removal to filter out.
+        //
+        // Two halves, matching webapp's sse.ts: refetch the conversation list,
+        // because the thread you just lost is still in it and nothing else will
+        // ever move it again (messages_list only fires on messages you no
+        // longer receive), and announce it so the screens showing that realm can
+        // get out of it.
+        if (_isAuthedOk(event.data)) {
+          final removal = realmRemovalFromSseEvent(
+              jsonDecode(event.data as String) as Map<String, dynamic>);
+          if (removal == null) return;
+          final refreshed =
+              await ConversationsApi().getConversationListRequest();
+          if (refreshed != null) {
+            appStore.dispatch(DispatchModel(setMessagesListT, refreshed.items));
+          }
+          // The channels list lives outside that list entirely (it comes from
+          // initserverchannels), so it needs the generic signal to refetch -
+          // this is how losing ONE channel of a server you are still in
+          // disappears from the list.
+          messagesListSignals.value++;
+          realmRemovals.value = removal;
+        }
         return;
       case "active_users":
         // server/reusables/hooks/sse.js's UpdateContactswSessionStatus -
