@@ -285,6 +285,10 @@ class Endpoints {
   /// Note the /s/ prefix, not /realms/.
   String realmMemberRole = '/s/update-member-realm-role';
 
+  /// NODE, and JWT-signed. Adds people to a group/realm - the body is
+  /// {token: sign({conversationID, memberstoadd, receivers})}.
+  String addNewMember = '/m/addnewmember';
+
   /// {realm_id} -> re-issues the authtoken with a different `entity` claim
   /// (same userID, acting as the page instead). Only realms of type "page"
   /// support this; server enforces OWNER/ADMIN membership.

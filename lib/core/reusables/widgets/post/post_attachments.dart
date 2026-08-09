@@ -316,8 +316,22 @@ class _PostGalleryScreenState extends State<PostGalleryScreen> {
         itemBuilder: (context, index) {
           final reference = widget.media[index];
           if (reference.isVideo) {
-            return Center(
-                child: VideoPlayerScreen(videoUrl: reference.reference));
+            // No Center wrapper: the player fills the page and anchors its own
+            // controls to the page's bottom edge. Centring it would hand it
+            // only the video's box back, which is the thing being fixed.
+            //
+            // SafeArea on the BOTTOM only: this Scaffold draws edge to edge, so
+            // "the bottom of the page" is behind the system navigation bar -
+            // the controls cleared the video's box and then landed under the
+            // nav buttons instead. Top stays unsafe because the transparent
+            // AppBar is meant to float over the media.
+            return SafeArea(
+              top: false,
+              child: VideoPlayerScreen(
+                videoUrl: reference.reference,
+                anchorControlsToBounds: true,
+              ),
+            );
           }
           return InteractiveViewer(
             minScale: 1,

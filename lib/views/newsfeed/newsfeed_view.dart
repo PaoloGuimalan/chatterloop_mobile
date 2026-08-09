@@ -37,6 +37,15 @@ import 'package:visibility_detector/visibility_detector.dart';
 /// showed posts at 20.
 const int _kPageSize = 20;
 
+/// Bumped when the Home tab is tapped while the newsfeed is already showing.
+///
+/// A ValueNotifier rather than a callback registry or a redux action: exactly
+/// one widget cares, it is either mounted or it isn't, and the value carries no
+/// meaning beyond "again" - which is why it is a counter. A bool would coalesce
+/// two taps into one, and re-tapping Home is precisely the gesture someone
+/// repeats.
+final ValueNotifier<int> newsfeedRefreshRequests = ValueNotifier<int>(0);
+
 class NewsfeedView extends StatefulWidget {
   const NewsfeedView({super.key});
 
@@ -60,33 +69,49 @@ class _NewsfeedViewState extends State<NewsfeedView>
     _fetch(1);
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addObserver(this);
+    newsfeedRefreshRequests.addListener(_onRefreshRequested);
+  }
+
+  /// Tapping Home on the feed you are already looking at means "give me
+  /// something new" - the same thing the pull-to-refresh gesture means, so it
+  /// runs the same code AND drives the same indicator, rather than silently
+  /// refetching with no sign anything happened.
+  /// Tapping Home while already on Home: refetch page 1, nothing else.
+  ///
+  /// Identical to what pull-to-refresh does, because it is the same call -
+  /// _fetch(1) sets _isLoading, which puts the skeletons on screen. Earlier
+  /// versions of this also animated the scroll and drove the RefreshIndicator's
+  /// spinner through a GlobalKey; both were unnecessary and both failed
+  /// silently, which is why this is now one line.
+  void _onRefreshRequested() {
+    if (!mounted) return;
+    _fetch(1);
   }
 
   @override
   void dispose() {
+    newsfeedRefreshRequests.removeListener(_onRefreshRequested);
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
 
-  /// Views are banked locally the moment a row is seen, but the only thing
-  /// that carries them to the server is a feed request - and this screen
-  /// makes exactly one per launch unless the user pages or refreshes. A feed
-  /// with one post in it has neither, so without a flush of its own nothing
-  /// you looked at this session is ever recorded, and the server keeps
-  /// serving the same row back because its NewsfeedIndex entry is only
-  /// deleted when a view arrives.
+  /// Views are banked locally the moment a row is seen, but the only thing that
+  /// carries them to the server is a feed request - and this screen makes one
+  /// per launch unless the user pages or refreshes. A feed with one post has
+  /// neither, so without a flush of its own nothing you looked at this session
+  /// is ever recorded, and the server keeps serving the same row back because
+  /// its NewsfeedIndex entry is only deleted when a view arrives.
   ///
   /// Both triggers below are moments the user has stopped reading, so the
-  /// durations being sent are complete rather than half-measured.
+  /// durations sent are complete rather than half-measured.
   void _flushPendingViews() {
     unawaited(() async {
       // Let the rows close their open sessions first. They react to the same
-      // two moments this does, and whichever observer happens to be
-      // registered first wins - snapshotting ahead of them would send the
-      // 0.5 entry credit and leave the actual dwell behind for later, filing
-      // two engagement logs for one read.
+      // two moments this does, and whichever observer is registered first
+      // wins - snapshotting ahead of them would send the 0.5 entry credit and
+      // leave the actual dwell behind, filing two engagement logs for one read.
       await Future<void>.delayed(const Duration(milliseconds: 350));
       await NewsfeedApi().flushPendingViewsRequest();
     }());

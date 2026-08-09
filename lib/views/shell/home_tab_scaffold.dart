@@ -24,6 +24,7 @@ import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
+import 'package:chatterloop_app/views/newsfeed/newsfeed_view.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -343,10 +344,17 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                         // Leftmost, and the app's landing tab. Icons.home to
                         // match web, whose rail renders `icon: "home"` as the
                         // Material Icons ligature of the same name.
-                        _navButton(
-                            Icons.home,
-                            widget.navigationShell.currentIndex == 0,
-                            () => widget.navigationShell.goBranch(0)),
+                        _navButton(Icons.home,
+                            widget.navigationShell.currentIndex == 0, () {
+                          // Already home? Then this is a refresh, which is what
+                          // tapping the current tab means everywhere else too.
+                          // goBranch alone would be a no-op and feel broken.
+                          if (widget.navigationShell.currentIndex == 0) {
+                            newsfeedRefreshRequests.value++;
+                          } else {
+                            widget.navigationShell.goBranch(0);
+                          }
+                        }),
                         _badgeNavButton(
                             Icons.forum,
                             widget.navigationShell.currentIndex == 1,

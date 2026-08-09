@@ -265,3 +265,32 @@ class RealmPerson {
     );
   }
 }
+
+/// One person being added to a realm, in the shape /m/addnewmember wants.
+///
+/// Both ids are carried because the endpoint reads both: `entityID` names the
+/// entity, while the top-level `id` (and the sibling `receivers` list) are
+/// ACCOUNT ids, which is what the SSE fan-out targets. Web builds this from
+/// `cnts.entity.details.id` / `cnts.entity.id`, and mixing the two up produces
+/// a request that succeeds and adds nobody - the same trap as remove-user's
+/// `account_ids`.
+class RealmMemberInvite {
+  final String accountId;
+  final String entityId;
+  final String username;
+  final String fullName;
+
+  const RealmMemberInvite({
+    required this.accountId,
+    required this.entityId,
+    required this.username,
+    required this.fullName,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': accountId,
+        'entityID': entityId,
+        'userID': username,
+        'fullName': fullName,
+      };
+}

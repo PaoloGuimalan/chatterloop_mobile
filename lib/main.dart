@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chatterloop_app/core/auth/auth_controller.dart';
 import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -33,6 +35,33 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await NotificationRenderer.render(message.data);
 }
 
+/// Warms the image cache for the splash logo.
+///
+/// Failures are ignored: a missing or unreadable asset must not stop the app
+/// from starting - the logo just loads the old way.
+Future<void> _precacheLogos() async {
+  for (final asset in const [
+    'assets/images/chatterloop.png',
+    'assets/images/chatterloop-dark.png',
+  ]) {
+    final stream = AssetImage(asset).resolve(ImageConfiguration.empty);
+    final done = Completer<void>();
+    late ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (_, __) {
+        stream.removeListener(listener);
+        if (!done.isCompleted) done.complete();
+      },
+      onError: (_, __) {
+        stream.removeListener(listener);
+        if (!done.isCompleted) done.complete();
+      },
+    );
+    stream.addListener(listener);
+    await done.future;
+  }
+}
+
 void main() async {
 // 2. Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +73,19 @@ void main() async {
 
   // 4. Set the background handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // 5. Decode the logo BEFORE the first frame.
+  //
+  // The splash screen's text is laid out synchronously while Image.asset
+  // resolves and decodes asynchronously, so the logo popped in a beat after
+  // the words - the app's very first impression was of something half-loaded.
+  // Warming the image cache here means the widget finds it already decoded and
+  // paints it in the same frame as the text.
+  //
+  // Both variants, because the theme isn't known yet and picking the wrong one
+  // would just move the pop to whoever is on the other theme. They are small,
+  // and this is once per launch.
+  await _precacheLogos();
 
   runApp(const MyApp());
 }

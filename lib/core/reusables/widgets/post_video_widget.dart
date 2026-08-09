@@ -201,6 +201,19 @@ class VideoPlayerScreen extends StatefulWidget {
   /// spans the width and a video too tall for the cap is cropped to fill it.
   final bool fillWidth;
 
+  /// Letterbox the video inside the space offered and anchor the CONTROLS to
+  /// that space's edges, rather than to the video's own box.
+  ///
+  /// For any viewer that owns a whole screen - the fullscreen page, and a
+  /// carousel page in the attachment viewer. Nested in the video's box, the
+  /// scrubber floats wherever the letterbox happens to end, which on a 16:9
+  /// clip on a tall phone is the middle of a mostly-black screen.
+  ///
+  /// Off by default: a feed row or a chat bubble WANTS the controls on the
+  /// frame, because there the frame is the only thing on screen that is the
+  /// video.
+  final bool anchorControlsToBounds;
+
   /// Start playing as soon as it is ready. Set by [InlinePostVideo], where the
   /// player only exists because the viewer just tapped play - making them tap
   /// a second time would be absurd.
@@ -211,6 +224,7 @@ class VideoPlayerScreen extends StatefulWidget {
     required this.videoUrl,
     this.isLocalFile = false,
     this.fillWidth = false,
+    this.anchorControlsToBounds = false,
     this.autoPlay = false,
   });
 
@@ -312,6 +326,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               );
 
           final player = VideoPlayer(_controller);
+
+          // Same arrangement as _FullscreenVideoPlayerPage: video letterboxed
+          // in the middle, overlay a SIBLING filling the bounds, so the
+          // scrubber lands on the bottom edge of the space rather than the
+          // bottom edge of the frame.
+          if (widget.anchorControlsToBounds) {
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                Center(
+                  child: AspectRatio(aspectRatio: aspectRatio, child: player),
+                ),
+                VideoControlsOverlay(controller: _controller),
+              ],
+            );
+          }
 
           if (!widget.fillWidth) {
             return AspectRatio(
@@ -771,20 +801,27 @@ class _FullscreenVideoPlayerPage extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
+            // The video is letterboxed to its own aspect ratio...
             Center(
               child: AspectRatio(
                 aspectRatio: aspectRatio,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    VideoPlayer(controller),
-                    VideoControlsOverlay(
-                      controller: controller,
-                      showFullscreenButton: false,
-                    ),
-                  ],
-                ),
+                child: VideoPlayer(controller),
               ),
+            ),
+            // ...but the controls are a SIBLING of it, filling the screen, not
+            // a child of the AspectRatio.
+            //
+            // Nested inside it they inherited the video's box, so on any clip
+            // that doesn't match the screen's shape the scrubber floated in the
+            // middle of the display with black above and below it - and on a
+            // tall phone with a 16:9 video that is most of the screen. Out here
+            // the overlay's own bottom-aligned scrubber lands on the bottom of
+            // the SCREEN, which is where a fullscreen player's controls belong,
+            // and the centre play button centres on the screen rather than on
+            // the letterbox.
+            VideoControlsOverlay(
+              controller: controller,
+              showFullscreenButton: false,
             ),
             Positioned(
               top: 12,

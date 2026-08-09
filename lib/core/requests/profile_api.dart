@@ -160,6 +160,45 @@ class ProfileApi {
     }
   }
 
+  /// Adds people to a realm. Mirrors webapp's AddNewMemberRequest:
+  /// POST /m/addnewmember with the payload JWT-SIGNED as {token: ...}, the same
+  /// envelope call_api and sharePost already use for Node mutations.
+  ///
+  /// The payload shape is web's exactly, including that `receivers` carries
+  /// ACCOUNT ids (it feeds SSE fan-out) while each entry also names its
+  /// entityID - the two are different keys and both are read:
+  ///
+  ///   `memberstoadd: [{id: account, entityID: entity, userID: username,`
+  ///   `                fullName: "First Middle Last"}]`
+  ///   `receivers: [account, ...]`
+  ///
+  /// [conversationId] is the realm id - for a group that IS its conversation
+  /// id, which is what web passes as `conversationID`.
+  Future<bool> addRealmMembersRequest({
+    required String conversationId,
+    required List<RealmMemberInvite> members,
+  }) async {
+    if (members.isEmpty) return true;
+    try {
+      final payload = {
+        'conversationID': conversationId,
+        'memberstoadd': members.map((m) => m.toJson()).toList(),
+        'receivers': members.map((m) => m.accountId).toList(),
+      };
+      final response = await _mainDio.post(
+        _endpoints.addNewMember,
+        data: {'token': JwtCodec.sign(payload)},
+      );
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
   /// Promote to admin / demote to member. NODE, and keyed by the MEMBER ROW's
   /// id rather than by who the person is - webapp's UpdateMemberRoleRequest.
   ///
