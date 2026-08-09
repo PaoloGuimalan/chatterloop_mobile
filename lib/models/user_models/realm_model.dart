@@ -67,6 +67,15 @@ class RealmProfile {
   final bool isPrivate;
 
   final int followersCount;
+
+  /// Annotated onto the serializer alongside followers_count - the "7 member/s"
+  /// line on a server card. Servers count members, not followers.
+  final int membersCount;
+
+  /// Whether the acting entity is already in this realm. Drives Join vs Leave
+  /// on a directory card.
+  final bool isMember;
+
   final bool isAdmin;
 
   /// Realm.is_verified - the same blue badge a person's profile gets. Arrives
@@ -101,6 +110,8 @@ class RealmProfile {
     this.email,
     this.isPrivate = false,
     required this.followersCount,
+    this.membersCount = 0,
+    this.isMember = false,
     required this.isAdmin,
     this.isVerified = false,
     this.isFollower = false,
@@ -129,6 +140,10 @@ class RealmProfile {
       followersCount: json["followers_count"] is int
           ? json["followers_count"]
           : int.tryParse(json["followers_count"]?.toString() ?? '') ?? 0,
+      membersCount: json["members"] is int
+          ? json["members"]
+          : int.tryParse(json["members"]?.toString() ?? '') ?? 0,
+      isMember: json["is_member"] == true,
       isAdmin: json["is_admin"] == true,
       isVerified: json["is_verified"] == true,
       isFollower: json["is_follower"] == true,
@@ -293,4 +308,73 @@ class RealmMemberInvite {
         'userID': username,
         'fullName': fullName,
       };
+}
+
+/// One channel inside a server - webapp's ChannelsListInterface.
+///
+/// [conversationId] is `groupID`, and it is the same id the conversation screen
+/// takes: web navigates to `/servers/<serverID>/<groupID>` and its
+/// ServerConversation hands that straight to ConversationV2. So a channel needs
+/// no special conversation screen, only a different way in.
+class ServerChannel {
+  final String id;
+  final String serverId;
+  final String conversationId;
+  final String name;
+  final String? profile;
+
+  /// "text" or "voice". Voice channels need the media stack, so callers gate
+  /// on this rather than assuming every channel can be opened as a chat.
+  final String type;
+  final bool isPrivate;
+
+  /// Unread messages waiting in this channel.
+  ///
+  /// The number lives INSIDE the array, at `messages[0].unread` - the array is
+  /// a single-element wrapper. Reading its length instead yields 1 for every
+  /// channel with anything unread, which is exactly how it looked: every badge
+  /// stuck on "1".
+  final int unreadCount;
+
+  const ServerChannel({
+    required this.id,
+    required this.serverId,
+    required this.conversationId,
+    required this.name,
+    this.profile,
+    required this.type,
+    this.isPrivate = false,
+    this.unreadCount = 0,
+  });
+
+  bool get isVoice => type == 'voice';
+
+  /// `messages` is `[{unread: 12}]`. Defensive at each step - an absent or
+  /// reshaped array means "nothing unread" rather than a crash mid-list.
+  static int _unreadOf(dynamic messages) {
+    if (messages is! List || messages.isEmpty) return 0;
+    final first = messages.first;
+    if (first is! Map) return 0;
+    final unread = first["unread"];
+    if (unread is int) return unread;
+    return int.tryParse(unread?.toString() ?? '') ?? 0;
+  }
+
+  factory ServerChannel.fromJson(Map<String, dynamic> json) {
+    final profile = json["profile"]?.toString();
+    return ServerChannel(
+      id: (json["_id"] ?? "").toString(),
+      serverId: (json["serverID"] ?? "").toString(),
+      conversationId: (json["groupID"] ?? "").toString(),
+      name: (json["groupName"] ?? "").toString(),
+      profile: (profile == null || profile.isEmpty || profile == "N/A")
+          ? null
+          : profile,
+      type: (json["type"] ?? "text").toString(),
+      // `privacy` true means private, matching the conversation payload's own
+      // `privacy` field rather than the realm serializer's `is_private`.
+      isPrivate: json["privacy"] == true,
+      unreadCount: _unreadOf(json["messages"]),
+    );
+  }
 }

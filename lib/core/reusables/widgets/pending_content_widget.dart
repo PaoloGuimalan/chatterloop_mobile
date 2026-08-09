@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:flutter/material.dart';
 
 class PendingContentWidget extends StatefulWidget {
@@ -104,7 +105,8 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
             constraints: BoxConstraints(maxWidth: 270),
             child: Container(
               decoration: BoxDecoration(
-                  color: isCurrentUser ? Color(0xff1c7def) : Color(0xffdedede),
+                  color:
+                      isCurrentUser ? CLAccent.of(context) : Color(0xffdedede),
                   borderRadius: BorderRadius.circular(10)),
               child: Padding(
                 padding:
@@ -538,7 +540,8 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                     child: Text(
                       content,
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: CLType.caption, color: Color(0xFF565656)),
+                      style: TextStyle(
+                          fontSize: CLType.caption, color: Color(0xFF565656)),
                     ),
                   ),
                 ),
@@ -645,7 +648,8 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                         Expanded(
                             child: Text(
                           _fileNamePart(content),
-                          style: TextStyle(fontSize: CLType.title, color: Colors.black),
+                          style: TextStyle(
+                              fontSize: CLType.title, color: Colors.black),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ))

@@ -41,7 +41,13 @@ import 'package:go_router/go_router.dart';
 // but nothing in the bottom bar points at it - which is why this list is
 // shorter than the branch list, and why _tabTitles is indexed defensively
 // below rather than with [currentIndex].
-const List<String> _tabTitles = ["Newsfeed", "Messages", "Contacts", "Explore"];
+const List<String> _tabTitles = [
+  "Newsfeed",
+  "Messages",
+  "Contacts",
+  "Servers",
+  "Explore"
+];
 
 class HomeTabScaffold extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -281,8 +287,13 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                             CLIconBtn(
                               icon: Icons.search,
                               tooltip: "Explore",
+                              // Branch 4. Explore moved from 3 to 4 when the
+                              // Servers tab was inserted after Contacts -
+                              // these are LIST POSITIONS in app_router, not
+                              // stable ids, so adding a branch renumbers every
+                              // one after it.
                               onPressed: () =>
-                                  widget.navigationShell.goBranch(3),
+                                  widget.navigationShell.goBranch(4),
                             ),
                             CLIconBtn(
                               icon: Theme.of(context).brightness ==
@@ -364,6 +375,11 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                             Icons.contacts,
                             widget.navigationShell.currentIndex == 2,
                             () => widget.navigationShell.goBranch(2)),
+                        // After contacts, per the tab order.
+                        _navButton(
+                            Icons.dns,
+                            widget.navigationShell.currentIndex == 3,
+                            () => widget.navigationShell.goBranch(3)),
                         // Never "active": this opens a menu, it isn't a tab,
                         // and there is no longer a fourth branch for it to
                         // correspond to.

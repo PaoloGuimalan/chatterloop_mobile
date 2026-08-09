@@ -1,9 +1,11 @@
-﻿// Single GoRouter config, replacing the old three-tier
+// Single GoRouter config, replacing the old three-tier
 // GlobalKey<NavigatorState> / nested-MaterialApp structure in app_routes.dart
 // (outer navigatorKey, private privateNavigatorKey, and a third
 // navigatorTabKey local to home_view.dart for the bottom tab bar).
 
 import 'package:chatterloop_app/core/auth/auth_controller.dart';
+import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/views/auth/login_view.dart';
@@ -30,6 +32,8 @@ import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/post_preview_view.dart';
 import 'package:chatterloop_app/views/search/search_detail_view.dart';
 import 'package:chatterloop_app/views/search/search_view.dart';
+import 'package:chatterloop_app/views/servers/server_channels_view.dart';
+import 'package:chatterloop_app/views/servers/servers_view.dart';
 import 'package:chatterloop_app/views/settings/archives_view.dart';
 import 'package:chatterloop_app/views/settings/blocked_accounts_view.dart';
 import 'package:chatterloop_app/views/settings/credentials_view.dart';
@@ -42,6 +46,7 @@ import 'package:chatterloop_app/views/shell/authenticated_shell.dart';
 import 'package:chatterloop_app/views/shell/home_tab_scaffold.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
 import 'package:chatterloop_app/views/switching/switching_view.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -164,6 +169,47 @@ GoRouter buildAppRouter(AuthController authController) {
   final router = GoRouter(
     initialLocation: '/splash',
     refreshListenable: authController,
+    // The app had no errorBuilder, so an unmatched location fell through to
+    // go_router default screen - which says "page not found" without saying
+    // WHICH path, and that is the one fact needed to fix it. This one names the
+    // location and logs it.
+    errorBuilder: (context, state) {
+      if (kDebugMode) {
+        print("[router] no route for: ${state.uri}");
+        print("[router] error: ${state.error}");
+      }
+      final p = cl(context);
+      return Scaffold(
+        backgroundColor: p.bg,
+        appBar: AppBar(title: const Text('Page not found')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.link_off, size: 34, color: p.text3),
+                const SizedBox(height: 12),
+                Text('No screen for this link',
+                    style: TextStyle(
+                        fontSize: CLType.sectionTitle,
+                        fontWeight: FontWeight.w700,
+                        color: p.text)),
+                const SizedBox(height: 6),
+                Text('${state.uri}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: CLType.bodySm, color: p.text2)),
+                const SizedBox(height: 18),
+                CLBtn(
+                  label: 'Go home',
+                  onPressed: () => context.go('/newsfeed'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
     redirect: (context, state) {
       final path = state.matchedLocation;
       switch (authController.status) {
@@ -261,6 +307,14 @@ GoRouter buildAppRouter(AuthController authController) {
                     path: '/contacts',
                     pageBuilder: (c, s) => _clPage(s, const ContactsView()))
               ]),
+              // Servers sits AFTER contacts, so its branch index is 3 - which
+              // pushed search's to 4. Anything calling goBranch must use the
+              // list order below, not a remembered number.
+              StatefulShellBranch(routes: [
+                GoRoute(
+                    path: '/servers',
+                    pageBuilder: (c, s) => _clPage(s, const ServersScreen()))
+              ]),
               // Search is NOT a branch any more - it moved to the header, so
               // it is pushed like any other screen. Keeping it in the shell
               // would give it a tab's persistent stack while having no tab.
@@ -292,8 +346,7 @@ GoRouter buildAppRouter(AuthController authController) {
               pageBuilder: (c, s) => _clPage(s, const SettingsScreen())),
           GoRoute(
               path: '/settings/device-sessions',
-              pageBuilder: (c, s) =>
-                  _clPage(s, const DeviceSessionsScreen())),
+              pageBuilder: (c, s) => _clPage(s, const DeviceSessionsScreen())),
           GoRoute(
               path: '/settings/personal-information',
               pageBuilder: (c, s) =>
@@ -303,8 +356,7 @@ GoRouter buildAppRouter(AuthController authController) {
               pageBuilder: (c, s) => _clPage(s, const CredentialsScreen())),
           GoRoute(
               path: '/settings/blocked-accounts',
-              pageBuilder: (c, s) =>
-                  _clPage(s, const BlockedAccountsScreen())),
+              pageBuilder: (c, s) => _clPage(s, const BlockedAccountsScreen())),
           GoRoute(
               path: '/settings/data-privacy',
               pageBuilder: (c, s) => _clPage(s, const DataPrivacyScreen())),
@@ -313,8 +365,7 @@ GoRouter buildAppRouter(AuthController authController) {
               pageBuilder: (c, s) => _clPage(s, const ArchivesScreen())),
           GoRoute(
               path: '/settings/map',
-              pageBuilder: (c, s) =>
-                  _clPage(s, const MapFeedSettingsScreen())),
+              pageBuilder: (c, s) => _clPage(s, const MapFeedSettingsScreen())),
           GoRoute(
               path: '/notifications',
               pageBuilder: (c, s) => _clPage(s, const NotificationsView())),
@@ -329,11 +380,11 @@ GoRouter buildAppRouter(AuthController authController) {
           // something usable.
           GoRoute(
             path: '/notifications/:section',
-            redirect: (c, s) =>
-                NotificationSectionSlug.fromSlug(s.pathParameters['section']!) ==
-                        null
-                    ? '/notifications'
-                    : null,
+            redirect: (c, s) => NotificationSectionSlug.fromSlug(
+                        s.pathParameters['section']!) ==
+                    null
+                ? '/notifications'
+                : null,
             pageBuilder: (c, s) => _clPage(
                 s,
                 NotificationsDetailScreen(
@@ -343,11 +394,11 @@ GoRouter buildAppRouter(AuthController authController) {
           ),
           GoRoute(
             path: '/contacts/:section',
-            redirect: (c, s) =>
-                ContactsDetailSectionMeta.fromSlug(s.pathParameters['section']!) ==
-                        null
-                    ? '/contacts'
-                    : null,
+            redirect: (c, s) => ContactsDetailSectionMeta.fromSlug(
+                        s.pathParameters['section']!) ==
+                    null
+                ? '/contacts'
+                : null,
             pageBuilder: (c, s) => _clPage(
                 s,
                 ContactsDetailScreen(
@@ -366,14 +417,15 @@ GoRouter buildAppRouter(AuthController authController) {
             pageBuilder: (c, s) => _clPage(
                 s,
                 SearchDetailScreen(
-                  kind: SearchDetailKindMeta.fromSlug(s.pathParameters['kind']!)!,
+                  kind:
+                      SearchDetailKindMeta.fromSlug(s.pathParameters['kind']!)!,
                   query: s.uri.queryParameters['q'] ?? '',
                 )),
           ),
           GoRoute(
             path: '/post/:postId',
-            pageBuilder: (c, s) =>
-                _clPage(s, PostPreviewScreen(postId: s.pathParameters['postId']!)),
+            pageBuilder: (c, s) => _clPage(
+                s, PostPreviewScreen(postId: s.pathParameters['postId']!)),
           ),
           // Diary. Gated on module.diary.access, mirroring webapp's
           // ProfileContainer.tsx: while acting as a page the module simply
@@ -406,6 +458,27 @@ GoRouter buildAppRouter(AuthController authController) {
             pageBuilder: (c, s) =>
                 _clPage(s, RealmProfileScreen(slug: s.pathParameters['slug']!)),
           ),
+          // Pushed, so the rail and the directory get the whole screen. The
+          // TAB at /servers is just the way in.
+          // NOT under '/servers'. go_router walks a location segment by segment,
+          // so a sub-path of the '/servers' BRANCH resolves against that branch
+          // children - and it has none, which is a "page not found" rather than
+          // a fallthrough to a same-named sibling. A path outside any existing
+          // route avoids the question.
+          GoRoute(
+            path: '/server-browser',
+            pageBuilder: (c, s) => _clPage(s, const ServerScreen()),
+          ),
+          GoRoute(
+            path: '/server/:serverId',
+            pageBuilder: (c, s) => _clPage(
+                s,
+                ServerScreen(
+                  serverId: s.pathParameters['serverId']!,
+                  serverName: s.uri.queryParameters['name'],
+                  serverProfile: s.uri.queryParameters['profile'],
+                )),
+          ),
           GoRoute(
             path: '/realm/:slug/manage',
             pageBuilder: (c, s) =>
@@ -432,4 +505,3 @@ String? _diaryGuard(BuildContext context, GoRouterState state) {
   final modules = appStore.state.userAuth.user.allowedModules;
   return modules.contains(_diaryModule) ? null : '/newsfeed';
 }
-

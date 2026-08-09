@@ -289,6 +289,20 @@ class Endpoints {
   /// {token: sign({conversationID, memberstoadd, receivers})}.
   String addNewMember = '/m/addnewmember';
 
+  /// Public realm directory, DRF-paginated: ?page=&page_size=&type=&search=.
+  /// `type` is "server" for the Servers tab's Top Servers list, and the same
+  /// route serves other realm kinds. Webapp's GetTopRealmsRequest.
+  String realmTop = '/api/realm/top';
+
+  /// NODE. The servers YOU are in - the rail down the side of web's Servers
+  /// screen. JWT-wrapped: result decodes to {data: [...]}.
+  String initServerList = '/s/initserverlist';
+
+  /// NODE. A server's channels - append the serverID. JWT-wrapped, and the
+  /// decoded `data` is a LIST whose first entry holds the channels (web reads
+  /// `response.data[0].channels`).
+  String initServerChannels = '/s/initserverchannels/'; // :serverID
+
   /// {realm_id} -> re-issues the authtoken with a different `entity` claim
   /// (same userID, acting as the page instead). Only realms of type "page"
   /// support this; server enforces OWNER/ADMIN membership.

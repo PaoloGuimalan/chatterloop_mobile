@@ -383,7 +383,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   void _showFullEmojiPicker(BuildContext context) {
     showModalBottomSheet(
       context: context,
-    useRootNavigator: true,
+      useRootNavigator: true,
       builder: (context) => SizedBox(
         height: 380,
         child: EmojiPicker(
@@ -403,9 +403,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
       WidgetState.focused,
     };
     if (states.any(interactiveStates.contains)) {
-      return Color(0xff1c7def);
+      return CLAccent.of(context);
     }
-    return isChecked ? Color(0xff1c7def) : Colors.white;
+    return isChecked ? CLAccent.of(context) : Colors.white;
   }
 
   Widget messageTypeSwitch(
@@ -511,7 +511,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -536,7 +536,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               children: [
                 Container(
                   decoration: BoxDecoration(
-                      color: isCurrentUser ? const Color(0xff1c7def) : p.border2,
+                      color: isCurrentUser ? CLAccent.of(context) : p.border2,
                       borderRadius: BorderRadius.circular(10)),
                   child: Padding(
                     padding:
@@ -548,7 +548,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                           TextStyle(
                               fontSize: CLType.title,
                               color: isCurrentUser ? Colors.white : p.text),
-                          isCurrentUser ? Colors.white : p.brand,
+                          isCurrentUser ? Colors.white : CLAccent.of(context),
                         ),
                       ),
                     ),
@@ -583,7 +583,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -728,7 +728,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -794,7 +794,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -939,7 +939,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -994,7 +994,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -1139,7 +1139,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -1188,7 +1188,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -1271,7 +1271,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     child: Text(
                       content,
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: CLType.caption, color: Color(0xFF565656)),
+                      style: TextStyle(
+                          fontSize: CLType.caption, color: Color(0xFF565656)),
                     ),
                   ),
                 ),
@@ -1365,7 +1366,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -1418,7 +1419,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             Expanded(
                                 child: Text(
                               _fileNamePart(content),
-                              style: TextStyle(fontSize: CLType.title, color: p.text),
+                              style: TextStyle(
+                                  fontSize: CLType.title, color: p.text),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ))
@@ -1448,7 +1450,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     )
                   : Checkbox(
                       side: BorderSide(
-                        color: Color(0xff1c7def),
+                        color: CLAccent.of(context),
                         width: 1,
                       ),
                       shape: RoundedRectangleBorder(
@@ -1542,7 +1544,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               padding: EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
               child: Text(
                 "Message deleted",
-                style: TextStyle(fontSize: CLType.body, color: Color(0xFFdedede)),
+                style:
+                    TextStyle(fontSize: CLType.body, color: Color(0xFFdedede)),
               ),
             ),
           ),
@@ -1571,203 +1574,207 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     return StoreConnector<AppState, bool>(
         distinct: true,
         builder: (context, isUsingReplyAssist) {
-      return Padding(
-        padding: EdgeInsets.only(top: 2, bottom: 2, left: 0, right: 0),
-        child: Column(
-          children: [
-            SizedBox(
-              height: _messageContent.isReply ? 7 : 0,
-            ),
-            _previousContentUserID != _messageContent.sender ||
-                    _previousContentUserID == "end"
-                ? Column(
-                    children: [
-                      SizedBox(
-                        height: 5,
-                      ),
-                      !widget.isSingleConversation &&
-                              _messageContent.messageType != "notif" &&
-                              _currentUserID != _messageContent.sender
-                          ? Row(
-                              mainAxisAlignment:
-                                  _messageContent.sender == _currentUserID
-                                      ? MainAxisAlignment.end
-                                      : MainAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: EdgeInsets.only(
-                                      left: 7, right: 7, bottom: 2),
-                                  child: Text(
-                                    widget.resolveSenderName(
-                                        _messageContent.sender),
-                                    style: TextStyle(
-                                      fontSize: CLType.caption,
-                                      color: Color(0xFF565656),
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+          return Padding(
+            padding: EdgeInsets.only(top: 2, bottom: 2, left: 0, right: 0),
+            child: Column(
+              children: [
+                SizedBox(
+                  height: _messageContent.isReply ? 7 : 0,
+                ),
+                _previousContentUserID != _messageContent.sender ||
+                        _previousContentUserID == "end"
+                    ? Column(
+                        children: [
+                          SizedBox(
+                            height: 5,
+                          ),
+                          !widget.isSingleConversation &&
+                                  _messageContent.messageType != "notif" &&
+                                  _currentUserID != _messageContent.sender
+                              ? Row(
+                                  mainAxisAlignment:
+                                      _messageContent.sender == _currentUserID
+                                          ? MainAxisAlignment.end
+                                          : MainAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: EdgeInsets.only(
+                                          left: 7, right: 7, bottom: 2),
+                                      child: Text(
+                                        widget.resolveSenderName(
+                                            _messageContent.sender),
+                                        style: TextStyle(
+                                          fontSize: CLType.caption,
+                                          color: Color(0xFF565656),
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    )
+                                  ],
                                 )
-                              ],
-                            )
-                          : SizedBox(
-                              height: 0,
-                            )
-                    ],
-                  )
-                : SizedBox(
-                    height: 0,
-                  ),
-            SizedBox(
-              height: _messageContent.isReply ? 0 : 5,
-            ),
-            _messageContent.isReply && _repliedTo != null
-                ? Column(
-                    children: [
-                      SizedBox(
+                              : SizedBox(
+                                  height: 0,
+                                )
+                        ],
+                      )
+                    : SizedBox(
                         height: 0,
                       ),
-                      Row(
-                        mainAxisAlignment:
-                            _messageContent.sender == _currentUserID
-                                ? MainAxisAlignment.end
-                                : MainAxisAlignment.start,
+                SizedBox(
+                  height: _messageContent.isReply ? 0 : 5,
+                ),
+                _messageContent.isReply && _repliedTo != null
+                    ? Column(
                         children: [
-                          Padding(
-                            padding:
-                                EdgeInsets.only(left: 7, right: 7, bottom: 7),
-                            child: Text(
-                              "replied to ${widget.resolveSenderName(_repliedTo!.sender)}",
-                              style: TextStyle(
-                                  fontSize: CLType.caption,
-                                  color: Color(0xFF565656),
-                                  fontWeight: FontWeight.bold),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                          SizedBox(
+                            height: 0,
+                          ),
+                          Row(
+                            mainAxisAlignment:
+                                _messageContent.sender == _currentUserID
+                                    ? MainAxisAlignment.end
+                                    : MainAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: EdgeInsets.only(
+                                    left: 7, right: 7, bottom: 7),
+                                child: Text(
+                                  "replied to ${widget.resolveSenderName(_repliedTo!.sender)}",
+                                  style: TextStyle(
+                                      fontSize: CLType.caption,
+                                      color: Color(0xFF565656),
+                                      fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              )
+                            ],
+                          ),
+                          Opacity(
+                            opacity: 0.6,
+                            child: _repliedTo!.isDeleted == true
+                                ? messageDeletedItem(
+                                    _repliedTo!.messageType,
+                                    _messageContent.sender == _currentUserID,
+                                    _repliedTo!.sender == _currentUserID,
+                                    true)
+                                : messageTypeSwitch(
+                                    _repliedTo!.content,
+                                    _repliedTo!.messageType,
+                                    _repliedTo!.messageID,
+                                    _messageContent.sender == _currentUserID,
+                                    _repliedTo!.sender == _currentUserID,
+                                    true,
+                                    false,
+                                    false),
                           )
                         ],
-                      ),
-                      Opacity(
-                        opacity: 0.6,
-                        child: _repliedTo!.isDeleted == true
-                            ? messageDeletedItem(
-                                _repliedTo!.messageType,
-                                _messageContent.sender == _currentUserID,
-                                _repliedTo!.sender == _currentUserID,
-                                true)
-                            : messageTypeSwitch(
-                                _repliedTo!.content,
-                                _repliedTo!.messageType,
-                                _repliedTo!.messageID,
-                                _messageContent.sender == _currentUserID,
-                                _repliedTo!.sender == _currentUserID,
-                                true,
-                                false,
-                                false),
                       )
-                    ],
-                  )
-                : SizedBox(
-                    height: 0,
-                  ),
-            _messageContent.isDeleted as bool
-                ? messageDeletedItem(
-                    _messageContent.messageType,
-                    _messageContent.sender == _currentUserID,
-                    _messageContent.sender == _currentUserID,
-                    false)
-                : GestureDetector(
-                    onLongPress: () async {
-                      Navigator.of(context).push(
-                        HeroDialogRoute(
-                          builder: (context) {
-                            // Our own dialog, not the package's: its context
-                            // menu hardcodes Material typography and has no
-                            // card padding. See message_reactions_dialog.dart.
-                            return CLMessageReactionsDialog(
-                              // Draws your existing pick as selected, so the
-                              // row shows the current state rather than
-                              // looking untouched.
-                              myReaction: _myReactionEmoji,
-                              id: _messageContent
-                                  .messageID, // unique id for message
-                              reactions: _quickReactions,
-                              menuItems: _reactionMenuItems,
-                              // Every message type (including audio) goes
-                              // through the same messageTypeSwitch the
-                              // normal bubble uses - this used to
-                              // special-case audio with its own hardcoded
-                              // generic file-card look here, which fell out
-                              // of sync the moment the real audio bubble was
-                              // redesigned to use VoiceMessagePlayer (the
-                              // long-press preview kept showing the old
-                              // design since it never went through that
-                              // change).
-                              // flutter_chat_reactions' MessageBubble places
-                              // messageWidget directly with no Material
-                              // ancestor of its own (unlike its reaction
-                              // row/context menu, which do wrap themselves)
-                              // - VoiceMessagePlayer's play/pause InkWell
-                              // needs one to paint its ink response, or this
-                              // throws "No Material widget found" the
-                              // moment the long-press preview renders an
-                              // audio message.
-                              messageWidget: Material(
-                                type: MaterialType.transparency,
-                                child: messageTypeSwitch(
-                                    _messageContent.content,
-                                    _messageContent.messageType,
-                                    _messageContent.messageID,
-                                    _messageContent.sender == _currentUserID,
-                                    _messageContent.sender == _currentUserID,
-                                    false,
-                                    true,
-                                    false),
-                              ), // message widget
-                              onReactionTap: (reaction) {
-                                _submitReaction(reaction);
+                    : SizedBox(
+                        height: 0,
+                      ),
+                _messageContent.isDeleted as bool
+                    ? messageDeletedItem(
+                        _messageContent.messageType,
+                        _messageContent.sender == _currentUserID,
+                        _messageContent.sender == _currentUserID,
+                        false)
+                    : GestureDetector(
+                        onLongPress: () async {
+                          Navigator.of(context).push(
+                            HeroDialogRoute(
+                              builder: (context) {
+                                // Our own dialog, not the package's: its context
+                                // menu hardcodes Material typography and has no
+                                // card padding. See message_reactions_dialog.dart.
+                                return CLMessageReactionsDialog(
+                                  // Draws your existing pick as selected, so the
+                                  // row shows the current state rather than
+                                  // looking untouched.
+                                  myReaction: _myReactionEmoji,
+                                  id: _messageContent
+                                      .messageID, // unique id for message
+                                  reactions: _quickReactions,
+                                  menuItems: _reactionMenuItems,
+                                  // Every message type (including audio) goes
+                                  // through the same messageTypeSwitch the
+                                  // normal bubble uses - this used to
+                                  // special-case audio with its own hardcoded
+                                  // generic file-card look here, which fell out
+                                  // of sync the moment the real audio bubble was
+                                  // redesigned to use VoiceMessagePlayer (the
+                                  // long-press preview kept showing the old
+                                  // design since it never went through that
+                                  // change).
+                                  // flutter_chat_reactions' MessageBubble places
+                                  // messageWidget directly with no Material
+                                  // ancestor of its own (unlike its reaction
+                                  // row/context menu, which do wrap themselves)
+                                  // - VoiceMessagePlayer's play/pause InkWell
+                                  // needs one to paint its ink response, or this
+                                  // throws "No Material widget found" the
+                                  // moment the long-press preview renders an
+                                  // audio message.
+                                  messageWidget: Material(
+                                    type: MaterialType.transparency,
+                                    child: messageTypeSwitch(
+                                        _messageContent.content,
+                                        _messageContent.messageType,
+                                        _messageContent.messageID,
+                                        _messageContent.sender ==
+                                            _currentUserID,
+                                        _messageContent.sender ==
+                                            _currentUserID,
+                                        false,
+                                        true,
+                                        false),
+                                  ), // message widget
+                                  onReactionTap: (reaction) {
+                                    _submitReaction(reaction);
+                                  },
+                                  onContextMenuTap: (menuItem) {
+                                    if (menuItem.label == "Reply") {
+                                      _onPressed(
+                                          true, _messageContent.messageID);
+                                    } else if (menuItem.label == "React") {
+                                      _showFullEmojiPicker(context);
+                                    }
+                                    // handle context menu item
+                                  },
+                                );
                               },
-                              onContextMenuTap: (menuItem) {
-                                if (menuItem.label == "Reply") {
-                                  _onPressed(true, _messageContent.messageID);
-                                } else if (menuItem.label == "React") {
-                                  _showFullEmojiPicker(context);
-                                }
-                                // handle context menu item
-                              },
-                            );
-                          },
-                        ),
-                      );
-                    },
-                    // The Material is INSIDE the Hero so it flies with it. A
-                    // hero's child is re-parented into the Navigator's overlay
-                    // for the flight, leaving the page's Material behind - and
-                    // without one, text falls back to DefaultTextStyle.fallback,
-                    // whose yellow double-underline decoration shows straight
-                    // through the bubble's own style. That's what marked the
-                    // message with yellow lines on the way back from the
-                    // long-press preview. transparency = no paint of its own.
-                    child: Hero(
-                        tag: _messageContent.messageID,
-                        child: Material(
-                          type: MaterialType.transparency,
-                          child: messageTypeSwitch(
-                              _messageContent.content,
-                              _messageContent.messageType,
-                              _messageContent.messageID,
-                              _messageContent.sender == _currentUserID,
-                              _messageContent.sender == _currentUserID,
-                              false,
-                              false,
-                              // Reply assist v2 takes a single anchor message,
-                              // so there is no per-message selection step and
-                              // the marking checkboxes stay off.
-                              false),
-                        )),
-                  )
-          ],
-        ),
-      );
-    }, converter: (store) => store.state.isUsingReplyAssist);
+                            ),
+                          );
+                        },
+                        // The Material is INSIDE the Hero so it flies with it. A
+                        // hero's child is re-parented into the Navigator's overlay
+                        // for the flight, leaving the page's Material behind - and
+                        // without one, text falls back to DefaultTextStyle.fallback,
+                        // whose yellow double-underline decoration shows straight
+                        // through the bubble's own style. That's what marked the
+                        // message with yellow lines on the way back from the
+                        // long-press preview. transparency = no paint of its own.
+                        child: Hero(
+                            tag: _messageContent.messageID,
+                            child: Material(
+                              type: MaterialType.transparency,
+                              child: messageTypeSwitch(
+                                  _messageContent.content,
+                                  _messageContent.messageType,
+                                  _messageContent.messageID,
+                                  _messageContent.sender == _currentUserID,
+                                  _messageContent.sender == _currentUserID,
+                                  false,
+                                  false,
+                                  // Reply assist v2 takes a single anchor message,
+                                  // so there is no per-message selection step and
+                                  // the marking checkboxes stay off.
+                                  false),
+                            )),
+                      )
+              ],
+            ),
+          );
+        },
+        converter: (store) => store.state.isUsingReplyAssist);
   }
 }

@@ -82,6 +82,20 @@ bool _isAuthedOk(dynamic data) {
   }
 }
 
+/// Bumped on every `messages_list` event - i.e. whenever a message arrives
+/// anywhere, in any conversation.
+///
+/// A counter rather than a bool: two messages in a row must fire twice, and a
+/// bool would coalesce them.
+///
+/// Web achieves the same thing differently: its channels view watches the redux
+/// conversation list, and its SSE handler refetches that list using the TYPE
+/// carried on the event (see below), so a channel message does move it. This app
+/// now does that too - but the signal stays, because it is the direct statement
+/// of "a message landed" and does not depend on a list refetch succeeding, or on
+/// that list happening to include the conversation in question.
+final ValueNotifier<int> messagesListSignals = ValueNotifier<int>(0);
+
 class SseEvents {
   /// A new SseEvents() is constructed per event (see sse_connection.dart),
   /// so per-typer removal timers have to live at module/static scope to be
@@ -303,8 +317,7 @@ class SseEvents {
           // the server evaluates that per receiver and nulls it for everyone
           // else (routes/users/index.js's sendMessage), so its presence alone
           // means "this one is about you".
-          final isMentioned =
-              details is Map && details["mentioner"] is Map;
+          final isMentioned = details is Map && details["mentioner"] is Map;
           if (senderEntityId != null &&
               senderEntityId != userAuth.user.entityId) {
             AudioPlayer audioPlayer = AudioPlayer();
@@ -325,10 +338,24 @@ class SseEvents {
           }
         }
 
-        final refreshed = await ConversationsApi().getConversationListRequest();
+        // The type comes from the EVENT, not a fixed "common" - web does the
+        // same (InitConversationListRequest reads `value.messages.type` and
+        // only falls back to "common"). Refetching the common list after a
+        // channel message asks for a list that cannot contain the thing that
+        // just changed, so nothing moves.
+        final eventType = parsedresponse["message"] is Map
+            ? parsedresponse["message"]["type"]?.toString()
+            : null;
+        final refreshed = await ConversationsApi().getConversationListRequest(
+            type: (eventType == null || eventType.isEmpty)
+                ? "common"
+                : eventType);
         if (refreshed != null) {
           appStore.dispatch(DispatchModel(setMessagesListT, refreshed.items));
         }
+        // Announce it regardless of whether the conversation list moved - see
+        // messagesListSignals. A channel message changes nothing in that list.
+        messagesListSignals.value++;
         return;
       case "active_users":
         // server/reusables/hooks/sse.js's UpdateContactswSessionStatus -

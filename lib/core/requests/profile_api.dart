@@ -110,6 +110,130 @@ class ProfileApi {
     }
   }
 
+  /// The public realm directory - webapp's GetTopRealmsRequest.
+  ///
+  /// [type] is the realm kind ("server" for the Servers tab). Rows are the same
+  /// RealmSerializer shape the profile uses, so they parse as RealmProfile.
+  Future<PagedResult<RealmProfile>> getTopRealmsRequest({
+    required String type,
+    int page = 1,
+    int pageSize = 20,
+    String? search,
+  }) async {
+    try {
+      final response = await _userDio.get(
+        _endpoints.realmTop,
+        queryParameters: {
+          'page': page,
+          'page_size': pageSize,
+          'type': type,
+          // Null rather than "" for an empty box, matching web - the two are
+          // not the same to the server's filter.
+          if (search != null && search.trim().isNotEmpty)
+            'search': search.trim(),
+        },
+      );
+      return PagedResult.fromDrf(response.data, RealmProfile.fromJson);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return PagedResult.empty();
+    }
+  }
+
+  /// The servers this entity belongs to - webapp's InitServerListRequest.
+  /// NODE, and JWT-wrapped: the result decodes to {data: [...]}.
+  Future<List<RealmSummary>> getMyServersRequest() async {
+    try {
+      final response = await _mainDio.get(_endpoints.initServerList);
+      if (response.data?["status"] == false) return const [];
+      final decoded =
+          JwtCodec.decode(response.data["result"]?.toString() ?? '');
+      final rows = decoded?["data"];
+      if (rows is! List) return const [];
+      // NOT RealmSummary.fromJson: that parses the DJANGO realm serializer
+      // (id/name/slug), and this is the NODE server list, whose rows are
+      // serverID/serverName/profile. Reusing it produced rows with empty ids
+      // and empty names - which showed up as a rail of "?" avatars, since
+      // CLAvatar has no initials to draw from an empty name, and taps that went
+      // nowhere.
+      return rows.whereType<Map>().map((item) {
+        final row = Map<String, dynamic>.from(item);
+        return RealmSummary(
+          id: (row["serverID"] ?? row["id"] ?? "").toString(),
+          name: (row["serverName"] ?? row["name"] ?? "").toString(),
+          slug: row["slug"]?.toString(),
+          profile: row["profile"]?.toString(),
+          type: (row["type"] ?? "server").toString(),
+          isAdmin: row["is_admin"] == true || row["isAdmin"] == true,
+        );
+      }).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return const [];
+    }
+  }
+
+  /// A server's channels - webapp's InitServerChannelsRequest.
+  ///
+  /// The decoded payload is a LIST, and the channels hang off its FIRST entry
+  /// (`response.data[0].channels`). Defensive at every step: a server with no
+  /// channels yields an empty list rather than throwing, which is a real state
+  /// - web has a whole NoChannel screen for it.
+  Future<List<ServerChannel>> getServerChannelsRequest(String serverId) async {
+    try {
+      final response =
+          await _mainDio.get('${_endpoints.initServerChannels}$serverId');
+      if (response.data?["status"] == false) return const [];
+      final decoded =
+          JwtCodec.decode(response.data["result"]?.toString() ?? '');
+      // DOUBLE-wrapped, and this is where it was going wrong. Web request
+      // returns `decodedResult.data`, and Channels.tsx then reads
+      // `response.data[0].channels` - so the array lives at data.data[0], not
+      // at data[0]. Bailing on "data is not a List" returned an empty list
+      // every time, which looked exactly like a server with no channels.
+      //
+      // Self-detecting rather than a fixed depth, same as
+      // getConversationInfoModelRequest: unwrap once more only when the first
+      // level is a Map holding its own `data`.
+      final level1 = decoded?["data"];
+      final rows = level1 is Map ? level1["data"] : level1;
+      if (rows is! List || rows.isEmpty) {
+        if (kDebugMode) {
+          print("[channels] no rows. level1=${level1.runtimeType} "
+              "keys=${level1 is Map ? level1.keys.toList() : 'n/a'}");
+        }
+        return const [];
+      }
+      final first = rows.first;
+      final channels = first is Map ? first["channels"] : null;
+      if (channels is! List) {
+        if (kDebugMode) {
+          print("[channels] first row has no channels list. "
+              "keys=${first is Map ? first.keys.toList() : first.runtimeType}");
+        }
+        return const [];
+      }
+      if (kDebugMode) print("[channels] parsed ${channels.length}");
+      return channels
+          .whereType<Map>()
+          .map(
+              (item) => ServerChannel.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return const [];
+    }
+  }
+
   /// A realm's members. Mirrors webapp's GetRealmMembersRequest.
   Future<PagedResult<RealmPerson>> getRealmMembersRequest(
     String realmId, {

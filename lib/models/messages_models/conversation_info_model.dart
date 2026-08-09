@@ -25,6 +25,11 @@ class ConversationInfoModel {
   /// never be matched against the realm list to infer this.
   bool isAdmin;
 
+  /// The conversation payload nests this under `conversationInfo.privacy` - true
+  /// means private. Drives the channel header icon (lock vs hash), the same
+  /// distinction the channels list draws.
+  bool isPrivate;
+
   ConversationInfoModel(
       this.contactID,
       this.actionBy,
@@ -35,7 +40,8 @@ class ConversationInfoModel {
       this.usersWithInfo,
       this.conversationfiles,
       {this.isArchived = false,
-      this.isAdmin = false});
+      this.isAdmin = false,
+      this.isPrivate = false});
 
   /// The server can legitimately return an empty/near-empty object here -
   /// e.g. opening a conversation that has no backing user_connection row
@@ -75,7 +81,10 @@ class ConversationInfoModel {
         isArchived: (json["chatHistory"] is Map &&
                 json["chatHistory"]["isArchived"] == true) ||
             json["isArchived"] == true,
-        isAdmin: json["is_admin"] == true);
+        isAdmin: json["is_admin"] == true,
+        isPrivate: (json["conversationInfo"] is Map &&
+                json["conversationInfo"]["privacy"] == true) ||
+            json["privacy"] == true);
   }
 }
 

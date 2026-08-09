@@ -48,6 +48,42 @@ double clSheetBottomGap(BuildContext context,
         {double minimum = 12, double extra = 0}) =>
     math.max(minimum, MediaQuery.of(context).viewPadding.bottom + extra);
 
+/// Normalises the several ways this API says "no photo".
+///
+/// null, "", "N/A" and "none" all mean the same thing and all arrive depending
+/// on which endpoint answered. Any of the strings handed to an image widget
+/// renders a broken image, where null lets CLAvatar fall back to its id-hashed
+/// gradient and the entity initials - so passing raw payload values through is
+/// the difference between initials and a broken tile.
+String? clCleanMediaSrc(String? src) {
+  final value = src?.trim() ?? '';
+  if (value.isEmpty || value == 'N/A' || value == 'none') return null;
+  return value;
+}
+
+/// The accent for a conversation subtree.
+///
+/// The messages UI had `Color(0xff1c7def)` hardcoded in about fifteen places -
+/// bubbles, ticks, the reply rail, the header icons. A server CHANNEL is the
+/// same UI in a different place, and its accent is the servers gold, so the
+/// colour had to come from one source the whole subtree can read rather than
+/// from fifteen literals.
+///
+/// Defaults to the brand blue when nothing wraps the tree, so every existing
+/// caller keeps the colour it had.
+class CLAccent extends InheritedWidget {
+  final Color color;
+
+  const CLAccent({super.key, required this.color, required super.child});
+
+  static Color of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CLAccent>()?.color ??
+      cl(context).brand;
+
+  @override
+  bool updateShouldNotify(CLAccent oldWidget) => oldWidget.color != color;
+}
+
 // -------- Avatar -------------------------------------------------------------
 
 const _avatarGradients = <List<Color>>[
@@ -589,7 +625,11 @@ class CLMessageListSkeleton extends StatelessWidget {
 
 // -------- Buttons ------------------------------------------------------------
 
-enum CLBtnVariant { primary, soft, ghost, outline, danger }
+/// `gold` is the SERVERS accent - web renders that surface's actions in its
+/// amber rather than the app's blue, and it is the one place that colour is the
+/// primary action rather than a highlight. A variant rather than a one-off
+/// style so the next gold button matches this one.
+enum CLBtnVariant { primary, soft, ghost, outline, danger, gold }
 
 enum CLBtnSize { sm, md, lg }
 
@@ -630,6 +670,7 @@ class CLBtn extends StatelessWidget {
       CLBtnVariant.ghost => (Colors.transparent, p.text, null),
       CLBtnVariant.outline => (p.surface, p.text, p.border2),
       CLBtnVariant.danger => (p.pink, Colors.white, null),
+      CLBtnVariant.gold => (p.gold, Colors.white, null),
     };
 
     final child = Container(
@@ -640,14 +681,19 @@ class CLBtn extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(CLRadii.sm),
         border: border != null ? Border.all(color: border) : null,
-        boxShadow: variant == CLBtnVariant.primary
-            ? [
-                BoxShadow(
-                    color: p.brand.withValues(alpha: 0.30),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2))
-              ]
-            : null,
+        // The lift belongs to whichever variant is acting as the primary
+        // action, so gold gets it too - tinted with its own colour, not the
+        // brand's.
+        boxShadow:
+            variant == CLBtnVariant.primary || variant == CLBtnVariant.gold
+                ? [
+                    BoxShadow(
+                        color: (variant == CLBtnVariant.gold ? p.gold : p.brand)
+                            .withValues(alpha: 0.30),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2))
+                  ]
+                : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -713,6 +759,7 @@ class CLMiniBtn extends StatelessWidget {
       CLBtnVariant.ghost => (Colors.transparent, p.text, null),
       CLBtnVariant.outline => (p.surface, p.text, p.border2),
       CLBtnVariant.danger => (p.pink, Colors.white, null),
+      CLBtnVariant.gold => (p.gold, Colors.white, null),
     };
 
     final child = Container(
