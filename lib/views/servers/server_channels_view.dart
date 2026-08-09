@@ -30,6 +30,7 @@ import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/views/servers/create_realm_view.dart';
 import 'package:chatterloop_app/views/servers/servers_view.dart';
+import 'package:chatterloop_app/views/servers/voice_channel_view.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -81,11 +82,15 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     // /m/conversations, which does not include channels, so a channel message
     // never moves it.
     messagesListSignals.addListener(_onMessagesSignal);
+    // Live occupancy, without refetching: the counts on the rows come from
+    // VoiceRoomPresence, which the SSE events patch as people come and go.
+    VoiceRoomPresence.instance.revision.addListener(_onPresenceChanged);
   }
 
   @override
   void dispose() {
     messagesListSignals.removeListener(_onMessagesSignal);
+    VoiceRoomPresence.instance.revision.removeListener(_onPresenceChanged);
     super.dispose();
   }
 
@@ -93,9 +98,19 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     if (mounted) _load();
   }
 
+  void _onPresenceChanged() {
+    if (mounted) setState(() {});
+  }
+
   Future<void> _load() async {
     final result = await ProfileApi().getServerChannelsRequest(widget.serverId);
     if (!mounted) return;
+    for (final channel in result.channels) {
+      if (channel.isVoice) {
+        VoiceRoomPresence.instance
+            .seed(channel.conversationId, channel.voiceParticipantIds);
+      }
+    }
     setState(() {
       _channels = result.channels;
       _isAdmin = result.isAdmin;
@@ -182,13 +197,45 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     }
   }
 
-  void _open(ServerChannel channel) {
-    if (channel.isVoice) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Voice channels are not available on mobile yet.')));
+  /// Joining a voice room, by the SAME path an outgoing call takes: joinCall,
+  /// then the CallSession in redux, then /call/active. Deliberately the proven
+  /// screen rather than a bespoke one - ActiveCallView owns the renderers, the
+  /// camera and screen-share controls and the teardown, and a voice room needs
+  /// every one of those. Web makes the same choice: VoiceChannel.tsx renders the
+  /// call window's own VoiceWindow.
+  ///
+  /// The one step it does NOT take is CallApi().callRequest - that is the ring.
+  /// A voice channel is a room you walk into; nobody is being invited.
+  ///
+  /// conversationType 'group' is load-bearing: the engine's single-call
+  /// watchdogs (45s ringing cap, auto-end-when-alone, 25s media-silence) all
+  /// short-circuit on isGroup, and a room has to survive one person sitting in
+  /// it. callType 'audio' matches web forcing type: "audio", and the camera stays
+  /// available through ActiveCallView's own toggle.
+  /// Opens the room's own screen, which joins on arrival - see
+  /// VoiceChannelScreen. No ring, no recipient list: a voice channel is walked
+  /// into, and presence is announced by the controller's notify-voice-join.
+  void _openVoice(ServerChannel channel) {
+    if (appStore.state.currentCall != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Leave your current call first.')));
       return;
     }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => VoiceChannelScreen(
+        conversationId: channel.conversationId,
+        channelName: channel.name,
+        isPrivate: channel.isPrivate,
+      ),
+    ));
+  }
+
+  void _open(ServerChannel channel) {
     if (channel.conversationId.isEmpty) return;
+    if (channel.isVoice) {
+      _openVoice(channel);
+      return;
+    }
     // The channel's groupID IS its conversation id - web hands the same value
     // to ConversationV2.
     context.push('/conversation/${channel.conversationId}');
@@ -364,7 +411,14 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
             );
           }
           final channel = _channels[index - 1];
-          return _ChannelRow(channel: channel, onTap: () => _open(channel));
+          return _ChannelRow(
+            channel: channel,
+            // Live, not the count that came with the payload.
+            inRoom: channel.isVoice
+                ? VoiceRoomPresence.instance.countFor(channel.conversationId)
+                : 0,
+            onTap: () => _open(channel),
+          );
         },
       ),
     );
@@ -390,9 +444,17 @@ class _SectionLabel extends StatelessWidget {
 
 class _ChannelRow extends StatelessWidget {
   final ServerChannel channel;
+
+  /// How many are in the room NOW - from VoiceRoomPresence, so it moves without
+  /// the list being refetched.
+  final int inRoom;
   final VoidCallback onTap;
 
-  const _ChannelRow({required this.channel, required this.onTap});
+  const _ChannelRow({
+    required this.channel,
+    required this.onTap,
+    this.inRoom = 0,
+  });
 
   /// Web's exact matrix, from Channels.tsx:
   ///
@@ -413,65 +475,76 @@ class _ChannelRow extends StatelessWidget {
     final p = cl(context);
     final unread = channel.unreadCount > 0;
 
-    return Opacity(
-      // Voice reads as unavailable rather than looking like a channel that
-      // opens - it needs the media stack this app does not have yet.
-      opacity: channel.isVoice ? 0.6 : 1,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(CLRadii.md),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          child: Row(
-            children: [
-              Icon(_icon, size: 18, color: p.text2),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      channel.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: CLType.title,
-                        // Bold on unread, normal otherwise - web bolds the name
-                        // and never shows a count, so neither does this.
-                        fontWeight: unread ? FontWeight.w700 : FontWeight.w400,
-                        color: p.text,
-                      ),
+    // No dimming any more: a voice channel opens now, so presenting it as
+    // half-unavailable would be a lie about the one thing the opacity was for.
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(CLRadii.md),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        child: Row(
+          children: [
+            Icon(_icon, size: 18, color: p.text2),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    channel.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: CLType.title,
+                      // Bold on unread, normal otherwise - web bolds the name
+                      // and never shows a count, so neither does this.
+                      fontWeight: unread ? FontWeight.w700 : FontWeight.w400,
+                      color: p.text,
                     ),
-                    Text(
-                      channel.isVoice ? 'Voice channel' : 'Text channel',
-                      style:
-                          TextStyle(fontSize: CLType.caption, color: p.text2),
-                    ),
-                  ],
+                  ),
+                  Text(
+                    channel.isVoice
+                        // Who is in there, which for a room is the only thing
+                        // worth saying on the row - it has no last message.
+                        ? (inRoom > 0
+                            ? '$inRoom in this room'
+                            : 'Voice channel')
+                        : 'Text channel',
+                    style: TextStyle(
+                        fontSize: CLType.caption,
+                        color: inRoom > 0 ? p.gold : p.text2),
+                  ),
+                ],
+              ),
+            ),
+            // The COUNT, not just the bold name web settles for. A channel
+            // list is where the number earns its pixels: it is how you pick
+            // which channel to open, whereas a conversation list already
+            // tells you through its preview line.
+            //
+            // Capped at 99+ so a long-neglected channel cannot widen the row
+            // and squeeze the name out.
+            // Web's own live-room indicator, on the same side as the unread
+            // badge a text channel gets.
+            if (inRoom > 0)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Icon(Icons.settings_voice, size: 16, color: p.gold),
+              ),
+            if (unread)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: CLBadge(
+                  label: channel.unreadCount > 99
+                      ? '99+'
+                      : '${channel.unreadCount}',
+                  // alert = FILLED pink with white text. The pink tone is a
+                  // pale tint on pink text, which reads as a label; a count
+                  // meant to be noticed needs the contrast.
+                  tone: CLBadgeTone.alert,
                 ),
               ),
-              // The COUNT, not just the bold name web settles for. A channel
-              // list is where the number earns its pixels: it is how you pick
-              // which channel to open, whereas a conversation list already
-              // tells you through its preview line.
-              //
-              // Capped at 99+ so a long-neglected channel cannot widen the row
-              // and squeeze the name out.
-              if (unread)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: CLBadge(
-                    label: channel.unreadCount > 99
-                        ? '99+'
-                        : '${channel.unreadCount}',
-                    // alert = FILLED pink with white text. The pink tone is a
-                    // pale tint on pink text, which reads as a label; a count
-                    // meant to be noticed needs the contrast.
-                    tone: CLBadgeTone.alert,
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );

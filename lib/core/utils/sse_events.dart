@@ -41,6 +41,73 @@ class ProfileRelationshipUpdate {
 final ValueNotifier<ProfileRelationshipUpdate?> profileRelationshipUpdates =
     ValueNotifier<ProfileRelationshipUpdate?>(null);
 
+/// Who is sitting in which voice room, right now - webapp's `previewparticipants`
+/// redux slice.
+///
+/// Kept as clientIds per channel rather than a bare count, because that is what
+/// the events actually carry: "voice-joined" adds ONE participant and
+/// "update_participants" removes ONE by clientId, so a counter could not apply
+/// either without double-counting a rejoin or going negative on a duplicate
+/// leave.
+///
+/// Seeded from the channels payload (`voice_participants`, which the server
+/// fills from redis) and then kept live by the two events. Web does exactly
+/// this: Channels.tsx bulk-sets it on every fetch, sse.ts patches it in between.
+class VoiceRoomPresence {
+  VoiceRoomPresence._();
+  static final VoiceRoomPresence instance = VoiceRoomPresence._();
+
+  final Map<String, Set<String>> _byChannel = {};
+
+  /// Bumped on every change - listeners rebuild off this rather than off the
+  /// map, so the map can stay a plain mutable structure.
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  int countFor(String channelId) => _byChannel[channelId]?.length ?? 0;
+
+  /// Replaces one channel's occupancy from a fetched payload. Does NOT touch
+  /// other channels, so a server-scoped refetch cannot wipe presence for rooms
+  /// it did not include.
+  void seed(String channelId, Iterable<String> clientIds) {
+    final next = clientIds.where((id) => id.isNotEmpty).toSet();
+    final current = _byChannel[channelId];
+    // An EMPTY snapshot never wipes what the events have established.
+    //
+    // This is the one that made it look like nothing was live: the channels
+    // list is refetched on every messages_list signal - i.e. on any message
+    // anywhere - and redis fills voice_participants a moment AFTER the
+    // voice-joined fan-out, so a refetch landing in that window came back with
+    // an empty list and reset the room to nobody. The snapshot is a starting
+    // point, not the truth; the truth is the event stream.
+    if (next.isEmpty && current != null && current.isNotEmpty) return;
+    if (current != null &&
+        current.length == next.length &&
+        current.containsAll(next)) {
+      return; // no change - do not wake listeners
+    }
+    _byChannel[channelId] = next;
+    revision.value++;
+  }
+
+  void add(String channelId, String clientId) {
+    if (channelId.isEmpty || clientId.isEmpty) return;
+    final set = _byChannel.putIfAbsent(channelId, () => <String>{});
+    if (set.add(clientId)) revision.value++;
+  }
+
+  /// The leave event names only the clientId - not which room it was in - so
+  /// this drops it from wherever it is found. Matches web's
+  /// REMOVE_PREVIEW_PARTICIPANT, which filters the whole array on clientID.
+  void removeClient(String clientId) {
+    if (clientId.isEmpty) return;
+    var changed = false;
+    for (final entry in _byChannel.entries) {
+      if (entry.value.remove(clientId)) changed = true;
+    }
+    if (changed) revision.value++;
+  }
+}
+
 /// You have been removed from a realm - a server, a channel, a group.
 ///
 /// A CLASS with identity equality, for the same reason as
@@ -402,6 +469,40 @@ class SseEvents {
         // messagesListSignals. A channel message changes nothing in that list.
         messagesListSignals.value++;
         return;
+      case "voice-joined":
+        // Somebody joined a voice room. JWT-wrapped, and the payload names the
+        // room: {voice_participant: {channelID, clientID}}. Web adds exactly one
+        // participant here (SET_PREVIEW_PARTICIPANTS).
+        //
+        // Handled even though this app also uses the event for its own call
+        // engine - the two are independent readers of the same fact, and the
+        // engine ignores rooms it is not in.
+        if (_isAuthedOk(event.data)) {
+          final parsed = jsonDecode(event.data as String);
+          final decoded = JwtCodec.decode(parsed["result"]?.toString() ?? '');
+          // Tolerant of both shapes: the JWT-wrapped one the server sends
+          // (createJWTwExp({voice_participant})) and a bare payload, so a
+          // signing change cannot silently stop presence updating.
+          final participant =
+              decoded?["voice_participant"] ?? parsed["voice_participant"];
+          if (participant is Map) {
+            VoiceRoomPresence.instance.add(
+              (participant["channelID"] ?? participant["channelId"] ?? '')
+                  .toString(),
+              (participant["clientID"] ?? participant["clientId"] ?? '')
+                  .toString(),
+            );
+            if (kDebugMode) {
+              print("[voice] joined room "
+                  "${participant["channelID"] ?? participant["channelId"]} "
+                  "client=${participant["clientID"] ?? participant["clientId"]}");
+            }
+          } else if (kDebugMode) {
+            print("[voice] voice-joined with no voice_participant: "
+                "${decoded?.keys.toList()}");
+          }
+        }
+        return;
       case "removed_user_notif":
         // An admin removed you from a realm. Published only to the removed
         // member's own channel (routes/realms/index.js publishes per entity id
@@ -428,6 +529,25 @@ class SseEvents {
           // disappears from the list.
           messagesListSignals.value++;
           realmRemovals.value = removal;
+        }
+        return;
+      case "update_participants":
+        // Only the "left" half, as web does: a join is announced by
+        // "voice-joined" (which names the room), while this one only carries the
+        // clientId - enough to remove, not enough to add.
+        //
+        // NOTE: the call engine listens to this event too, through its own
+        // eventBus subscription, to tear a 1:1 call down. This case is the
+        // presence bookkeeping beside it, not a replacement for it.
+        try {
+          final parsed = jsonDecode(event.data as String);
+          final result = parsed["result"];
+          if (result is Map && result["action"]?.toString() == "left") {
+            VoiceRoomPresence.instance
+                .removeClient((result["clientId"] ?? '').toString());
+          }
+        } catch (_) {
+          // Malformed payload is not worth tearing the SSE loop down for.
         }
         return;
       case "active_users":

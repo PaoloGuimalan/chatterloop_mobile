@@ -146,11 +146,11 @@ class RealmProfile {
       // An object, a bare id, or absent - all three arrive depending on the
       // endpoint, so unwrap rather than stringify.
       parent: json["parent"] is Map
-          ? (json["parent"]["id"] ?? json["parent"]["realm_id"] ?? "").toString()
+          ? (json["parent"]["id"] ?? json["parent"]["realm_id"] ?? "")
+              .toString()
           : json["parent"]?.toString(),
-      parentName: json["parent"] is Map
-          ? json["parent"]["name"]?.toString()
-          : null,
+      parentName:
+          json["parent"] is Map ? json["parent"]["name"]?.toString() : null,
       email: json["email"]?.toString(),
       isPrivate: json["is_private"] == true,
       followersCount: json["followers_count"] is int
@@ -352,6 +352,15 @@ class ServerChannel {
   /// stuck on "1".
   final int unreadCount;
 
+  /// The clientIds in a voice room at fetch time - the payload's
+  /// `voice_participants`, which the server fills from redis
+  /// (getAllParticipants) rather than from Postgres. Empty for a text channel.
+  ///
+  /// The IDS, not a count: they seed VoiceRoomPresence, which then keeps the
+  /// number live off the voice-joined / update_participants events. A count
+  /// could not be patched by either (see that class).
+  final List<String> voiceParticipantIds;
+
   const ServerChannel({
     required this.id,
     required this.serverId,
@@ -361,6 +370,7 @@ class ServerChannel {
     required this.type,
     this.isPrivate = false,
     this.unreadCount = 0,
+    this.voiceParticipantIds = const [],
   });
 
   bool get isVoice => type == 'voice';
@@ -391,6 +401,14 @@ class ServerChannel {
       // `privacy` field rather than the realm serializer's `is_private`.
       isPrivate: json["privacy"] == true,
       unreadCount: _unreadOf(json["messages"]),
+      voiceParticipantIds: json["voice_participants"] is List
+          ? (json["voice_participants"] as List)
+              .whereType<Map>()
+              .map((item) =>
+                  (item["clientID"] ?? item["clientId"] ?? '').toString())
+              .where((id) => id.isNotEmpty)
+              .toList()
+          : const [],
     );
   }
 }
