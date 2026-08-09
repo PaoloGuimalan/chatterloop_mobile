@@ -293,21 +293,66 @@ class NewsfeedApi {
   /// the fan-out inbox. Send an empty list forever and page 1 never moves.
   Future<PagedResult<PostPreview>> getNewsfeedRequest({
     int page = 1,
-    int pageSize = 10,
+    // 20, like web. See _kPageSize in newsfeed_view.dart - page_size caps the
+    // server's candidate query before it filters for visibility, so too small
+    // a page can come back empty with a non-zero count.
+    int pageSize = 20,
   }) async {
     try {
+      // Logged either side of the await, deliberately. The Node requests print
+      // their URL via ContentValidator and this one printed nothing at all, so
+      // a silent log was indistinguishable from three different failures: the
+      // call never being made, the viewcache read never completing, and the
+      // POST hanging. Now each of those looks different in the console.
+      if (kDebugMode) {
+        print("[newsfeed] GET page=$page size=$pageSize - reading viewcache");
+      }
       final viewCache = await _pendingViewCache();
+      if (kDebugMode) {
+        print("[newsfeed] POST ${_endpoints.userApiUrl}"
+            "${_endpoints.newsfeedDefault} viewcache=${viewCache.length}");
+      }
       final response = await _dio.post(
         _endpoints.newsfeedDefault,
         data: {'viewcache': viewCache},
         queryParameters: {'page': page, 'page_size': pageSize},
       );
-      await _flushViewCache(viewCache);
-      return PagedResult.fromDrf(response.data, PostPreview.fromJson);
+      if (kDebugMode) {
+        final body = response.data;
+        final rows = body is Map ? body['results'] : null;
+        print("[newsfeed] ${response.statusCode} "
+            "type=${body.runtimeType} "
+            "count=${body is Map ? body['count'] : 'n/a'}");
+        // count mirrors page_size on this endpoint (it counts CANDIDATES,
+        // not matches), so logging both together is what made the empty-page
+        // cause visible.
+        print("[newsfeed] rows=${rows is List ? rows.length : 'n/a'}");
+      }
+      // Parse FIRST, and never let bookkeeping cost us a page that already
+      // arrived. _flushViewCache writes to disk; if that throws, the old shape
+      // of this method fell into the catch below and returned an empty page -
+      // discarding posts the server had successfully sent. The flush is a
+      // side effect, not part of the answer.
+      final result = PagedResult.fromDrf(response.data, PostPreview.fromJson);
+      try {
+        await _flushViewCache(viewCache);
+      } catch (e) {
+        if (kDebugMode) print("[newsfeed] viewcache flush failed: $e");
+      }
+      if (kDebugMode) {
+        print("[newsfeed] parsed ${result.results.length} posts "
+            "(hasNext=${result.hasNext})");
+      }
+      return result;
     } catch (e) {
       if (kDebugMode) {
-        print("ERROR");
-        print(e);
+        // Named, and with the status when there is one - "ERROR" alone told us
+        // nothing while this was being diagnosed.
+        print("[newsfeed] request failed: $e");
+        if (e is DioException) {
+          print("[newsfeed] status=${e.response?.statusCode} "
+              "body=${e.response?.data}");
+        }
       }
       return PagedResult.empty();
     }
@@ -372,8 +417,8 @@ class NewsfeedApi {
     try {
       final response = saved
           ? await _dio.post(_endpoints.newsfeedSaves, data: {'post_id': postId})
-          : await _dio.delete(_endpoints.newsfeedSaves,
-              data: {'post_id': postId});
+          : await _dio
+              .delete(_endpoints.newsfeedSaves, data: {'post_id': postId});
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       if (kDebugMode) {

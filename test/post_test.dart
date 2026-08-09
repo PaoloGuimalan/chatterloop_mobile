@@ -19,6 +19,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart'
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/core/utils/view_cache.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
+import 'package:chatterloop_app/models/http_models/paged_result.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
@@ -91,6 +92,8 @@ PostPreview _post({
     );
 
 void main() {
+  _pagedResultTolerance();
+
   // Every feed row now mounts a VisibilityDetector (see PostViewTracker),
   // which schedules a 500ms timer whenever it paints. At the default interval
   // any test that pumps a PostItem ends with that timer still pending and
@@ -231,7 +234,11 @@ void main() {
       'entity': {
         'id': 'e2',
         'type': 'user',
-        'details': {'first_name': 'Bea', 'last_name': 'Cruz', 'username': 'bea'},
+        'details': {
+          'first_name': 'Bea',
+          'last_name': 'Cruz',
+          'username': 'bea'
+        },
       },
       'preview': [
         {'emoji': '👍', 'count': 2}
@@ -409,7 +416,8 @@ void main() {
       await pump(
         tester,
         PostCard(
-          post: _post(reactions: const [PostReactionCount(emoji: 'e1', count: 0)]),
+          post: _post(
+              reactions: const [PostReactionCount(emoji: 'e1', count: 0)]),
         ),
       );
       await tester.pump();
@@ -592,7 +600,8 @@ void main() {
       expect(find.text('Delete'), findsOneWidget);
     });
 
-    testWidgets("a stranger's archived post has no menu button", (tester) async {
+    testWidgets("a stranger's archived post has no menu button",
+        (tester) async {
       // Nothing left to offer - so no ⋯ rather than one that opens empty.
       actAs('somebody-else');
       await pump(tester, PostCard(post: _post(archived: true)));
@@ -603,8 +612,7 @@ void main() {
       // showEngagement false is the shared-post recursion mode: the embedded
       // original is a quotation, and it can be opened in its own right.
       actAs(_author.entityId);
-      await pump(
-          tester, PostCard(post: _post(), showEngagement: false));
+      await pump(tester, PostCard(post: _post(), showEngagement: false));
       expect(find.byIcon(Icons.more_horiz), findsNothing);
     });
 
@@ -664,8 +672,7 @@ void main() {
         expect(find.text("Bea"), findsOneWidget);
       });
 
-      testWidgets('your own profile starts with nobody tagged',
-          (tester) async {
+      testWidgets('your own profile starts with nobody tagged', (tester) async {
         actAs('me');
         await openComposer(tester);
 
@@ -785,8 +792,7 @@ void main() {
 
         testWidgets('switched to the page, it is yours', (tester) async {
           actAs('e-page',
-              activeEntity:
-                  const ActiveEntity(id: 'e-page', type: 'realm'));
+              activeEntity: const ActiveEntity(id: 'e-page', type: 'realm'));
           await pumpFor(tester);
 
           expect(find.text("Publish a post"), findsOneWidget);
@@ -1138,8 +1144,8 @@ void main() {
         setUserAuthT,
         UserAuth(
             false,
-            UserAccount('', '', '', '', '', null, true, true, null, null, null,
-                null,
+            UserAccount(
+                '', '', '', '', '', null, true, true, null, null, null, null,
                 personalEntityId: '')),
       ));
       expect(isOwnProfileHandle(''), isFalse);
@@ -1229,8 +1235,7 @@ void main() {
 
         // Backgrounded. The row is still mounted and still "visible" as far
         // as the detector is concerned, so nothing else closes the session.
-        tester.binding
-            .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
         await ViewCache.instance.snapshot('viewer-1');
 
         // A long spell on the lock screen, which should NOT.
@@ -1287,6 +1292,48 @@ void main() {
           greaterThan(PostViewTracker.enterCredit),
         );
       });
+    });
+  });
+}
+
+// A malformed row must cost only that row.
+//
+// PagedResult.fromDrf documented this and did the opposite: parse threw
+// through it into the calling request's catch, which returned an empty page,
+// so a single bad post blanked a whole feed on every load. Web never shows
+// this because a missing field is `undefined` in JS and rendering continues.
+void _pagedResultTolerance() {
+  group('paged result', () {
+    test('one unparseable row does not blank the page', () {
+      final page = PagedResult<String>.fromDrf({
+        'count': 3,
+        'next': null,
+        'results': [
+          {'name': 'first'},
+          {'name': null}, // parse throws on this one
+          {'name': 'third'},
+        ],
+      }, (json) => (json['name'] as String).toUpperCase());
+
+      expect(page.results, ['FIRST', 'THIRD']);
+      // count comes from the server and is NOT recomputed - it counts matching
+      // rows, not successfully parsed ones.
+      expect(page.count, 3);
+    });
+
+    test('every row failing is the only way to get an empty page', () {
+      final page = PagedResult<String>.fromDrf({
+        'count': 2,
+        'next': 'http://x/?page=2',
+        'results': [
+          {'name': null},
+          {'name': null},
+        ],
+      }, (json) => (json['name'] as String).toUpperCase());
+
+      expect(page.results, isEmpty);
+      // hasNext still reflects the server, so paging past a bad page works.
+      expect(page.hasNext, isTrue);
     });
   });
 }

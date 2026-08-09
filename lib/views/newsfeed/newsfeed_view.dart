@@ -12,16 +12,30 @@
 import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_item.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_redux/flutter_redux.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
-const int _kPageSize = 10;
+/// 20, matching web's `GetFeedRequest(range: 20)` - and it is load-bearing,
+/// not a preference.
+///
+/// The server's `count` mirrors whatever page_size is sent, because page_size
+/// caps the CANDIDATE query (fetch_friends_posts / fetch_trending_posts) before
+/// visibility filtering runs against it. Ask for 10 candidates and, if those 10
+/// all fail the filter, the response is `{count: 10, results: []}` - a page
+/// that looks like "the feed is empty" while the next 10 candidates were never
+/// asked for. That is exactly what a page's feed did on mobile at 10 while web
+/// showed posts at 20.
+const int _kPageSize = 20;
 
 class NewsfeedView extends StatefulWidget {
   const NewsfeedView({super.key});
@@ -109,6 +123,10 @@ class _NewsfeedViewState extends State<NewsfeedView>
       setState(() => _isLoadingMore = true);
     }
 
+    if (kDebugMode) {
+      print("[newsfeed-view] fetch page=$page "
+          "entity=${appStore.state.userAuth.user.entityId}");
+    }
     final result = await NewsfeedApi().getNewsfeedRequest(
       page: page,
       pageSize: _kPageSize,
@@ -141,10 +159,40 @@ class _NewsfeedViewState extends State<NewsfeedView>
 
   Future<void> _refresh() => _fetch(1);
 
+  /// The acting entity this feed's contents belong to.
+  ///
+  /// A page has its OWN feed - its own NewsfeedIndex bucket, its own follows,
+  /// its own trending pool - and the server resolves all of that from the
+  /// token's acting entity. But this screen lives in a shell branch whose
+  /// initState runs once per launch, and HomeTabScaffold's switch handling
+  /// re-inits messages, contacts, notifications and presence WITHOUT touching
+  /// the feed. So after switching, the feed kept asking nothing and showing
+  /// whatever the previous identity had - empty, if the switch happened before
+  /// the first load.
+  String? _lastEntityId;
+
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
 
+    return StoreConnector<AppState, String>(
+      distinct: true,
+      converter: (store) => store.state.userAuth.user.entityId,
+      builder: (context, entityId) {
+        if (_lastEntityId != null && _lastEntityId != entityId) {
+          // After the frame: this runs during build, and _fetch calls
+          // setState.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _fetch(1);
+          });
+        }
+        _lastEntityId = entityId;
+        return _feed(p);
+      },
+    );
+  }
+
+  Widget _feed(CLPalette p) {
     return VisibilityDetector(
       // The other flush trigger: switching tabs, or pushing any screen over
       // the feed. An IndexedStack branch that isn't selected doesn't paint,
@@ -165,55 +213,55 @@ class _NewsfeedViewState extends State<NewsfeedView>
             24,
           ),
           children: [
-          // The same composer the profiles use. No autoTag: this is your own
-          // feed, not someone's profile, so there is nobody to tag by default.
-          ProfileComposerCard.forActingEntity(
-            placeholder: "Share your thoughts…",
-            onPosted: _refresh,
-          ),
-          if (_isLoading) ...[
-            const PostItemSkeleton(),
-            const PostItemSkeleton(),
-          ] else if (_posts.isEmpty)
-            Padding(
-              // Enough height that the empty state sits in the body of the
-              // screen rather than clinging to the composer above it.
-              padding: const EdgeInsets.only(top: 48),
-              child: CLEmptyState(
-                icon: Icons.dynamic_feed_outlined,
-                iconBg: p.surface2,
-                iconColor: p.text2,
-                iconBorderColor: p.border,
-                title: "Your feed is quiet",
-                // One sentence per line. CLEmptyState's subtitle sets no
-                // maxLines, so the breaks render rather than being collapsed
-                // or clipped.
-                subtitle:
-                    "Posts from people and pages you follow show up here.\n"
-                    "Follow a few, or share something yourself to get started.",
-              ),
-            )
-          else
-            // No separators or padding of their own - PostItem already carries
-            // its own card margin, and adding spacing here would double it and
-            // leave a dead band between every row.
-            ..._posts.map((post) => PostItem(
-                  post: post,
-                  // Including your own. Their NewsfeedIndex rows are drained
-                  // by a view arriving like anyone else's, and nothing else
-                  // drains them - skip them and your own post is pinned to
-                  // the top of your feed forever.
-                  trackOwnPosts: true,
-                  onChanged: (updated) => setState(() {
-                    for (var i = 0; i < _posts.length; i++) {
-                      if (_posts[i].postId == updated.postId) {
-                        _posts[i] = updated;
+            // The same composer the profiles use. No autoTag: this is your own
+            // feed, not someone's profile, so there is nobody to tag by default.
+            ProfileComposerCard.forActingEntity(
+              placeholder: "Share your thoughts…",
+              onPosted: _refresh,
+            ),
+            if (_isLoading) ...[
+              const PostItemSkeleton(),
+              const PostItemSkeleton(),
+            ] else if (_posts.isEmpty)
+              Padding(
+                // Enough height that the empty state sits in the body of the
+                // screen rather than clinging to the composer above it.
+                padding: const EdgeInsets.only(top: 48),
+                child: CLEmptyState(
+                  icon: Icons.dynamic_feed_outlined,
+                  iconBg: p.surface2,
+                  iconColor: p.text2,
+                  iconBorderColor: p.border,
+                  title: "Your feed is quiet",
+                  // One sentence per line. CLEmptyState's subtitle sets no
+                  // maxLines, so the breaks render rather than being collapsed
+                  // or clipped.
+                  subtitle:
+                      "Posts from people and pages you follow show up here.\n"
+                      "Follow a few, or share something yourself to get started.",
+                ),
+              )
+            else
+              // No separators or padding of their own - PostItem already carries
+              // its own card margin, and adding spacing here would double it and
+              // leave a dead band between every row.
+              ..._posts.map((post) => PostItem(
+                    post: post,
+                    // Including your own. Their NewsfeedIndex rows are drained
+                    // by a view arriving like anyone else's, and nothing else
+                    // drains them - skip them and your own post is pinned to
+                    // the top of your feed forever.
+                    trackOwnPosts: true,
+                    onChanged: (updated) => setState(() {
+                      for (var i = 0; i < _posts.length; i++) {
+                        if (_posts[i].postId == updated.postId) {
+                          _posts[i] = updated;
+                        }
                       }
-                    }
-                  }),
-                  onDeleted: () => setState(() => _posts
-                      .removeWhere((entry) => entry.postId == post.postId)),
-                )),
+                    }),
+                    onDeleted: () => setState(() => _posts
+                        .removeWhere((entry) => entry.postId == post.postId)),
+                  )),
             if (_isLoadingMore) const CLLoadMoreIndicator(),
           ],
         ),
