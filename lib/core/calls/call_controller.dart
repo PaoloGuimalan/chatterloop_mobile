@@ -36,7 +36,6 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
@@ -44,9 +43,11 @@ import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/requests/webrtc_api.dart';
+import 'package:chatterloop_app/core/utils/device_token.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:mediasoup_client_flutter/mediasoup_client_flutter.dart';
 
@@ -127,7 +128,7 @@ class _TransportConnectState {
 
 enum CallEngineStatus { idle, joining, active, leaving }
 
-class CallController extends ChangeNotifier {
+class CallController extends ChangeNotifier with WidgetsBindingObserver {
   CallController._();
   static final CallController instance = CallController._();
 
@@ -322,6 +323,61 @@ class CallController extends ChangeNotifier {
   // fetch) has no mobile equivalent and is simplified away, always
   // running the normal leave-room request instead.
   // ════════════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════════
+  // App is going away - webapp's beforeunload/pagehide handler
+  // (CallWindow.tsx lines 1198-1210), which fires leaveCall with
+  // keepalive:true so the room is released as the tab closes.
+  //
+  // `detached` ONLY. `paused` is an ordinary backgrounding - putting the
+  // phone in your pocket mid-call is not leaving the call, and treating
+  // it as one would hang up on anyone who checked another app.
+  //
+  // Best-effort by nature, and worth being honest about: on a swipe-kill
+  // Android often terminates the process without ever delivering
+  // `detached`, and even when it does, the isolate can die before the
+  // request reaches the socket (the dio interceptor alone awaits a token
+  // read, a device-token read and a nonce build). This is the FAST PATH
+  // for a clean close, not the guarantee - the guarantee is the server's
+  // ICE-consent sweep, which needs nothing from this process at all.
+  // ════════════════════════════════════════════════════════════════════
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.detached) return;
+    if (status == CallEngineStatus.idle || conversationID == null) return;
+    if (kDebugMode) {
+      print("[CallController] detached while in $conversationID - "
+          "firing keepalive leave");
+    }
+    unawaited(_leaveRoomKeepalive());
+  }
+
+  /// The leave that does not wait for us: the server answers before doing
+  /// any cleanup, so nothing here depends on the response arriving.
+  ///
+  /// Deliberately NOT leaveCall() - that tears down transports, dispatches
+  /// Redux and drives navigation, all of which is pointless work in a
+  /// process that is being killed and any step of which could throw first
+  /// and lose the one request that matters.
+  Future<void> _leaveRoomKeepalive() async {
+    final conversation = conversationID;
+    if (conversation == null) return;
+    try {
+      final recepients =
+          endCallRecepients.isNotEmpty ? endCallRecepients : members;
+      await _dio.post(_endpoints.webrtcLeaveRoomKeepalive, data: {
+        'conversationID': conversation,
+        'clientId': clientId,
+        if (recepients.isNotEmpty) 'recipients': recepients,
+        if (connectTransportState.instance != null ||
+            connectRecvTransportState.instance != null)
+          'instance': connectTransportState.instance ??
+              connectRecvTransportState.instance,
+      });
+    } catch (e) {
+      if (kDebugMode) print("[CallController] keepalive leave failed: $e");
+    }
+  }
+
   Future<void> leaveCall() async {
     if (kDebugMode) {
       print("[CallController] leaveCall() called (hasLeft=$_hasLeft, "
@@ -372,6 +428,11 @@ class CallController extends ChangeNotifier {
     } catch (e) {
       if (kDebugMode) print("[CallController] cleanup failed: $e");
     }
+
+    // Paired with the addObserver in joinCall. Idempotent, which matters here:
+    // leaveCall is reachable from several paths and removing an observer that
+    // was never added is a no-op.
+    WidgetsBinding.instance.removeObserver(this);
 
     status = CallEngineStatus.idle;
     conversationID = null;
@@ -1235,7 +1296,7 @@ class CallController extends ChangeNotifier {
     } catch (e) {
       if (kDebugMode) {
         print("[CallController] Consume response handler failed: $e");
-        }
+      }
     } finally {
       pendingConsumeResponses.remove(next);
       _isConsuming = false;
@@ -1505,7 +1566,7 @@ class CallController extends ChangeNotifier {
       case "transport-connect-response":
         if (kDebugMode) {
           print("[CallController] transport-connect-response: $data");
-          }
+        }
         return;
       case "participant-joined":
         if (data['conversationID'] == conversationID &&
@@ -1578,10 +1639,9 @@ class CallController extends ChangeNotifier {
             if (action == "left" &&
                 leftClientId != null &&
                 leftClientId != clientId) {
-              final known =
-                  joinedParticipants.any((p) => p.clientId == leftClientId) ||
-                      consumers.values
-                          .any((c) => c.ownerClientId == leftClientId);
+              final known = joinedParticipants
+                      .any((p) => p.clientId == leftClientId) ||
+                  consumers.values.any((c) => c.ownerClientId == leftClientId);
               if (known) {
                 joinedParticipants
                     .removeWhere((p) => p.clientId == leftClientId);
@@ -1741,7 +1801,7 @@ class CallController extends ChangeNotifier {
       case "consume-transport-error":
         if (kDebugMode) {
           print("[CallController] Consume failed: ${event.event} $data");
-          }
+        }
         return;
     }
   }
@@ -1815,8 +1875,11 @@ class CallController extends ChangeNotifier {
     lastError = null;
     _hasJoined = false;
     _hasLeft = false;
-    _clientId =
-        "mobile-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(99999)}";
+    // Stable per install - see resolveCallClientId. It used to be minted fresh
+    // here ("mobile-<millis>-<rand>"), which made every join look like a
+    // stranger to the server and put the reconnect/evict path permanently out
+    // of reach.
+    _clientId = await resolveCallClientId();
     notifyListeners();
 
     if (kDebugMode) {
@@ -1826,6 +1889,10 @@ class CallController extends ChangeNotifier {
     }
 
     _sseSub ??= eventBus.on<SSEModel>().listen(_onSseEvent);
+    // Only while a call is live - see didChangeAppLifecycleState. Registering
+    // in the constructor would leave a singleton observing app lifecycle for
+    // the whole session to answer a question that only matters mid-call.
+    WidgetsBinding.instance.addObserver(this);
 
     // initLocalMedia (useEffect #7) - kicked off independently, same as
     // webapp firing it on mount rather than sequencing it after the join.

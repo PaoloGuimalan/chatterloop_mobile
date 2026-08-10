@@ -356,6 +356,12 @@ class Endpoints {
   String webrtcConsume = '/webrtc/consume';
   String webrtcCloseProducer = '/webrtc/close-producer';
   String webrtcLeaveRoom = '/webrtc/leave-room';
+
+  /// Same cleanup as leave-room, but the server responds BEFORE doing any of
+  /// it - for the one caller that cannot wait, an app being killed. It also
+  /// skips the nonce check (leaving is idempotent, so replaying it is
+  /// harmless), which matters because there may be no time to build one.
+  String webrtcLeaveRoomKeepalive = '/webrtc/leave-room-keepalive';
   String webrtcParticipantStatus = '/webrtc/participant-status';
   String webrtcReconnect = '/webrtc/reconnect';
 
