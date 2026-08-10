@@ -229,123 +229,129 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
   Widget _directory(CLPalette p) {
     final searching = _search.text.trim().isNotEmpty;
 
-    return RefreshIndicator(
-      onRefresh: () => _fetch(1),
-      child: ListView(
-        controller: _scroll,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(
-            CLSpacing.contentGutter, 14, CLSpacing.contentGutter, 24),
-        children: [
-          CLField(
-            controller: _search,
-            placeholder: 'Search something...',
-            icon: Icons.search,
-            onChanged: _onSearchChanged,
-          ),
-          const SizedBox(height: 12),
-          CLBtn(
-            label: 'Create Server',
-            iconL: Icons.add,
-            variant: CLBtnVariant.gold,
-            size: CLBtnSize.md,
-            block: true,
-            onPressed: _create,
-          ),
-          const SizedBox(height: 18),
-
-          // Section header with the result count on the right, as web has it.
-          Row(
-            children: [
-              Expanded(
-                child: Text(searching ? 'Results' : 'Top Servers',
-                    style: TextStyle(
-                        fontSize: CLType.bodySm,
-                        fontWeight: FontWeight.w700,
-                        color: p.text)),
-              ),
-              if (!_loading)
-                Text('$_count result${_count == 1 ? '' : 's'}',
-                    style: TextStyle(fontSize: CLType.meta, color: p.text2)),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          if (_loading)
-            // Card-shaped, in the same grid: a list-row skeleton here promised a
-            // layout the loaded state does not have, so the content jumped as
-            // it arrived.
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 0.78,
-              ),
-              itemCount: 4,
-              itemBuilder: (context, index) => const ServerCardSkeleton(),
-            )
-          else if (_servers.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 24),
-              child: CLEmptyState(
-                icon: searching ? Icons.search_off : Icons.dns_outlined,
-                iconBg: p.surface2,
-                iconColor: p.text2,
-                iconBorderColor: p.border,
-                // compact: this sits under a heading and a button rather than
-                // owning the screen.
-                compact: true,
-                title: searching ? 'No matches' : 'No servers yet',
-                subtitle: searching
-                    ? 'No server matching that name turned up.'
-                        ' Try a different name.'
-                    : 'Public servers show up here as they are created.'
-                        ' Create one to get started.',
-              ),
-            )
-          else
-            // Two up. Full-width cards read as banners on a phone and only fit
-            // one server per screenful; at this size the directory is
-            // browsable, which is what a directory is for.
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                // Slightly taller than wide. 0.66 made each card half again as
-                // tall as its width, which read as a column rather than a card.
-                // Tuned WITH the content below - banner height and description
-                // lines - because the cell is fixed and the content has to fit
-                // inside it.
-                //
-                // 0.78, down from 0.82 when the card had no description at
-                // all. Not lower: the description shrinks rather than
-                // overflowing (see the Expanded in ServerCard), so a taller card
-                // only buys the third line of a long description - and it costs
-                // every card the height, which is what "do not make them taller"
-                // rules out. Three lines show when the cell has room for them.
-                childAspectRatio: 0.78,
-              ),
-              itemCount: _servers.length,
-              itemBuilder: (context, index) {
-                final server = _servers[index];
-                return ServerCard(
-                  server: server,
-                  isMember: server.isMember || _joined.contains(server.id),
-                  busy: _busyId == server.id,
-                  onOpen: () => widget.onOpenServer(server),
-                  onJoin: () => _join(server),
-                );
-              },
+    // The directory is ONE panel filling the pane beside the rail - search,
+    // Create Server and the ranked list are a single region, so they share a
+    // card rather than floating as three.
+    return CLPanel(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+      clipBehavior: Clip.antiAlias,
+      child: RefreshIndicator(
+        onRefresh: () => _fetch(1),
+        child: ListView(
+          controller: _scroll,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 24),
+          children: [
+            CLField(
+              controller: _search,
+              placeholder: 'Search something...',
+              icon: Icons.search,
+              onChanged: _onSearchChanged,
             ),
+            const SizedBox(height: 12),
+            CLBtn(
+              label: 'Create Server',
+              iconL: Icons.add,
+              variant: CLBtnVariant.gold,
+              size: CLBtnSize.md,
+              block: true,
+              onPressed: _create,
+            ),
+            const SizedBox(height: 18),
 
-          if (_loadingMore) const CLLoadMoreIndicator(),
-        ],
+            // Section header with the result count on the right, as web has it.
+            Row(
+              children: [
+                Expanded(
+                  child: Text(searching ? 'Results' : 'Top Servers',
+                      style: TextStyle(
+                          fontSize: CLType.bodySm,
+                          fontWeight: FontWeight.w700,
+                          color: p.text)),
+                ),
+                if (!_loading)
+                  Text('$_count result${_count == 1 ? '' : 's'}',
+                      style: TextStyle(fontSize: CLType.meta, color: p.text2)),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            if (_loading)
+              // Card-shaped, in the same grid: a list-row skeleton here promised a
+              // layout the loaded state does not have, so the content jumped as
+              // it arrived.
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 0.78,
+                ),
+                itemCount: 4,
+                itemBuilder: (context, index) => const ServerCardSkeleton(),
+              )
+            else if (_servers.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 24),
+                child: CLEmptyState(
+                  icon: searching ? Icons.search_off : Icons.dns_outlined,
+                  iconBg: p.surface2,
+                  iconColor: p.text2,
+                  iconBorderColor: p.border,
+                  // compact: this sits under a heading and a button rather than
+                  // owning the screen.
+                  compact: true,
+                  title: searching ? 'No matches' : 'No servers yet',
+                  subtitle: searching
+                      ? 'No server matching that name turned up.'
+                          ' Try a different name.'
+                      : 'Public servers show up here as they are created.'
+                          ' Create one to get started.',
+                ),
+              )
+            else
+              // Two up. Full-width cards read as banners on a phone and only fit
+              // one server per screenful; at this size the directory is
+              // browsable, which is what a directory is for.
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  // Slightly taller than wide. 0.66 made each card half again as
+                  // tall as its width, which read as a column rather than a card.
+                  // Tuned WITH the content below - banner height and description
+                  // lines - because the cell is fixed and the content has to fit
+                  // inside it.
+                  //
+                  // 0.78, down from 0.82 when the card had no description at
+                  // all. Not lower: the description shrinks rather than
+                  // overflowing (see the Expanded in ServerCard), so a taller card
+                  // only buys the third line of a long description - and it costs
+                  // every card the height, which is what "do not make them taller"
+                  // rules out. Three lines show when the cell has room for them.
+                  childAspectRatio: 0.78,
+                ),
+                itemCount: _servers.length,
+                itemBuilder: (context, index) {
+                  final server = _servers[index];
+                  return ServerCard(
+                    server: server,
+                    isMember: server.isMember || _joined.contains(server.id),
+                    busy: _busyId == server.id,
+                    onOpen: () => widget.onOpenServer(server),
+                    onJoin: () => _join(server),
+                  );
+                },
+              ),
+
+            if (_loadingMore) const CLLoadMoreIndicator(),
+          ],
+        ),
       ),
     );
   }
@@ -391,10 +397,13 @@ class ServerCard extends StatelessWidget {
       // leaves the content squeezed against both edges. This is what makes it
       // read as a card on a phone rather than a full-width band.
       // No margin - the grid spaces these now.
+      // Nested INSIDE a panel, so it steps down to surface2 and drops its
+      // border rather than becoming a second card: a panel on a panel reads as
+      // two objects at the same depth, which is what makes the elevation stop
+      // meaning anything. See CLPanel.
       decoration: BoxDecoration(
-        color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.row),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -568,10 +577,13 @@ class ServerCardSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = cl(context);
     return Container(
+      // Nested INSIDE a panel, so it steps down to surface2 and drops its
+      // border rather than becoming a second card: a panel on a panel reads as
+      // two objects at the same depth, which is what makes the elevation stop
+      // meaning anything. See CLPanel.
       decoration: BoxDecoration(
-        color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.row),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(

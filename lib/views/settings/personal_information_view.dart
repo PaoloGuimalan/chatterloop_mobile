@@ -28,8 +28,7 @@ class PersonalInformationScreen extends StatefulWidget {
       _PersonalInformationScreenState();
 }
 
-class _PersonalInformationScreenState
-    extends State<PersonalInformationScreen> {
+class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
   late UserAccount _original;
   bool _initialized = false;
   bool _saving = false;
@@ -198,13 +197,14 @@ class _PersonalInformationScreenState
         _initFrom(state.userAuth.user);
         return CLScreen(
           backgroundColor: p.bg,
-          appBar: AppBar(title: const Text('Personal Information')),
+          appBar: CLPanelAppBar(title: const Text('Personal Information')),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _sectionHeader(p, 'Name', 'Change your name how you prefer it.'),
+                _sectionHeader(
+                    p, 'Name', 'Change your name how you prefer it.'),
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(
@@ -300,7 +300,9 @@ class _PersonalInformationScreenState
         children: [
           Text(title,
               style: TextStyle(
-                  fontSize: CLType.title, fontWeight: FontWeight.w700, color: p.text)),
+                  fontSize: CLType.title,
+                  fontWeight: FontWeight.w700,
+                  color: p.text)),
           const SizedBox(height: 2),
           Text(desc, style: TextStyle(fontSize: CLType.bodySm, color: p.text2)),
         ],
@@ -317,8 +319,7 @@ class _PersonalInformationScreenState
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: active ? p.brand : p.surface,
-            border:
-                Border.all(color: active ? Colors.transparent : p.border2),
+            border: Border.all(color: active ? Colors.transparent : p.border2),
             borderRadius: BorderRadius.circular(CLRadii.sm),
           ),
           child: Text(label,
@@ -343,7 +344,8 @@ class _PersonalInformationScreenState
       ),
       child: DropdownButton<String>(
         value: value,
-        hint: Text(label, style: TextStyle(color: p.text3, fontSize: CLType.title)),
+        hint: Text(label,
+            style: TextStyle(color: p.text3, fontSize: CLType.title)),
         isExpanded: true,
         underline: const SizedBox.shrink(),
         dropdownColor: p.surface,

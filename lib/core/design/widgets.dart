@@ -894,9 +894,10 @@ class CLIconBtn extends StatelessWidget {
       iconSize: iconSize,
       icon: Icon(icon, color: color ?? p.text2),
       style: IconButton.styleFrom(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(CLRadii.sm),
-        ),
+        // Round, not the old 10px square: every tap target in the redesign is
+        // either a circle or a pill, and a rounded square reads as a small
+        // card sitting inside the panel it is already on.
+        shape: const CircleBorder(),
         minimumSize: Size(size, size),
         padding: EdgeInsets.zero,
       ),
@@ -957,8 +958,248 @@ class CLScreen extends StatelessWidget {
   }
 }
 
+/// A pushed screen's header, drawn as a floating panel instead of a bar.
+///
+/// Same contents an [AppBar] would render - back affordance, title, actions -
+/// but seated in a [CLPanel] with the canvas gutter around it, so a pushed
+/// screen's header matches the tab shell's header and every other region of
+/// every screen. The back arrow moves INSIDE the panel; the platform's own
+/// back gesture is untouched and stays the primary way out.
+///
+/// Exposes the subset of AppBar's API the app actually uses, so call sites
+/// swap one-for-one. [elevation] and [surfaceTintColor] are deliberately
+/// absent: a panel's lift comes from [CLPalette.panelShadow], and there is no
+/// scrolled-under state to tint when the header does not touch the content.
+class CLPanelAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final Widget? title;
+  final List<Widget>? actions;
+  final Widget? leading;
+  final bool automaticallyImplyLeading;
+
+  /// Overrides the panel fill - for a header that has to carry a subtree's
+  /// accent rather than the neutral surface.
+  final Color? backgroundColor;
+
+  const CLPanelAppBar({
+    super.key,
+    this.title,
+    this.actions,
+    this.leading,
+    this.automaticallyImplyLeading = true,
+    this.backgroundColor,
+  });
+
+  /// The shared header height, plus the canvas inset above and the gutter
+  /// below. Scaffold adds the status bar height on top of this.
+  @override
+  Size get preferredSize => const Size.fromHeight(CLSpacing.headerPanelHeight +
+      CLSpacing.canvasTop +
+      CLSpacing.canvasGutter);
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final Widget? back = leading ??
+        (automaticallyImplyLeading && canPop
+            ? CLIconBtn(
+                icon: Icons.arrow_back_ios_new,
+                iconSize: 18,
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                onPressed: () => Navigator.maybePop(context),
+              )
+            : null);
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+            CLSpacing.canvasGutter,
+            CLSpacing.canvasTop,
+            CLSpacing.canvasGutter,
+            CLSpacing.canvasGutter),
+        child: CLPanel(
+          color: backgroundColor,
+          padding: CLSpacing.headerPanelPadding
+              .copyWith(left: back == null ? 16 : 4),
+          child: SizedBox(
+            // The content box, so the panel lands on headerPanelHeight exactly
+            // rather than on whatever the tallest action happens to measure.
+            height: CLSpacing.headerPanelHeight - 12,
+            child: Row(
+              children: [
+                if (back != null) back,
+                if (back != null) const SizedBox(width: 4),
+                Expanded(
+                  child: DefaultTextStyle.merge(
+                    style: TextStyle(
+                      fontSize: CLType.screenTitle,
+                      fontWeight: FontWeight.w700,
+                      color: p.text,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    child: title ?? const SizedBox.shrink(),
+                  ),
+                ),
+                ...?actions,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A control that floats ON an image - the back button and menu over a
+/// profile's cover photo.
+///
+/// Translucent white rather than the surface colour, because it has to stay
+/// legible over an arbitrary photo in either theme; the design specifies
+/// exactly this (`rgba(255,255,255,.92)`).
+class CLCoverButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final String? tooltip;
+
+  const CLCoverButton(
+      {super.key, required this.icon, this.onPressed, this.tooltip});
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Material(
+      color: Colors.white.withValues(alpha: 0.92),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          // Always the dark ink: the fill is white in BOTH themes, so the
+          // palette's text colour would vanish into it in dark mode.
+          child: Icon(icon, size: 18, color: CLColors.textLight),
+        ),
+      ),
+    );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+  }
+}
+
 // -------- Card ---------------------------------------------------------------
 
+/// A floating panel: the one container the whole app is built from.
+///
+/// Every region of every screen - a header, a list, a composer, a settings
+/// group, the servers rail - is one of these, floating on [CLPalette.bg] with
+/// [CLSpacing.canvasGutter] between it and its neighbours. Panels do not
+/// nest: content inside one steps DOWN to `surface2` rather than becoming a
+/// second panel, which is what keeps the elevation meaningful.
+///
+/// Deliberately carries no border. See [CLPalette.panelShadow].
+class CLPanel extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  /// Pill instead of the 26px card - for the bottom nav bar, the one panel
+  /// whose contents are a single row of circular targets.
+  final double radius;
+
+  /// Overrides the panel fill. The rail and a few accent surfaces sit on
+  /// `surface2` while still being a panel in their own right.
+  final Color? color;
+
+  final Clip clipBehavior;
+
+  const CLPanel({
+    super.key,
+    required this.child,
+    this.padding = EdgeInsets.zero,
+    this.radius = CLRadii.panel,
+    this.color,
+    this.clipBehavior = Clip.none,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Container(
+      padding: padding,
+      clipBehavior: clipBehavior,
+      decoration: BoxDecoration(
+        color: color ?? p.surface,
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: p.panelShadow,
+      ),
+      child: child,
+    );
+  }
+}
+
+/// The canvas a screen's panels sit on: the background plus the margin that
+/// runs around and between them.
+///
+/// [children] are laid out in a column with a gutter between each, so a screen
+/// reads as a stack of panels rather than as one scroll with rules in it. The
+/// top inset is smaller than the sides - see [CLSpacing.canvasTop].
+class CLCanvas extends StatelessWidget {
+  final List<Widget> children;
+
+  /// Set false for a canvas that is already inside a scaffold body which has
+  /// consumed the top inset (a pushed screen under an AppBar).
+  final bool topInset;
+
+  final CrossAxisAlignment crossAxisAlignment;
+
+  const CLCanvas({
+    super.key,
+    required this.children,
+    this.topInset = true,
+    this.crossAxisAlignment = CrossAxisAlignment.stretch,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const g = CLSpacing.canvasGutter;
+    final spaced = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      if (i > 0) spaced.add(const SizedBox(height: g));
+      spaced.add(children[i]);
+    }
+    return Padding(
+      padding: EdgeInsets.fromLTRB(g, topInset ? CLSpacing.canvasTop : 0, g, g),
+      child: Column(crossAxisAlignment: crossAxisAlignment, children: spaced),
+    );
+  }
+}
+
+/// A label that sits ON the canvas, between two panels - "Account",
+/// "Preferences". Not inside a panel: that is the whole distinction between a
+/// group's caption and a heading belonging to the group's first row.
+class CLCanvasLabel extends StatelessWidget {
+  final String text;
+  const CLCanvasLabel(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, bottom: 2),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: CLType.caption,
+          fontWeight: FontWeight.w700,
+          color: p.text2,
+        ),
+      ),
+    );
+  }
+}
+
+/// Retained as the name the app's screens already call, now drawn as a
+/// [CLPanel]. Keeping the alias means the container change reached every
+/// existing caller without thirteen files having to be re-typed.
 class CLCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -969,24 +1210,7 @@ class CLCard extends StatelessWidget {
       this.padding = const EdgeInsets.all(14)});
 
   @override
-  Widget build(BuildContext context) {
-    final p = cl(context);
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 3,
-              offset: const Offset(0, 1)),
-        ],
-      ),
-      child: child,
-    );
-  }
+  Widget build(BuildContext context) => CLPanel(padding: padding, child: child);
 }
 
 // -------- Badge --------------------------------------------------------------

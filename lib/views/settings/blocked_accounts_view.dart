@@ -44,8 +44,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
     setState(() {
       _unblockingId = null;
       if (ok) {
-        _accounts =
-            _accounts.where((a) => a.entityID != acc.entityID).toList();
+        _accounts = _accounts.where((a) => a.entityID != acc.entityID).toList();
       }
     });
   }
@@ -55,7 +54,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
     final p = cl(context);
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text('Blocked Accounts')),
+      appBar: CLPanelAppBar(title: const Text('Blocked Accounts')),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -113,7 +112,9 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  acc.displayName.isEmpty ? '@${acc.username}' : acc.displayName,
+                  acc.displayName.isEmpty
+                      ? '@${acc.username}'
+                      : acc.displayName,
                   style: TextStyle(
                       fontSize: CLType.bodySm,
                       fontWeight: FontWeight.w600,
@@ -149,7 +150,8 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
             borderRadius: BorderRadius.circular(CLRadii.sm)),
       ),
       child: Text(busy ? 'Unblocking…' : 'Unblock',
-          style: const TextStyle(fontSize: CLType.caption, fontWeight: FontWeight.w600)),
+          style: const TextStyle(
+              fontSize: CLType.caption, fontWeight: FontWeight.w600)),
     );
   }
 }

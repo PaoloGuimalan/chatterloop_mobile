@@ -188,7 +188,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
         return CLScreen(
           backgroundColor: p.bg,
-          appBar: AppBar(title: const Text("Edit Profile")),
+          appBar: CLPanelAppBar(title: const Text("Edit Profile")),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -229,7 +229,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(infoMessage!,
-                        style: TextStyle(color: p.brand, fontSize: CLType.caption)),
+                        style: TextStyle(
+                            color: p.brand, fontSize: CLType.caption)),
                   ),
                 const SizedBox(height: 20),
                 CLField(
@@ -304,7 +305,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: Text(errorMessage!,
-                        style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
+                        style:
+                            TextStyle(color: p.pink, fontSize: CLType.bodySm)),
                   ),
                 const SizedBox(height: 18),
                 CLBtn(

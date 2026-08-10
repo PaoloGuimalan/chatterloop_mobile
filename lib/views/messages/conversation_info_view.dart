@@ -77,7 +77,7 @@ class ConversationInfoScreen extends StatelessWidget {
       // right below it - a header saying "Conversation info" above that is
       // labelling something already unmistakable, and it competes with the
       // name for the eye. The back button is what the bar is here for.
-      appBar: AppBar(),
+      appBar: const CLPanelAppBar(),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
             CLSpacing.contentGutter, 16, CLSpacing.contentGutter, 24),

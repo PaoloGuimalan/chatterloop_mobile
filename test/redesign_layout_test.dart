@@ -148,6 +148,7 @@ Future<void> _pump(WidgetTester tester, Widget child) async {
 
 void main() {
   _rosterIdContracts();
+  _floatingPanelContracts();
 
   testWidgets('Explore rails and cards lay out at 360px', (tester) async {
     await _pump(
@@ -943,6 +944,149 @@ void _rosterIdContracts() {
       // And the server-specific add, which fans out to the public channels.
       expect(endpoints.addNewMemberToServer, '/s/addnewmembertoserver');
       expect(endpoints.addNewMember, '/m/addnewmember');
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Floating panels
+//
+// The redesign moved every screen onto a canvas with a gutter, and the failure
+// mode that introduced is a DOUBLE inset: a widget that forced itself to the
+// full SCREEN width, sitting inside a parent that had just been given the
+// gutter as padding, overflows by exactly twice the gutter. That is not a
+// cosmetic difference - it trips a RenderFlex/paint overflow, so it is worth
+// pinning at the narrowest width the app supports rather than looking for it.
+// ---------------------------------------------------------------------------
+
+/// Pumps [child] inside a canvas the way HomeTabScaffold and the pushed screens
+/// now do, at 360px. Any overflow inside fails the test, because pumpWidget
+/// reports layout-time overflow as a test exception.
+Future<void> _pumpOnCanvas(WidgetTester tester, Widget child) async {
+  tester.view.physicalSize = const Size(360, 780);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(MaterialApp(
+    theme: buildCLTheme(Brightness.light),
+    home: Scaffold(
+      backgroundColor: CLPalette.light.bg,
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: CLSpacing.canvasGutter),
+        child: child,
+      ),
+    ),
+  ));
+  await tester.pump();
+}
+
+void _floatingPanelContracts() {
+  group('floating panels', () {
+    testWidgets('a panel fits the canvas at 360px', (tester) async {
+      await _pumpOnCanvas(
+        tester,
+        const Column(
+          // stretch, as every real screen's canvas column does - a panel is a
+          // region, so it takes the width it is given rather than its content's.
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            CLPanel(
+              padding: EdgeInsets.all(12),
+              child: Text('A panel takes the width its canvas allows'),
+            ),
+          ],
+        ),
+      );
+
+      // Exactly the screen minus a gutter each side. A panel that measured the
+      // full 360 would be the double-inset bug.
+      final size = tester.getSize(find.byType(CLPanel));
+      expect(size.width, 360 - CLSpacing.canvasGutter * 2);
+    });
+
+    testWidgets('every header panel is the same height', (tester) async {
+      // The four headers - pushed screen, conversation, voice room, server pane
+      // - were each padded to whatever they happened to contain and drifted to
+      // 52/56/64. They read as one object moving between screens, so they have
+      // to measure as one.
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+          appBar: CLPanelAppBar(title: Text('Settings')),
+          body: SizedBox.shrink(),
+        ),
+      ));
+      await tester.pump();
+
+      expect(
+        tester.getSize(find.byType(CLPanel)).height,
+        CLSpacing.headerPanelHeight,
+      );
+    });
+
+    testWidgets('a canvas label sits outside its panel', (tester) async {
+      // The settings group captions are ON the canvas, not inside the card -
+      // that distinction is what separates a group's caption from a heading
+      // belonging to the group's first row.
+      await _pumpOnCanvas(
+        tester,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const CLCanvasLabel('Account'),
+            CLPanel(
+                padding: const EdgeInsets.all(12), child: const Text('Row')),
+          ],
+        ),
+      );
+
+      final label = tester.getRect(find.text('Account'));
+      final panel = tester.getRect(find.byType(CLPanel));
+      expect(label.bottom, lessThanOrEqualTo(panel.top));
+      // And indented past the panel's edge, so it lines up with the text
+      // inside the card rather than with the card's own border.
+      expect(label.left, greaterThan(panel.left));
+    });
+
+    testWidgets('panels do not nest', (tester) async {
+      // Content inside a panel steps DOWN to surface2 rather than becoming a
+      // second card. Pinned on the real widget that regressed: a directory
+      // card, which used to carry its own border and elevation while sitting
+      // inside the directory panel.
+      await _pumpOnCanvas(
+        tester,
+        CLPanel(
+          padding: const EdgeInsets.all(14),
+          child: ServerCard(
+            server: const RealmProfile(
+              id: 'srv-1',
+              entityId: 'ent-1',
+              name: 'Neon Devs',
+              type: 'server',
+              followersCount: 0,
+              membersCount: 12,
+              isVerified: false,
+              isAdmin: false,
+            ),
+            isMember: false,
+            busy: false,
+            onOpen: () {},
+            onJoin: () {},
+          ),
+        ),
+      );
+
+      final inner = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byType(ServerCard),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      final decoration = inner.decoration as BoxDecoration;
+      expect(decoration.color, CLPalette.light.surface2);
+      expect(decoration.border, isNull);
+      expect(decoration.boxShadow, anyOf(isNull, isEmpty));
     });
   });
 }

@@ -91,6 +91,16 @@ class ProfileHeader extends StatelessWidget {
   final Widget? actions;
   final bool online;
 
+  /// Chrome that floats ON the cover photo - the back button on the left, the
+  /// screen's own menu on the right.
+  ///
+  /// It lives here rather than in an AppBar because the identity block is a
+  /// PANEL now: an app bar would sit above the panel's rounded top edge, on the
+  /// canvas, where the design puts these inside the cover itself. Passing them
+  /// in keeps the two profile screens' differing actions out of this widget.
+  final Widget? overlayLeading;
+  final Widget? overlayActions;
+
   const ProfileHeader({
     super.key,
     required this.id,
@@ -108,6 +118,8 @@ class ProfileHeader extends StatelessWidget {
     this.birthdateLabel,
     this.actions,
     this.online = false,
+    this.overlayLeading,
+    this.overlayActions,
   });
 
   Widget _coverPlaceholder(CLPalette p) => Container(
@@ -147,134 +159,154 @@ class ProfileHeader extends StatelessWidget {
         joinedLabel != null ||
         birthdateLabel != null;
 
+    // The identity block - cover, avatar, name, handle - is ONE panel, and the
+    // cover is the panel's own top edge rather than a full-bleed band running
+    // to the screen edges. That is why the cover no longer rounds its own
+    // corners: the panel's clip does it, on all four.
     return Column(
       children: [
-        // Tall enough to CONTAIN the avatar's overhang.
-        //
-        // The avatar used to be positioned at bottom:-(size/2), hanging outside
-        // the Stack - and Flutter does not hit-test anything drawn outside its
-        // parent's bounds, so the whole lower half of the avatar (including the
-        // camera badge on its corner) was visible but untappable. clipBehavior
-        // .none makes it VISIBLE, not interactive; that distinction is the bug.
-        SizedBox(
-          height: _coverHeight + _avatarSize / 2 + 4,
-          child: Stack(
-            clipBehavior: Clip.none,
+        CLPanel(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
             children: [
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: ClipRRect(
-                  borderRadius:
-                      const BorderRadius.vertical(bottom: Radius.circular(20)),
-                  child: (coverSrc != null &&
-                          coverSrc!.isNotEmpty &&
-                          coverSrc != "none")
-                      ? CLNetworkImage(
-                          src: coverSrc!,
-                          width: double.infinity,
-                          height: _coverHeight,
-                          errorBuilder: (_) => _coverPlaceholder(p),
-                        )
-                      : _coverPlaceholder(p),
-                ),
-              ),
-              if (onChangeCover != null)
-                Positioned(
-                  right: 12,
-                  top: MediaQuery.of(context).padding.top + 8,
-                  child: _MediaEditButton(
-                    onTap: onChangeCover!,
-                    tooltip: "Change cover photo",
-                  ),
-                ),
-              Positioned(
-                top: _coverHeight - _avatarSize / 2,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration:
-                        BoxDecoration(shape: BoxShape.circle, color: p.bg),
-                    child: Stack(
-                      children: [
-                        CLAvatar(
-                            id: id,
-                            name: displayName,
-                            src: avatarSrc,
-                            size: _avatarSize,
-                            online: online),
-                        if (onChangeAvatar != null)
-                          // INSIDE the avatar's own box, not hanging off its
-                          // corner - same hit-testing rule as above.
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: _MediaEditButton(
-                              onTap: onChangeAvatar!,
-                              tooltip: "Change profile picture",
-                              compact: true,
-                            ),
-                          ),
-                      ],
+              // Tall enough to CONTAIN the avatar's overhang.
+              //
+              // The avatar used to be positioned at bottom:-(size/2), hanging outside
+              // the Stack - and Flutter does not hit-test anything drawn outside its
+              // parent's bounds, so the whole lower half of the avatar (including the
+              // camera badge on its corner) was visible but untappable. clipBehavior
+              // .none makes it VISIBLE, not interactive; that distinction is the bug.
+              SizedBox(
+                height: _coverHeight + _avatarSize / 2 + 4,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: (coverSrc != null &&
+                              coverSrc!.isNotEmpty &&
+                              coverSrc != "none")
+                          ? CLNetworkImage(
+                              src: coverSrc!,
+                              width: double.infinity,
+                              height: _coverHeight,
+                              errorBuilder: (_) => _coverPlaceholder(p),
+                            )
+                          : _coverPlaceholder(p),
                     ),
-                  ),
+                    // Inset from the panel's corner, NOT from the status bar: the
+                    // panel starts below the status bar now, so the old
+                    // `padding.top + 8` pushed these a whole notch down the cover.
+                    if (overlayLeading != null)
+                      Positioned(left: 12, top: 12, child: overlayLeading!),
+                    if (overlayActions != null || onChangeCover != null)
+                      Positioned(
+                        right: 12,
+                        top: 12,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (overlayActions != null) overlayActions!,
+                            if (onChangeCover != null)
+                              _MediaEditButton(
+                                onTap: onChangeCover!,
+                                tooltip: "Change cover photo",
+                              ),
+                          ],
+                        ),
+                      ),
+                    Positioned(
+                      top: _coverHeight - _avatarSize / 2,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle, color: p.bg),
+                          child: Stack(
+                            children: [
+                              CLAvatar(
+                                  id: id,
+                                  name: displayName,
+                                  src: avatarSrc,
+                                  size: _avatarSize,
+                                  online: online),
+                              if (onChangeAvatar != null)
+                                // INSIDE the avatar's own box, not hanging off its
+                                // corner - same hit-testing rule as above.
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: _MediaEditButton(
+                                    onTap: onChangeAvatar!,
+                                    tooltip: "Change profile picture",
+                                    compact: true,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              // Just breathing room now - the overhang is inside the SizedBox above
+              // rather than hanging past it, so this no longer reserves space for it.
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        displayName.isEmpty ? username : displayName,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: p.text,
+                            fontSize: CLType.screenTitle,
+                            fontWeight: FontWeight.w800),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (isBadged) ...[
+                      const SizedBox(width: 5),
+                      Icon(Icons.verified, size: 18, color: p.brand),
+                    ],
+                    if (isPrivate) ...[
+                      const SizedBox(width: 5),
+                      Icon(Icons.lock, size: 16, color: p.text2),
+                    ],
+                  ],
+                ),
+              ),
+              if (email != null && email!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(email!,
+                    style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
+              ],
+              const SizedBox(height: 2),
+              Text("@$username",
+                  style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
+              // Closes the identity panel. The name block needs a floor inside
+              // the card, the way the cover gives it a ceiling.
+              const SizedBox(height: 16),
             ],
           ),
         ),
-        // Just breathing room now - the overhang is inside the SizedBox above
-        // rather than hanging past it, so this no longer reserves space for it.
-        const SizedBox(height: 14),
-        Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Text(
-                  displayName.isEmpty ? username : displayName,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: p.text,
-                      fontSize: CLType.screenTitle,
-                      fontWeight: FontWeight.w800),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (isBadged) ...[
-                const SizedBox(width: 5),
-                Icon(Icons.verified, size: 18, color: p.brand),
-              ],
-              if (isPrivate) ...[
-                const SizedBox(width: 5),
-                Icon(Icons.lock, size: 16, color: p.text2),
-              ],
-            ],
-          ),
-        ),
-        if (email != null && email!.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(email!,
-              style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
-        ],
-        const SizedBox(height: 2),
-        Text("@$username",
-            style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
         if (actions != null) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: CLSpacing.canvasGutter),
           actions!,
         ],
         if (hasInfoCard) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: CLSpacing.canvasGutter),
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
+            padding: EdgeInsets.zero,
             child: CLCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

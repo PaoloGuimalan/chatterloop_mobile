@@ -359,16 +359,30 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
       backgroundColor: p.bg,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            _header(p, others.length + 1),
-            Divider(height: 1, color: p.border),
-            Expanded(child: _stage(p)),
-            // No controls at all when you were never let in - there is no room
-            // to mute, point a camera at, or leave. The header's back arrow is
-            // the only thing this screen can honestly offer.
-            if (!_accessDenied) _controls(p),
-          ],
+        // Three regions on the canvas - header, stage, controls - each its own
+        // panel with the gutter between them. The rule that used to sit under
+        // the header is gone: the gutter separates them now.
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            CLSpacing.canvasGutter,
+            CLSpacing.canvasTop,
+            CLSpacing.canvasGutter,
+            CLSpacing.canvasGutter,
+          ),
+          child: Column(
+            children: [
+              _header(p, others.length + 1),
+              const SizedBox(height: CLSpacing.canvasGutter),
+              Expanded(child: _stage(p)),
+              // No controls at all when you were never let in - there is no
+              // room to mute, point a camera at, or leave. The header's back
+              // arrow is the only thing this screen can honestly offer.
+              if (!_accessDenied) ...[
+                const SizedBox(height: CLSpacing.canvasGutter),
+                _controls(p),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -377,96 +391,101 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
   /// The conversation header's shape - back arrow, identity, count - so a room
   /// and a thread read as the same kind of place.
   Widget _header(CLPalette p, int total) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 6, 12, 6),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: Icon(Icons.arrow_back_ios_new_rounded,
-                size: 20, color: p.text2),
-          ),
-          Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: p.surface2,
-              shape: BoxShape.circle,
-              border: Border.all(color: p.border),
+    return CLPanel(
+      padding: CLSpacing.headerPanelPadding.copyWith(left: 4),
+      child: SizedBox(
+        height: CLSpacing.headerPanelHeight - 12,
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: Icon(Icons.arrow_back_ios_new_rounded,
+                  size: 20, color: p.text2),
             ),
-            child: Icon(
-                widget.isPrivate ? Icons.volume_up : Icons.volume_up_outlined,
-                size: 18,
-                color: p.gold),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(widget.channelName ?? 'Voice channel',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: CLType.title,
-                        fontWeight: FontWeight.bold,
-                        color: p.text)),
-                Text(
-                  _accessDenied
-                      ? 'No access'
-                      : _error != null
-                          ? 'Not connected'
-                          : _joining
-                              ? 'Connecting...'
-                              : total <= 1
-                                  ? 'Only you'
-                                  : '$total in this room',
-                  style: TextStyle(fontSize: CLType.meta, color: p.text2),
-                ),
-              ],
+            Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              // Gold-tint disc, no outline: inside a panel the tint alone is
+              // enough to seat the glyph, and the border was the hairline
+              // language this redesign drops.
+              decoration: BoxDecoration(
+                color: p.goldSoft,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                  widget.isPrivate ? Icons.volume_up : Icons.volume_up_outlined,
+                  size: 18,
+                  color: p.gold),
             ),
-          ),
-          // The same menu the channel list's header carries, and web's own
-          // voice-channel menu: info, Manage for admins, Leave for a private
-          // channel. Rendered while the details are still loading so the
-          // header does not reflow when they land - Info is simply disabled
-          // until it has something to show.
-          //
-          // Gone entirely once access is refused: every entry acts on a channel
-          // this account has no standing in, and "Leave channel" in particular
-          // would offer to drop a membership that is the very thing missing.
-          if (!_accessDenied)
-            PopupMenuButton<String>(
-              tooltip: 'Options',
-              color: p.surface,
-              icon: Icon(Icons.info_outline, size: 20, color: p.text2),
-              onSelected: (value) {
-                switch (value) {
-                  case 'info':
-                    _openInfo();
-                  case 'manage':
-                    openRealmManage(context, widget.conversationId);
-                  case 'leave':
-                    _leaveChannel();
-                }
-              },
-              itemBuilder: (context) => [
-                _menuItem(p, 'info', Icons.info_outline, 'Info',
-                    enabled: _info != null),
-                // Admins only, as on the server menu: the server refuses a
-                // non-admin's edits, so the entry could only ever fail for them.
-                // This channel's own is_admin, not the server's - they are
-                // usually the same and the channel is the one being managed.
-                if (_info?.isAdmin ?? false)
-                  _menuItem(p, 'manage', Icons.tune, 'Manage channel'),
-                // Private only - see _leaveChannel.
-                if (widget.isPrivate || (_info?.isPrivate ?? false))
-                  _menuItem(p, 'leave', Icons.logout, 'Leave channel',
-                      danger: true, enabled: !_leavingChannel),
-              ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.channelName ?? 'Voice channel',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: CLType.title,
+                          fontWeight: FontWeight.bold,
+                          color: p.text)),
+                  Text(
+                    _accessDenied
+                        ? 'No access'
+                        : _error != null
+                            ? 'Not connected'
+                            : _joining
+                                ? 'Connecting...'
+                                : total <= 1
+                                    ? 'Only you'
+                                    : '$total in this room',
+                    style: TextStyle(fontSize: CLType.meta, color: p.text2),
+                  ),
+                ],
+              ),
             ),
-        ],
+            // The same menu the channel list's header carries, and web's own
+            // voice-channel menu: info, Manage for admins, Leave for a private
+            // channel. Rendered while the details are still loading so the
+            // header does not reflow when they land - Info is simply disabled
+            // until it has something to show.
+            //
+            // Gone entirely once access is refused: every entry acts on a channel
+            // this account has no standing in, and "Leave channel" in particular
+            // would offer to drop a membership that is the very thing missing.
+            if (!_accessDenied)
+              PopupMenuButton<String>(
+                tooltip: 'Options',
+                color: p.surface,
+                icon: Icon(Icons.info_outline, size: 20, color: p.text2),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'info':
+                      _openInfo();
+                    case 'manage':
+                      openRealmManage(context, widget.conversationId);
+                    case 'leave':
+                      _leaveChannel();
+                  }
+                },
+                itemBuilder: (context) => [
+                  _menuItem(p, 'info', Icons.info_outline, 'Info',
+                      enabled: _info != null),
+                  // Admins only, as on the server menu: the server refuses a
+                  // non-admin's edits, so the entry could only ever fail for them.
+                  // This channel's own is_admin, not the server's - they are
+                  // usually the same and the channel is the one being managed.
+                  if (_info?.isAdmin ?? false)
+                    _menuItem(p, 'manage', Icons.tune, 'Manage channel'),
+                  // Private only - see _leaveChannel.
+                  if (widget.isPrivate || (_info?.isPrivate ?? false))
+                    _menuItem(p, 'leave', Icons.logout, 'Leave channel',
+                        danger: true, enabled: !_leavingChannel),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -745,16 +764,18 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
     Widget? placeholder,
     Widget? child,
   }) {
+    // Each participant is their own floating panel. No outline: the surface
+    // fill and its elevation against the canvas are enough separation, and a
+    // gold ring on every tile read as a state - "live", "speaking" - that it
+    // never actually tracked.
     return Container(
       key: key,
       margin: const EdgeInsets.all(4),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        // No outline: the surface fill against the screen background is enough
-        // separation, and a gold ring on every tile read as a state - "live",
-        // "speaking" - that it never actually tracked.
         color: p.surface,
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        borderRadius: BorderRadius.circular(CLRadii.panel),
+        boxShadow: p.panelShadow,
       ),
       child: Stack(
         fit: StackFit.expand,
@@ -848,8 +869,11 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
 
   Widget _controls(CLPalette p) {
     final disabled = _joining || _error != null;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
+    // The call controls are their own panel at the foot of the canvas, the
+    // same way the tab bar is on a tab screen - the row of round targets is
+    // the panel's whole content.
+    return CLPanel(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

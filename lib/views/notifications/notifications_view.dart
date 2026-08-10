@@ -99,8 +99,7 @@ class _NotificationsViewState extends State<NotificationsView> {
 
   /// Rebuilds every section through [transform] - a read/handled flip can
   /// affect any of them, and a notification's section isn't known here.
-  void _mapSections(
-      NotificationV2 Function(NotificationV2 item) transform,
+  void _mapSections(NotificationV2 Function(NotificationV2 item) transform,
       {bool zeroUnread = false}) {
     final overview = _overview;
     if (overview == null) return;
@@ -350,7 +349,7 @@ class _NotificationsViewState extends State<NotificationsView> {
     final p = cl(context);
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(
+      appBar: CLPanelAppBar(
         title: const Text("Notifications"),
         actions: [
           TextButton.icon(

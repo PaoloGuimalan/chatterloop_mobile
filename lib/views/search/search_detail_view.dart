@@ -176,8 +176,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
     setState(() => _followBusy.add(entityId));
 
     final isActive = currentlyFollowing || currentlyPending;
-    _applyFollow(entityId,
-        followed: !isActive, pending: false);
+    _applyFollow(entityId, followed: !isActive, pending: false);
 
     final result = await ProfileApi().setEntityFollowRequest(
       entityId: entityId,
@@ -319,12 +318,13 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(
+      appBar: CLPanelAppBar(
         title: Text(widget.kind.title),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 14),
-            child: Center(child: CLCountPill(count: _isLoading ? null : _total)),
+            child:
+                Center(child: CLCountPill(count: _isLoading ? null : _total)),
           ),
         ],
       ),

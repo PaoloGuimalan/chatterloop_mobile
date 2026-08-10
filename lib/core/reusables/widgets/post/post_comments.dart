@@ -868,10 +868,9 @@ class _CommentComposerState extends State<CommentComposer> {
     final replyingTo = widget.replyingToName;
 
     return Container(
-      decoration: BoxDecoration(
-        color: p.surface,
-        border: Border(top: BorderSide(color: p.border)),
-      ),
+      // The hairline goes with the slab: this is the foot of a sheet whose
+      // regions are separated by space now, not by rules.
+      decoration: BoxDecoration(color: p.surface),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: SafeArea(
         top: false,

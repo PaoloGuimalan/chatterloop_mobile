@@ -260,139 +260,172 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
             backgroundColor: p.bg,
             body: Column(
               children: [
-                Container(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 10, 12),
-                  decoration: BoxDecoration(
-                      color: p.surface,
-                      border: Border(bottom: BorderSide(color: p.border))),
-                  child: SafeArea(
-                    bottom: false,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Same size AND weight as appBarTheme.titleTextStyle -
-                        // this header and a pushed screen's AppBar have to read
-                        // as one thing.
-                        Text(_tabTitles[widget.navigationShell.currentIndex],
-                            style: TextStyle(
-                                color: p.text,
-                                fontSize: CLType.screenTitle,
-                                fontWeight: FontWeight.w700)),
-                        Row(
+                // The header is a floating panel, not a bar welded to the top
+                // edge: it gets the same 26px radius and canvas gutter as every
+                // other region, so the shell's chrome and a screen's content
+                // are made of the same thing.
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(CLSpacing.canvasGutter,
+                        CLSpacing.canvasTop, CLSpacing.canvasGutter, 0),
+                    child: CLPanel(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
+                      child: SizedBox(
+                        height: CLSpacing.tabHeaderHeight,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // Explore left the bottom bar to make room for the
-                            // newsfeed, so it lives here - a destination you
-                            // GO to rather than a place you dwell, which is
-                            // what the other header actions are too.
-                            CLIconBtn(
-                              icon: Icons.search,
-                              tooltip: "Explore",
-                              // Branch 4. Explore moved from 3 to 4 when the
-                              // Servers tab was inserted after Contacts -
-                              // these are LIST POSITIONS in app_router, not
-                              // stable ids, so adding a branch renumbers every
-                              // one after it.
-                              onPressed: () =>
-                                  widget.navigationShell.goBranch(4),
-                            ),
-                            CLIconBtn(
-                              icon: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Icons.light_mode
-                                  : Icons.dark_mode,
-                              tooltip: "Toggle theme",
-                              onPressed: () => ThemeScope.of(context).toggle(),
-                            ),
-                            _badgeIconButton(
-                              icon: Icons.notifications,
-                              count: state.notificationsstate.totalunread,
-                              onPressed: () => context.push('/notifications'),
-                            ),
-                            const SizedBox(width: 4),
-                            // Logout moved into the user menu (opened from the
-                            // bottom-nav menu button) - this now shows whichever
-                            // entity is currently active (yourself, or a page
-                            // you've switched to). Tapping it goes to that same
-                            // active entity's own profile - the personal Profile
-                            // tab normally, or the switched-to page's read-only
-                            // profile screen while acting as it. The menu's own
-                            // "Profile" row (user_menu_popover.dart) mirrors this
-                            // exact same entity-aware target.
-                            InkWell(
-                              onTap: () => _openOwnProfile(state.userAuth.user),
-                              borderRadius: BorderRadius.circular(CLRadii.pill),
-                              child: CLAvatar(
-                                id: state.userAuth.user.activeAvatarSeed,
-                                name: state.userAuth.user.activeDisplayName,
-                                src: state.userAuth.user.activeAvatarSrc,
-                                size: 34,
-                              ),
+                            // Same size AND weight as appBarTheme.titleTextStyle -
+                            // this header and a pushed screen's AppBar have to read
+                            // as one thing.
+                            Text(
+                                _tabTitles[widget.navigationShell.currentIndex],
+                                style: TextStyle(
+                                    color: p.text,
+                                    fontSize: CLType.screenTitle,
+                                    fontWeight: FontWeight.w700)),
+                            Row(
+                              children: [
+                                // Explore left the bottom bar to make room for the
+                                // newsfeed, so it lives here - a destination you
+                                // GO to rather than a place you dwell, which is
+                                // what the other header actions are too.
+                                CLIconBtn(
+                                  icon: Icons.search,
+                                  tooltip: "Explore",
+                                  // Branch 4. Explore moved from 3 to 4 when the
+                                  // Servers tab was inserted after Contacts -
+                                  // these are LIST POSITIONS in app_router, not
+                                  // stable ids, so adding a branch renumbers every
+                                  // one after it.
+                                  onPressed: () =>
+                                      widget.navigationShell.goBranch(4),
+                                ),
+                                CLIconBtn(
+                                  icon: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Icons.light_mode
+                                      : Icons.dark_mode,
+                                  tooltip: "Toggle theme",
+                                  onPressed: () =>
+                                      ThemeScope.of(context).toggle(),
+                                ),
+                                _badgeIconButton(
+                                  icon: Icons.notifications,
+                                  count: state.notificationsstate.totalunread,
+                                  onPressed: () =>
+                                      context.push('/notifications'),
+                                ),
+                                const SizedBox(width: 4),
+                                // Logout moved into the user menu (opened from the
+                                // bottom-nav menu button) - this now shows whichever
+                                // entity is currently active (yourself, or a page
+                                // you've switched to). Tapping it goes to that same
+                                // active entity's own profile - the personal Profile
+                                // tab normally, or the switched-to page's read-only
+                                // profile screen while acting as it. The menu's own
+                                // "Profile" row (user_menu_popover.dart) mirrors this
+                                // exact same entity-aware target.
+                                InkWell(
+                                  onTap: () =>
+                                      _openOwnProfile(state.userAuth.user),
+                                  borderRadius:
+                                      BorderRadius.circular(CLRadii.pill),
+                                  child: CLAvatar(
+                                    id: state.userAuth.user.activeAvatarSeed,
+                                    name: state.userAuth.user.activeDisplayName,
+                                    src: state.userAuth.user.activeAvatarSrc,
+                                    size: 34,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
+                // The canvas belongs to the SHELL, not to each branch: the
+                // gutter between the header panel, the content panels and the
+                // tab pill has to be one continuous margin, and it cannot be
+                // if five tab screens each pad themselves. Branches therefore
+                // draw panels edge-to-edge within this and add no outer
+                // padding of their own.
                 Expanded(
-                  child: AnimatedSlide(
-                    offset: _tabSlide,
-                    duration: _tabSlideDur,
-                    curve: Curves.easeOutCubic,
-                    child: widget.navigationShell,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: CLSpacing.canvasGutter,
+                        vertical: CLSpacing.canvasGutter),
+                    child: AnimatedSlide(
+                      offset: _tabSlide,
+                      duration: _tabSlideDur,
+                      curve: Curves.easeOutCubic,
+                      child: widget.navigationShell,
+                    ),
                   ),
                 ),
-                Container(
-                  decoration: BoxDecoration(
-                      color: p.surface,
-                      border: Border(top: BorderSide(color: p.border))),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: SafeArea(
-                    top: false,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // Leftmost, and the app's landing tab. Icons.home to
-                        // match web, whose rail renders `icon: "home"` as the
-                        // Material Icons ligature of the same name.
-                        _navButton(Icons.home,
-                            widget.navigationShell.currentIndex == 0, () {
-                          // Already home? Then this is a refresh, which is what
-                          // tapping the current tab means everywhere else too.
-                          // goBranch alone would be a no-op and feel broken.
-                          if (widget.navigationShell.currentIndex == 0) {
-                            newsfeedRefreshRequests.value++;
-                          } else {
-                            widget.navigationShell.goBranch(0);
-                          }
-                        }),
-                        _badgeNavButton(
-                            Icons.forum,
-                            widget.navigationShell.currentIndex == 1,
-                            unreadTotal,
-                            () => widget.navigationShell.goBranch(1)),
-                        _navButton(
-                            Icons.contacts,
-                            widget.navigationShell.currentIndex == 2,
-                            () => widget.navigationShell.goBranch(2)),
-                        // After contacts, per the tab order.
-                        _navButton(
-                            Icons.dns,
-                            widget.navigationShell.currentIndex == 3,
-                            () => widget.navigationShell.goBranch(3)),
-                        // Never "active": this opens a menu, it isn't a tab,
-                        // and there is no longer a fourth branch for it to
-                        // correspond to.
-                        _navButton(
-                            Icons.menu,
-                            false,
-                            () => showUserMenuPopover(context,
-                                anchorKey: _profileButtonKey,
-                                onOpenProfile: () =>
-                                    _openOwnProfile(state.userAuth.user),
-                                onLogout: () => _logout(context)),
-                            buttonKey: _profileButtonKey),
-                      ],
+                // The tab bar is a floating PILL rather than a bar spanning the
+                // bottom edge - the one panel whose radius is full-round,
+                // because its contents are a single row of circular targets.
+                // It no longer paints behind the system navigation buttons, so
+                // the SafeArea below sits OUTSIDE the pill: the canvas gutter,
+                // not the pill's own surface, is what clears the gesture bar.
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(CLSpacing.canvasGutter,
+                        0, CLSpacing.canvasGutter, CLSpacing.canvasGutter),
+                    child: CLPanel(
+                      radius: CLRadii.pill,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 7),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          // Leftmost, and the app's landing tab. Icons.home to
+                          // match web, whose rail renders `icon: "home"` as the
+                          // Material Icons ligature of the same name.
+                          _navButton(Icons.home,
+                              widget.navigationShell.currentIndex == 0, () {
+                            // Already home? Then this is a refresh, which is what
+                            // tapping the current tab means everywhere else too.
+                            // goBranch alone would be a no-op and feel broken.
+                            if (widget.navigationShell.currentIndex == 0) {
+                              newsfeedRefreshRequests.value++;
+                            } else {
+                              widget.navigationShell.goBranch(0);
+                            }
+                          }),
+                          _badgeNavButton(
+                              Icons.forum,
+                              widget.navigationShell.currentIndex == 1,
+                              unreadTotal,
+                              () => widget.navigationShell.goBranch(1)),
+                          _navButton(
+                              Icons.contacts,
+                              widget.navigationShell.currentIndex == 2,
+                              () => widget.navigationShell.goBranch(2)),
+                          // After contacts, per the tab order.
+                          _navButton(
+                              Icons.dns,
+                              widget.navigationShell.currentIndex == 3,
+                              () => widget.navigationShell.goBranch(3)),
+                          // Never "active": this opens a menu, it isn't a tab,
+                          // and there is no longer a fourth branch for it to
+                          // correspond to.
+                          _navButton(
+                              Icons.menu,
+                              false,
+                              () => showUserMenuPopover(context,
+                                  anchorKey: _profileButtonKey,
+                                  onOpenProfile: () =>
+                                      _openOwnProfile(state.userAuth.user),
+                                  onLogout: () => _logout(context)),
+                              buttonKey: _profileButtonKey),
+                        ],
+                      ),
                     ),
                   ),
                 ),

@@ -146,10 +146,13 @@ class _UserMenuOverlayState extends State<_UserMenuOverlay> {
             children: [
               Container(
                 constraints: const BoxConstraints(maxHeight: 440),
+                // A menu floating on the same canvas as everything else, so it
+                // takes the panel's radius. It keeps its own stronger shadow
+                // rather than panelShadow: this one sits ABOVE the screen's
+                // panels, not beside them, and has to read that way.
                 decoration: BoxDecoration(
                   color: p.surface,
-                  border: Border.all(color: p.border),
-                  borderRadius: BorderRadius.circular(CLRadii.md),
+                  borderRadius: BorderRadius.circular(CLRadii.panel),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.18),

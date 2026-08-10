@@ -798,8 +798,8 @@ class ProfileComposerCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        borderRadius: BorderRadius.circular(CLRadii.panel),
+        boxShadow: p.panelShadow,
       ),
       child: Column(
         children: [

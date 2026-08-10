@@ -256,8 +256,8 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar:
-          AppBar(title: Text(_isChannel ? 'Create channel' : 'Create server')),
+      appBar: CLPanelAppBar(
+          title: Text(_isChannel ? 'Create channel' : 'Create server')),
       body: Column(
         children: [
           // The form. Fixed above the picker rather than scrolling with it:

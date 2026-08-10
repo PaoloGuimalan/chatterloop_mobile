@@ -44,8 +44,7 @@ class _DeviceSessionsScreenState extends State<DeviceSessionsScreen> {
     setState(() {
       _revokingId = null;
       if (ok) {
-        _sessions =
-            _sessions.where((x) => x.sessionID != s.sessionID).toList();
+        _sessions = _sessions.where((x) => x.sessionID != s.sessionID).toList();
       }
     });
   }
@@ -61,7 +60,7 @@ class _DeviceSessionsScreenState extends State<DeviceSessionsScreen> {
     final p = cl(context);
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text('Device Sessions')),
+      appBar: CLPanelAppBar(title: const Text('Device Sessions')),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -127,7 +126,8 @@ class _DeviceSessionsScreenState extends State<DeviceSessionsScreen> {
                     if (s.isCurrentDevice)
                       TextSpan(
                           text: '  · This device',
-                          style: TextStyle(fontSize: CLType.meta, color: p.brand)),
+                          style:
+                              TextStyle(fontSize: CLType.meta, color: p.brand)),
                   ]),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -164,7 +164,8 @@ class _DeviceSessionsScreenState extends State<DeviceSessionsScreen> {
             borderRadius: BorderRadius.circular(CLRadii.sm)),
       ),
       child: Text(revoking ? 'Signing out…' : 'Sign out',
-          style: const TextStyle(fontSize: CLType.caption, fontWeight: FontWeight.w600)),
+          style: const TextStyle(
+              fontSize: CLType.caption, fontWeight: FontWeight.w600)),
     );
   }
 

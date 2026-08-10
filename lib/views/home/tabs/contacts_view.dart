@@ -113,8 +113,9 @@ class _ContactsViewState extends State<ContactsView> {
       });
     });
 
-    final groups =
-        api.groupShortcutsRequest(page: 1, range: _kGroupsPreview).then((result) {
+    final groups = api
+        .groupShortcutsRequest(page: 1, range: _kGroupsPreview)
+        .then((result) {
       if (!mounted) return;
       setState(() {
         _groups = result;
@@ -158,7 +159,8 @@ class _ContactsViewState extends State<ContactsView> {
 
   void _openEntity(NetworkEntityResult item) {
     if (item.handle.isEmpty) return;
-    context.push(item.isRealm ? '/realm/${item.handle}' : '/user/${item.handle}');
+    context
+        .push(item.isRealm ? '/realm/${item.handle}' : '/user/${item.handle}');
   }
 
   void _openConversation(String? conversationId) {
@@ -278,8 +280,7 @@ class _ContactsViewState extends State<ContactsView> {
           )
         else
           ...results.map((item) => Padding(
-                padding:
-                    EdgeInsets.only(bottom: item == results.last ? 0 : 10),
+                padding: EdgeInsets.only(bottom: item == results.last ? 0 : 10),
                 child: _row(item, section, presence),
               )),
       ],
@@ -357,28 +358,45 @@ class _ContactsViewState extends State<ContactsView> {
         builder: (context, presence) => RefreshIndicator(
           onRefresh: _load,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+            // The canvas comes from HomeTabScaffold - see newsfeed_view.
+            padding: EdgeInsets.zero,
             children: [
-              CLChipsRail(
-                children: chips
-                    .map((chip) => CLChip(
-                          label: "${chip.$3} · ${chip.$4}",
-                          icon: chip.$2,
-                          onTap: () => _openDetail(chip.$1),
-                        ))
-                    .toList(),
+              // Two panels: the counts rail, then everything else. The four
+              // sections share ONE card rather than getting one each - they are
+              // a single directory read top to bottom, and four elevations
+              // stacked down the screen read as four unrelated screens.
+              CLPanel(
+                padding: const EdgeInsets.all(10),
+                clipBehavior: Clip.antiAlias,
+                child: CLChipsRail(
+                  children: chips
+                      .map((chip) => CLChip(
+                            label: "${chip.$3} · ${chip.$4}",
+                            icon: chip.$2,
+                            onTap: () => _openDetail(chip.$1),
+                          ))
+                      .toList(),
+                ),
               ),
-              const SizedBox(height: 24),
-              _groupsSection(),
-              const SizedBox(height: 26),
-              _peopleSection(
-                  NetworkSection.connections, overview?.connections, presence),
-              const SizedBox(height: 26),
-              _peopleSection(
-                  NetworkSection.followers, overview?.followers, presence),
-              const SizedBox(height: 26),
-              _peopleSection(
-                  NetworkSection.following, overview?.following, presence),
+              const SizedBox(height: CLSpacing.canvasGutter),
+              CLPanel(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _groupsSection(),
+                    const SizedBox(height: 26),
+                    _peopleSection(NetworkSection.connections,
+                        overview?.connections, presence),
+                    const SizedBox(height: 26),
+                    _peopleSection(NetworkSection.followers,
+                        overview?.followers, presence),
+                    const SizedBox(height: 26),
+                    _peopleSection(NetworkSection.following,
+                        overview?.following, presence),
+                  ],
+                ),
+              ),
             ],
           ),
         ),

@@ -135,7 +135,8 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
     ));
   }
 
-  ({IconData icon, String subtitle}) get _emptyState => switch (widget.section) {
+  ({IconData icon, String subtitle}) get _emptyState =>
+      switch (widget.section) {
         NotificationSection.activity => (
             icon: Icons.bolt,
             subtitle: "New reactions, comments and shares land here."
@@ -157,7 +158,7 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(
+      appBar: CLPanelAppBar(
         title: Text(widget.section.title),
         actions: [
           Padding(

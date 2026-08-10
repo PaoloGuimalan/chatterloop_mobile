@@ -181,7 +181,7 @@ GoRouter buildAppRouter(AuthController authController) {
       final p = cl(context);
       return Scaffold(
         backgroundColor: p.bg,
-        appBar: AppBar(title: const Text('Page not found')),
+        appBar: CLPanelAppBar(title: const Text('Page not found')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),

@@ -216,7 +216,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(
+      appBar: CLPanelAppBar(
         title: Text(_title),
         actions: [
           // Members only, and not on a public channel or voice room, whose
@@ -361,8 +361,8 @@ class _RosterRowSkeleton extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        borderRadius: BorderRadius.circular(CLRadii.panel),
+        boxShadow: p.panelShadow,
       ),
       child: Row(
         children: const [
@@ -418,8 +418,8 @@ class _RosterRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        borderRadius: BorderRadius.circular(CLRadii.panel),
+        boxShadow: p.panelShadow,
       ),
       child: Row(
         children: [
@@ -581,7 +581,7 @@ class _RealmMediaScreenState extends State<RealmMediaScreen> {
       onPopInvokedWithResult: (didPop, _) {},
       child: CLScreen(
         backgroundColor: p.bg,
-        appBar: AppBar(
+        appBar: CLPanelAppBar(
           title: const Text('Media'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
@@ -650,8 +650,8 @@ class _MediaTile extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        borderRadius: BorderRadius.circular(CLRadii.panel),
+        boxShadow: p.panelShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -197,27 +197,9 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
       // the body so the back button floats over the cover photo, instead of a
       // hard header strip pushing the cover down. The two screens have to
       // match here or switching between them visibly jumps.
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: p.surface,
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15), blurRadius: 6),
-              ],
-            ),
-            child: Icon(Icons.arrow_back, size: 18, color: p.text),
-          ),
-          onPressed: () => context.pop(),
-        ),
-      ),
+      // No AppBar - the back button floats on the cover inside the identity
+      // panel, exactly as on the user profile. The two screens have to match
+      // here or switching between them visibly jumps.
       body: _isLoading
           ? const SingleChildScrollView(child: ProfileHeaderSkeleton())
           : realm == null
@@ -232,9 +214,22 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                 )
               : SingleChildScrollView(
                   controller: _scrollController,
+                  // The canvas. The top inset is the status bar plus the canvas
+                  // step, which the AppBar used to supply.
+                  padding: EdgeInsets.fromLTRB(
+                    CLSpacing.canvasGutter,
+                    MediaQuery.of(context).padding.top + CLSpacing.canvasTop,
+                    CLSpacing.canvasGutter,
+                    CLSpacing.canvasGutter,
+                  ),
                   child: Column(
                     children: [
                       ProfileHeader(
+                        overlayLeading: CLCoverButton(
+                          icon: Icons.arrow_back,
+                          tooltip: 'Back',
+                          onPressed: () => context.pop(),
+                        ),
                         id: realm.id,
                         displayName: realm.name,
                         username: realm.slug ?? realm.id,
@@ -255,8 +250,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                             ? () => _changeRealmMedia(ComposerMode.coverPhoto)
                             : null,
                         actions: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: CLSpacing.contentGutter),
+                          padding: EdgeInsets.zero,
                           child: _actions(p, realm),
                         ),
                       ),
@@ -273,8 +267,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                       // composer publishes as the page. See isActingEntity.
                       if (realm.entityId.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: CLSpacing.contentGutter),
+                          padding: EdgeInsets.zero,
                           child: ProfileComposerCard.forProfile(
                             profile: _realmAsTag(realm),
                             ownPlaceholder: "Publish a post",
@@ -438,7 +431,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
   Widget _details(CLPalette p, RealmProfile realm) {
     final description = realm.description;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
+      padding: EdgeInsets.zero,
       child: CLCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -243,16 +243,12 @@ class _SearchScreenState extends State<SearchScreen> {
     return Container(
       height: 44,
       padding: const EdgeInsets.only(left: 14, right: 4),
+      // A sunken pill inside the query panel - the design's search
+      // surface. It was a card in its own right when it floated on the bare
+      // canvas; inside a panel that reads as a card on a card.
       decoration: BoxDecoration(
-        color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 3,
-              offset: const Offset(0, 1)),
-        ],
+        color: p.input,
+        borderRadius: BorderRadius.circular(CLRadii.pill),
       ),
       child: Row(
         children: [
@@ -299,9 +295,8 @@ class _SearchScreenState extends State<SearchScreen> {
       constraints: const BoxConstraints(minHeight: 168),
       padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
       decoration: BoxDecoration(
-        color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.row),
       ),
       alignment: Alignment.center,
       child: CLEmptyState(
@@ -435,31 +430,51 @@ class _SearchScreenState extends State<SearchScreen> {
         distinct: true,
         converter: (store) => store.state.presence,
         builder: (context, presence) => ListView(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+          // The canvas comes from HomeTabScaffold - see newsfeed_view.
+          padding: EdgeInsets.zero,
           children: [
-            _searchField(p),
-            const SizedBox(height: 16),
-            CLChipsRail(
-              children: _filterDefs
-                  .map((def) => CLChip(
-                        label: def.$2,
-                        icon: def.$3,
-                        active: _filter == def.$1,
-                        onTap: () => setState(() => _filter = def.$1),
-                      ))
-                  .toList(),
+            // The query and its filters are one panel - you set them together -
+            // and the results are another.
+            CLPanel(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _searchField(p),
+                  const SizedBox(height: 12),
+                  CLChipsRail(
+                    children: _filterDefs
+                        .map((def) => CLChip(
+                              label: def.$2,
+                              icon: def.$3,
+                              active: _filter == def.$1,
+                              onTap: () => setState(() => _filter = def.$1),
+                            ))
+                        .toList(),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 22),
-            if (!hasQuery)
-              _initialState(p)
-            else ...[
-              if (showPeople) _peopleSection(presence),
-              if (showPeople && (showRealms || showPosts))
-                const SizedBox(height: 26),
-              if (showRealms) _realmsSection(),
-              if (showRealms && showPosts) const SizedBox(height: 26),
-              if (showPosts) _contentSection(),
-            ],
+            const SizedBox(height: CLSpacing.canvasGutter),
+            CLPanel(
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!hasQuery)
+                    _initialState(p)
+                  else ...[
+                    if (showPeople) _peopleSection(presence),
+                    if (showPeople && (showRealms || showPosts))
+                      const SizedBox(height: 26),
+                    if (showRealms) _realmsSection(),
+                    if (showRealms && showPosts) const SizedBox(height: 26),
+                    if (showPosts) _contentSection(),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),

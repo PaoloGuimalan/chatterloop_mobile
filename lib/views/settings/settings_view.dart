@@ -103,9 +103,13 @@ class SettingsScreen extends StatelessWidget {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text("Settings")),
+      appBar: CLPanelAppBar(title: const Text("Settings")),
       body: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        // The canvas, matching the header panel above it. The group labels
+        // add their own 16 on top of this, which is what puts them level with
+        // the text inside the panels rather than with the panels' edges.
+        padding: const EdgeInsets.fromLTRB(CLSpacing.canvasGutter, 0,
+            CLSpacing.canvasGutter, CLSpacing.canvasGutter),
         itemCount: categories.length,
         itemBuilder: (context, index) {
           final category = categories[index];
@@ -114,12 +118,8 @@ class SettingsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(category.title,
-                    style: TextStyle(
-                        fontSize: CLType.bodySm,
-                        fontWeight: FontWeight.w700,
-                        color: p.text2)),
-                const SizedBox(height: 8),
+                CLCanvasLabel(category.title),
+                const SizedBox(height: 6),
                 CLCard(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Column(
@@ -172,7 +172,8 @@ class _SettingsRow extends StatelessWidget {
                             color: p.text)),
                     const SizedBox(height: 2),
                     Text(item.description,
-                        style: TextStyle(fontSize: CLType.caption, color: p.text2)),
+                        style: TextStyle(
+                            fontSize: CLType.caption, color: p.text2)),
                   ],
                 ),
               ),

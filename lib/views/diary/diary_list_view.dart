@@ -95,7 +95,7 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text("Diary")),
+      appBar: CLPanelAppBar(title: const Text("Diary")),
       floatingActionButton: FloatingActionButton(
         onPressed: _openCompose,
         backgroundColor: p.brand,
@@ -231,7 +231,8 @@ class _EntryCard extends StatelessWidget {
                   preview,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: p.text2, fontSize: CLType.bodySm, height: 1.35),
+                  style: TextStyle(
+                      color: p.text2, fontSize: CLType.bodySm, height: 1.35),
                 ),
               ],
               const SizedBox(height: 10),
@@ -250,7 +251,8 @@ class _EntryCard extends StatelessWidget {
                     Icon(Icons.attachment, size: 13, color: p.text3),
                     const SizedBox(width: 4),
                     Text("${entry.attachments.length}",
-                        style: TextStyle(color: p.text3, fontSize: CLType.caption)),
+                        style: TextStyle(
+                            color: p.text3, fontSize: CLType.caption)),
                   ],
                   if (entry.mood != null) ...[
                     const SizedBox(width: 12),
@@ -259,7 +261,8 @@ class _EntryCard extends StatelessWidget {
                         entry.mood!.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: p.text3, fontSize: CLType.caption),
+                        style:
+                            TextStyle(color: p.text3, fontSize: CLType.caption),
                       ),
                     ),
                   ],
@@ -287,8 +290,18 @@ class _EntryCard extends StatelessWidget {
   /// dates read the same as dates elsewhere in the app.
   String _formatEntryDate(DateTime date) {
     const months = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December",
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ];
     return "${ordinalSuffix(date.day)} of ${months[date.month - 1]}, ${date.year}";
   }
@@ -305,8 +318,18 @@ class _DayGroup extends StatelessWidget {
   final List<DiaryEntry> entries;
 
   static const _months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
 
   String get _label => "${_months[date.month - 1]} ${date.day}, ${date.year}";

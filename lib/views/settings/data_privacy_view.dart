@@ -139,7 +139,7 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
     const danger = Color(0xFFD64545);
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text('Data & Privacy')),
+      appBar: CLPanelAppBar(title: const Text('Data & Privacy')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -151,10 +151,7 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
               builder: (context, account) => Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _header(
-                      p,
-                      'Private profile',
-                      p.text,
+                  _header(p, 'Private profile', p.text,
                       'When your profile is private, only your contacts and approved followers can see your posts, diary activity, birthdate and email. Everyone else sees just your name and photo, and has to send a follow request you approve.'),
                   const SizedBox(height: 6),
                   // Stated up front rather than in the confirmation toast: the
@@ -176,19 +173,15 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
                               : 'Make profile private'),
                       variant: CLBtnVariant.soft,
                       size: CLBtnSize.md,
-                      onPressed: _savingPrivacy
-                          ? null
-                          : () => _togglePrivacy(account),
+                      onPressed:
+                          _savingPrivacy ? null : () => _togglePrivacy(account),
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 30),
-            _header(
-                p,
-                'Export your data',
-                p.text,
+            _header(p, 'Export your data', p.text,
                 'Download a copy of the personal data we hold about you, including your profile, posts, comments, diary entries, realm memberships, messages, and consent history.'),
             const SizedBox(height: 12),
             Align(
@@ -201,10 +194,7 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
               ),
             ),
             const SizedBox(height: 30),
-            _header(
-                p,
-                'Delete your account',
-                danger,
+            _header(p, 'Delete your account', danger,
                 "This permanently deactivates your account and removes your identifying information. Your account will become unusable and you'll be signed out immediately. This cannot be undone."),
             const SizedBox(height: 12),
             Wrap(
@@ -247,7 +237,8 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
                   color: titleColor)),
           const SizedBox(height: 4),
           Text(desc,
-              style: TextStyle(fontSize: CLType.bodySm, color: p.text2, height: 1.4)),
+              style: TextStyle(
+                  fontSize: CLType.bodySm, color: p.text2, height: 1.4)),
         ],
       );
 }

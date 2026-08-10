@@ -21,7 +21,8 @@ import 'package:parchment/codecs.dart';
 
 /// A file chosen but not yet uploaded.
 class _PendingAttachment {
-  _PendingAttachment({required this.path, required this.name, required this.size});
+  _PendingAttachment(
+      {required this.path, required this.name, required this.size});
   final String path;
   final String name;
   final int size;
@@ -104,8 +105,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
           .where((t) => !chosen.contains(t.name.toLowerCase()))
           .toList();
       // Don't offer to create a tag that's already selected.
-      _typedTagIsNew =
-          result.isNew && !chosen.contains(trimmed.toLowerCase());
+      _typedTagIsNew = result.isNew && !chosen.contains(trimmed.toLowerCase());
     });
   }
 
@@ -254,7 +254,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(
+      appBar: CLPanelAppBar(
         title: const Text("New entry"),
         actions: [
           TextButton(
@@ -265,8 +265,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : Text("Save",
-                    style: TextStyle(
-                        color: p.brand, fontWeight: FontWeight.w700)),
+                    style:
+                        TextStyle(color: p.brand, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -302,7 +302,9 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
             TextField(
               controller: _title,
               style: TextStyle(
-                  color: p.text, fontSize: CLType.screenTitle, fontWeight: FontWeight.w700),
+                  color: p.text,
+                  fontSize: CLType.screenTitle,
+                  fontWeight: FontWeight.w700),
               decoration: InputDecoration(
                 hintText: "Title",
                 hintStyle: TextStyle(color: p.text3),
@@ -318,7 +320,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                   Icon(Icons.calendar_today_outlined, size: 14, color: p.text3),
                   const SizedBox(width: 6),
                   Text(_entryDateForApi(),
-                      style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
+                      style:
+                          TextStyle(color: p.text2, fontSize: CLType.bodySm)),
                   const SizedBox(width: 4),
                   Icon(Icons.arrow_drop_down, size: 18, color: p.text3),
                 ],
@@ -368,7 +371,9 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
             const SizedBox(width: double.infinity),
             Text("Mood",
                 style: TextStyle(
-                    color: p.text2, fontSize: CLType.caption, fontWeight: FontWeight.w700)),
+                    color: p.text2,
+                    fontSize: CLType.caption,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             InkWell(
               borderRadius: BorderRadius.circular(CLRadii.sm),
@@ -422,7 +427,9 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
             const SizedBox(width: double.infinity),
             Text("Tags",
                 style: TextStyle(
-                    color: p.text2, fontSize: CLType.caption, fontWeight: FontWeight.w700)),
+                    color: p.text2,
+                    fontSize: CLType.caption,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             if (_selectedTags.isNotEmpty) ...[
               Wrap(
@@ -473,8 +480,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                 onTap: _addTypedTag,
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   decoration: BoxDecoration(
                     color: p.brandSoft,
                     borderRadius: BorderRadius.circular(CLRadii.sm),
@@ -495,7 +502,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                         ),
                       ),
                       Text("Add Tag",
-                          style: TextStyle(color: p.brand, fontSize: CLType.caption)),
+                          style: TextStyle(
+                              color: p.brand, fontSize: CLType.caption)),
                     ],
                   ),
                 ),
@@ -541,7 +549,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                   onPressed: _pickAttachments,
                   icon: Icon(Icons.attach_file, size: 17, color: p.brand),
                   label: Text("Add",
-                      style: TextStyle(color: p.brand, fontSize: CLType.bodySm)),
+                      style:
+                          TextStyle(color: p.brand, fontSize: CLType.bodySm)),
                 ),
               ],
             ),
@@ -560,10 +569,12 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                           child: Text(a.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: p.text, fontSize: CLType.bodySm)),
+                              style: TextStyle(
+                                  color: p.text, fontSize: CLType.bodySm)),
                         ),
                         Text(_readableSize(a.size),
-                            style: TextStyle(color: p.text3, fontSize: CLType.caption)),
+                            style: TextStyle(
+                                color: p.text3, fontSize: CLType.caption)),
                         IconButton(
                           icon: Icon(Icons.close, size: 17, color: p.text3),
                           onPressed: () =>

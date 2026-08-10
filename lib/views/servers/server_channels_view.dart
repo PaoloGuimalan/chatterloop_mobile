@@ -249,69 +249,91 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // The server's own header - avatar, name, and the info action web puts
-        // in the same corner.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Row(
-            children: [
-              CLAvatar(
-                  id: widget.serverId,
-                  name: widget.serverName ?? '',
-                  src: clCleanMediaSrc(widget.serverProfile),
-                  // 40 and CLType.title below: exactly the conversation
-                  // header's avatar and name. A channel list and a conversation
-                  // are the same kind of place, so their headers should not read
-                  // at two different weights.
-                  size: 40),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(widget.serverName ?? 'Server',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: CLType.title,
-                        fontWeight: FontWeight.bold,
-                        color: p.text)),
-              ),
-              // A menu, not a single action - the same shape the conversation
-              // header uses, and web's server header carries the same three.
-              PopupMenuButton<String>(
-                tooltip: 'Options',
-                color: p.surface,
-                icon: Icon(Icons.info_outline, size: 20, color: p.text2),
-                onSelected: (value) {
-                  switch (value) {
-                    case 'info':
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => ServerInfoScreen(
-                          serverId: widget.serverId,
-                          serverName: widget.serverName,
-                          serverProfile: widget.serverProfile,
-                        ),
-                      ));
-                    case 'manage':
-                      openRealmManage(context, widget.serverId);
-                    case 'leave':
-                      _leaveServer();
-                  }
-                },
-                itemBuilder: (context) => [
-                  _menuItem(p, 'info', Icons.info_outline, 'Info'),
-                  // Admins only. The server refuses a non-admin's edits anyway,
-                  // but offering the entry means every non-admin who taps it
-                  // gets a screen that can only fail - and Leave, the thing they
-                  // actually want, sits right under it.
-                  if (_isAdmin)
-                    _menuItem(p, 'manage', Icons.tune, 'Manage server'),
-                  _menuItem(p, 'leave', Icons.logout, 'Leave server',
-                      danger: true),
-                ],
-              ),
-            ],
+        // in the same corner. Its own panel, sitting above the channels panel:
+        // the pane is two cards, not one card with a rule across it.
+        CLPanel(
+          padding: CLSpacing.headerPanelPadding,
+          child: SizedBox(
+            height: CLSpacing.headerPanelHeight - 12,
+            child: Row(
+              children: [
+                CLAvatar(
+                    id: widget.serverId,
+                    name: widget.serverName ?? '',
+                    src: clCleanMediaSrc(widget.serverProfile),
+                    // 40 and CLType.title below: exactly the conversation
+                    // header's avatar and name. A channel list and a conversation
+                    // are the same kind of place, so their headers should not read
+                    // at two different weights.
+                    size: 40),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(widget.serverName ?? 'Server',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: CLType.title,
+                          fontWeight: FontWeight.bold,
+                          color: p.text)),
+                ),
+                // A menu, not a single action - the same shape the conversation
+                // header uses, and web's server header carries the same three.
+                PopupMenuButton<String>(
+                  tooltip: 'Options',
+                  color: p.surface,
+                  // On a tinted disc, matching the rail's pinned controls - a
+                  // bare glyph in the corner of a white panel has nothing
+                  // holding it to the header.
+                  icon: Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                        color: p.surface2, shape: BoxShape.circle),
+                    child: Icon(Icons.info_outline, size: 18, color: p.text2),
+                  ),
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'info':
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => ServerInfoScreen(
+                            serverId: widget.serverId,
+                            serverName: widget.serverName,
+                            serverProfile: widget.serverProfile,
+                          ),
+                        ));
+                      case 'manage':
+                        openRealmManage(context, widget.serverId);
+                      case 'leave':
+                        _leaveServer();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    _menuItem(p, 'info', Icons.info_outline, 'Info'),
+                    // Admins only. The server refuses a non-admin's edits anyway,
+                    // but offering the entry means every non-admin who taps it
+                    // gets a screen that can only fail - and Leave, the thing they
+                    // actually want, sits right under it.
+                    if (_isAdmin)
+                      _menuItem(p, 'manage', Icons.tune, 'Manage server'),
+                    _menuItem(p, 'leave', Icons.logout, 'Leave server',
+                        danger: true),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-        Divider(height: 1, color: p.border),
-        Expanded(child: _body(p)),
+        const SizedBox(height: CLSpacing.canvasGutter),
+        // The channel list fills the rest of the pane as one panel. Clipped,
+        // because the list scrolls inside its own rounded corners.
+        Expanded(
+          child: CLPanel(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+            clipBehavior: Clip.antiAlias,
+            child: _body(p),
+          ),
+        ),
       ],
     );
   }
@@ -322,7 +344,7 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     // rather than the single-line rows this list actually has.
     if (_loading) {
       return ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
           for (var i = 0; i < 8; i++)
             Padding(
@@ -390,7 +412,9 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
       onRefresh: _load,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 24),
+        // The enclosing panel supplies the inset; only the tail padding that
+        // lets the last row clear the panel's rounded bottom is left here.
+        padding: const EdgeInsets.only(bottom: 24),
         itemCount: _channels.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) {
@@ -663,39 +687,52 @@ class _ServerScreenState extends State<ServerScreen> {
       // up under the status bar.
       body: SafeArea(
         bottom: false,
-        child: Row(
-          children: [
-            _ServerRail(
-              servers: _mine,
-              activeId: _serverId,
-              onBack: _back,
-              onHome: _showDirectory,
-              onOpen: (server) => setState(() {
-                _serverId = server.id;
-                _serverName = server.name;
-                _serverProfile = server.profile;
-              }),
-            ),
-            Container(width: 1, color: p.border),
-            Expanded(
-              child: _serverId == null
-                  ? ServersDirectoryPane(
-                      onOpenServer: _select,
-                      // A newly created server has to appear in the rail too.
-                      onServersChanged: _loadMine,
-                    )
-                  : ServerChannelsPane(
-                      // Keyed so switching servers in the rail rebuilds the
-                      // pane and refetches, instead of leaving the previous
-                      // server channels on screen.
-                      key: ValueKey(_serverId),
-                      serverId: _serverId!,
-                      serverName: _serverName,
-                      serverProfile: _serverProfile,
-                      onLeave: _onLeft,
-                    ),
-            ),
-          ],
+        // The rail and the pane are two separate cards floating on the canvas
+        // with the gutter between them, rather than one surface split by a
+        // hairline. The 1px divider that used to separate them is gone: the
+        // gutter IS the separation now, and keeping both would read as a seam
+        // inside a single panel.
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            CLSpacing.canvasGutter,
+            CLSpacing.canvasTop,
+            CLSpacing.canvasGutter,
+            CLSpacing.canvasGutter,
+          ),
+          child: Row(
+            children: [
+              _ServerRail(
+                servers: _mine,
+                activeId: _serverId,
+                onBack: _back,
+                onHome: _showDirectory,
+                onOpen: (server) => setState(() {
+                  _serverId = server.id;
+                  _serverName = server.name;
+                  _serverProfile = server.profile;
+                }),
+              ),
+              const SizedBox(width: CLSpacing.canvasGutter),
+              Expanded(
+                child: _serverId == null
+                    ? ServersDirectoryPane(
+                        onOpenServer: _select,
+                        // A newly created server has to appear in the rail too.
+                        onServersChanged: _loadMine,
+                      )
+                    : ServerChannelsPane(
+                        // Keyed so switching servers in the rail rebuilds the
+                        // pane and refetches, instead of leaving the previous
+                        // server channels on screen.
+                        key: ValueKey(_serverId),
+                        serverId: _serverId!,
+                        serverName: _serverName,
+                        serverProfile: _serverProfile,
+                        onLeave: _onLeft,
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -723,81 +760,120 @@ class _ServerRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return Container(
-      width: 60,
-      color: p.surface,
-      child: Column(
-        children: [
-          const SizedBox(height: 4),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            onPressed: onBack,
-            tooltip: 'Back',
+    return SizedBox(
+      width: CLSpacing.railWidth,
+      child: CLPanel(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
             // Gold: this whole surface is the servers accent, so its controls
-            // use it rather than the app blue.
-            icon: Icon(Icons.arrow_back, color: p.gold, size: 20),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            onPressed: onHome,
-            tooltip: 'All servers',
+            // use it rather than the app blue. Each now sits on a gold-tint
+            // disc - on a white panel a bare glyph had nothing holding it, and
+            // the discs make the two pinned controls read as a pair distinct
+            // from the server tiles below them.
+            _RailAction(icon: Icons.arrow_back, tooltip: 'Back', onTap: onBack),
             // Always gold. It was dimming to text3 whenever a server was open,
             // which read as "disabled" on the one control that takes you back
             // to the directory - the state it was signalling is already carried
             // by which avatar has the ring.
-            icon: Icon(Icons.dns, color: p.gold, size: 20),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Divider(height: 1, color: p.border),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.only(bottom: 12),
-              itemCount: servers.length,
-              itemBuilder: (context, index) {
-                final server = servers[index];
-                // Both sides must be non-empty. When the Node payload was being
-                // mis-parsed every id came back "" - and "" == "" meant EVERY
-                // avatar drew the ring at once. The parse is fixed; this makes
-                // the comparison unable to lie again.
-                final active = server.id.isNotEmpty && server.id == activeId;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Center(
-                    child: InkWell(
-                      onTap: () => onOpen(server),
-                      borderRadius: BorderRadius.circular(CLRadii.pill),
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            // Grey, not the accent: the ring is positional, not
-                            // a status, so it stays quiet and lets gold mean
-                            // actions.
-                            color: active ? p.border2 : Colors.transparent,
-                            width: 2,
+            _RailAction(icon: Icons.dns, tooltip: 'All servers', onTap: onHome),
+            const SizedBox(height: 6),
+            // A short rounded rule, not a full-width divider: inside a panel
+            // this separates two groups, and a hairline running edge to edge
+            // would cut the card in half.
+            Container(
+              height: 2,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: p.surface3,
+                borderRadius: BorderRadius.circular(CLRadii.pill),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.only(bottom: 12),
+                itemCount: servers.length,
+                itemBuilder: (context, index) {
+                  final server = servers[index];
+                  // Both sides must be non-empty. When the Node payload was being
+                  // mis-parsed every id came back "" - and "" == "" meant EVERY
+                  // avatar drew the ring at once. The parse is fixed; this makes
+                  // the comparison unable to lie again.
+                  final active = server.id.isNotEmpty && server.id == activeId;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Center(
+                      child: InkWell(
+                        onTap: () => onOpen(server),
+                        borderRadius: BorderRadius.circular(17),
+                        // Rounded square, not a circle: a server is a PLACE, and
+                        // the squircle is what distinguishes it from the circular
+                        // avatars that mean people everywhere else in the app.
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(17),
+                            border: Border.all(
+                              // Grey, not the accent: the ring is positional, not
+                              // a status, so it stays quiet and lets gold mean
+                              // actions.
+                              color: active ? p.border2 : Colors.transparent,
+                              width: 2,
+                            ),
                           ),
-                        ),
-                        // No src when there is no photo, so CLAvatar draws the
-                        // gradient and the server initials.
-                        child: CLAvatar(
-                          id: server.id,
-                          name: server.name,
-                          src: clCleanMediaSrc(server.profile),
-                          size: 38,
+                          // No src when there is no photo, so CLAvatar draws the
+                          // gradient and the server initials.
+                          child: CLAvatar(
+                            id: server.id,
+                            name: server.name,
+                            src: clCleanMediaSrc(server.profile),
+                            size: 38,
+                            cornerRadius: 13,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One of the rail's two pinned controls - a gold glyph on a gold-tint disc.
+class _RailAction extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _RailAction(
+      {required this.icon, required this.tooltip, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(CLRadii.pill),
+          child: Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration:
+                BoxDecoration(color: p.goldSoft, shape: BoxShape.circle),
+            child: Icon(icon, color: p.gold, size: 18),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -878,7 +954,7 @@ class _ServerInfoScreenState extends State<ServerInfoScreen> {
       // surface, matching the conversation info screen: one continuous panel of
       // identity, with nothing on it needing a darker ground to sit against.
       backgroundColor: p.surface,
-      appBar: AppBar(),
+      appBar: const CLPanelAppBar(),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
             CLSpacing.contentGutter, 8, CLSpacing.contentGutter, 24),

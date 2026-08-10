@@ -108,7 +108,8 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
     bool hasNext = false;
 
     if (_isGroups) {
-      final result = await api.groupShortcutsRequest(page: page, range: _kPageSize);
+      final result =
+          await api.groupShortcutsRequest(page: page, range: _kPageSize);
       if (!mounted) return;
       if (page == 1) _groups.clear();
       _groups.addAll(result.items);
@@ -171,7 +172,8 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
 
   void _openEntity(NetworkEntityResult item) {
     if (item.handle.isEmpty) return;
-    context.push(item.isRealm ? '/realm/${item.handle}' : '/user/${item.handle}');
+    context
+        .push(item.isRealm ? '/realm/${item.handle}' : '/user/${item.handle}');
   }
 
   Widget _row(NetworkEntityResult item, Map<String, PresenceInfo> presence) {
@@ -277,7 +279,7 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(
+      appBar: CLPanelAppBar(
         title: Text(widget.section.title),
         actions: [
           Padding(

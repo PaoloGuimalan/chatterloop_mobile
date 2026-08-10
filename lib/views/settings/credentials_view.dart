@@ -56,7 +56,8 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
     }
 
     setState(() => _saving = true);
-    final data = await ProfileApi().updateProfileRequest({'username': username});
+    final data =
+        await ProfileApi().updateProfileRequest({'username': username});
     if (!mounted) return;
     if (data == null) {
       setState(() => _saving = false);
@@ -90,7 +91,7 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
         final email = _original.email ?? '';
         return CLScreen(
           backgroundColor: p.bg,
-          appBar: AppBar(title: const Text('Credentials')),
+          appBar: CLPanelAppBar(title: const Text('Credentials')),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -122,7 +123,8 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
                       Expanded(
                         child: Text(
                           email.isEmpty ? 'No email on file' : email,
-                          style: TextStyle(color: p.text3, fontSize: CLType.body),
+                          style:
+                              TextStyle(color: p.text3, fontSize: CLType.body),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -160,7 +162,9 @@ class _CredentialsScreenState extends State<CredentialsScreen> {
         children: [
           Text(title,
               style: TextStyle(
-                  fontSize: CLType.title, fontWeight: FontWeight.w700, color: p.text)),
+                  fontSize: CLType.title,
+                  fontWeight: FontWeight.w700,
+                  color: p.text)),
           const SizedBox(height: 2),
           Text(desc, style: TextStyle(fontSize: CLType.bodySm, color: p.text2)),
         ],

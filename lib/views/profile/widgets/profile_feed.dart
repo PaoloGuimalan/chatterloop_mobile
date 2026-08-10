@@ -115,13 +115,13 @@ class ProfileFeedState extends State<ProfileFeed> {
 
     if (_isLoading) {
       return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
+        padding: EdgeInsets.zero,
         child: Column(children: [PostItemSkeleton(), PostItemSkeleton()]),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

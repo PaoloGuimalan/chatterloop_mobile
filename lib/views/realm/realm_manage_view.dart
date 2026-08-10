@@ -191,7 +191,7 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(
+      appBar: CLPanelAppBar(
           title: Text(
               realm == null ? 'Manage' : 'Manage ${realmKindNoun(realm)}')),
       body: _loading
@@ -435,8 +435,8 @@ class _SectionTile extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: p.surface,
-          border: Border.all(color: p.border),
-          borderRadius: BorderRadius.circular(CLRadii.md),
+          borderRadius: BorderRadius.circular(CLRadii.panel),
+          boxShadow: p.panelShadow,
         ),
         clipBehavior: Clip.antiAlias,
         child: ListTile(
@@ -549,7 +549,7 @@ class _RealmDetailsScreenState extends State<RealmDetailsScreen> {
     final p = cl(context);
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text('Details')),
+      appBar: CLPanelAppBar(title: const Text('Details')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
             CLSpacing.contentGutter, 16, CLSpacing.contentGutter, 24),

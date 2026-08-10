@@ -70,7 +70,7 @@ class _ArchivesScreenState extends State<ArchivesScreen> {
     final userID = appStore.state.userAuth.user.entityId;
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text('Archives')),
+      appBar: CLPanelAppBar(title: const Text('Archives')),
       body: _loading
           ? Center(child: CircularProgressIndicator(color: p.brand))
           : _items.isEmpty
@@ -78,7 +78,8 @@ class _ArchivesScreenState extends State<ArchivesScreen> {
                   onRefresh: _load,
                   child: ListView(
                     children: [
-                      SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+                      SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.3),
                       Center(
                         child: Text('No archived conversations.',
                             style: TextStyle(color: p.text2)),

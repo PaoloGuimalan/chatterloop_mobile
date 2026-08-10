@@ -340,7 +340,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
     showModalBottomSheet(
       context: context,
-    useRootNavigator: true,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: p.surface,
       shape: const RoundedRectangleBorder(
@@ -538,8 +538,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (_isSelf(context)) {
       final me = StoreProvider.of<AppState>(context).state.userAuth.user;
       if (me.isVerified) return const SizedBox.shrink();
-      return const CLBadge(
-          label: "Email not verified", tone: CLBadgeTone.pink);
+      return const CLBadge(label: "Email not verified", tone: CLBadgeTone.pink);
     }
 
     // Follow is independent of the connection state - you can follow someone
@@ -651,34 +650,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final p = cl(context);
     return CLScreen(
       backgroundColor: p.bg,
-      // Transparent + extended behind the body so the back button floats
-      // over the cover photo, matching webapp's floating circular back
-      // button on the profile page instead of a hard app-bar strip.
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: p.surface,
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15), blurRadius: 6),
-              ],
-            ),
-            child: Icon(Icons.arrow_back, size: 18, color: p.text),
-          ),
-          onPressed: () => context.pop(),
-        ),
-        actions: [
-          if (!isLoading && !notFound && profile != null && !_isSelf(context))
-            _moreMenu(p),
-        ],
-      ),
+      // No AppBar at all. The back button and the menu now float on the cover
+      // INSIDE the identity panel (see ProfileHeader.overlayLeading) - an app
+      // bar would have put them above the panel's rounded top edge, out on the
+      // canvas, which is where the old extendBodyBehindAppBar trick was
+      // compensating for a full-bleed cover that no longer exists.
       body: isLoading
           ? const SingleChildScrollView(child: ProfileHeaderSkeleton())
           : notFound || profile == null
@@ -687,6 +663,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       style: TextStyle(color: p.text2)))
               : SingleChildScrollView(
                   controller: _scrollController,
+                  // The canvas. The top inset is the status bar plus the
+                  // canvas step, which the AppBar used to supply.
+                  padding: EdgeInsets.fromLTRB(
+                    CLSpacing.canvasGutter,
+                    MediaQuery.of(context).padding.top + CLSpacing.canvasTop,
+                    CLSpacing.canvasGutter,
+                    CLSpacing.canvasGutter,
+                  ),
                   child: Column(
                     children: [
                       StoreConnector<AppState, bool>(
@@ -695,6 +679,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             store.state.presence[profile!.entityId]?.online ??
                             false,
                         builder: (context, online) => ProfileHeader(
+                          overlayLeading: CLCoverButton(
+                            icon: Icons.arrow_back,
+                            tooltip: 'Back',
+                            onPressed: () => context.pop(),
+                          ),
+                          overlayActions:
+                              !_isSelf(context) ? _moreMenu(p) : null,
                           id: profile!.id,
                           displayName: profile!.displayName,
                           username: profile!.username,
@@ -712,12 +703,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           // server enforces it too, since it writes the avatar
                           // of whoever the token says is posting.
                           onChangeAvatar: isActingEntity(profile!.entityId)
-                              ? () => _changeProfileMedia(
-                                  ComposerMode.profilePhoto)
+                              ? () =>
+                                  _changeProfileMedia(ComposerMode.profilePhoto)
                               : null,
                           onChangeCover: isActingEntity(profile!.entityId)
-                              ? () => _changeProfileMedia(
-                                  ComposerMode.coverPhoto)
+                              ? () =>
+                                  _changeProfileMedia(ComposerMode.coverPhoto)
                               : null,
                           joinedLabel:
                               formattedDateToWords(profile!.joinedDate),
@@ -726,7 +717,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               profile!.birthDay,
                               profile!.birthYear),
                           actions: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
+                            padding: EdgeInsets.zero,
                             child: _connectionActions(p),
                           ),
                         ),
@@ -738,8 +729,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       // the content below is withheld, and it says so rather
                       // than showing an empty card that reads as broken.
                       if (!profile!.canView)
-                        _LockedProfileNotice(
-                            displayName: profile!.displayName)
+                        _LockedProfileNotice(displayName: profile!.displayName)
                       else
                         // Renders on anyone's profile - the totals endpoint is
                         // public - but only links through on your own, since
@@ -763,8 +753,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         // one that might post the wrong thing.
                         if (profile!.entityId.isNotEmpty)
                           Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: CLSpacing.contentGutter),
+                            padding: EdgeInsets.zero,
                             // Own-vs-visitor, the placeholder and the
                             // pre-selected tag are all decided from the acting
                             // entity inside the card - see isActingEntity.
@@ -805,7 +794,7 @@ class _LockedProfileNotice extends StatelessWidget {
     final name = displayName.trim().isEmpty ? "This account" : displayName;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
+      padding: EdgeInsets.zero,
       child: CLCard(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),

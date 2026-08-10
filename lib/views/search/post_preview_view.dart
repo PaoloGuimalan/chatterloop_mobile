@@ -102,17 +102,12 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
     final post = _post;
 
     return CLScreen(
-      backgroundColor: p.surface,
-      appBar: AppBar(
-        title: const Text("Post"),
-        // Matched to the body so the header doesn't read as its own slab.
-        backgroundColor: p.surface,
-        surfaceTintColor: Colors.transparent,
-        // Android tints a scrolled-under AppBar by default, which would
-        // reintroduce exactly the contrast this is avoiding.
-        scrolledUnderElevation: 0,
-        elevation: 0,
-      ),
+      // Back on the canvas: the header used to be painted the same colour as
+      // the body so the two would not read as separate slabs, but a floating
+      // header IS separate by design, and it needs the canvas behind it for
+      // that separation to look deliberate.
+      backgroundColor: p.bg,
+      appBar: const CLPanelAppBar(title: Text("Post")),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: p.brand))
           : post == null

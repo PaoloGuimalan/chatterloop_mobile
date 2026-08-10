@@ -231,12 +231,10 @@ class _NewsfeedViewState extends State<NewsfeedView>
         child: ListView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
-            CLSpacing.contentGutter,
-            12,
-            CLSpacing.contentGutter,
-            24,
-          ),
+          // No padding of its own: this is a tab branch, and HomeTabScaffold
+          // wraps every branch in the canvas gutter. Adding one here would
+          // double it and pull the post panels off the header panel's edge.
+          padding: EdgeInsets.zero,
           children: [
             // The same composer the profiles use. No autoTag: this is your own
             // feed, not someone's profile, so there is nobody to tag by default.

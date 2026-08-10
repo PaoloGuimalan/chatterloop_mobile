@@ -202,7 +202,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text('Add members')),
+      appBar: CLPanelAppBar(title: const Text('Add members')),
       body: Column(
         children: [
           Padding(

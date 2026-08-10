@@ -122,6 +122,19 @@ class CLRadii {
   static const sm = 10.0;
   static const md = 14.0;
   static const lg = 20.0;
+
+  /// A floating panel - the container every region of every screen now sits
+  /// in. The redesign's one structural move: instead of full-bleed sections
+  /// divided by hairlines, each region (header, list, composer, rail, pane) is
+  /// its own rounded card floating on the canvas, separated by
+  /// [CLSpacing.canvasGutter].
+  static const panel = 26.0;
+
+  /// A row or tile INSIDE a panel - a channel row, a settings tile, a picked
+  /// media thumb. Deliberately smaller than [panel] so a selected row reads as
+  /// nested within its card rather than as a second card lying on top of it.
+  static const row = 18.0;
+
   static const pill = 999.0;
 }
 
@@ -133,10 +146,55 @@ class CLSpacing {
   /// the profile screens used 20 above the feed's 14, and a 6px step in the
   /// middle of a scroll reads as one of the two blocks being misaligned. Any
   /// new section on those screens uses this rather than its own number.
-  static const contentGutter = 14.0;
+  ///
+  /// Now defined AS [canvasGutter] rather than as its own 14. Those sections
+  /// are panels floating on the canvas, and a content inset that differs from
+  /// the canvas margin by 4px is the one thing that would give that away -
+  /// the header panel and the list below it would sit on different left edges.
+  static const contentGutter = canvasGutter;
 
-  static const railWidth = 76.0;
-  static const headerHeight = 60.0;
+  /// The gap between floating panels, and between a panel and the screen
+  /// edge. One number for both on purpose: it is what makes the canvas read as
+  /// a continuous margin running around and between the cards rather than as
+  /// two unrelated paddings. It also doubles as the gesture-safe margin at the
+  /// bottom edge, which is why the design takes the platform's back gesture as
+  /// given instead of adding a custom edge-swipe.
+  static const canvasGutter = 10.0;
+
+  /// The canvas's TOP inset, above the first panel. Smaller than
+  /// [canvasGutter] because the status bar already supplies visual space
+  /// above it - a full gutter there reads as the header sagging.
+  static const canvasTop = 6.0;
+
+  /// The servers rail, as a floating card of its own beside the pane. Narrower
+  /// than the old full-height rail: without a background running to the screen
+  /// edge it only has to fit the 38px server tiles plus their selection ring.
+  static const railWidth = 60.0;
+
+  /// A header panel's OUTER height - every pushed screen's header, the
+  /// conversation's, the voice room's, a server pane's.
+  ///
+  /// One number because these are the same object seen on different screens,
+  /// and they were drifting: 52 here, 56 there, 64 on the shell, each arrived
+  /// at by padding whatever the header happened to contain. A header that
+  /// changes height as you move between screens is the thing that makes a
+  /// floating panel read as an accident rather than a system.
+  ///
+  /// 40px of content (the back button's target, an avatar) between 6px of
+  /// padding.
+  static const headerPanelHeight = 52.0;
+
+  /// Padding inside a header panel. Asymmetric: the leading control is a 40px
+  /// target whose glyph sits well inside it, so a full inset on the left would
+  /// push the title out of line with the content below.
+  static const headerPanelPadding =
+      EdgeInsets.symmetric(horizontal: 12, vertical: 6);
+
+  /// The TAB shell's header is deliberately taller than [headerPanelHeight]:
+  /// it carries a row of 40px actions and the identity avatar rather than a
+  /// single back button, and squeezing those into 52 crowds them.
+  static const tabHeaderHeight = 62.0;
+
   static const bottomnavHeight = 60.0;
 }
 
@@ -168,6 +226,19 @@ class CLPalette extends ThemeExtension<CLPalette> {
   final Color railIconActive;
   final Color railActiveBg;
 
+  /// The elevation that separates a floating panel from the canvas.
+  ///
+  /// This REPLACES the hairline border panels used to carry, rather than
+  /// joining it - a card that has both reads as outlined-and-lifted at once,
+  /// which is the muddy middle the redesign moves off. Borders survive only
+  /// INSIDE a panel, as dividers between its rows.
+  ///
+  /// Two layers in light: a tight contact shadow that seats the card, and a
+  /// wide soft one that lifts it. Dark gets a single, stronger layer - on a
+  /// near-black canvas the tight layer is invisible and the wide one has to
+  /// work harder to register at all.
+  final List<BoxShadow> panelShadow;
+
   const CLPalette({
     required this.bg,
     required this.surface,
@@ -193,6 +264,7 @@ class CLPalette extends ThemeExtension<CLPalette> {
     required this.railIcon,
     required this.railIconActive,
     required this.railActiveBg,
+    required this.panelShadow,
   });
 
   static const light = CLPalette(
@@ -224,6 +296,11 @@ class CLPalette extends ThemeExtension<CLPalette> {
     railIcon: Color(0xCCFFFFFF),
     railIconActive: CLColors.brand,
     railActiveBg: Color(0xFFFFFFFF),
+    panelShadow: [
+      BoxShadow(color: Color(0x0A14161A), blurRadius: 4, offset: Offset(0, 2)),
+      BoxShadow(
+          color: Color(0x1414161A), blurRadius: 26, offset: Offset(0, 10)),
+    ],
   );
 
   static const dark = CLPalette(
@@ -255,6 +332,9 @@ class CLPalette extends ThemeExtension<CLPalette> {
     railIcon: Color(0x9DFFFFFF),
     railIconActive: Color(0xFFFFFFFF),
     railActiveBg: Color(0x383C8BFF),
+    panelShadow: [
+      BoxShadow(color: Color(0x59000000), blurRadius: 20, offset: Offset(0, 6)),
+    ],
   );
 
   @override

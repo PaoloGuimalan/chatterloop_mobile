@@ -50,10 +50,9 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text("Entry")),
+      appBar: CLPanelAppBar(title: const Text("Entry")),
       body: _isLoading
-          ? const Padding(
-              padding: EdgeInsets.all(12), child: CLListSkeleton())
+          ? const Padding(padding: EdgeInsets.all(12), child: CLListSkeleton())
           : entry == null
               ? Center(
                   child: CLEmptyState(
@@ -130,7 +129,8 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                     child: Text(entry.mood!.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: p.text3, fontSize: CLType.caption)),
+                        style: TextStyle(
+                            color: p.text3, fontSize: CLType.caption)),
                   ),
                 ],
               ],
@@ -148,7 +148,8 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
           width: double.infinity,
           child: HtmlWidget(
             entry.content,
-            textStyle: TextStyle(color: p.text, fontSize: CLType.title, height: 1.5),
+            textStyle:
+                TextStyle(color: p.text, fontSize: CLType.title, height: 1.5),
             onTapUrl: (url) async {
               final uri = Uri.tryParse(url);
               if (uri == null) return false;
@@ -167,13 +168,14 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
             const SizedBox(width: double.infinity),
             Text("Tags",
                 style: TextStyle(
-                    color: p.text2, fontSize: CLType.caption, fontWeight: FontWeight.w700)),
+                    color: p.text2,
+                    fontSize: CLType.caption,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children:
-                  entry.tags.map((t) => CLChip(label: t.name)).toList(),
+              children: entry.tags.map((t) => CLChip(label: t.name)).toList(),
             ),
           ],
         ),
@@ -186,7 +188,9 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
             const SizedBox(width: double.infinity),
             Text("Attachments (${entry.attachments.length})",
                 style: TextStyle(
-                    color: p.text2, fontSize: CLType.caption, fontWeight: FontWeight.w700)),
+                    color: p.text2,
+                    fontSize: CLType.caption,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
             ...entry.attachments.map((a) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
@@ -278,8 +282,18 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
 
   String _formatDate(DateTime date) {
     const months = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December",
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ];
     return "${ordinalSuffix(date.day)} of ${months[date.month - 1]}, ${date.year}";
   }

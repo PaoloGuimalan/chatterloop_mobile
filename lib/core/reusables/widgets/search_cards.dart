@@ -264,16 +264,13 @@ class SearchRealmCard extends StatelessWidget {
     );
 
     final card = Container(
+      // Nested INSIDE a panel, so it steps down to surface2 and drops its
+      // border rather than becoming a second card: a panel on a panel reads as
+      // two objects at the same depth, which is what makes the elevation stop
+      // meaning anything. See CLPanel.
       decoration: BoxDecoration(
-        color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 3,
-              offset: const Offset(0, 1)),
-        ],
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.row),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -488,10 +485,13 @@ class SearchRealmCardSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = cl(context);
     final card = Container(
+      // Nested INSIDE a panel, so it steps down to surface2 and drops its
+      // border rather than becoming a second card: a panel on a panel reads as
+      // two objects at the same depth, which is what makes the elevation stop
+      // meaning anything. See CLPanel.
       decoration: BoxDecoration(
-        color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.row),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(

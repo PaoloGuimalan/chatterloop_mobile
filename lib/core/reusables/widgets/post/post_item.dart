@@ -1,4 +1,4 @@
-﻿// One post AS A ROW IN A FEED - profile feeds today, the newsfeed next.
+// One post AS A ROW IN A FEED - profile feeds today, the newsfeed next.
 //
 // The distinction from the two neighbouring widgets is worth stating, because
 // all three render "a post":
@@ -71,12 +71,14 @@ class PostItem extends StatelessWidget {
     return PostViewTracker(
       post: post,
       trackOwnPosts: trackOwnPosts,
+      // A post is a floating panel of its own - the feed is a stack of cards
+      // on the canvas, not one list with rules between the rows.
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: CLSpacing.canvasGutter),
         decoration: BoxDecoration(
           color: p.surface,
-          border: Border.all(color: p.border),
-          borderRadius: BorderRadius.circular(CLRadii.md),
+          borderRadius: BorderRadius.circular(CLRadii.panel),
+          boxShadow: p.panelShadow,
         ),
         clipBehavior: Clip.antiAlias,
         child: PostCard(
@@ -272,12 +274,12 @@ class PostItemSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = cl(context);
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: CLSpacing.canvasGutter),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
+        borderRadius: BorderRadius.circular(CLRadii.panel),
+        boxShadow: p.panelShadow,
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,4 +317,3 @@ class PostItemSkeleton extends StatelessWidget {
     );
   }
 }
-
