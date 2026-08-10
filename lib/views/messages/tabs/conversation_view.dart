@@ -802,7 +802,23 @@ class ConversationStateView extends State<ConversationView> {
       conversationID: widget.conversationId,
       caller: caller,
       recepients: recipients,
-      displayImage: _conversationType == "single" ? _headerAvatarSrc : "none",
+      // MY avatar, not the header's.
+      //
+      // Everything in this payload describes the person being ANNOUNCED, and
+      // for a 1:1 call that is the caller - which callDisplayName above already
+      // gets right (me.firstname). displayImage was reading _headerAvatarSrc,
+      // the picture in our own conversation header, which is the person we are
+      // ringing: the callee's alert showed the callee their own face under the
+      // caller's name.
+      //
+      // Empty collapses to "none" rather than being sent through: the alert
+      // screen only checks for the literal "none" before handing the value to
+      // NetworkImage, so an empty string would reach it as a URL.
+      displayImage: _conversationType == "single"
+          ? ((me.activeAvatarSrc ?? '').isNotEmpty
+              ? me.activeAvatarSrc!
+              : "none")
+          : "none",
     ));
 
     final joined = await CallController.instance.joinCall(

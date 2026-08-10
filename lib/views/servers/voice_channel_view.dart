@@ -179,6 +179,14 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
       callType: 'audio',
       isOutgoing: false,
       startCameraOff: true,
+      // ALWAYS muted on the way in, unlike a call you placed or answered.
+      //
+      // A voice channel is a room you walk into, often just to see who is
+      // there - and it can already be full of people mid-conversation. Joining
+      // live is how you broadcast a room you are in, a keyboard, or half a
+      // sentence to someone else, to a room that never agreed to be called.
+      // Unmuting is one tap; taking back what was already transmitted is not.
+      startMuted: true,
     );
     if (!mounted) return;
     _syncRenderers();
