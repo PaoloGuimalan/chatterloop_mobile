@@ -78,19 +78,36 @@ the `.jks` and `key.properties` across — same key, same fingerprint. Building
 
 Add both SHA-1 **and** SHA-256 for each, in the
 [Firebase console](https://console.firebase.google.com) → Project settings → Your
-apps → `com.chatterloop.app`, then **re-download `google-services.json`** into
-`android/app/` and rebuild. Skipping the re-download is the usual reason this
-appears to be done and still fails with `PlatformException(sign_in_failed, ... 10:)`.
-The refreshed file contains every registered fingerprint, so one copy works for
-everyone — it is checked in and not machine-specific.
+apps → `com.chatterloop.app`.
 
-Confirm it landed:
+**Registering a fingerprint does not require a rebuild.** The certificate hash is
+never compiled into the app — the `com.google.gms.google-services` plugin emits
+only six string resources (`default_web_client_id`, `google_api_key`,
+`google_app_id`, `google_crash_reporting_api_key`, `google_storage_bucket`,
+`project_id`), none of which is a hash. Google validates the calling app's package
+and signing certificate server-side at sign-in. So an already-correctly-signed APK
+starts working on its own once the registration propagates; rebuilding changes
+nothing. Rebuild only when one of those six values changes — a different Firebase
+project, a new web client id, a regenerated API key.
+
+**Expect a delay.** A newly added fingerprint can take minutes to several hours to
+take effect, and until it does the failure is `DEVELOPER_ERROR (10)` — identical in
+appearance to a genuine misconfiguration. Re-adding the SHA during that window
+looks like it "does nothing." Verify the config once, then wait rather than
+changing things.
+
+Still **re-download `google-services.json`** into `android/app/` afterwards, as
+hygiene: it is checked in, and keeping it current makes it an accurate record of
+which keys are registered. Confirm with:
 
 ```bash
 grep -A 3 certificate_hash android/app/google-services.json
 ```
 
 Fingerprints appear there lowercase and without colons (`af76fa55fdd1dbca…`).
+Note that a fingerprint added directly in Google Cloud Console (rather than via
+Firebase) works at runtime but will **not** appear in this file — so its absence
+is not proof that a key is unregistered.
 
 Verify on a real device with the release build before rolling out, not in debug —
 debug uses a different key and will pass regardless. That still does not cover the
