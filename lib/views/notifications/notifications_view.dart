@@ -21,6 +21,7 @@ import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/notification_row.dart';
+import 'package:chatterloop_app/core/utils/notification_actions.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -206,6 +207,58 @@ class _NotificationsViewState extends State<NotificationsView> {
     ));
   }
 
+  /// Server-driven action. ONE handler for every button the server can send,
+  /// in place of a branch per notification type - which is the whole point of
+  /// moving actions into the payload.
+  ///
+  /// The optimistic settle mirrors _respond: flip referenceStatus so the
+  /// buttons drop away at once, then let `after` decide whether to re-read. A
+  /// failure refetches, which puts them back if the action did not take.
+  Future<void> _runAction(NotificationV2 item, NotificationAction action) async {
+    final isCall = action.type == 'api-request' ||
+        action.type == 'external-api-request';
+    if (isCall) {
+      if (_pendingActions.contains(item.referenceID)) return;
+      setState(() => _pendingActions.add(item.referenceID));
+    }
+
+    final outcome = await runNotificationAction(action);
+    if (!mounted) return;
+
+    if (outcome.navigateTo != null) {
+      if (isCall) setState(() => _pendingActions.remove(item.referenceID));
+      context.push(outcome.navigateTo!);
+      return;
+    }
+
+    if (isCall) setState(() => _pendingActions.remove(item.referenceID));
+
+    if (outcome.ok) {
+      _mapSections((candidate) => candidate.referenceID == item.referenceID
+          ? candidate.copyWith(referenceStatus: true)
+          : candidate);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(outcome.message ?? "Couldn't complete that action."),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+
+    // Refetch on failure too: the optimistic flip above has to be undone, and
+    // only the server knows the real state.
+    if (action.after == 'refresh' || !outcome.ok) _load();
+  }
+
+  /// Row tap. The server only sends a route for this platform when there IS a
+  /// destination, so anything reaching here is safe to act on.
+  Future<void> _openNotification(NotificationV2 item) async {
+    final destination = item.redirect;
+    if (destination == null) return;
+    final route = await resolveRedirect(destination);
+    if (!mounted || route == null) return;
+    context.push(route);
+  }
+
   // -------- sections ---------------------------------------------------------
 
   ({IconData icon, Color color, String emptyText}) _chrome(
@@ -316,6 +369,8 @@ class _NotificationsViewState extends State<NotificationsView> {
                     busy: _pendingActions.contains(item.referenceID),
                     onAccept: (target) => _respond(target, accept: true),
                     onDecline: (target) => _respond(target, accept: false),
+                    onAction: _runAction,
+                    onOpen: _openNotification,
                   ),
                 )),
           if (!_isLoading && data.total > visible.length) ...[

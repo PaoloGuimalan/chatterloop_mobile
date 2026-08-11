@@ -8,6 +8,7 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/core/utils/notification_actions.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:flutter/material.dart';
 
@@ -75,6 +76,12 @@ class CLNotificationRow extends StatelessWidget {
   final ValueChanged<NotificationV2> onAccept;
   final ValueChanged<NotificationV2> onDecline;
 
+  /// Runs a server-driven action. Absent = fall back to onAccept/onDecline.
+  final void Function(NotificationV2, NotificationAction)? onAction;
+
+  /// Row tap - only called when the server gave this platform a destination.
+  final ValueChanged<NotificationV2>? onOpen;
+
   const CLNotificationRow({
     super.key,
     required this.notification,
@@ -82,6 +89,8 @@ class CLNotificationRow extends StatelessWidget {
     required this.busy,
     required this.onAccept,
     required this.onDecline,
+    this.onAction,
+    this.onOpen,
   });
 
   @override
@@ -102,6 +111,12 @@ class CLNotificationRow extends StatelessWidget {
       details = details.replaceFirst(
           RegExp('^@$handle\\s+', caseSensitive: false), "");
     }
+    // Narrowed to what this build can actually carry out - see
+    // isRunnableAction. Platform filtering already happened at parse time.
+    final serverActions = onAction == null
+        ? const <NotificationAction>[]
+        : n.actions.where(isRunnableAction).toList();
+
     final parsedAt = _parseNotificationAt(n);
     final timeLabel = parsedAt != null
         ? timeSince(
@@ -112,7 +127,13 @@ class CLNotificationRow extends StatelessWidget {
 
     final avatarSize = detail ? 44.0 : 38.0;
 
-    return Container(
+    // Tappable ONLY when the server gave this platform a destination. A row
+    // that lights up and then goes nowhere is worse than one that never
+    // responded.
+    final destination = n.redirect;
+    final isTappable = destination != null && onOpen != null;
+
+    final row = Container(
       padding: EdgeInsets.all(detail ? 10 : 9),
       decoration: BoxDecoration(
         color: n.isRead ? p.surface : p.brandSoft,
@@ -202,7 +223,36 @@ class CLNotificationRow extends StatelessWidget {
               ],
             ),
           ),
-          if (n.isActionable) ...[
+          // Server-driven buttons, already filtered to this platform at parse
+          // time and narrowed here to the kinds this build can carry out. An
+          // unrunnable entry renders nothing rather than a button that does
+          // nothing - which is what keeps a shipped app safe when the server
+          // starts sending a kind it has never heard of.
+          if (serverActions.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < serverActions.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 6),
+                  CLMiniBtn(
+                    label: serverActions[i].name,
+                    // `style` is a hint; anything unrecognised takes the
+                    // neutral outline rather than guessing at emphasis.
+                    variant: serverActions[i].style == 'primary'
+                        ? CLBtnVariant.primary
+                        : CLBtnVariant.outline,
+                    onPressed:
+                        busy ? null : () => onAction!(n, serverActions[i]),
+                  ),
+                ],
+              ],
+            ),
+          ]
+          // LEGACY fallback: an older server sends no `actions`, so the
+          // hardcoded pair stays until that server is everywhere. Delete this
+          // branch once it is.
+          else if (n.isActionable) ...[
             const SizedBox(width: 8),
             Column(
               mainAxisSize: MainAxisSize.min,
@@ -221,6 +271,20 @@ class CLNotificationRow extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+
+    if (!isTappable) return row;
+
+    // Material+InkWell rather than GestureDetector so the tap gets the ripple
+    // every other list row in the app has. The buttons inside sit ABOVE this in
+    // the tree, so a press on one is consumed there and never reaches the row.
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => onOpen!(n),
+        borderRadius: BorderRadius.circular(detail ? CLRadii.md : CLRadii.sm),
+        child: row,
       ),
     );
   }

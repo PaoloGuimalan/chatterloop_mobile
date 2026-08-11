@@ -12,6 +12,8 @@ import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/notification_row.dart';
+import 'package:chatterloop_app/core/utils/notification_actions.dart';
+import 'package:go_router/go_router.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:chatterloop_app/views/notifications/notifications_view.dart';
@@ -135,6 +137,53 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
     ));
   }
 
+  /// Server-driven action - see notifications_view.dart's _runAction, which
+  /// this mirrors against this screen's flat `_items` list.
+  Future<void> _runAction(NotificationV2 item, NotificationAction action) async {
+    final isCall =
+        action.type == 'api-request' || action.type == 'external-api-request';
+    if (isCall) {
+      if (_pendingActions.contains(item.referenceID)) return;
+      setState(() => _pendingActions.add(item.referenceID));
+    }
+
+    final outcome = await runNotificationAction(action);
+    if (!mounted) return;
+
+    if (outcome.navigateTo != null) {
+      if (isCall) setState(() => _pendingActions.remove(item.referenceID));
+      context.push(outcome.navigateTo!);
+      return;
+    }
+
+    setState(() {
+      if (isCall) _pendingActions.remove(item.referenceID);
+      if (outcome.ok) {
+        for (var i = 0; i < _items.length; i++) {
+          if (_items[i].referenceID == item.referenceID) {
+            _items[i] = _items[i].copyWith(referenceStatus: true);
+          }
+        }
+      }
+    });
+
+    if (!outcome.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(outcome.message ?? "Couldn't complete that action."),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
+
+  /// Row tap - only reached when the server gave this platform a destination.
+  Future<void> _openNotification(NotificationV2 item) async {
+    final destination = item.redirect;
+    if (destination == null) return;
+    final route = await resolveRedirect(destination);
+    if (!mounted || route == null) return;
+    context.push(route);
+  }
+
   ({IconData icon, String subtitle}) get _emptyState => switch (widget.section) {
         NotificationSection.activity => (
             icon: Icons.bolt,
@@ -205,6 +254,8 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
                       busy: _pendingActions.contains(item.referenceID),
                       onAccept: (target) => _respond(target, accept: true),
                       onDecline: (target) => _respond(target, accept: false),
+                      onAction: _runAction,
+                      onOpen: _openNotification,
                     );
                   },
                 ),

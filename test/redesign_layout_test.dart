@@ -31,6 +31,7 @@ import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/views/realm/realm_sections.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/views/servers/create_realm_view.dart';
+import 'package:chatterloop_app/core/utils/notification_actions.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/views/servers/servers_view.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
@@ -785,6 +786,142 @@ void _rosterIdContracts() {
       // A follower has no role and no member row.
       expect(person.role, isNull);
       expect(person.memberId, isEmpty);
+    });
+  });
+
+  group('server-driven notification actions', () {
+    // The payload the Node serializer actually emits (see
+    // reusables/models/notificationactions.js): flat arrays carrying ALL
+    // platforms, which each client filters to its own.
+    Map<String, dynamic> payload() => {
+          'notificationID': 'NTF_1',
+          'referenceID': 'CON_1',
+          'referenceStatus': false,
+          'fromUserID': 'ENT_9',
+          'content': {'headline': 'Contact Request', 'details': '@maria ...'},
+          'date': {'date': '2026-08-12', 'time': null},
+          'type': 'contact_request',
+          'isRead': false,
+          'redirects': [
+            {'platform': 'web', 'type': 'profile', 'route': '/maria'},
+            {'platform': 'android', 'type': 'profile', 'route': '/user/maria'},
+            {'platform': 'ios', 'type': 'profile', 'route': '/user/maria'},
+          ],
+          'actions': [
+            // Deliberately out of order, and grouped by button rather than by
+            // platform - which is exactly how the server writes them.
+            {
+              'platform': 'web',
+              'id': 'decline',
+              'name': 'Decline',
+              'type': 'api-request',
+              'style': 'danger',
+              'order': 1,
+              'after': 'refresh',
+              'service': 'user',
+              'url': '/api/user/contacts',
+              'method': 'DELETE',
+              'payload': {'connection_id': 'CON_1'},
+              'headers': {'action': 'decline'},
+            },
+            {
+              'platform': 'android',
+              'id': 'decline',
+              'name': 'Decline',
+              'type': 'api-request',
+              'style': 'danger',
+              'order': 1,
+              'after': 'refresh',
+              'service': 'user',
+              'url': '/api/user/contacts',
+              'method': 'DELETE',
+              'payload': {'connection_id': 'CON_1'},
+              'headers': {'action': 'decline'},
+            },
+            {
+              'platform': 'android',
+              'id': 'accept',
+              'name': 'Confirm',
+              'type': 'api-request',
+              'style': 'primary',
+              'order': 0,
+              'after': 'refresh',
+              'service': 'user',
+              'url': '/api/user/contacts',
+              'method': 'PUT',
+              'payload': {'connection_id': 'CON_1'},
+            },
+          ],
+        };
+
+    test('keeps only this platform, and sorts by order', () {
+      final n = NotificationV2.fromJson(payload());
+
+      // The test host is neither Android nor iOS, but kNotificationPlatform
+      // resolves to one of them - whichever it is, the WEB entries must be
+      // gone. That is the property that matters: another platform's routes
+      // come from a different route table and would navigate nowhere.
+      expect(n.redirects.any((r) => r.platform == 'web'), isFalse);
+      expect(n.actions.any((a) => a.platform == 'web'), isFalse);
+
+      // Grouped by button on the wire, so insertion order is not render order.
+      if (n.actions.length > 1) {
+        expect(n.actions.first.order, lessThanOrEqualTo(n.actions.last.order));
+        expect(n.actions.first.id, 'accept');
+      }
+    });
+
+    test('a redirect with no route for this platform is not tappable', () {
+      final json = payload();
+      json['redirects'] = [
+        {'platform': 'web', 'type': 'post', 'route': '/post/P1'},
+        {'platform': 'android', 'type': 'post', 'route': null},
+        {'platform': 'ios', 'type': 'post', 'route': null},
+      ];
+      // A null route means "no destination here" - the row must stay inert
+      // rather than tapping to nothing.
+      expect(NotificationV2.fromJson(json).redirect, isNull);
+    });
+
+    test('missing redirects/actions leaves the legacy path intact', () {
+      final json = payload()
+        ..remove('redirects')
+        ..remove('actions');
+      final n = NotificationV2.fromJson(json);
+      expect(n.redirects, isEmpty);
+      expect(n.actions, isEmpty);
+      // Still answerable the old way, which is what makes this shippable
+      // against a server that predates the feature.
+      expect(n.isActionable, isTrue);
+    });
+
+    test('only safely-shaped actions are runnable', () {
+      NotificationAction a(String type, String url, {String method = 'POST'}) =>
+          NotificationAction.fromJson({
+            'platform': kNotificationPlatform,
+            'id': 'x',
+            'name': 'X',
+            'type': type,
+            'url': url,
+            'method': method,
+            'service': 'user',
+          });
+
+      // A path can only resolve against a base compiled into the build.
+      expect(isRunnableAction(a('api-request', '/api/user/contacts')), isTrue);
+      // An absolute url on a first-party call would aim an AUTHENTICATED
+      // request at a host the database chose.
+      expect(isRunnableAction(a('api-request', 'https://evil.tld/x')), isFalse);
+      // Protocol-relative carries no scheme and must not slip through as a path.
+      expect(isRunnableAction(a('api-request', '//evil.tld/x')), isFalse);
+      // External must be absolute, so it can never be mistaken for first-party
+      // and pick up our credentials.
+      expect(
+          isRunnableAction(a('external-api-request', 'https://p.tld/h')), isTrue);
+      expect(isRunnableAction(a('external-api-request', '/api/user/contacts')),
+          isFalse);
+      // An unknown kind renders nothing rather than a dead button.
+      expect(isRunnableAction(a('brand-new-kind', '/x')), isFalse);
     });
   });
 
