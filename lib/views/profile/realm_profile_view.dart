@@ -386,27 +386,22 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        CLBtn(
-          label: _isFollowing ? "Following" : "Follow",
-          iconL: _isFollowing ? Icons.check : Icons.add,
-          variant: _isFollowing ? CLBtnVariant.outline : CLBtnVariant.primary,
-          block: true,
-          onPressed: _isUpdatingFollow ? null : _toggleFollow,
-        ),
-        const SizedBox(height: 8),
-        // PAGES only. Above the connection action and never gated on it -
-        // reaching a page should not require being connected to it, which is
-        // the point of a page having an inbox at all.
+        // FIRST, above Follow. Reaching a page is the thing most visitors come
+        // for, and it is the one action that is always available - Follow and
+        // the connection action both change meaning with state, this does not.
         //
-        // Restricted by type because this screen is not page-exclusive: it is
-        // reached by slug from contacts, post authors, comments and tagging,
-        // and renders any realm. /m/crtc would happily open a "single"
-        // conversation with a GROUP's entity, which is not a thing that should
-        // exist - a group is already a conversation.
+        // PAGES only: this screen is not page-exclusive, being reached by slug
+        // from contacts, post authors, comments and tagging, and it renders any
+        // realm. /m/crtc would happily open a "single" conversation with a
+        // GROUP's entity, which should not exist - a group is already a
+        // conversation.
         if (realm.type == 'page') ...[
           CLBtn(
             label: _isOpeningMessage ? "Opening…" : "Message",
-            iconL: Icons.forum_outlined,
+            // The same glyph the Messages tab uses in the bottom nav
+            // (home_tab_scaffold's branch 1), so "message" looks like one
+            // thing across the app. Filled, not `forum_outlined`.
+            iconL: Icons.forum,
             // primary (the CLBtn default), matching the user profile's Message
             // button exactly. `soft` renders brandSoft-on-brand, which is a
             // pale blue in BOTH themes - it reads as disabled next to the
@@ -416,6 +411,14 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
           ),
           const SizedBox(height: 8),
         ],
+        CLBtn(
+          label: _isFollowing ? "Following" : "Follow",
+          iconL: _isFollowing ? Icons.check : Icons.add,
+          variant: _isFollowing ? CLBtnVariant.outline : CLBtnVariant.primary,
+          block: true,
+          onPressed: _isUpdatingFollow ? null : _toggleFollow,
+        ),
+        const SizedBox(height: 8),
         _connectionAction(realm),
       ],
     );
