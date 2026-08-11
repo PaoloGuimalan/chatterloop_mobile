@@ -70,10 +70,42 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
-            // signingConfig = signingConfigs.release
+            // Signed with the UPLOAD KEY when one is configured, and only then.
+            //
+            // Play rejects an artifact signed with the debug key, which is what
+            // this used to do unconditionally - so every release build looked
+            // fine locally and could never have been uploaded.
+            //
+            // The fallback is deliberate rather than lazy. key.properties and
+            // the .jks are both gitignored (see android/.gitignore), so they
+            // exist on the release machine and nowhere else; a hard switch to
+            // signingConfigs.release would break `flutter build --release` for
+            // any other checkout - CI, a second machine, a contributor - with a
+            // null storeFile rather than a message. Falling back keeps those
+            // builds working for local testing while making it impossible to
+            // ship one by accident, because an unsigned-for-release artifact is
+            // refused at upload.
+            //
+            // `storeFile` is the thing tested, not the file's existence: it is
+            // null exactly when key.properties was missing or had no storeFile
+            // entry, which is the case the fallback is for. A configured path
+            // that does not resolve SHOULD fail the build loudly - that is a
+            // broken release setup, not an absent one.
+            if (signingConfigs.release.storeFile != null) {
+                signingConfig = signingConfigs.release
+            } else {
+                // project.logger, not a bare `logger`: inside a buildTypes
+                // closure the delegate is the BuildType, which has no such
+                // property, so the bare form only resolves by falling through
+                // Groovy's owner chain to the script. That works today and is
+                // not worth depending on - especially here, since this branch
+                // ONLY runs on a machine without key.properties, i.e. the one
+                // place nobody would be watching for a Groovy resolution error.
+                project.logger.warn("WARNING: android/key.properties not found - the release " +
+                                    "build will be signed with the DEBUG key and cannot be " +
+                                    "uploaded to Play.")
+                signingConfig = signingConfigs.debug
+            }
         }
     }
 }

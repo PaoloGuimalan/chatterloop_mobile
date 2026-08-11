@@ -99,13 +99,38 @@ class GoogleAuthService {
       // thrown as a failure worth showing, so it's translated back here rather
       // than leaking a package type - and so a cancel never shows an error.
       if (e.code == GoogleSignInExceptionCode.canceled) return null;
-      if (kDebugMode) print('[GoogleAuthService] sign-in failed: $e');
+      _logFailure(e);
       throw GoogleAuthException('Could not sign in with Google.');
     } catch (e) {
-      if (kDebugMode) print('[GoogleAuthService] sign-in failed: $e');
+      _logFailure(e);
       // ApiException 10 (DEVELOPER_ERROR) shows up here when the Android
       // OAuth client / SHA-1 isn't registered in the Cloud project.
       throw GoogleAuthException('Could not sign in with Google.');
+    }
+  }
+
+  /// Logs the REAL cause, in release builds too.
+  ///
+  /// This used to be `if (kDebugMode) print(...)`, which is exactly backwards:
+  /// the failures that matter are the ones that only happen in a release build -
+  /// a signing certificate that is not registered, an OAuth client that exists
+  /// only for the debug key - and kDebugMode is false in precisely those builds.
+  /// So the one message that says WHICH of them it was got discarded, leaving
+  /// the generic "Could not sign in with Google." as the only evidence.
+  ///
+  /// Goes to logcat, not to the UI: the user-facing message stays generic, and
+  /// the detail is available with
+  ///   adb logcat -s flutter | grep GoogleAuthService
+  /// No token or account detail is ever in these exceptions - the codes are
+  /// configuration facts (e.g. ApiException 10 / DEVELOPER_ERROR), which is what
+  /// makes them safe to log unconditionally.
+  void _logFailure(Object error) {
+    // debugPrint rather than print: it rate-limits, so a retry loop cannot get
+    // its own diagnostics dropped by logcat's chatty-line filter.
+    debugPrint('[GoogleAuthService] sign-in failed: $error');
+    if (error is GoogleSignInException) {
+      debugPrint('[GoogleAuthService]   code=${error.code} '
+          'description=${error.description} details=${error.details}');
     }
   }
 

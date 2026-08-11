@@ -191,13 +191,25 @@ class ProfileApi {
   /// `channels` and then asking a second endpoint who the admins are was both
   /// an extra round trip and the wrong answer: the member-role check missed
   /// owners, and the realm-profile route cannot resolve a server id at all.
-  Future<({List<ServerChannel> channels, bool isAdmin})>
+  ///
+  /// `hasAccess` is FALSE only when the server refused the request - it answers
+  /// 401 for a non-member (see /s/initserverchannels), and that is a different
+  /// thing from a server with no channels. The search results now open a server
+  /// by id whether or not you are in it, exactly as web does, so the caller has
+  /// to be able to tell those two apart to say so.
+  Future<({List<ServerChannel> channels, bool isAdmin, bool hasAccess})>
       getServerChannelsRequest(String serverId) async {
     try {
       final response =
           await _mainDio.get('${_endpoints.initServerChannels}$serverId');
       if (response.data?["status"] == false) {
-        return (channels: const <ServerChannel>[], isAdmin: false);
+        return (
+          channels: const <ServerChannel>[],
+          isAdmin: false,
+          // A `status: false` body is the route's own error path, not a denial -
+          // the denial is the 401 caught below.
+          hasAccess: true,
+        );
       }
       final decoded =
           JwtCodec.decode(response.data["result"]?.toString() ?? '');
@@ -217,7 +229,11 @@ class ProfileApi {
           print("[channels] no rows. level1=${level1.runtimeType} "
               "keys=${level1 is Map ? level1.keys.toList() : 'n/a'}");
         }
-        return (channels: const <ServerChannel>[], isAdmin: false);
+        return (
+          channels: const <ServerChannel>[],
+          isAdmin: false,
+          hasAccess: true
+        );
       }
       final first = rows.first;
       final isAdmin = first is Map && first["is_admin"] == true;
@@ -227,7 +243,11 @@ class ProfileApi {
           print("[channels] first row has no channels list. "
               "keys=${first is Map ? first.keys.toList() : first.runtimeType}");
         }
-        return (channels: const <ServerChannel>[], isAdmin: isAdmin);
+        return (
+          channels: const <ServerChannel>[],
+          isAdmin: isAdmin,
+          hasAccess: true
+        );
       }
       if (kDebugMode) {
         print("[channels] parsed ${channels.length}, is_admin=$isAdmin");
@@ -239,13 +259,31 @@ class ProfileApi {
                 ServerChannel.fromJson(Map<String, dynamic>.from(item)))
             .toList(),
         isAdmin: isAdmin,
+        hasAccess: true,
+      );
+    } on DioException catch (e) {
+      // 401 is the route saying "you are not a member of this realm" - the one
+      // failure the caller can act on, so it is reported rather than flattened
+      // into an empty list that reads as "this server has no channels".
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return (
+        channels: const <ServerChannel>[],
+        isAdmin: false,
+        hasAccess: e.response?.statusCode != 401,
       );
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");
         print(e);
       }
-      return (channels: const <ServerChannel>[], isAdmin: false);
+      return (
+        channels: const <ServerChannel>[],
+        isAdmin: false,
+        hasAccess: true
+      );
     }
   }
 

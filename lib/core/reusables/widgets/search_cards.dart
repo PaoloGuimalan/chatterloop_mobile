@@ -8,6 +8,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 // Rail card widths. Taken down from the mockup's 150/176, which were drawn in
 // a 428px device frame - on a 360dp phone those left barely more than two cards
@@ -33,6 +34,44 @@ String realmTypeLabel(String realmType) => switch (realmType) {
       "group" => "Group",
       _ => realmType.isEmpty ? "Realm" : realmType,
     };
+
+/// Where a realm hit goes when it is tapped - ONE definition, used by both the
+/// Explore screen and its "See all" lists, so the two cannot drift.
+///
+/// Per kind, matching webapp's Search.tsx onOpenRealm exactly:
+///   page    its profile screen, by handle.
+///   server  its own shell, by realm id. Opened whether or not you are a
+///           member: the channels route answers 401 for a non-member and
+///           ServerChannelsPane turns that into a Join, which is the same
+///           bargain web makes (it navigates in and bounces back out).
+///   group   the conversation, whose id IS the realm id - members only. A
+///           non-member has no destination; Join is the only affordance.
+void openSearchRealm(BuildContext context, SearchRealmResult realm) {
+  switch (realm.realmType) {
+    case "page":
+      if (realm.handle.isNotEmpty) context.push('/realm/${realm.handle}');
+      break;
+    case "server":
+      if (realm.id.isEmpty) break;
+      // Name and photo ride along so the server header has something to draw
+      // before the channels request lands - the same reason the conversation
+      // screen takes its title from the row that opened it.
+      final query = <String, String>{
+        if (realm.displayName.isNotEmpty) 'name': realm.displayName,
+        if ((realm.profile ?? '').isNotEmpty) 'profile': realm.profile!,
+      };
+      final suffix = query.isEmpty
+          ? ''
+          : '?${query.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+      context.push('/server/${realm.id}$suffix');
+      break;
+    case "group":
+      if (realm.isMember) context.push('/conversation/${realm.id}');
+      break;
+    default:
+      break;
+  }
+}
 
 /// A page's reach is its followers; everything else counts members.
 String realmReachLabel(SearchRealmResult realm) {

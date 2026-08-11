@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "242618599501-6oub5h2kac06sik4bt7mi6ruhrgcjjgj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.chatterloop.app",
+            "certificate_hash": "e22ede2dbefb4ae3b249664b8073315a49a90b1c"
+          }
+        },
+        {
+          "client_id": "242618599501-ufmpso5hvd9e5fkt629n3imu4gcenv1t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.chatterloop.app",
+            "certificate_hash": "af76fa55fdd1dbca3e7172d1a096b45eb3afa300"
+          }
+        },
+        {
           "client_id": "242618599501-5o60a3bkftaohvae95ltuu4asb2vo1ab.apps.googleusercontent.com",
           "client_type": 3
         }

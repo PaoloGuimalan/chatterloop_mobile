@@ -216,19 +216,9 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
     context.push('/user/${person.handle}');
   }
 
-  /// Same per-kind routing as the Explore screen - see _openRealm there.
-  void _openRealm(SearchRealmResult realm) {
-    switch (realm.realmType) {
-      case "page":
-        if (realm.handle.isNotEmpty) context.push('/realm/${realm.handle}');
-        break;
-      case "group":
-        if (realm.isMember) context.push('/conversation/${realm.id}');
-        break;
-      default:
-        break;
-    }
-  }
+  /// Same per-kind routing as the Explore screen - one shared definition, so
+  /// the two lists cannot disagree about where a realm goes.
+  void _openRealm(SearchRealmResult realm) => openSearchRealm(context, realm);
 
   // -------- body -------------------------------------------------------------
 

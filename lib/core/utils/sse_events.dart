@@ -132,6 +132,124 @@ class RealmRemoval {
 final ValueNotifier<RealmRemoval?> realmRemovals =
     ValueNotifier<RealmRemoval?>(null);
 
+/// A channel was created in a server you can see - the `server_channels_changed`
+/// event.
+///
+/// A CLASS with identity equality, for the same reason as [RealmRemoval]: two
+/// channels created in the same server back to back must fire twice.
+class ServerChannelsChange {
+  /// The SERVER whose channel list moved - `result.realm_id`, i.e. the new
+  /// channel's parent, never the channel itself.
+  final String serverId;
+
+  /// The channel that was created, and its kind ("channel" or "voice").
+  final String channelId;
+  final String type;
+
+  const ServerChannelsChange(this.serverId, this.channelId, this.type);
+}
+
+/// The most recent channel-list change.
+///
+/// Exists because a VOICE room has no chat history, so creating one raises no
+/// `messages_list` and the channel list had nothing to refetch on - the room
+/// simply did not appear for anyone but its creator until they refreshed. A
+/// text channel does raise one, and this fires for it too; the listener
+/// refetches either way, so the duplicate is one request, not a wrong screen.
+///
+/// Listeners MUST compare serverId against the server they are showing.
+final ValueNotifier<ServerChannelsChange?> serverChannelsChanges =
+    ValueNotifier<ServerChannelsChange?>(null);
+
+/// Somebody joined or was removed from a realm - the `realm_membership_changed`
+/// event. Published to the affected entities AND to the members who stay, so
+/// this arrives both when YOUR membership changed and when someone else's did.
+///
+/// Identity equality again: two people joining the same server in a row are two
+/// events, not one.
+class RealmMembershipChange {
+  final String realmId;
+
+  /// "server", "group", "channel", ... - straight off the payload.
+  final String type;
+
+  /// "joined" or "removed".
+  final String action;
+
+  /// Who it happened to. Compare against your own entity id to tell "my rail
+  /// changed" from "somebody else's did".
+  final List<String> entityIds;
+
+  const RealmMembershipChange(
+      this.realmId, this.type, this.action, this.entityIds);
+
+  bool involves(String entityId) =>
+      entityId.isNotEmpty && entityIds.contains(entityId);
+}
+
+/// The most recent membership change.
+///
+/// This is what keeps the servers rail honest: joining a server writes
+/// membership rows and nothing else, so before this event the rail only moved
+/// because the screen that performed the join happened to patch it locally -
+/// being ADDED by an admin, or joining from another device, moved nothing at
+/// all.
+final ValueNotifier<RealmMembershipChange?> realmMembershipChanges =
+    ValueNotifier<RealmMembershipChange?>(null);
+
+/// Pulls the channel-list change out of a `server_channels_changed` payload, or
+/// null if it is not one.
+///
+/// Top-level and pure for the same reason as [realmRemovalFromSseEvent]: the id
+/// contract is pinned by a test rather than by reading it. The shape is the Node
+/// service's, from routes/users/index.js's createRealmReusable:
+///
+///     {status, auth, message,
+///      result: {realm_id, channel_id, type}}
+///
+/// `realm_id` is the PARENT server, not the new channel - the channel is
+/// `channel_id`. Reading the wrong one refetches a server that does not exist.
+ServerChannelsChange? serverChannelsChangeFromSseEvent(
+    Map<String, dynamic> parsed) {
+  final result = parsed["result"];
+  if (result is! Map) return null;
+  final serverId = result["realm_id"]?.toString() ?? '';
+  if (serverId.isEmpty) return null;
+  return ServerChannelsChange(
+    serverId,
+    result["channel_id"]?.toString() ?? '',
+    result["type"]?.toString() ?? '',
+  );
+}
+
+/// Pulls the membership change out of a `realm_membership_changed` payload, or
+/// null if it is not one.
+///
+/// Shape, from routes/serverrts/index.js and routes/realms/index.js:
+///
+///     {status, auth, message,
+///      result: {realm_id, type, action, entity_ids}}
+///
+/// `entity_ids` is who it happened to - NOT who is being told. The same frame
+/// goes to the members who stay, so a listener that skips this field would move
+/// every member's rail for one person's join.
+RealmMembershipChange? realmMembershipChangeFromSseEvent(
+    Map<String, dynamic> parsed) {
+  final result = parsed["result"];
+  if (result is! Map) return null;
+  final realmId = result["realm_id"]?.toString() ?? '';
+  if (realmId.isEmpty) return null;
+  final rawIds = result["entity_ids"];
+  return RealmMembershipChange(
+    realmId,
+    result["type"]?.toString() ?? '',
+    result["action"]?.toString() ?? '',
+    rawIds is List
+        ? rawIds.map((id) => id.toString()).toList()
+        : const <String>[],
+  );
+}
+
 /// Pulls the removal out of a `removed_user_notif` payload, or null if it is not
 /// one.
 ///
@@ -529,6 +647,32 @@ class SseEvents {
           // disappears from the list.
           messagesListSignals.value++;
           realmRemovals.value = removal;
+        }
+        return;
+      case "server_channels_changed":
+        // A channel was created in a server. Published to everyone who can see
+        // it (server members for a public channel, the invitees for a private
+        // one - see createRealmReusable), so its arrival already means "this is
+        // yours to show"; the listener only has to check WHICH server.
+        //
+        // Not JWT-wrapped - `result` is a plain object, like removed_user_notif.
+        if (_isAuthedOk(event.data)) {
+          final change = serverChannelsChangeFromSseEvent(
+              jsonDecode(event.data as String) as Map<String, dynamic>);
+          if (change == null) return;
+          serverChannelsChanges.value = change;
+        }
+        return;
+      case "realm_membership_changed":
+        // Somebody joined or was removed from a realm. Two audiences on one
+        // event: the people it happened TO (whose rail gains or loses the
+        // server) and the people who stay (whose member lists moved).
+        // Listeners tell them apart with RealmMembershipChange.involves.
+        if (_isAuthedOk(event.data)) {
+          final change = realmMembershipChangeFromSseEvent(
+              jsonDecode(event.data as String) as Map<String, dynamic>);
+          if (change == null) return;
+          realmMembershipChanges.value = change;
         }
         return;
       case "update_participants":

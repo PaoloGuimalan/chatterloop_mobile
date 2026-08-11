@@ -72,6 +72,15 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
   /// "admin" for an owner.
   bool _isAdmin = false;
 
+  /// False when /s/initserverchannels answered 401 - you are not a member.
+  ///
+  /// Reachable now that Explore opens a server by id whether or not you are in
+  /// one (web does the same, and bounces to its directory on the refusal). An
+  /// empty channel list would be a lie about why the screen is empty, and the
+  /// useful thing to offer here is Join.
+  bool _hasAccess = true;
+  bool _joining = false;
+
   @override
   void initState() {
     super.initState();
@@ -82,6 +91,13 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     // /m/conversations, which does not include channels, so a channel message
     // never moves it.
     messagesListSignals.addListener(_onMessagesSignal);
+    // A channel was CREATED. The messages signal above covers a text channel
+    // only by accident - creating one writes a system message, which raises
+    // messages_list - and covers a VOICE room not at all, because a room has no
+    // chat history to write that message into. So a voice channel someone else
+    // created stayed invisible here until the list happened to be refetched for
+    // an unrelated reason. This is the direct statement of it.
+    serverChannelsChanges.addListener(_onChannelsChanged);
     // Live occupancy, without refetching: the counts on the rows come from
     // VoiceRoomPresence, which the SSE events patch as people come and go.
     VoiceRoomPresence.instance.revision.addListener(_onPresenceChanged);
@@ -90,12 +106,22 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
   @override
   void dispose() {
     messagesListSignals.removeListener(_onMessagesSignal);
+    serverChannelsChanges.removeListener(_onChannelsChanged);
     VoiceRoomPresence.instance.revision.removeListener(_onPresenceChanged);
     super.dispose();
   }
 
   void _onMessagesSignal() {
     if (mounted) _load();
+  }
+
+  void _onChannelsChanged() {
+    final change = serverChannelsChanges.value;
+    if (!mounted || change == null) return;
+    // Only THIS server's list. Another server's new channel is none of this
+    // pane's business - it will be there when that server is opened.
+    if (change.serverId != widget.serverId) return;
+    _load();
   }
 
   void _onPresenceChanged() {
@@ -114,8 +140,28 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     setState(() {
       _channels = result.channels;
       _isAdmin = result.isAdmin;
+      _hasAccess = result.hasAccess;
       _loading = false;
     });
+  }
+
+  /// Joining from inside the server you were refused - the same call the
+  /// directory card makes. On success the channel list is re-read, which is
+  /// what turns this screen into the real thing; the rail picks the server up
+  /// on its own, from the membership event the join publishes.
+  Future<void> _join() async {
+    if (_joining) return;
+    setState(() => _joining = true);
+    final joined = await ProfileApi().joinServerRequest(widget.serverId);
+    if (!mounted) return;
+    setState(() => _joining = false);
+    if (!joined) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not join. Please try again.')));
+      return;
+    }
+    setState(() => _loading = true);
+    await _load();
   }
 
   PopupMenuItem<String> _menuItem(
@@ -303,8 +349,11 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
                   // actually want, sits right under it.
                   if (_isAdmin)
                     _menuItem(p, 'manage', Icons.tune, 'Manage server'),
-                  _menuItem(p, 'leave', Icons.logout, 'Leave server',
-                      danger: true),
+                  // Nothing to leave when you were never in - this pane is
+                  // reachable from Explore for a server you are not a member of.
+                  if (_hasAccess)
+                    _menuItem(p, 'leave', Icons.logout, 'Leave server',
+                        danger: true),
                 ],
               ),
             ],
@@ -338,6 +387,38 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
               ),
             ),
         ],
+      );
+    }
+
+    // Refused, not empty. Says which it is and offers the one action that
+    // changes it, rather than showing a channel list that cannot exist.
+    if (!_hasAccess) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CLEmptyState(
+                icon: Icons.lock_outline,
+                iconBg: p.surface2,
+                iconColor: p.text2,
+                iconBorderColor: p.border,
+                compact: true,
+                title: 'You are not in this server',
+                subtitle: 'Join to see its channels and take part in them.',
+              ),
+              const SizedBox(height: 18),
+              CLBtn(
+                label: _joining ? 'Joining…' : 'Join server',
+                iconL: Icons.add,
+                variant: CLBtnVariant.gold,
+                size: CLBtnSize.md,
+                onPressed: _joining ? null : _join,
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -585,21 +666,48 @@ class _ServerScreenState extends State<ServerScreen> {
     // Being removed from the server you are looking at - web's Channels.tsx
     // navigates to /servers on the same event.
     realmRemovals.addListener(_onRealmRemoval);
+    // Joining one, from anywhere: this screen's own directory, another device,
+    // or an admin adding you. Only the first of those used to move the rail,
+    // and only because the directory pane calls back into _loadMine.
+    realmMembershipChanges.addListener(_onMembershipChanged);
   }
 
   @override
   void dispose() {
     realmRemovals.removeListener(_onRealmRemoval);
+    realmMembershipChanges.removeListener(_onMembershipChanged);
     super.dispose();
+  }
+
+  void _onMembershipChanged() {
+    final change = realmMembershipChanges.value;
+    if (!mounted || change == null) return;
+    // Servers only, and only when it happened to ME - the same event goes to
+    // everyone who stays in the realm so their member lists can move, and their
+    // rail did not change.
+    if (change.type != 'server') return;
+    if (!change.involves(appStore.state.userAuth.user.entityId)) return;
+    // Refetched rather than patched: the event carries an id, not the name and
+    // photo the rail draws, so there is nothing to insert locally.
+    _loadMine();
   }
 
   void _onRealmRemoval() {
     final removal = realmRemovals.value;
     if (!mounted || removal == null) return;
-    // Only the server this screen is inside. A channel removal is handled by
-    // the channels list refetching, and another server's is none of this
-    // screen's business - it will be gone from the rail on the next _loadMine.
-    if (removal.realmId != _serverId) return;
+    // Losing a server you are not currently inside still empties one slot in
+    // the rail. Dropped locally: the fact is already known, and a refetch would
+    // leave it sitting there until the round trip lands.
+    //
+    // A channel removal ("group" type) is left to the channels list refetching -
+    // channels are not in the rail.
+    if (removal.realmId != _serverId) {
+      if (_mine.any((server) => server.id == removal.realmId)) {
+        setState(() => _mine =
+            _mine.where((server) => server.id != removal.realmId).toList());
+      }
+      return;
+    }
 
     // Anything pushed ON TOP of this screen is a room inside the server that
     // was just taken away - a channel conversation, its info screen - so it

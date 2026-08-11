@@ -212,22 +212,11 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   /// Destination depends on the realm kind: a page has a profile screen, a
-  /// group IS a conversation (its conversationID is its realm id) so members
-  /// go straight to the thread, and a non-member has no destination at all -
-  /// Join is the only affordance. Servers have no mobile screen yet, so their
-  /// card's action renders disabled rather than leading nowhere.
-  void _openRealm(SearchRealmResult realm) {
-    switch (realm.realmType) {
-      case "page":
-        if (realm.handle.isNotEmpty) context.push('/realm/${realm.handle}');
-        break;
-      case "group":
-        if (realm.isMember) context.push('/conversation/${realm.id}');
-        break;
-      default:
-        break;
-    }
-  }
+  /// server opens its own shell, and a group IS a conversation (its
+  /// conversationID is its realm id) so members go straight to the thread,
+  /// while a non-member has no destination at all - Join is the only
+  /// affordance.
+  void _openRealm(SearchRealmResult realm) => openSearchRealm(context, realm);
 
   void _openPost(SearchPostResult post) => context.push('/post/${post.postId}');
 

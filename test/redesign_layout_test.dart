@@ -832,6 +832,93 @@ void _rosterIdContracts() {
     });
   });
 
+  group('a channel appears without a refresh', () {
+    test('realm_id is the PARENT server, channel_id is the new channel', () {
+      // Verbatim from routes/users/index.js's createRealmReusable, which
+      // publishes this to everyone who can see the channel. Getting these two
+      // the wrong way round refetches a server id that does not exist, so the
+      // list never moves - the exact symptom this event exists to fix.
+      final change = serverChannelsChangeFromSseEvent({
+        'status': true,
+        'auth': true,
+        'message': 'Channel created in srv-9',
+        'result': {
+          'realm_id': 'srv-9',
+          'channel_id': 'chn-3',
+          'type': 'voice',
+        },
+      });
+
+      expect(change, isNotNull);
+      expect(change!.serverId, 'srv-9');
+      expect(change.channelId, 'chn-3');
+      // Voice specifically: a text channel already rode messages_list, a voice
+      // room had nothing at all.
+      expect(change.type, 'voice');
+    });
+
+    test('anything without a realm_id is ignored', () {
+      expect(serverChannelsChangeFromSseEvent({'status': true}), isNull);
+      expect(
+          serverChannelsChangeFromSseEvent({'result': 'not a map'}), isNull);
+      expect(
+          serverChannelsChangeFromSseEvent({
+            'result': {'channel_id': 'chn-3'}
+          }),
+          isNull);
+    });
+
+    test('two channels in the same server both notify', () {
+      // Identity equality, same reason as RealmRemoval.
+      expect(
+          ServerChannelsChange('s1', 'c1', 'voice') ==
+              ServerChannelsChange('s1', 'c1', 'voice'),
+          isFalse);
+    });
+  });
+
+  group('the rail follows membership', () {
+    test('entity_ids says who it happened to, not who is being told', () {
+      // The same frame goes to the members who STAY, so their screens can
+      // refresh a member list. A rail that ignored entity_ids would refetch for
+      // every member every time one person joined.
+      final change = realmMembershipChangeFromSseEvent({
+        'status': true,
+        'auth': true,
+        'message': 'Members joined realm srv-9',
+        'result': {
+          'realm_id': 'srv-9',
+          'type': 'server',
+          'action': 'joined',
+          'entity_ids': ['entity-newcomer'],
+        },
+      });
+
+      expect(change, isNotNull);
+      expect(change!.realmId, 'srv-9');
+      expect(change.type, 'server');
+      expect(change.action, 'joined');
+      expect(change.involves('entity-newcomer'), isTrue);
+      expect(change.involves('entity-bystander'), isFalse);
+      // An empty id can never match - the store hands out "" before login.
+      expect(change.involves(''), isFalse);
+    });
+
+    test('a missing entity_ids list is empty, not a crash', () {
+      final change = realmMembershipChangeFromSseEvent({
+        'result': {'realm_id': 'srv-9', 'type': 'server', 'action': 'joined'},
+      });
+      expect(change, isNotNull);
+      expect(change!.entityIds, isEmpty);
+    });
+
+    test('anything without a realm_id is ignored', () {
+      expect(realmMembershipChangeFromSseEvent({'status': true}), isNull);
+      expect(
+          realmMembershipChangeFromSseEvent({'result': 'not a map'}), isNull);
+    });
+  });
+
   group('server directory card', () {
     // The real cell: two up at 0.78, in the width the pane actually has on a
     // 360px phone once the 60px rail and the list gutters are taken out.
