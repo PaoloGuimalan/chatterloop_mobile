@@ -13,6 +13,7 @@ import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
+import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_feed.dart';
@@ -50,13 +51,37 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     super.initState();
     _load();
     _scrollController.addListener(_onScroll);
+    profileRelationshipUpdates.addListener(_onRelationshipUpdate);
   }
 
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    profileRelationshipUpdates.removeListener(_onRelationshipUpdate);
     super.dispose();
+  }
+
+  /// Refresh when the OTHER side answers a request involving this page - a
+  /// contact accept/decline, a removal, or a follow-request approval.
+  ///
+  /// A Connection is entity<->entity, so a page has the same relationship
+  /// lifecycle a person does and goes just as stale: without this, "Requested"
+  /// keeps reading "Requested" after it was accepted, and a removal leaves
+  /// "Connected" on screen, until a manual pull-to-refresh. The user profile
+  /// has listened to this since it was added; the realm screen never did,
+  /// which is the whole gap.
+  ///
+  /// Matched against THIS realm's entity id, because the event names the other
+  /// party and reacting to an unaddressed one would reload whatever screen
+  /// happened to be open. It arrives from two SSE events - `contactslist` and
+  /// `profile_relationship_updated` - both published after commit, so a
+  /// refetch on it reads settled rows.
+  void _onRelationshipUpdate() {
+    final changed = profileRelationshipUpdates.value;
+    if (changed == null || changed.entityId.isEmpty) return;
+    if (_realm?.entityId != changed.entityId) return;
+    _load();
   }
 
   void _onScroll() {
@@ -382,7 +407,10 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
           CLBtn(
             label: _isOpeningMessage ? "Opening…" : "Message",
             iconL: Icons.forum_outlined,
-            variant: CLBtnVariant.soft,
+            // primary (the CLBtn default), matching the user profile's Message
+            // button exactly. `soft` renders brandSoft-on-brand, which is a
+            // pale blue in BOTH themes - it reads as disabled next to the
+            // solid buttons around it.
             block: true,
             onPressed: _isOpeningMessage ? null : () => _openMessage(realm),
           ),
