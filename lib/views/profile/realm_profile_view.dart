@@ -10,6 +10,7 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
+import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
@@ -37,6 +38,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
   bool _isConnectionActionLoading = false;
   int _followers = 0;
   bool _isUpdatingFollow = false;
+  bool _isOpeningMessage = false;
 
   /// The feed is a section of this screen's scroll view, so paging is driven
   /// from here - see ProfileFeed.
@@ -367,9 +369,60 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
           onPressed: _isUpdatingFollow ? null : _toggleFollow,
         ),
         const SizedBox(height: 8),
+        // PAGES only. Above the connection action and never gated on it -
+        // reaching a page should not require being connected to it, which is
+        // the point of a page having an inbox at all.
+        //
+        // Restricted by type because this screen is not page-exclusive: it is
+        // reached by slug from contacts, post authors, comments and tagging,
+        // and renders any realm. /m/crtc would happily open a "single"
+        // conversation with a GROUP's entity, which is not a thing that should
+        // exist - a group is already a conversation.
+        if (realm.type == 'page') ...[
+          CLBtn(
+            label: _isOpeningMessage ? "Opening…" : "Message",
+            iconL: Icons.forum_outlined,
+            variant: CLBtnVariant.soft,
+            block: true,
+            onPressed: _isOpeningMessage ? null : () => _openMessage(realm),
+          ),
+          const SizedBox(height: 8),
+        ],
         _connectionAction(realm),
       ],
     );
+  }
+
+  /// Opens a direct conversation with the page.
+  ///
+  /// UNCONDITIONAL, unlike the user profile's equivalent, which short-circuits
+  /// to an existing connection's conversation first and gates on `canView` for
+  /// a private profile. Neither applies here: a page has an inbox precisely so
+  /// people who are NOT connected to it can reach it, and a page has no
+  /// private mode to protect. So this always get-or-creates.
+  ///
+  /// /m/crtc is entity-generic - it takes two entity ids, refuses only a
+  /// conversation with yourself, and returns the existing conversation when
+  /// there already is one - so a realm entity needs nothing special. Acting AS
+  /// this page never reaches here: that case returns early in _actions.
+  Future<void> _openMessage(RealmProfile realm) async {
+    if (_isOpeningMessage) return;
+    setState(() => _isOpeningMessage = true);
+
+    final conversationId = await ConversationsApi()
+        .createInitialConversationRequest(realm.entityId);
+    if (!mounted) return;
+    setState(() => _isOpeningMessage = false);
+
+    if (conversationId != null) {
+      context.push('/conversation/$conversationId');
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text("Couldn't open the conversation. Please try again."),
+      duration: Duration(seconds: 2),
+    ));
   }
 
   /// A Connection is entity<->entity, so a page can be a contact just like a
