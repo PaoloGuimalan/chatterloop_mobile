@@ -108,21 +108,44 @@ class ConversationDisplayDetails {
   final String displayName;
   final String? profile;
 
+  /// The display BADGE, already normalised server-side: an account's badge is
+  /// user_account.is_badged, a realm's is community_realm.is_verified, and
+  /// both arrive here as one `is_verified` field so this model needs no
+  /// branch. NOT the account's email-verified flag, which is a separate thing.
+  final bool isVerified;
+
+  /// 'user' or 'realm' - the counterpart's entity type. Empty on older
+  /// payloads.
+  final String entityType;
+
+  /// 'page' / 'server' / 'group' / ... Null when the counterpart is a person,
+  /// which is what distinguishes a chat with a PAGE from a chat with a user.
+  final String? realmType;
+
+  bool get isPage => realmType == 'page';
+
   const ConversationDisplayDetails({
     required this.id,
     required this.entityId,
     required this.username,
     required this.displayName,
     this.profile,
+    this.isVerified = false,
+    this.entityType = '',
+    this.realmType,
   });
 
   factory ConversationDisplayDetails.fromJson(Map<String, dynamic> json) {
+    final realmType = json["realm_type"]?.toString();
     return ConversationDisplayDetails(
       id: (json["id"] ?? "").toString(),
       entityId: (json["entity_id"] ?? "").toString(),
       username: (json["username"] ?? "").toString(),
       displayName: (json["display_name"] ?? "").toString(),
       profile: json["profile"]?.toString(),
+      isVerified: json["is_verified"] == true,
+      entityType: (json["type"] ?? "").toString(),
+      realmType: (realmType == null || realmType.isEmpty) ? null : realmType,
     );
   }
 }

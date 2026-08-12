@@ -5,6 +5,8 @@
 // degrades to an empty list on failure so the screens show an empty state
 // rather than throwing.
 
+import 'package:dio/dio.dart';
+
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/user_models/blocked_account_model.dart';
@@ -93,8 +95,18 @@ class SettingsApi {
   }
 
   /// POST /api/user/reports {target_type, target_id, reason, description} -
-  /// submits a moderation report. Mirrors webapp's ReportUserRequest.
-  Future<({bool ok, String? message})> reportUser({
+  /// files a report against any entity or one piece of its content. Mirrors
+  /// webapp's SubmitReportRequest.
+  ///
+  /// [targetId] is the ENTITY id for target_type 'user'/'realm' (a realm also
+  /// accepts its own realm id), and the artefact's own id for
+  /// 'post'/'comment'/'message'. The server resolves which entity is
+  /// responsible either way, so this one call covers every surface.
+  ///
+  /// A 4xx here is a real answer ("You cannot report yourself", "Post not
+  /// found"), so its message is surfaced rather than swallowed - only a
+  /// transport failure falls through to the generic null.
+  Future<({bool ok, String? message})> submitReport({
     required String targetId,
     required String reason,
     String description = '',
@@ -111,8 +123,16 @@ class SettingsApi {
         ok: response.data?['status'] == true,
         message: response.data?['message']?.toString(),
       );
+    } on DioException catch (e) {
+      if (kDebugMode) print('ERROR submitReport: $e');
+      return (
+        ok: false,
+        message: e.response?.data is Map
+            ? e.response?.data['message']?.toString()
+            : null,
+      );
     } catch (e) {
-      if (kDebugMode) print('ERROR reportUser: $e');
+      if (kDebugMode) print('ERROR submitReport: $e');
       return (ok: false, message: null);
     }
   }

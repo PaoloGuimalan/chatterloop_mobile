@@ -16,6 +16,7 @@
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +48,21 @@ class ConversationInfoScreen extends StatelessWidget {
 
   /// Same matrix as the channels list: lock for private, hash for public.
   IconData get _channelIcon => info.isPrivate ? Icons.lock : Icons.tag;
+
+  /// The OTHER party in a direct message - whose badge and page flag belong
+  /// beside the title. Null for anything else: a group's title is the group's
+  /// own name, and a member's badge belongs on their row, not on the heading.
+  ///
+  /// Matched by exclusion rather than by picking [0], because usersWithInfo
+  /// includes you.
+  UsersContactPreview? get _counterpart {
+    if (!_isSingle) return null;
+    final me = appStore.state.userAuth.user.entityId;
+    for (final person in info.usersWithInfo) {
+      if (person.entityID.isNotEmpty && person.entityID != me) return person;
+    }
+    return null;
+  }
 
   /// Web's header label: "Channel" for a server, else "Group Chat". Extended
   /// for the kinds this app can reach that web's ternary doesn't name.
@@ -108,13 +124,35 @@ class ConversationInfoScreen extends StatelessWidget {
                     cornerRadius: _isSingle ? null : CLRadii.lg,
                   ),
                 const SizedBox(height: 10),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: CLType.screenTitle,
-                      fontWeight: FontWeight.w800,
-                      color: p.text),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: CLType.screenTitle,
+                            fontWeight: FontWeight.w800,
+                            color: p.text),
+                      ),
+                    ),
+                    // Badge, then page flag - same glyphs and order the inbox
+                    // rows, the conversation header and the Network rows use.
+                    if (_counterpart?.isVerified == true) ...[
+                      const SizedBox(width: 5),
+                      Icon(Icons.verified, size: 17, color: p.brand),
+                    ],
+                    if (_counterpart?.isPage == true) ...[
+                      const SizedBox(width: 5),
+                      Tooltip(
+                        message: 'Page',
+                        child:
+                            Icon(Icons.flag_outlined, size: 15, color: p.text3),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(_kindLabel,
@@ -214,6 +252,15 @@ class _PersonRow extends StatelessWidget {
                       if (person.isVerified == true) ...[
                         const SizedBox(width: 4),
                         Icon(Icons.verified, size: 13, color: p.brand),
+                      ],
+                      // Members are entities, so a PAGE can be in a group.
+                      if (person.isPage) ...[
+                        const SizedBox(width: 4),
+                        Tooltip(
+                          message: 'Page',
+                          child: Icon(Icons.flag_outlined,
+                              size: 12, color: p.text3),
+                        ),
                       ],
                     ],
                   ),

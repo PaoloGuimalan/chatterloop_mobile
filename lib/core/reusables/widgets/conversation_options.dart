@@ -1,11 +1,15 @@
 // Conversation options - Archive / Unarchive / Delete.
 //
-// ONE definition shared by the two places that offer them: the info button in
-// a conversation's header (conversation_view.dart) and a long-press on a
-// conversation in the messages list (message_item.dart). They present
-// differently - a popup menu there, a bottom sheet here, which is what a
-// long-press should feel like on mobile - but the option set and what each one
-// DOES live here so the two cannot drift apart.
+// The ConversationAction enum and applyConversationAction below are shared by
+// the two places that offer these: the info button in a conversation's header
+// (conversation_view.dart) and a long-press on a conversation in the messages
+// list (message_item.dart).
+//
+// The SHEET here is the long-press one only - the header builds its own
+// PopupMenuButton, because its menu carries entries this one can't (Info,
+// Leave) and gates them on conversation info it already holds. Anything added
+// to one menu therefore has to be added to the other by hand; only the verbs
+// and their side effects are actually shared.
 //
 // Webapp parity: these mirror ConversationV2's options, minus Minimize, which
 // is desktop-only.
@@ -15,6 +19,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
+import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:flutter/material.dart';
@@ -77,6 +82,18 @@ Future<ConversationAction?> showConversationOptionsSheet(
               ?.isAdmin ??
           false);
   if (!context.mounted) return null;
+
+  // GROUPS only, deliberately:
+  //   single   not a realm at all - report the person from their profile, or
+  //            one message from its long-press menu.
+  //   channel  part of a server; the server is the thing moderation acts on,
+  //            and it is reportable from the server header.
+  //   server   likewise - reported from its own header, not from a thread.
+  // A group's conversationID IS its realm_id, which the reports endpoint
+  // resolves a realm from just as it does an entity id.
+  final canReport = conversationId != null &&
+      conversationId.isNotEmpty &&
+      conversationType == "group";
 
   return showModalBottomSheet<ConversationAction>(
     context: context,
@@ -152,6 +169,30 @@ Future<ConversationAction?> showConversationOptionsSheet(
                 ? ConversationAction.unarchive
                 : ConversationAction.archive,
           ),
+          // Above Delete, which is the destructive one and stays last.
+          // Like Manage, this closes with NO action - reporting isn't one of
+          // the three chat-history verbs, so the caller must not treat it as
+          // one.
+          if (canReport)
+            ListTile(
+              dense: true,
+              visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+              horizontalTitleGap: 10,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              leading: Icon(Icons.report, size: 18, color: p.pink),
+              minLeadingWidth: 0,
+              title: Text('Report group',
+                  style: TextStyle(color: p.pink, fontSize: CLType.body)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                showReportSheet(
+                  context,
+                  targetType: ReportTargetType.realm,
+                  targetId: conversationId,
+                  title: 'Report this group',
+                );
+              },
+            ),
           _optionTile(
             sheetContext,
             p,

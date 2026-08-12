@@ -8,6 +8,7 @@ import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/core/requests/settings_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
+import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
@@ -17,20 +18,6 @@ import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
-
-/// Report reason values/labels - identical to webapp's Profile.tsx
-/// reportReasons list.
-const _kReportReasons = <(String, String)>[
-  ('spam', 'Spam'),
-  ('harassment', 'Harassment or bullying'),
-  ('hate_speech', 'Hate speech'),
-  ('violence', 'Violence or dangerous behavior'),
-  ('nudity', 'Nudity or sexual content'),
-  ('csae', 'Child sexual abuse or exploitation'),
-  ('impersonation', 'Impersonation'),
-  ('misinformation', 'Misinformation'),
-  ('other', 'Other'),
-];
 
 class UserProfileScreen extends StatefulWidget {
   final String username;
@@ -329,115 +316,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     store.dispatch(DispatchModel(setContactsListT, contactsRes.results));
   }
 
-  /// Report sheet - webapp's report modal: a reason dropdown (default "spam")
-  /// + optional description, POST /api/user/reports.
+  /// Report this account. The sheet itself lives in report_sheet.dart - every
+  /// surface that can file a report shares it.
   void _openReportSheet() {
     if (profile == null) return;
-    final p = cl(context);
-    String reason = 'spam';
-    final descController = TextEditingController();
-    bool submitting = false;
-
-    showModalBottomSheet(
-      context: context,
-    useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: p.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (sheetCtx) {
-        return StatefulBuilder(builder: (sheetCtx, setSheet) {
-          return Padding(
-            padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 18,
-                bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Icon(Icons.flag_outlined, color: p.text, size: 20),
-                  const SizedBox(width: 8),
-                  Text('Report this account',
-                      style: TextStyle(
-                          fontSize: CLType.sectionTitle,
-                          fontWeight: FontWeight.w700,
-                          color: p.text)),
-                ]),
-                const SizedBox(height: 16),
-                Container(
-                  height: 48,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: p.input,
-                    borderRadius: BorderRadius.circular(CLRadii.sm),
-                    border: Border.all(color: p.border2),
-                  ),
-                  child: DropdownButton<String>(
-                    value: reason,
-                    isExpanded: true,
-                    underline: const SizedBox.shrink(),
-                    dropdownColor: p.surface,
-                    style: TextStyle(color: p.text, fontSize: CLType.title),
-                    items: _kReportReasons
-                        .map((r) =>
-                            DropdownMenuItem(value: r.$1, child: Text(r.$2)))
-                        .toList(),
-                    onChanged: (v) => setSheet(() => reason = v ?? 'spam'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: descController,
-                  maxLines: 3,
-                  style: TextStyle(color: p.text, fontSize: CLType.title),
-                  decoration: InputDecoration(
-                    hintText: 'Add more details (optional)',
-                    hintStyle: TextStyle(color: p.text3, fontSize: CLType.body),
-                    filled: true,
-                    fillColor: p.input,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(CLRadii.sm),
-                        borderSide: BorderSide(color: p.border2)),
-                    enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(CLRadii.sm),
-                        borderSide: BorderSide(color: p.border2)),
-                    focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(CLRadii.sm),
-                        borderSide: BorderSide(color: p.brand)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                CLBtn(
-                  label: submitting ? 'Submitting…' : 'Submit report',
-                  block: true,
-                  size: CLBtnSize.lg,
-                  onPressed: submitting
-                      ? null
-                      : () async {
-                          setSheet(() => submitting = true);
-                          final result = await SettingsApi().reportUser(
-                            targetId: profile!.entityId,
-                            reason: reason,
-                            description: descController.text.trim(),
-                          );
-                          if (!mounted) return;
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(result.message ??
-                                  (result.ok
-                                      ? 'Report submitted'
-                                      : 'Could not submit report'))));
-                        },
-                ),
-                const SizedBox(height: 6),
-              ],
-            ),
-          );
-        });
-      },
+    showReportSheet(
+      context,
+      targetType: ReportTargetType.user,
+      targetId: profile!.entityId,
     );
   }
 
@@ -493,9 +379,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           PopupMenuItem(
             value: 'report',
             child: Row(children: [
-              Icon(Icons.flag_outlined, size: 18, color: p.text2),
+              Icon(Icons.report, size: 18, color: p.pink),
               const SizedBox(width: 10),
-              Text('Report', style: TextStyle(color: p.text)),
+              Text('Report', style: TextStyle(color: p.pink)),
             ]),
           ),
           PopupMenuItem(

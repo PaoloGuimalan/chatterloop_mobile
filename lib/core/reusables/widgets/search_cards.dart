@@ -5,6 +5,7 @@
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
 import 'package:flutter/material.dart';
@@ -315,42 +316,52 @@ class SearchRealmCard extends StatelessWidget {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
+      child: Stack(
         children: [
-          banner,
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
-            child: wide
-                ? Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            title,
-                            const SizedBox(height: 2),
-                            meta,
-                          ],
-                        ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              banner,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+                child: wide
+                    ? Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                title,
+                                const SizedBox(height: 2),
+                                meta,
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          _action(),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          title,
+                          const SizedBox(height: 2),
+                          meta,
+                          const SizedBox(height: 8),
+                          _action(),
+                        ],
                       ),
-                      const SizedBox(width: 10),
-                      _action(),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      title,
-                      const SizedBox(height: 2),
-                      meta,
-                      const SizedBox(height: 8),
-                      _action(),
-                    ],
-                  ),
+              ),
+            ],
+          ),
+          // Last in the Stack so it paints over the banner and takes the tap
+          // before the banner's own InkWell does.
+          RealmCardReportButton(
+            targetId: realm.entityId,
+            realmType: realm.realmType,
           ),
         ],
       ),

@@ -608,15 +608,18 @@ class CommentRow extends StatelessWidget {
               // so its tap target can be a comfortable size without setting the
               // height of any row. The bubble's own 12px padding keeps it clear
               // of the text.
-              if (onDelete != null && isOwnComment(author))
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: CommentOptionsButton(
-                    onDelete: onDelete!,
-                    busy: deleting,
-                  ),
+              // On every comment now, not just your own: the menu carries
+              // Delete for the author and Report for everyone else.
+              Positioned(
+                top: 0,
+                right: 0,
+                child: CommentOptionsButton(
+                  commentId: comment.commentId,
+                  isOwn: isOwnComment(author),
+                  onDelete: onDelete,
+                  busy: deleting,
                 ),
+              ),
             ],
           ),
         ),

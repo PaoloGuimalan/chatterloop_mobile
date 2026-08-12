@@ -69,8 +69,9 @@ class SearchPersonResult {
       handle: (json["handle"] ?? "").toString(),
       profile: json["profile"]?.toString(),
       isVerified: json["is_verified"] == true,
-      mutualCount:
-          json["mutual_count"] is num ? (json["mutual_count"] as num).toInt() : 0,
+      mutualCount: json["mutual_count"] is num
+          ? (json["mutual_count"] as num).toInt()
+          : 0,
       isFollowed: json["is_followed"] == true,
       isFollowPending: json["is_follow_pending"] == true,
       id: json["id"]?.toString(),

@@ -24,7 +24,8 @@ import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
 /// Keeping the FIRST copy matters: later pages of a shifting feed are the
 /// stale ones, and replacing an already-rendered row would also throw away
 /// whatever local state it holds (an optimistic reaction, say).
-int appendDistinctPosts(List<PostPreview> into, Iterable<PostPreview> incoming) {
+int appendDistinctPosts(
+    List<PostPreview> into, Iterable<PostPreview> incoming) {
   final seen = into.map((post) => post.postId).toSet();
   var added = 0;
   for (final post in incoming) {
@@ -238,8 +239,9 @@ class PostPreview {
         commentsCount: commentsCount ?? this.commentsCount,
         isShared: isShared,
         linkPreview: linkPreview,
-        entityReaction:
-            clearEntityReaction ? null : (entityReaction ?? this.entityReaction),
+        entityReaction: clearEntityReaction
+            ? null
+            : (entityReaction ?? this.entityReaction),
         isSaved: isSaved ?? this.isSaved,
         isArchived: isArchived ?? this.isArchived,
         privacyStatus: privacyStatus ?? this.privacyStatus,

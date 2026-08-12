@@ -26,6 +26,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
+import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/servers/create_realm_view.dart';
 import 'package:flutter/material.dart';
@@ -397,163 +398,176 @@ class ServerCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(CLRadii.md),
       ),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onOpen,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Banner. A gradient stands in when there's no cover, keyed off the
-            // id so a given server always looks the same - the same trick
-            // CLAvatar uses for a missing photo.
-            SizedBox(
-              height: 44,
-              width: double.infinity,
-              child: cover != null
-                  ? CLNetworkImage(src: cover, fit: BoxFit.cover)
-                  : DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: clEntityGradient(server.id),
-                        ),
-                      ),
-                    ),
-            ),
-            // Avatar straddling the banner's bottom edge, with the NAME beside
-            // it rather than under it.
-            //
-            // That is the whole point of this arrangement: the name used to own
-            // a line of its own below the avatar, and moving it into the empty
-            // space to the avatar's right buys back that line for the
-            // description without making the card any taller.
-            Transform.translate(
-              offset: const Offset(0, -12),
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8, right: 8),
-                child: Row(
-                  // Bottom aligned, so the name sits on the avatar's lower edge
-                  // where the banner ends - centring it would float it up into
-                  // the banner over the cover photo.
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                          color: p.surface, shape: BoxShape.circle),
-                      child: CLAvatar(
-                          id: server.id,
-                          name: server.name,
-                          src: clCleanMediaSrc(server.profile),
-                          size: 32),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 3),
-                        child: Row(
-                          children: [
-                            Flexible(
-                              child: Text(server.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: CLType.bodySm,
-                                      fontWeight: FontWeight.w700,
-                                      color: p.text)),
+      child: Stack(
+        children: [
+          InkWell(
+            onTap: onOpen,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Banner. A gradient stands in when there's no cover, keyed off the
+                // id so a given server always looks the same - the same trick
+                // CLAvatar uses for a missing photo.
+                SizedBox(
+                  height: 44,
+                  width: double.infinity,
+                  child: cover != null
+                      ? CLNetworkImage(src: cover, fit: BoxFit.cover)
+                      : DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: clEntityGradient(server.id),
                             ),
-                            if (server.isVerified) ...[
-                              const SizedBox(width: 3),
-                              Icon(Icons.verified, size: 13, color: p.brand),
-                            ],
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
                 ),
-              ),
-            ),
-            // Expanded, because the Column below uses a Spacer to push the
-            // member row to the bottom of the card - and a Spacer needs a
-            // bounded height. In a plain Padding the Column is unbounded, which
-            // throws during layout and leaves the whole card blank.
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // The description takes the flex: it owns whatever the cell
-                    // has left after the count and the button, up to its three
-                    // lines, and shortens instead of overflowing on a narrow
-                    // phone. The full text is on the server's own info screen.
-                    Expanded(
-                      child: Text(
-                        (server.description ?? '').trim().isEmpty
-                            ? 'No description'
-                            : server.description!.trim(),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: CLType.caption,
-                            color: (server.description ?? '').trim().isEmpty
-                                ? p.text3
-                                : p.text2,
-                            height: 1.3),
-                      ),
+                // Avatar straddling the banner's bottom edge, with the NAME beside
+                // it rather than under it.
+                //
+                // That is the whole point of this arrangement: the name used to own
+                // a line of its own below the avatar, and moving it into the empty
+                // space to the avatar's right buys back that line for the
+                // description without making the card any taller.
+                Transform.translate(
+                  offset: const Offset(0, -12),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8, right: 8),
+                    child: Row(
+                      // Bottom aligned, so the name sits on the avatar's lower edge
+                      // where the banner ends - centring it would float it up into
+                      // the banner over the cover photo.
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                              color: p.surface, shape: BoxShape.circle),
+                          child: CLAvatar(
+                              id: server.id,
+                              name: server.name,
+                              src: clCleanMediaSrc(server.profile),
+                              size: 32),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(server.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: CLType.bodySm,
+                                          fontWeight: FontWeight.w700,
+                                          color: p.text)),
+                                ),
+                                if (server.isVerified) ...[
+                                  const SizedBox(width: 3),
+                                  Icon(Icons.verified,
+                                      size: 13, color: p.brand),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    // The count belongs to the BUTTON, not to the description -
-                    // it stays right above the action whatever the description's
-                    // length, so the bottom of every card in the grid reads the
-                    // same. Any slack lands in the description's slot above.
-                    //
-                    // Stacked rather than beside the button: at half width the
-                    // count and the button fight for the same room and the label
-                    // truncates.
-                    Text(
-                      '${clCompactCount(server.membersCount)} member/s',
-                      style:
-                          TextStyle(fontSize: CLType.caption, color: p.text2),
-                    ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      width: double.infinity,
-                      child: CLMiniBtn(
-                        // Open, not Leave. A directory is where you go to FIND
-                        // servers, so the action on one you are already in is to
-                        // go there - offering to leave is answering a question
-                        // nobody browsing has asked, one destructive tap away
-                        // from Join on the card beside it. Leaving lives inside
-                        // the server, in its header menu, where you are by
-                        // definition looking at what you would be giving up.
-                        label: busy
-                            ? '…'
-                            : isMember
-                                ? 'Open'
-                                : 'Join',
-                        // Deliberately NOT the same button twice. Two cards side
-                        // by side, one joined and one not, were identical gold
-                        // blocks you had to READ to tell apart - which is the
-                        // one thing a directory should convey at a glance.
+                  ),
+                ),
+                // Expanded, because the Column below uses a Spacer to push the
+                // member row to the bottom of the card - and a Spacer needs a
+                // bounded height. In a plain Padding the Column is unbounded, which
+                // throws during layout and leaves the whole card blank.
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // The description takes the flex: it owns whatever the cell
+                        // has left after the count and the button, up to its three
+                        // lines, and shortens instead of overflowing on a narrow
+                        // phone. The full text is on the server's own info screen.
+                        Expanded(
+                          child: Text(
+                            (server.description ?? '').trim().isEmpty
+                                ? 'No description'
+                                : server.description!.trim(),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: CLType.caption,
+                                color: (server.description ?? '').trim().isEmpty
+                                    ? p.text3
+                                    : p.text2,
+                                height: 1.3),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        // The count belongs to the BUTTON, not to the description -
+                        // it stays right above the action whatever the description's
+                        // length, so the bottom of every card in the grid reads the
+                        // same. Any slack lands in the description's slot above.
                         //
-                        // Join is the offer, so it stays filled gold and reads
-                        // as the thing to do. Open is quiet: you are already in,
-                        // and the whole card opens it anyway. No icons - fill
-                        // and border already carry that difference, and at this
-                        // card width a glyph only steals room from the label.
-                        variant:
-                            isMember ? CLBtnVariant.outline : CLBtnVariant.gold,
-                        onPressed: busy ? null : (isMember ? onOpen : onJoin),
-                      ),
+                        // Stacked rather than beside the button: at half width the
+                        // count and the button fight for the same room and the label
+                        // truncates.
+                        Text(
+                          '${clCompactCount(server.membersCount)} member/s',
+                          style: TextStyle(
+                              fontSize: CLType.caption, color: p.text2),
+                        ),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          width: double.infinity,
+                          child: CLMiniBtn(
+                            // Open, not Leave. A directory is where you go to FIND
+                            // servers, so the action on one you are already in is to
+                            // go there - offering to leave is answering a question
+                            // nobody browsing has asked, one destructive tap away
+                            // from Join on the card beside it. Leaving lives inside
+                            // the server, in its header menu, where you are by
+                            // definition looking at what you would be giving up.
+                            label: busy
+                                ? '…'
+                                : isMember
+                                    ? 'Open'
+                                    : 'Join',
+                            // Deliberately NOT the same button twice. Two cards side
+                            // by side, one joined and one not, were identical gold
+                            // blocks you had to READ to tell apart - which is the
+                            // one thing a directory should convey at a glance.
+                            //
+                            // Join is the offer, so it stays filled gold and reads
+                            // as the thing to do. Open is quiet: you are already in,
+                            // and the whole card opens it anyway. No icons - fill
+                            // and border already carry that difference, and at this
+                            // card width a glyph only steals room from the label.
+                            variant: isMember
+                                ? CLBtnVariant.outline
+                                : CLBtnVariant.gold,
+                            onPressed:
+                                busy ? null : (isMember ? onOpen : onJoin),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+          // Last in the Stack so it paints over the banner and wins the tap
+          // against the card-wide InkWell above.
+          RealmCardReportButton(
+            targetId: server.entityId.isNotEmpty ? server.entityId : server.id,
+            realmType: 'server',
+          ),
+        ],
       ),
     );
   }

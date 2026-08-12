@@ -9,6 +9,7 @@ import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
+import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
@@ -686,6 +687,32 @@ class ConversationStateView extends State<ConversationView> {
                   style: TextStyle(color: p.pink, fontSize: CLType.body)),
             ]),
           ),
+        // GROUPS only, and above Leave so the destructive entry stays last.
+        //
+        // Not single (not a realm - report the person from their profile, or
+        // one message from its long-press menu) and not channel/server (the
+        // SERVER is what moderation acts on, and it is reportable from the
+        // server header rather than from one of its threads).
+        //
+        // Not a ConversationAction, for the same reason Manage isn't: filing a
+        // report doesn't happen TO the chat history.
+        if (_conversationType == "group")
+          PopupMenuItem(
+            onTap: () => showReportSheet(
+              context,
+              targetType: ReportTargetType.realm,
+              // A group's conversation id IS its realm id, which the reports
+              // endpoint resolves a realm from just as it does an entity id.
+              targetId: conversationInfo?.contactID ?? widget.conversationId,
+              title: 'Report this group',
+            ),
+            child: Row(children: [
+              Icon(Icons.report, size: 18, color: p.pink),
+              const SizedBox(width: 10),
+              Text('Report group',
+                  style: TextStyle(color: p.pink, fontSize: CLType.body)),
+            ]),
+          ),
         if (_canLeaveConversation)
           PopupMenuItem(
             onTap: _leaveRealm,
@@ -743,6 +770,21 @@ class ConversationStateView extends State<ConversationView> {
     return (profile != null && profile.isNotEmpty && profile != "none")
         ? profile
         : "";
+  }
+
+  /// The display badge. One field for both kinds of counterpart: the server
+  /// normalises an account's is_badged and a realm's is_verified into
+  /// details.is_verified. (Not the account's email-verified flag.)
+  bool get _headerIsVerified {
+    final details = conversationSetup?['details'];
+    return details is Map && details['is_verified'] == true;
+  }
+
+  /// A conversation whose counterpart is a PAGE. Groups/channels/servers are
+  /// realms too but are not pages, and the header already shows what they are.
+  bool get _headerIsPage {
+    final details = conversationSetup?['details'];
+    return details is Map && details['realm_type']?.toString() == 'page';
   }
 
   /// Every other participant's entityID to ring - mirrors webapp's
@@ -1885,31 +1927,65 @@ class ConversationStateView extends State<ConversationView> {
                                                             "single"
                                                         ? _openHeaderProfile
                                                         : null,
-                                                    child: Text(
-                                                      _headerDisplayName,
-                                                      style: TextStyle(
-                                                        fontSize: CLType.title,
-                                                        color: p.text,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        // Subtle underline signals
-                                                        // the name is tappable (it
-                                                        // opens the peer's profile)
-                                                        // - only for single convos,
-                                                        // where a profile exists.
-                                                        decoration:
-                                                            _conversationType ==
-                                                                    "single"
-                                                                ? TextDecoration
-                                                                    .underline
-                                                                : null,
-                                                        decorationColor:
-                                                            p.text3,
-                                                        decorationThickness: 1,
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
+                                                    child: Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        Flexible(
+                                                          child: Text(
+                                                            _headerDisplayName,
+                                                            style: TextStyle(
+                                                              fontSize:
+                                                                  CLType.title,
+                                                              color: p.text,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              // Subtle underline signals
+                                                              // the name is tappable (it
+                                                              // opens the peer's profile)
+                                                              // - only for single convos,
+                                                              // where a profile exists.
+                                                              decoration: _conversationType ==
+                                                                      "single"
+                                                                  ? TextDecoration
+                                                                      .underline
+                                                                  : null,
+                                                              decorationColor:
+                                                                  p.text3,
+                                                              decorationThickness:
+                                                                  1,
+                                                            ),
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ),
+                                                        // Badge, then page flag -
+                                                        // same order and glyphs the
+                                                        // inbox rows and Network
+                                                        // rows use.
+                                                        if (_headerIsVerified) ...[
+                                                          const SizedBox(
+                                                              width: 4),
+                                                          Icon(Icons.verified,
+                                                              size: 14,
+                                                              color: p.brand),
+                                                        ],
+                                                        if (_headerIsPage) ...[
+                                                          const SizedBox(
+                                                              width: 4),
+                                                          Tooltip(
+                                                            message: 'Page',
+                                                            child: Icon(
+                                                                Icons
+                                                                    .flag_outlined,
+                                                                size: 13,
+                                                                color: p.text3),
+                                                          ),
+                                                        ],
+                                                      ],
                                                     ),
                                                   ),
                                                   StoreConnector<AppState,

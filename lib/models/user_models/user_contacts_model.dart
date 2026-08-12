@@ -85,10 +85,31 @@ class UsersContactPreview {
   final String profile;
   final String? coverphoto;
   final bool? isActivated;
+
+  /// The display BADGE - an account's is_badged or a realm's is_verified,
+  /// normalised server-side. NOT the account's email-verified flag.
   final bool? isVerified;
 
-  const UsersContactPreview(this.userID, this.entityID, this.fullname,
-      this.profile, this.coverphoto, this.isActivated, this.isVerified);
+  /// 'user' or 'realm'. Empty on payloads that don't carry it.
+  final String entityType;
+
+  /// 'page' / 'server' / ... Null when this is a person, which is what marks a
+  /// conversation counterpart as a PAGE.
+  final String? realmType;
+
+  bool get isPage => realmType == 'page';
+
+  const UsersContactPreview(
+    this.userID,
+    this.entityID,
+    this.fullname,
+    this.profile,
+    this.coverphoto,
+    this.isActivated,
+    this.isVerified, {
+    this.entityType = '',
+    this.realmType,
+  });
 
   String get displayName {
     final full = [fullname.firstName, fullname.lastName]
@@ -98,15 +119,19 @@ class UsersContactPreview {
   }
 
   factory UsersContactPreview.fromJson(Map<String, dynamic> json) {
+    final realmType = json["realmType"]?.toString();
     return UsersContactPreview(
-        (json["userID"] ?? "").toString(),
-        (json["entityID"] ?? json["_id"] ?? "").toString(),
-        json["fullname"] is Map
-            ? UserFullname.fromJson(Map<String, dynamic>.from(json["fullname"]))
-            : const UserFullname("", "", ""),
-        (json["profile"] ?? "none").toString(),
-        json["coverphoto"]?.toString() ?? "",
-        json["isActivated"] ?? false,
-        json["isVerified"] ?? false);
+      (json["userID"] ?? "").toString(),
+      (json["entityID"] ?? json["_id"] ?? "").toString(),
+      json["fullname"] is Map
+          ? UserFullname.fromJson(Map<String, dynamic>.from(json["fullname"]))
+          : const UserFullname("", "", ""),
+      (json["profile"] ?? "none").toString(),
+      json["coverphoto"]?.toString() ?? "",
+      json["isActivated"] ?? false,
+      json["isVerified"] ?? false,
+      entityType: (json["entityType"] ?? "").toString(),
+      realmType: (realmType == null || realmType.isEmpty) ? null : realmType,
+    );
   }
 }

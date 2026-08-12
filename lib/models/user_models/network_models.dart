@@ -86,8 +86,9 @@ class NetworkEntityResult {
       mutualCount: json["mutual_count"] is num
           ? (json["mutual_count"] as num).toInt()
           : null,
-      isFollowedBack:
-          json.containsKey("is_followed_back") ? json["is_followed_back"] == true : null,
+      isFollowedBack: json.containsKey("is_followed_back")
+          ? json["is_followed_back"] == true
+          : null,
       isFollowed:
           json.containsKey("is_followed") ? json["is_followed"] == true : null,
     );

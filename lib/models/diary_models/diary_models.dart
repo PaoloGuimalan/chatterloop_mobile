@@ -261,8 +261,8 @@ class DiaryEntry {
       attachments: rawAttachments is List
           ? rawAttachments
               .whereType<Map>()
-              .map((e) =>
-                  DiaryAttachment.fromJson(Map<String, dynamic>.from(e)))
+              .map(
+                  (e) => DiaryAttachment.fromJson(Map<String, dynamic>.from(e)))
               .toList()
           : const [],
       mapInfo: rawMap is Map

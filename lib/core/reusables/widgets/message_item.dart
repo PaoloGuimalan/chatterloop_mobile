@@ -111,8 +111,13 @@ class MessageItemView extends StatelessWidget {
       title: title,
       isArchived: isArchived,
       // A group's conversationID IS its realm_id, which is what makes the
-      // admin-only Manage entry resolvable from a list row.
+      // admin-only Manage entry - and the group Report entry - resolvable
+      // from a list row.
       conversationId: message.conversationID,
+      // Was omitted, so this defaulted to "single" and BOTH of those entries
+      // were gated off on every row. Manage group has therefore never actually
+      // appeared from a long-press, despite the comment above.
+      conversationType: message.conversationType,
     );
     if (action == null || !context.mounted) return;
 
@@ -147,88 +152,115 @@ class MessageItemView extends StatelessWidget {
         // limits rebuilds to when THIS row's own typing/online actually flips.
         distinct: true,
         builder: (context, data) {
-      final title = message.details.displayName.isEmpty
-          ? message.details.username
-          : message.details.displayName;
+          final title = message.details.displayName.isEmpty
+              ? message.details.username
+              : message.details.displayName;
 
-      return InkWell(
-        onTap: () => _open(context),
-        onLongPress: () => _showOptions(context, title),
-        borderRadius: BorderRadius.circular(CLRadii.md),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-          child: Row(
-            children: [
-              CLAvatar(
-                id: message.details.id.isEmpty
-                    ? message.conversationID
-                    : message.details.id,
-                name: title,
-                src: message.details.profile != "none"
-                    ? message.details.profile
-                    : null,
-                size: 52,
-                online: data.online,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+          return InkWell(
+            onTap: () => _open(context),
+            onLongPress: () => _showOptions(context, title),
+            borderRadius: BorderRadius.circular(CLRadii.md),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+              child: Row(
+                children: [
+                  CLAvatar(
+                    id: message.details.id.isEmpty
+                        ? message.conversationID
+                        : message.details.id,
+                    name: title,
+                    src: message.details.profile != "none"
+                        ? message.details.profile
+                        : null,
+                    size: 52,
+                    online: data.online,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Flexible(
-                          child: Text(title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: CLType.title,
-                                  color: _typeIcon != null ? p.brand : p.text,
-                                  fontWeight: FontWeight.w700)),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: CLType.title,
+                                      color:
+                                          _typeIcon != null ? p.brand : p.text,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                            if (_typeIcon != null) ...[
+                              const SizedBox(width: 4),
+                              Icon(_typeIcon, size: 16, color: p.brand),
+                            ],
+                            // The verified badge, same glyph and colour the
+                            // profile screens use. One field either way: the
+                            // server normalises an account's is_badged and a
+                            // realm's is_verified into details.is_verified.
+                            if (message.details.isVerified) ...[
+                              const SizedBox(width: 4),
+                              Icon(Icons.verified, size: 14, color: p.brand),
+                            ],
+                            // A single conversation whose counterpart is a
+                            // PAGE. Matches the flag the Contacts/Network rows
+                            // already put on a page connection, so a page reads
+                            // the same wherever it appears. Groups and channels
+                            // are excluded - _typeIcon above already says what
+                            // they are.
+                            if (message.details.isPage) ...[
+                              const SizedBox(width: 4),
+                              Tooltip(
+                                message: 'Page',
+                                child: Icon(Icons.flag_outlined,
+                                    size: 13, color: p.text3),
+                              ),
+                            ],
+                          ],
                         ),
-                        if (_typeIcon != null) ...[
-                          const SizedBox(width: 4),
-                          Icon(_typeIcon, size: 16, color: p.brand),
-                        ],
+                        const SizedBox(height: 2),
+                        Text(_previewText(data.isTyping),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: CLType.bodySm, color: p.text2)),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(_previewText(data.isTyping),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: CLType.bodySm, color: p.text2)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(_timeLabel(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: CLType.meta, color: p.text3)),
-                  if (message.unread > 0) ...[
-                    const SizedBox(height: 6),
-                    _UnreadDot(count: message.unread),
-                  ],
+                  ),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(_timeLabel(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              TextStyle(fontSize: CLType.meta, color: p.text3)),
+                      if (message.unread > 0) ...[
+                        const SizedBox(height: 6),
+                        _UnreadDot(count: message.unread),
+                      ],
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
-        ),
-      );
-    }, converter: (store) {
-      return (
-        isTyping: store.state.isTypingList
-            .any((typing) => typing.conversationID == message.conversationID),
-        // Only single conversations map to one actual person - a group's
-        // avatar has no single "online" state to show, matches webapp's
-        // activeuserSpecific gating on conversationType === "single".
-        online: message.conversationType == "single" &&
-            (store.state.presence[message.details.entityId]?.online ?? false),
-      );
-    });
+            ),
+          );
+        },
+        converter: (store) {
+          return (
+            isTyping: store.state.isTypingList.any(
+                (typing) => typing.conversationID == message.conversationID),
+            // Only single conversations map to one actual person - a group's
+            // avatar has no single "online" state to show, matches webapp's
+            // activeuserSpecific gating on conversationType === "single".
+            online: message.conversationType == "single" &&
+                (store.state.presence[message.details.entityId]?.online ??
+                    false),
+          );
+        });
   }
 }
 

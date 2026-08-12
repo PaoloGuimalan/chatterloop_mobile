@@ -62,7 +62,8 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             Text(
-              "Accounts you've blocked can't contact you, see your posts, or find your profile in search.",
+              "Accounts and pages you've blocked can't contact you, see your "
+              "posts, or find your profile in search.",
               style: TextStyle(fontSize: CLType.body, color: p.text2),
             ),
             const SizedBox(height: 16),
@@ -112,14 +113,26 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  acc.displayName.isEmpty ? '@${acc.username}' : acc.displayName,
-                  style: TextStyle(
-                      fontSize: CLType.bodySm,
-                      fontWeight: FontWeight.w600,
-                      color: p.text),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        acc.displayName.isEmpty
+                            ? '@${acc.username}'
+                            : acc.displayName,
+                        style: TextStyle(
+                            fontSize: CLType.bodySm,
+                            fontWeight: FontWeight.w600,
+                            color: p.text),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (acc.isRealm) ...[
+                      const SizedBox(width: 6),
+                      const CLBadge(label: 'Page'),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text('@${acc.username}',

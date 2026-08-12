@@ -36,8 +36,8 @@ class JoinRoomResponse {
       participants: rawParticipants is List
           ? rawParticipants
               .whereType<Map>()
-              .map((p) =>
-                  CallParticipant.fromJson(Map<String, dynamic>.from(p)))
+              .map(
+                  (p) => CallParticipant.fromJson(Map<String, dynamic>.from(p)))
               .toList()
           : const [],
     );

@@ -134,8 +134,9 @@ class PostComment {
         createdAt: createdAt,
         author: author,
         reactions: reactions ?? this.reactions,
-        entityReaction:
-            clearEntityReaction ? null : (entityReaction ?? this.entityReaction),
+        entityReaction: clearEntityReaction
+            ? null
+            : (entityReaction ?? this.entityReaction),
         replyCount: replyCount ?? this.replyCount,
         linkPreview: linkPreview,
       );

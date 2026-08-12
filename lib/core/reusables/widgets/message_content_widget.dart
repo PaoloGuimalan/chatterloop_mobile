@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
+import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/linkify_text.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
@@ -25,15 +26,46 @@ import 'package:flutter_redux/flutter_redux.dart';
 /// entry here as plain emoji-sized Text, so a "➕" character here always
 /// reads as a mismatched, low-res emoji rather than an app icon. It lives
 /// instead as a real Material icon in the context-menu row below (see
-/// _reactionMenuItems), which the package renders as an actual Icon widget.
+/// _menuItemsFor), which the package renders as an actual Icon widget.
 const List<String> _quickReactions = ['👍', '❤️', '😆', '😮', '😢', '😡'];
 
-/// Default Reply/Copy/Delete plus a "React" entry that opens the full emoji
-/// picker - real Icon(Icons.add_reaction_outlined), not an emoji character.
-final List<MenuItem> _reactionMenuItems = [
-  ...kDefaultMessageMenuItems,
-  const MenuItem(label: 'React', icon: Icons.add_reaction_outlined),
-];
+/// The long-press menu for one message, in the order it is drawn.
+///
+/// Spelled out here rather than spreading kDefaultMessageMenuItems: that list
+/// put Delete third and offered it unconditionally. Order is now
+///
+///   Reply · Copy · React · (Delete | Report)
+///
+/// with the destructive entry always last. The two are mutually exclusive and
+/// both key off authorship:
+///
+///   Delete  YOURS only. /m/deletemessage rejects a message you didn't send
+///           ("You do not own this message"), so offering it on someone
+///           else's was an action that could only ever fail.
+///   Report  everyone ELSE's. A message report resolves to its sender's
+///           entity, so reporting your own would be reporting yourself.
+///
+/// "React" is a real Icon(Icons.add_reaction_outlined) rather than an emoji
+/// character - the package renders every label's icon as an Icon widget, and
+/// a "➕" glyph here reads as a mismatched, low-res emoji.
+List<MenuItem> _menuItemsFor({required bool isOwnMessage}) => [
+      const MenuItem(label: 'Reply', icon: Icons.reply),
+      const MenuItem(label: 'Copy', icon: Icons.copy),
+      const MenuItem(label: 'React', icon: Icons.add_reaction_outlined),
+      if (isOwnMessage)
+        const MenuItem(
+          label: 'Delete',
+          icon: Icons.delete_forever,
+          isDestructive: true,
+        ),
+      if (!isOwnMessage)
+        const MenuItem(
+          label: 'Report',
+          icon: Icons.report,
+          // Red, like Delete - every LABELLED report entry in the app is.
+          isDestructive: true,
+        ),
+    ];
 
 /// The 20px-tall rounded pill under a message, based on webapp's
 /// cl-message-reaction-pill.
@@ -393,6 +425,21 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           },
         ),
       ),
+    );
+  }
+
+  /// Report this message. Sends the MESSAGE id - the server looks the message
+  /// up and resolves its sender's entity, so the report lands on whoever sent
+  /// it without this widget having to know who that is.
+  ///
+  /// Fires after the long-press dialog has already popped itself (see
+  /// _handleMenuTap), so the sheet opens onto the thread rather than on top of
+  /// a dialog that is mid-dismissal.
+  void _reportMessage(BuildContext context) {
+    showReportSheet(
+      context,
+      targetType: ReportTargetType.message,
+      targetId: _messageContent.messageID,
     );
   }
 
@@ -1694,7 +1741,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                   id: _messageContent
                                       .messageID, // unique id for message
                                   reactions: _quickReactions,
-                                  menuItems: _reactionMenuItems,
+                                  menuItems: _menuItemsFor(
+                                      isOwnMessage: _messageContent.sender ==
+                                          _currentUserID),
                                   // Every message type (including audio) goes
                                   // through the same messageTypeSwitch the
                                   // normal bubble uses - this used to
@@ -1737,8 +1786,21 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                           true, _messageContent.messageID);
                                     } else if (menuItem.label == "React") {
                                       _showFullEmojiPicker(context);
+                                    } else if (menuItem.label == "Delete") {
+                                      // Was unhandled - the entry rendered and
+                                      // did nothing when tapped. Same call the
+                                      // inline delete button beside the bubble
+                                      // already makes, including its
+                                      // deliberate lack of a confirmation
+                                      // (see _deleteMessage).
+                                      _deleteMessage(_messageContent.messageID);
+                                    } else if (menuItem.label == "Report") {
+                                      _reportMessage(context);
                                     }
-                                    // handle context menu item
+                                    // NOTE: "Copy" is still unhandled - it has
+                                    // never been wired, and putting text on the
+                                    // clipboard is not something this widget
+                                    // does anywhere yet.
                                   },
                                 );
                               },

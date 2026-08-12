@@ -24,6 +24,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/models/http_models/paged_result.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
@@ -337,6 +338,16 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
                       ));
                     case 'manage':
                       openRealmManage(context, widget.serverId);
+                    case 'report':
+                      showReportSheet(
+                        context,
+                        targetType: ReportTargetType.realm,
+                        // The realm id - the reports endpoint resolves a realm
+                        // from either that or its entity id, and this pane only
+                        // ever holds the former.
+                        targetId: widget.serverId,
+                        title: 'Report this server',
+                      );
                     case 'leave':
                       _leaveServer();
                   }
@@ -349,6 +360,11 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
                   // actually want, sits right under it.
                   if (_isAdmin)
                     _menuItem(p, 'manage', Icons.tune, 'Manage server'),
+                  // Above Leave, matching web's server info modal: Leave is the
+                  // destructive one and stays last, so Report never sits where
+                  // a mis-tap costs a membership.
+                  _menuItem(p, 'report', Icons.report, 'Report server',
+                      danger: true),
                   // Nothing to leave when you were never in - this pane is
                   // reachable from Explore for a server you are not a member of.
                   if (_hasAccess)
@@ -784,7 +800,9 @@ class _ServerScreenState extends State<ServerScreen> {
                 _serverProfile = server.profile;
               }),
             ),
-            Container(width: 1, color: p.border),
+            // The 1px full-height divider that used to sit here is gone: it
+            // ran straight past the rail's rounded corners. The rail draws its
+            // own border now, which follows the radius.
             Expanded(
               child: _serverId == null
                   ? ServersDirectoryPane(
@@ -833,7 +851,27 @@ class _ServerRail extends StatelessWidget {
     final p = cl(context);
     return Container(
       width: 60,
-      color: p.surface,
+      // Rounded on the RIGHT only - the left edge is the screen edge, so
+      // rounding it would just leave a sliver of the body showing through.
+      // Reads as a half-stadium tucked against the side of the screen.
+      //
+      // decoration, not `color`: the two can't both be set on a Container.
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(CLRadii.lg),
+          bottomRight: Radius.circular(CLRadii.lg),
+        ),
+        // Uniform Border.all, not a right-only BorderSide: BoxDecoration can
+        // only paint a border around a borderRadius when every side matches,
+        // and a one-sided border would go back to being the straight line this
+        // replaced. The left side lands on the screen edge, where it isn't
+        // visible anyway.
+        border: Border.all(color: p.border),
+      ),
+      // Clips the scrolling server list to the rounded corners; without it the
+      // avatars at the very top and bottom paint over them.
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           const SizedBox(height: 4),

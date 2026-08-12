@@ -12,7 +12,9 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/requests/settings_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
+import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
@@ -244,6 +246,12 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
           ),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          if (!_isLoading &&
+              realm != null &&
+              !isActingEntity(realm.entityId))
+            _moreMenu(p, realm),
+        ],
       ),
       body: _isLoading
           ? const SingleChildScrollView(child: ProfileHeaderSkeleton())
@@ -321,6 +329,114 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                     ],
                   ),
                 ),
+    );
+  }
+
+  /// Report this realm. Sends target_type "realm" with the ENTITY id, which is
+  /// what the endpoint resolves the responsible entity from - the same call a
+  /// profile or a post report makes, only with a different target.
+  ///
+  /// The heading follows the realm's own type: this screen renders pages,
+  /// servers, groups and channels alike, and "Report this page" on a server
+  /// would just be wrong.
+  void _openReportSheet(RealmProfile realm) {
+    showReportSheet(
+      context,
+      targetType: ReportTargetType.realm,
+      targetId: realm.entityId,
+      title: 'Report this ${realm.type == 'page' ? 'page' : realm.type}',
+    );
+  }
+
+  /// Block a PAGE. Offered only for pages (see [_moreMenu]) - blocking a
+  /// server or group you're a member of would leave the membership behind and
+  /// mean something quite different from "stop showing me this".
+  ///
+  /// Confirmed first, like the user profile's block: the server tears down
+  /// follows, connections and pending invites in both directions.
+  Future<void> _blockRealm(RealmProfile realm) async {
+    final p = cl(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text('Block ${realm.name}?',
+            style: TextStyle(color: p.text, fontSize: CLType.screenTitle)),
+        content: Text(
+          "You'll stop seeing this page's posts, you'll unfollow it, and it "
+          "won't be able to reach you.",
+          style: TextStyle(color: p.text2, fontSize: CLType.body),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: p.text2))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: p.pink),
+              child: const Text('Block')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final result = await SettingsApi().blockAccount(realm.entityId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result.message ??
+            (result.ok ? 'Page blocked' : 'Could not block this page'))));
+    if (result.ok && mounted) {
+      // Leave the now-blocked page, same as the user profile does.
+      context.pop();
+    }
+  }
+
+  /// The ⋯ in the app bar. Never shown while you ARE this realm - the server
+  /// would reject both actions anyway.
+  Widget _moreMenu(CLPalette p, RealmProfile realm) {
+    final isPage = realm.type == 'page';
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: PopupMenuButton<String>(
+        tooltip: 'More',
+        color: p.surface,
+        onSelected: (v) {
+          if (v == 'report') _openReportSheet(realm);
+          if (v == 'block') _blockRealm(realm);
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'report',
+            child: Row(children: [
+              Icon(Icons.report, size: 18, color: p.pink),
+              const SizedBox(width: 10),
+              Text('Report', style: TextStyle(color: p.pink)),
+            ]),
+          ),
+          if (isPage)
+            PopupMenuItem(
+              value: 'block',
+              child: Row(children: [
+                Icon(Icons.block, size: 18, color: p.pink),
+                const SizedBox(width: 10),
+                Text('Block', style: TextStyle(color: p.pink)),
+              ]),
+            ),
+        ],
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: p.surface,
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15), blurRadius: 6),
+            ],
+          ),
+          child: Icon(Icons.more_vert, size: 18, color: p.text),
+        ),
+      ),
     );
   }
 

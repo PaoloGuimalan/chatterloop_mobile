@@ -1,5 +1,6 @@
 // Long-press message dialog - quick reactions, the message itself, and the
-// context menu (Reply / Copy / Delete / React).
+// context menu (Reply / Copy / React, then Delete on your own message or
+// Report on someone else's - see message_content_widget's _menuItemsFor).
 //
 // Was a thin re-implementation of flutter_chat_reactions' ReactionsDialogWidget,
 // built on its MenuItem, MessageBubble and HeroDialogRoute. Those are now
@@ -39,17 +40,16 @@ class MenuItem {
   final String label;
   final IconData icon;
 
-  /// Drawn in the danger colour - Delete, and nothing else so far.
+  /// Drawn in the danger colour - Delete, and Report (see
+  /// message_content_widget's _menuItemsFor).
   final bool isDestructive;
 }
 
-/// The menu every message gets. Was flutter_chat_reactions' DefaultData
-/// .menuItems, which no longer exists in 0.2.x.
-const List<MenuItem> kDefaultMessageMenuItems = [
-  MenuItem(label: 'Reply', icon: Icons.reply),
-  MenuItem(label: 'Copy', icon: Icons.copy),
-  MenuItem(label: 'Delete', icon: Icons.delete_forever, isDestructive: true),
-];
+// The default menu list that used to live here (Reply/Copy/Delete, standing in
+// for flutter_chat_reactions' removed DefaultData.menuItems) is gone: the menu
+// is per-message now - Delete only on your own, Report only on everyone
+// else's - so a shared const could no longer describe it. It is built in
+// message_content_widget's _menuItemsFor, which was its only consumer.
 
 /// The message itself, lifted into the dialog by a Hero so it appears to rise
 /// out of the thread rather than being redrawn on top of it.
@@ -111,7 +111,6 @@ class HeroDialogRoute<T> extends PageRoute<T> {
           Animation<double> secondaryAnimation) =>
       _builder(context);
 }
-
 
 class CLMessageReactionsDialog extends StatefulWidget {
   const CLMessageReactionsDialog({
