@@ -2,6 +2,7 @@
 // Two themes (light + dark), brand blue, Inter family, soft surfaces.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class CLColors {
   // Brand
@@ -28,6 +29,27 @@ class CLColors {
   static const callTile = Color(0xFF3D4043);
   static const callControlOff = Color(0xFF888888);
   static const callEnd = Color(0xFFFF0000);
+
+  // The rest of the call palette, from the redesign's "3b Active call" and
+  // "3g Incoming call" screens. Both are annotated "call palette, UNCHANGED BY
+  // THEME" - a call is always dark, on a light phone as much as a dark one,
+  // which is why these are fixed colours rather than CLPalette lookups.
+  static const callBg = Color(0xFF0B0E14);
+  static const callPanel = Color(0xFF151A23);
+
+  /// A control that is ON / neutral. The OFF state uses [callControlOff].
+  static const callControl = Color(0xFF1B2230);
+  static const callText = Color(0xFFE8EBF1);
+  static const callText2 = Color(0xFF99A1B1);
+  static const callAccept = Color(0xFF20BD7C);
+  static const callSpeakerIcon = Color(0xFFE69500);
+  static const callSpeakerBg = Color(0x29E69500); // rgba(230,149,0,.16)
+  static const callBrand = Color(0xFF1C7DEF);
+  static const callBrandSoft = Color(0x2E1C7DEF); // rgba(28,125,239,.18)
+  static const callHomeIndicator = Color(0xFF313C50);
+
+  /// Card radius shared by every panel on the call screens.
+  static const double callRadius = 26;
 
   // Light surfaces
   static const bgLight = Color(0xFFEEF1F5);
@@ -279,6 +301,47 @@ String clLogoAsset(BuildContext context) =>
         ? 'assets/images/chatterloop-dark.png'
         : 'assets/images/chatterloop.png';
 
+/// How the OS status bar (the notification tray) and the bottom navigation bar
+/// should be drawn for a given app theme.
+///
+/// ONE definition, used from two places, because the two bars are decided
+/// differently and would otherwise disagree:
+///   - a screen WITH an AppBar takes its style from AppBarTheme below, which
+///     overrides anything set globally;
+///   - a screen WITHOUT one takes it from the AnnotatedRegion in main.dart.
+/// Before this the style was set once at startup, hardcoded to dark icons, and
+/// never revisited - so switching to the dark theme left black status icons on
+/// a black tray, and the navigation bar was never themed at all.
+///
+/// BOTH BARS ARE TRANSPARENT, deliberately. The app runs edge-to-edge (see
+/// main.dart), so each bar shows whatever the app paints underneath it - the
+/// screen's own themed background - and follows the theme for free.
+///
+/// Colouring the navigation bar directly does not work here and cannot be made
+/// to: this app targets SDK 36, and from SDK 35 Android enforces edge-to-edge
+/// and ignores `systemNavigationBarColor` entirely. Setting it looked correct
+/// and did nothing.
+///
+/// What DOES apply on every version is the icon brightness, which is the part
+/// that stops the bars becoming unreadable against the background behind them.
+SystemUiOverlayStyle clSystemOverlayStyle(Brightness brightness) {
+  final isDark = brightness == Brightness.dark;
+  // Icons must CONTRAST the bar, so they invert the theme: light icons on a
+  // dark app, dark icons on a light one.
+  final icons = isDark ? Brightness.light : Brightness.dark;
+  return SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    // Android reads this one...
+    statusBarIconBrightness: icons,
+    // ...and iOS reads this one, where the value means the BAR's brightness
+    // rather than the icons' - hence the opposite of the line above.
+    statusBarBrightness: brightness,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: icons,
+    systemNavigationBarDividerColor: Colors.transparent,
+  );
+}
+
 ThemeData buildCLTheme(Brightness brightness) {
   final p = brightness == Brightness.dark ? CLPalette.dark : CLPalette.light;
   final base =
@@ -304,6 +367,10 @@ ThemeData buildCLTheme(Brightness brightness) {
       foregroundColor: p.text,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
+      // An AppBar sets its own overlay style, overriding whatever is set
+      // globally, so it has to be told the theme too - otherwise every screen
+      // with a header keeps the startup style regardless of the theme.
+      systemOverlayStyle: clSystemOverlayStyle(brightness),
       // Set explicitly, or every AppBar falls back to Material's titleLarge
       // (22) - which made a pushed screen's header noticeably bigger than the
       // tab bar's own header on the screen it was pushed from. One screen-title

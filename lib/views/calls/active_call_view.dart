@@ -16,6 +16,8 @@
 // rather than owning any call-engine state itself, matching the mobile
 // calling plan's CallController design.
 
+import 'dart:async';
+
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
@@ -24,7 +26,9 @@ import 'package:chatterloop_app/models/call_models/call_signed_payloads_model.da
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
-const _kCallBg = Color(0xFF14161A);
+// The screen background now comes from CLColors.callBg (#0B0E14, the
+// redesign's call palette) rather than a local constant, so the two call
+// screens cannot drift apart.
 
 class ActiveCallView extends StatefulWidget {
   const ActiveCallView({super.key});
@@ -36,6 +40,13 @@ class ActiveCallView extends StatefulWidget {
 class _ActiveCallViewState extends State<ActiveCallView> {
   bool _endingOrGone = false;
   bool _hadRemoteParticipant = false;
+
+  /// When the call became active, and a 1s repaint so the header's mm:ss
+  /// advances. Held HERE rather than on CallController because it is a
+  /// presentation concern - nothing about the media session depends on it,
+  /// and the controller outlives individual screens.
+  DateTime? _connectedAt;
+  Timer? _durationTicker;
 
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   bool _localRendererReady = false;
@@ -57,6 +68,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
 
   @override
   void dispose() {
+    _durationTicker?.cancel();
     _localRenderer.dispose();
     for (final renderer in _remoteRenderers.values) {
       renderer.dispose();
@@ -234,12 +246,39 @@ class _ActiveCallViewState extends State<ActiveCallView> {
             });
           }
 
+          // The duration in the header only starts once there is a call to
+          // time - "00:00 · connecting" would be counting nothing.
+          if (controller.isActive && _connectedAt == null) {
+            _connectedAt = DateTime.now();
+            _durationTicker ??=
+                Timer.periodic(const Duration(seconds: 1), (_) {
+              if (mounted) setState(() {});
+            });
+          }
+
           return Scaffold(
-            backgroundColor: _kCallBg,
+            backgroundColor: CLColors.callBg,
             body: SafeArea(
-              child: hasAnyVideo
-                  ? _buildVideoLayout(controller, statusText)
-                  : _buildAudioLayout(controller, statusText),
+              // One structure for both layouts, from the design: a header
+              // strip, the stage, then the controls - each a rounded panel
+              // with a 10 gap. The audio/video difference is only what fills
+              // the stage, not the frame around it.
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+                child: Column(
+                  children: [
+                    _header(controller, statusText),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: hasAnyVideo
+                          ? _buildVideoLayout(controller, statusText)
+                          : _buildAudioLayout(controller, statusText),
+                    ),
+                    const SizedBox(height: 10),
+                    _buildControls(controller),
+                  ],
+                ),
+              ),
             ),
           );
         },
@@ -258,74 +297,154 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     return buffer.toString();
   }
 
-  Widget _buildAudioLayout(CallController controller, String statusText) {
-    return Column(
-      children: [
-        const Spacer(flex: 2),
-        const CircleAvatar(
-          radius: 56,
-          backgroundColor: CLColors.brand300,
-          child: Icon(Icons.person, color: Colors.white, size: 48),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          controller.isGroup ? "Group call" : "Call",
-          style: const TextStyle(
-              color: Colors.white, fontSize: CLType.hero, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        Text(statusText,
-            style: const TextStyle(color: Colors.white70, fontSize: CLType.sectionTitle)),
-        if (controller.joinedParticipants.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          ...controller.joinedParticipants.map((p) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  p.username.isNotEmpty ? p.username : p.clientId,
-                  style: const TextStyle(color: Colors.white60, fontSize: CLType.body),
+  /// Who you are talking to, how long for, and the way to flip the camera.
+  ///
+  /// The peer's name comes from the joined participants rather than the
+  /// conversation, because that is the identity the media layer actually has -
+  /// and a group call has no single peer to name, so it says so.
+  Widget _header(CallController controller, String statusText) {
+    final peers = controller.joinedParticipants
+        .where((p) => p.clientId != controller.clientId)
+        .toList();
+    final title = controller.isGroup
+        ? "Group call"
+        : peers.isNotEmpty
+            ? (peers.first.username.isNotEmpty
+                ? peers.first.username
+                : "Call")
+            : "Call";
+
+    final initial = title.isNotEmpty ? title[0].toUpperCase() : "?";
+    final elapsed = _elapsedLabel();
+    final subtitle = elapsed == null
+        ? statusText.toLowerCase()
+        : "$elapsed · ${statusText.toLowerCase()}";
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: CLColors.callPanel,
+        borderRadius: BorderRadius.circular(CLColors.callRadius),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: CLColors.brand300,
+            child: Text(initial,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: CLColors.callText,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
+                Text(subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: CLColors.callText2, fontSize: 12)),
+              ],
+            ),
+          ),
+          // Only while the camera is actually on - there is nothing to flip
+          // otherwise, and the design's header carries exactly one action.
+          if (!controller.cameraOff)
+            Material(
+              color: CLColors.callControl,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: controller.isActive ? controller.switchCamera : null,
+                child: const SizedBox(
+                  width: 34,
+                  height: 34,
+                  child: Icon(Icons.flip_camera_ios,
+                      size: 18, color: CLColors.callText),
                 ),
-              )),
+              ),
+            ),
         ],
-        const Spacer(flex: 3),
-        _buildControls(controller),
-      ],
+      ),
+    );
+  }
+
+  /// mm:ss since the call became active, or null before that.
+  String? _elapsedLabel() {
+    final since = _connectedAt;
+    if (since == null) return null;
+    final d = DateTime.now().difference(since);
+    final mm = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final ss = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return d.inHours > 0 ? "${d.inHours}:$mm:$ss" : "$mm:$ss";
+  }
+
+  Widget _buildAudioLayout(CallController controller, String statusText) {
+    // The stage for a call with no video at all: one panel, the participants
+    // in it. Same panel the video tiles sit in, so the screen does not
+    // restructure itself when someone turns a camera on.
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: CLColors.callTile,
+        borderRadius: BorderRadius.circular(CLColors.callRadius),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircleAvatar(
+            radius: 32,
+            backgroundColor: CLColors.brand300,
+            child: Icon(Icons.person, color: Colors.white, size: 32),
+          ),
+          const SizedBox(height: 12),
+          Text(statusText,
+              style: const TextStyle(
+                  color: CLColors.callText, fontSize: CLType.title)),
+          if (controller.joinedParticipants.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...controller.joinedParticipants.map((p) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(
+                    p.username.isNotEmpty ? p.username : p.clientId,
+                    style: const TextStyle(
+                        color: CLColors.callText2, fontSize: CLType.bodySm),
+                  ),
+                )),
+          ],
+        ],
+      ),
     );
   }
 
   Widget _buildVideoLayout(CallController controller, String statusText) {
     final tiles = _buildTiles(controller);
+    // No floating bar and no scrim any more: the controls are a panel BELOW
+    // the stage rather than something overlapping it, so nothing has to be
+    // padded out of their way and no tile is ever partly hidden.
     return Stack(
       children: [
         Positioned.fill(
-          child: Padding(
-            // Leave room for the floating control bar so the bottom row of
-            // tiles isn't hidden behind it.
-            padding: const EdgeInsets.only(bottom: 92),
-            child: tiles.isEmpty
-                ? Center(
-                    child: Text(statusText,
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: CLType.sectionTitle)))
-                : _tileGrid(tiles),
-          ),
+          child: tiles.isEmpty
+              ? Center(
+                  child: Text(statusText,
+                      style: const TextStyle(
+                          color: CLColors.callText2,
+                          fontSize: CLType.sectionTitle)))
+              : _tileGrid(tiles),
         ),
         if (controller.videoProduceFailed) _buildVideoErrorBanner(controller),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: Container(
-            padding: const EdgeInsets.only(bottom: 24, top: 16),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black54],
-              ),
-            ),
-            child: _buildControls(controller),
-          ),
-        ),
       ],
     );
   }
@@ -519,11 +638,13 @@ class _ActiveCallViewState extends State<ActiveCallView> {
       Widget? child}) {
     return Container(
       key: key,
-      margin: const EdgeInsets.all(4),
+      // 5 all round makes the 10 gap the design puts between tiles, without
+      // needing the grid to know about spacing.
+      margin: const EdgeInsets.all(5),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: CLColors.callTile,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(CLColors.callRadius),
       ),
       child: Stack(
         fit: StackFit.expand,
@@ -648,47 +769,49 @@ class _ActiveCallViewState extends State<ActiveCallView> {
   }
 
   Widget _buildControls(CallController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: CLColors.callPanel,
+        borderRadius: BorderRadius.circular(CLColors.callRadius),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _CallControlButton(
             icon: controller.muted ? Icons.mic_off : Icons.mic,
+            label: "Mute",
             off: controller.muted,
             onPressed:
                 controller.isActive ? () => controller.toggleMic() : null,
           ),
+          const SizedBox(width: 12),
           _CallControlButton(
             icon: controller.cameraOff ? Icons.videocam_off : Icons.videocam,
+            label: "Camera",
             off: controller.cameraOff,
             onPressed:
                 controller.isActive ? () => controller.toggleCamera() : null,
           ),
-          if (!controller.cameraOff)
-            _CallControlButton(
-              icon: Icons.cameraswitch,
-              off: false,
-              onPressed:
-                  controller.isActive ? () => controller.switchCamera() : null,
-            ),
+          const SizedBox(width: 12),
+          // Camera-flip moved to the header, where the design puts it - the
+          // control row is a FIXED four now, so it no longer reflows every
+          // time the camera is toggled.
           _CallControlButton(
             icon: controller.speakerOn ? Icons.volume_up : Icons.hearing,
-            off: !controller.speakerOn,
+            label: "Speaker",
+            off: false,
+            accent: controller.speakerOn,
             onPressed:
                 controller.isActive ? () => controller.toggleSpeaker() : null,
           ),
-          Material(
-            color: CLColors.callEnd,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: _endingOrGone ? null : _endCall,
-              child: const Padding(
-                padding: EdgeInsets.all(18),
-                child: Icon(Icons.call_end, color: Colors.white, size: 30),
-              ),
-            ),
+          const SizedBox(width: 12),
+          _CallControlButton(
+            icon: Icons.call_end,
+            label: "End",
+            off: false,
+            danger: true,
+            onPressed: _endingOrGone ? null : _endCall,
           ),
         ],
       ),
@@ -696,35 +819,63 @@ class _ActiveCallViewState extends State<ActiveCallView> {
   }
 }
 
-/// Rounded-rectangle (not a full circle) pill, matching webapp's
-/// .btn_call_controls exactly: default state is a plain white surface,
-/// the "off" state (muted / camera off) turns webapp's exact #888 gray
-/// (.btn_call_controls_enable) - counter-intuitively named in webapp's own
-/// CSS (the class is applied when the feature is OFF, not when it's
-/// "enabled"), kept here as a plain `off` boolean instead of reproducing
-/// that naming.
+/// A 52px circle with its label underneath, per the redesign's control bar.
+///
+/// Four states, and they are deliberately different colours rather than
+/// different opacities, because a control bar is read at a glance mid-call:
+///   default  a neutral dark circle - the feature is ON and unremarkable
+///   off      webapp's exact #888 grey (muted / camera off), so "I turned this
+///            off" is visible without reading the icon
+///   accent   amber, for speakerphone being ON - a route change is worth
+///            noticing, unlike the mic simply working
+///   danger   solid red, End - the one irreversible control here
 class _CallControlButton extends StatelessWidget {
   final IconData icon;
+  final String label;
   final bool off;
+  final bool accent;
+  final bool danger;
   final VoidCallback? onPressed;
 
-  const _CallControlButton(
-      {required this.icon, required this.off, required this.onPressed});
+  const _CallControlButton({
+    required this.icon,
+    required this.label,
+    required this.off,
+    this.accent = false,
+    this.danger = false,
+    required this.onPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: off ? CLColors.callControlOff : Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          child: Icon(icon,
-              color: off ? Colors.white : const Color(0xFF14161A), size: 22),
+    final (bg, fg) = danger
+        ? (CLColors.callEnd, Colors.white)
+        : off
+            ? (CLColors.callControlOff, Colors.white)
+            : accent
+                ? (CLColors.callSpeakerBg, CLColors.callSpeakerIcon)
+                : (CLColors.callControl, CLColors.callText);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: bg,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: SizedBox(
+              width: 52,
+              height: 52,
+              child: Icon(icon, color: fg, size: 21),
+            ),
+          ),
         ),
-      ),
+        const SizedBox(height: 4),
+        Text(label,
+            style: const TextStyle(color: CLColors.callText2, fontSize: 11)),
+      ],
     );
   }
 }

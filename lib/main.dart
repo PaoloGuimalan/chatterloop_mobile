@@ -105,12 +105,27 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    SystemChrome.setSystemUIOverlayStyle(
-      SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-      ),
-    );
+    // EDGE-TO-EDGE, and it is what makes the bottom navigation bar theme at
+    // all on a modern device.
+    //
+    // This app targets SDK 36. From SDK 35 (Android 15) Android enforces
+    // edge-to-edge and IGNORES `systemNavigationBarColor` outright - so no
+    // value set there could ever have worked, and the bar kept the colour of
+    // the Android window theme instead (NormalTheme, which is
+    // Theme.MaterialComponents.LIGHT - hence a light bar no matter what the
+    // in-app toggle said, since that theme follows the OS setting rather than
+    // ours).
+    //
+    // Laying out behind the bars instead means the bar shows the app's OWN
+    // background, which is themed, so it follows the toggle for free. Screens
+    // already inset their content for it - CLScreen wraps its body in
+    // SafeArea(top: false) - so nothing ends up underneath the bar.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+    // The overlay style itself is NOT set here. It used to be, once, with dark
+    // icons hardcoded - so the dark theme got black status icons on a black
+    // tray. It now follows the theme, from the AnnotatedRegion in build() and
+    // from AppBarTheme.systemOverlayStyle; see clSystemOverlayStyle.
     _authController = AuthController(appStore);
     _router = buildAppRouter(_authController);
     // Firebase is already initialized in main(); wire FCM now that the router
@@ -136,14 +151,27 @@ class _MyAppState extends State<MyApp> {
       child: AnimatedBuilder(
         animation: _themeController,
         builder: (context, _) {
-          return StoreProvider<AppState>(
-            store: appStore,
-            child: MaterialApp.router(
-              title: 'Chatterloop',
-              theme: buildCLTheme(Brightness.light),
-              darkTheme: buildCLTheme(Brightness.dark),
-              themeMode: _themeController.mode,
-              routerConfig: _router,
+          // Rebuilt with the theme, so the system bars change the moment the
+          // toggle is flipped. Covers the screens with no AppBar to carry the
+          // style themselves - the ones with one get it from AppBarTheme.
+          //
+          // The controller only ever stores light or dark (never
+          // ThemeMode.system), so resolving it here needs no platform lookup.
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: clSystemOverlayStyle(
+              _themeController.mode == ThemeMode.dark
+                  ? Brightness.dark
+                  : Brightness.light,
+            ),
+            child: StoreProvider<AppState>(
+              store: appStore,
+              child: MaterialApp.router(
+                title: 'Chatterloop',
+                theme: buildCLTheme(Brightness.light),
+                darkTheme: buildCLTheme(Brightness.dark),
+                themeMode: _themeController.mode,
+                routerConfig: _router,
+              ),
             ),
           );
         },

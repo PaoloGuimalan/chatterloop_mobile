@@ -20,6 +20,8 @@
 // by the controller's own notify-voice-join, which is what moves the "N in this
 // room" label on the channel list.
 
+import 'dart:async';
+
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -142,6 +144,30 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
   @override
   void dispose() {
     _controller.removeListener(_onEngine);
+
+    // AUTO-LEAVE. This screen is going away and the engine is still in THIS
+    // room, so leave it.
+    //
+    // The single exit point, covering every way out: the Leave control (which
+    // has already left by the time it pops), the back button, the system
+    // gesture, and a route removed with no pop at all - a `go()` that replaces
+    // the stack, the server shell swapping its pane, a deep link landing
+    // elsewhere. Previously only the Leave control left, so any other exit
+    // stranded the engine: still joined and audible with nothing on screen
+    // driving it, and re-entering then tried to join a call it was already in.
+    //
+    // Scoped to this conversation on purpose: leaving unconditionally would
+    // tear down a DIFFERENT call, since the engine is a singleton that outlives
+    // this screen. Idempotent by the same check - the Leave control's teardown
+    // has already set the engine idle, so this finds nothing to do.
+    //
+    // Not awaited: dispose cannot be async. leaveCall's teardown does not need
+    // this widget, and _popOnce is a no-op once unmounted.
+    if (_controller.conversationID == widget.conversationId &&
+        _controller.status != CallEngineStatus.idle) {
+      unawaited(_controller.leaveCall());
+    }
+
     for (final renderer in _remote.values) {
       renderer.srcObject = null;
       renderer.dispose();
@@ -355,6 +381,16 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
         .where((participant) => participant.clientId != _controller.clientId)
         .toList();
 
+    // Leaving this screen leaves the ROOM - see dispose(), which is the single
+    // place that happens.
+    //
+    // Deliberately NOT a PopScope. The obvious version (canPop: false, leave,
+    // then pop) deadlocks: _popOnce calls Navigator.pop, but PopScope reads
+    // canPop from the last build, so without a rebuild in between that pop is
+    // intercepted too and the screen never goes anywhere. dispose() has no such
+    // problem and fires on every exit - back, the system gesture, a route
+    // replaced out from under this one - rather than only the ones that offer a
+    // pop to intercept.
     return CLScreen(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -365,8 +401,8 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
             Divider(height: 1, color: p.border),
             Expanded(child: _stage(p)),
             // No controls at all when you were never let in - there is no room
-            // to mute, point a camera at, or leave. The header's back arrow is
-            // the only thing this screen can honestly offer.
+            // to mute, point a camera at, or leave. The header keeps its back
+            // arrow for that case alone.
             if (!_accessDenied) _controls(p),
           ],
         ),
@@ -374,18 +410,25 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
     );
   }
 
-  /// The conversation header's shape - back arrow, identity, count - so a room
-  /// and a thread read as the same kind of place.
+  /// Identity and count. No back arrow: leaving a room is LEAVING THE CALL,
+  /// and that is what the Leave control does - a second exit in the header
+  /// looked like "go back" and read as though the call would keep running,
+  /// which is exactly the confusion this screen had.
+  ///
+  /// The one exception is the access-denied state, which renders no controls
+  /// at all (see build) - without an arrow there it would offer nothing to
+  /// press. System back still works everywhere, and now always leaves first.
   Widget _header(CLPalette p, int total) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 6, 12, 6),
+      padding: EdgeInsets.fromLTRB(_accessDenied ? 4 : 12, 6, 12, 6),
       child: Row(
         children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: Icon(Icons.arrow_back_ios_new_rounded,
-                size: 20, color: p.text2),
-          ),
+          if (_accessDenied)
+            IconButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: Icon(Icons.arrow_back_ios_new_rounded,
+                  size: 20, color: p.text2),
+            ),
           Container(
             width: 40,
             height: 40,

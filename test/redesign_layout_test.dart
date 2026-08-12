@@ -789,6 +789,48 @@ void _rosterIdContracts() {
     });
   });
 
+  group('system bars follow the theme', () {
+    // The status bar (notification tray) and the bottom navigation bar used to
+    // be set ONCE at startup with dark icons hardcoded, so the dark theme got
+    // black icons on a black tray and the navigation bar was never themed.
+    test('icons contrast the bar in both themes', () {
+      final light = clSystemOverlayStyle(Brightness.light);
+      final dark = clSystemOverlayStyle(Brightness.dark);
+
+      // Android: icon brightness is the ICONS', so it inverts the theme.
+      expect(light.statusBarIconBrightness, Brightness.dark);
+      expect(dark.statusBarIconBrightness, Brightness.light);
+      expect(light.systemNavigationBarIconBrightness, Brightness.dark);
+      expect(dark.systemNavigationBarIconBrightness, Brightness.light);
+
+      // iOS: statusBarBrightness is the BAR's, so it matches the theme - the
+      // opposite value to the line above, and easy to get backwards.
+      expect(light.statusBarBrightness, Brightness.light);
+      expect(dark.statusBarBrightness, Brightness.dark);
+    });
+
+    test('both bars are transparent, so the app paints them', () {
+      // The app runs edge-to-edge, so each bar shows the screen's own themed
+      // background. Colouring the navigation bar directly is NOT an option:
+      // this app targets SDK 36, and from SDK 35 Android ignores
+      // systemNavigationBarColor - setting it looks right and does nothing.
+      for (final b in [Brightness.light, Brightness.dark]) {
+        expect(clSystemOverlayStyle(b).statusBarColor, Colors.transparent);
+        expect(clSystemOverlayStyle(b).systemNavigationBarColor,
+            Colors.transparent);
+      }
+    });
+
+    test('an AppBar carries the style, since it overrides the global one', () {
+      // A screen WITH an AppBar takes its overlay style from here; without
+      // this, every such screen keeps the startup style whatever the theme.
+      expect(buildCLTheme(Brightness.dark).appBarTheme.systemOverlayStyle,
+          clSystemOverlayStyle(Brightness.dark));
+      expect(buildCLTheme(Brightness.light).appBarTheme.systemOverlayStyle,
+          clSystemOverlayStyle(Brightness.light));
+    });
+  });
+
   group('server-driven notification actions', () {
     // The payload the Node serializer actually emits (see
     // reusables/models/notificationactions.js): flat arrays carrying ALL

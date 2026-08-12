@@ -133,15 +133,22 @@ class CLNotificationRow extends StatelessWidget {
     final destination = n.redirect;
     final isTappable = destination != null && onOpen != null;
 
-    final row = Container(
+    final radius = BorderRadius.circular(detail ? CLRadii.md : CLRadii.sm);
+    final background = n.isRead ? p.surface : p.brandSoft;
+    // Only the detail rows carry a border; BorderSide.none keeps ONE shape
+    // description for both cases, which Material needs (it accepts `shape` or
+    // `borderRadius`, never both).
+    final borderSide = detail
+        ? BorderSide(color: n.isRead ? p.border : Colors.transparent)
+        : BorderSide.none;
+
+    // The background is NOT painted here any more when the row is tappable -
+    // the Material below paints it instead. It used to be a Container colour
+    // sitting inside the Material, which meant the ink splash rendered
+    // underneath an opaque box and was never visible: the row responded to
+    // taps and looked completely dead doing it.
+    final content = Padding(
       padding: EdgeInsets.all(detail ? 10 : 9),
-      decoration: BoxDecoration(
-        color: n.isRead ? p.surface : p.brandSoft,
-        borderRadius: BorderRadius.circular(detail ? CLRadii.md : CLRadii.sm),
-        border: detail
-            ? Border.all(color: n.isRead ? p.border : Colors.transparent)
-            : null,
-      ),
       child: Row(
         children: [
           SizedBox(
@@ -274,17 +281,101 @@ class CLNotificationRow extends StatelessWidget {
       ),
     );
 
-    if (!isTappable) return row;
+    if (!isTappable) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: radius,
+          border: Border.fromBorderSide(borderSide),
+        ),
+        child: content,
+      );
+    }
 
-    // Material+InkWell rather than GestureDetector so the tap gets the ripple
-    // every other list row in the app has. The buttons inside sit ABOVE this in
-    // the tree, so a press on one is consumed there and never reaches the row.
+    return _PressableRow(
+      background: background,
+      pressedOverlay: p.brand,
+      radius: radius,
+      borderSide: borderSide,
+      onTap: () => onOpen!(n),
+      child: content,
+    );
+  }
+}
+
+/// A row that visibly changes colour while it is being pressed.
+///
+/// An InkWell alone was not enough. Its splash is an ANIMATION, and the tap
+/// here navigates immediately - so the ripple is torn down with the screen
+/// about a frame after it starts and a click reads as no feedback at all. The
+/// highlight it draws on press-down has the same problem in reverse: on a quick
+/// tap it fades in and out too fast to see.
+///
+/// So the press state is held explicitly and the background is blended, which
+/// is instant, does not depend on any animation completing, and survives right
+/// up to the moment the route changes. The InkWell stays for the ripple on top
+/// of it - together they cover a tap, a hold, and a drag-off cancel.
+class _PressableRow extends StatefulWidget {
+  final Color background;
+
+  /// Blended OVER [background] while pressed, rather than replacing it, so the
+  /// unread rows keep reading as unread while they are held.
+  final Color pressedOverlay;
+  final BorderRadius radius;
+  final BorderSide borderSide;
+  final VoidCallback onTap;
+  final Widget child;
+
+  const _PressableRow({
+    required this.background,
+    required this.pressedOverlay,
+    required this.radius,
+    required this.borderSide,
+    required this.onTap,
+    required this.child,
+  });
+
+  @override
+  State<_PressableRow> createState() => _PressableRowState();
+}
+
+class _PressableRowState extends State<_PressableRow> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colour = _pressed
+        ? Color.alphaBlend(
+            widget.pressedOverlay.withValues(alpha: 0.16), widget.background)
+        : widget.background;
+
     return Material(
-      color: Colors.transparent,
+      // Animated so releasing fades back rather than snapping - fast enough
+      // that the press itself still reads as immediate.
+      animationDuration: const Duration(milliseconds: 120),
+      color: colour,
+      shape:
+          RoundedRectangleBorder(borderRadius: widget.radius, side: widget.borderSide),
+      // Without this the splash paints past the rounded corners into the square
+      // bounds of the box.
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => onOpen!(n),
-        borderRadius: BorderRadius.circular(detail ? CLRadii.md : CLRadii.sm),
-        child: row,
+        onTap: widget.onTap,
+        onTapDown: (_) => _setPressed(true),
+        onTapUp: (_) => _setPressed(false),
+        onTapCancel: () => _setPressed(false),
+        // Long-press is not an action here, but declaring it is what keeps the
+        // pressed state up for the whole hold instead of the gesture arena
+        // cancelling the tap partway through.
+        onLongPress: widget.onTap,
+        highlightColor: Colors.transparent, // the blended colour above IS this
+        splashColor: widget.pressedOverlay.withValues(alpha: 0.14),
+        child: widget.child,
       ),
     );
   }

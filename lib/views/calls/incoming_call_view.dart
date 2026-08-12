@@ -57,7 +57,10 @@ class _IncomingCallViewState extends State<IncomingCallView> {
     super.dispose();
   }
 
-  Future<void> _accept() async {
+  /// [cameraOff] answers a VIDEO call without sending video - the design's
+  /// "Audio only" button. It is only an option on a video call; on a voice
+  /// call the camera is already off and the button is not rendered.
+  Future<void> _accept({bool cameraOff = false}) async {
     if (_resolving) return;
     setState(() => _resolving = true);
     _autoDeclineTimer?.cancel();
@@ -80,7 +83,7 @@ class _IncomingCallViewState extends State<IncomingCallView> {
       callType: widget.alert.callType,
       isOutgoing: false,
       recepients: recepients,
-      startCameraOff: widget.alert.callType != "video",
+      startCameraOff: cameraOff || widget.alert.callType != "video",
     );
     if (!mounted) return;
     if (!joined) {
@@ -164,68 +167,147 @@ class _IncomingCallViewState extends State<IncomingCallView> {
         if (!_resolving) _decline();
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF14161A),
+        backgroundColor: CLColors.callBg,
         body: SafeArea(
-          child: Column(
-            children: [
-              const Spacer(flex: 2),
-              CircleAvatar(
-                radius: 56,
-                backgroundColor: CLColors.brand300,
-                backgroundImage: hasImage ? NetworkImage(alert.displayImage!) : null,
-                child: hasImage
-                    ? null
-                    : Text(
-                        alert.caller.name.isNotEmpty
-                            ? alert.caller.name[0].toUpperCase()
-                            : "?",
-                        style: const TextStyle(
-                            fontSize: CLType.display,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600),
-                      ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                alert.callDisplayName.isNotEmpty
-                    ? alert.callDisplayName
-                    : alert.caller.name,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: CLType.hero,
-                    fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                alert.callType == "video"
-                    ? "Incoming video call"
-                    : "Incoming voice call",
-                style: const TextStyle(color: Colors.white70, fontSize: CLType.sectionTitle),
-              ),
-              const Spacer(flex: 3),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _CallActionButton(
-                      icon: Icons.call_end,
-                      color: CLColors.pink,
-                      label: "Decline",
-                      onPressed: _resolving ? null : _decline,
-                    ),
-                    _CallActionButton(
-                      icon: Icons.call,
-                      color: CLColors.green,
-                      label: "Accept",
-                      onPressed: _resolving ? null : _accept,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          // 6/10/10 and a 10 gap between panels, from the design. The three
+          // panels are the whole screen: a banner, the caller, the answers.
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+            child: Column(
+              children: [
+                _banner(),
+                const SizedBox(height: 10),
+                Expanded(child: _callerPanel(alert, hasImage)),
+                const SizedBox(height: 10),
+                _answers(alert),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// The "Incoming call" strip. Says what the screen IS, which matters when it
+  /// appears over whatever the user was doing.
+  Widget _banner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: CLColors.callPanel,
+        borderRadius: BorderRadius.circular(CLColors.callRadius),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: const BoxDecoration(
+              color: CLColors.callBrandSoft,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.call, size: 18, color: CLColors.callBrand),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            "Incoming call",
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: CLColors.callText2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _callerPanel(IncomingCallAlert alert, bool hasImage) {
+    final name = alert.callDisplayName.isNotEmpty
+        ? alert.callDisplayName
+        : alert.caller.name;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: CLColors.callPanel,
+        borderRadius: BorderRadius.circular(CLColors.callRadius),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircleAvatar(
+            radius: 56, // 112 across, per the design
+            backgroundColor: CLColors.brand300,
+            backgroundImage:
+                hasImage ? NetworkImage(alert.displayImage!) : null,
+            child: hasImage
+                ? null
+                : Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : "?",
+                    style: const TextStyle(
+                        fontSize: 38,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700),
+                  ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            name,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                color: CLColors.callText,
+                fontSize: 18,
+                fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            alert.callType == "video"
+                ? "Video call · ringing…"
+                : "Voice call · ringing…",
+            style: const TextStyle(color: CLColors.callText2, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _answers(IncomingCallAlert alert) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      decoration: BoxDecoration(
+        color: CLColors.callPanel,
+        borderRadius: BorderRadius.circular(CLColors.callRadius),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _CallActionButton(
+            icon: Icons.call_end,
+            color: CLColors.callEnd,
+            label: "Decline",
+            onPressed: _resolving ? null : _decline,
+          ),
+          // Only on a VIDEO call - answering a voice call "audio only" is
+          // answering it normally, so the button would be a third way to do
+          // what Accept already does.
+          if (alert.callType == "video")
+            _CallActionButton(
+              icon: Icons.videocam_off,
+              color: CLColors.callControl,
+              label: "Audio only",
+              onPressed: _resolving ? null : () => _accept(cameraOff: true),
+            ),
+          _CallActionButton(
+            icon: Icons.call,
+            color: CLColors.callAccept,
+            label: "Accept",
+            onPressed: _resolving ? null : _accept,
+          ),
+        ],
       ),
     );
   }
@@ -247,21 +329,26 @@ class _CallActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
+        // 62 across with a 24 glyph, per the design. Sized rather than padded
+        // so all three answers are the same circle regardless of their icon.
         Material(
           color: color,
           shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
-            customBorder: const CircleBorder(),
             onTap: onPressed,
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Icon(icon, color: Colors.white, size: 30),
+            child: SizedBox(
+              width: 62,
+              height: 62,
+              child: Icon(icon, color: Colors.white, size: 24),
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: CLType.bodySm)),
+        const SizedBox(height: 6),
+        Text(label,
+            style: const TextStyle(color: CLColors.callText2, fontSize: 12)),
       ],
     );
   }
