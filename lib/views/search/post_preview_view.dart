@@ -183,6 +183,10 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                       valueListenable: _replyTarget,
                       builder: (context, replyingTo, _) => CommentComposer(
                         replyingToName: replyingTo?.author.displayName,
+                        // Pre-fills "@handle" so the person being replied to is
+                        // actually notified - null for your own comment, see
+                        // replyMentionHandleFor.
+                        mentionHandle: replyMentionHandleFor(replyingTo),
                         onCancelReply: () => _replyTarget.value = null,
                         onSubmit: (text) async =>
                             _commentsKey.currentState?.submitComment(text),

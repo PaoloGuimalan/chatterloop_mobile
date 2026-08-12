@@ -264,9 +264,32 @@ class PostCommentsState extends State<PostComments> {
     }
   }
 
+  /// The top-level comment a reply belongs under.
+  ///
+  /// Threads are two levels deep: replying to a REPLY files the new comment
+  /// under that reply's own parent, which is what the server does anyway (it
+  /// re-parents a reply-to-a-reply onto the top-level ancestor). Resolving it
+  /// here rather than trusting that means the local refresh below reloads the
+  /// list the row will actually land in, instead of a thread that stays empty.
+  ///
+  /// The composer still names whoever was tapped - the reply TARGET and the
+  /// thread it lands in are deliberately different things.
+  PostComment? _threadParentFor(PostComment? target) {
+    if (target == null) return null;
+    final parentId = target.parentId;
+    if (parentId == null) return target;
+    for (final comment in _comments) {
+      if (comment.commentId == parentId) return comment;
+    }
+    // A reply is only reachable under an expanded parent, so this shouldn't
+    // happen - fall back to a top-level post rather than filing it into a
+    // thread that isn't on screen.
+    return null;
+  }
+
   /// Called by the screen's docked composer.
   Future<void> submitComment(String text) async {
-    final target = _replyingTo;
+    final target = _threadParentFor(_replyingTo);
     final ok = await NewsfeedApi().addCommentRequest(
       postId: widget.postId,
       parentId: target?.commentId,
@@ -333,6 +356,7 @@ class PostCommentsState extends State<PostComments> {
                 onReactToReply: (reply) => _react(reply, isReply: true),
                 onToggleReplies: () => _toggleReplies(comment),
                 onReply: () => widget.replyTarget?.value = comment,
+                onReplyToReply: (reply) => widget.replyTarget?.value = reply,
                 onDelete: () => _delete(comment, isReply: false),
                 onDeleteReply: (reply) => _delete(reply, isReply: true),
               )),
@@ -369,6 +393,11 @@ class _CommentTile extends StatelessWidget {
   final ValueChanged<PostComment> onReactToReply;
   final VoidCallback onToggleReplies;
   final VoidCallback onReply;
+
+  /// Reply tapped on one of the REPLIES. Separate from [onReply] because it
+  /// carries which reply was tapped - the composer names that author, even
+  /// though the comment itself lands under this tile's top-level parent.
+  final ValueChanged<PostComment> onReplyToReply;
   final VoidCallback onDelete;
   final ValueChanged<PostComment> onDeleteReply;
 
@@ -385,6 +414,7 @@ class _CommentTile extends StatelessWidget {
     required this.onReactToReply,
     required this.onToggleReplies,
     required this.onReply,
+    required this.onReplyToReply,
     required this.onDelete,
     required this.onDeleteReply,
   });
@@ -439,10 +469,11 @@ class _CommentTile extends StatelessWidget {
                       deleting: deleteBusy.contains(reply.commentId),
                       compact: true,
                       onReact: () => onReactToReply(reply),
-                      // Replying to a reply is re-parented server-side to the
-                      // top-level ancestor, so the affordance stays on the
-                      // parent rather than pretending to nest deeper.
-                      onReply: null,
+                      // Replying to a reply IS offered - it just doesn't nest
+                      // deeper. The new comment is filed under this tile's
+                      // top-level comment (see _threadParentFor), which is
+                      // what the server does with it anyway.
+                      onReply: () => onReplyToReply(reply),
                       onDelete: () => onDeleteReply(reply),
                     ),
                   )),
@@ -671,14 +702,37 @@ class _CommentAction extends StatelessWidget {
 /// Its own `surface` bar with a top border, and an `input`-filled field inside:
 /// the page is `surface` too, so a field filled with the same colour would have
 /// no visible edge at all in light mode.
+/// The handle to pre-fill the composer with when replying to [target], or null
+/// when there is nothing worth inserting.
+///
+/// Null for YOUR OWN comment - @-ing yourself notifies nobody and just eats
+/// characters. Also null for a blank handle, which a payload can carry.
+///
+/// The mention matters most on a reply-to-a-reply: that comment is re-parented
+/// onto the top-level ancestor, so the "aimed at you" signal would otherwise be
+/// lost. Webapp pre-fills for exactly that case (openThreadToReply); here it
+/// covers replies to top-level comments too, since this composer is docked to
+/// the screen rather than living inside one thread.
+String? replyMentionHandleFor(PostComment? target) {
+  if (target == null) return null;
+  if (isOwnComment(target.author)) return null;
+  final handle = target.author.handle.trim();
+  return handle.isEmpty ? null : handle;
+}
+
 class CommentComposer extends StatefulWidget {
   final String? replyingToName;
+
+  /// Handle to insert as "@handle" when a reply starts - see
+  /// [replyMentionHandleFor]. Null leaves the text untouched.
+  final String? mentionHandle;
   final VoidCallback onCancelReply;
   final Future<void> Function(String text) onSubmit;
 
   const CommentComposer({
     super.key,
     this.replyingToName,
+    this.mentionHandle,
     required this.onCancelReply,
     required this.onSubmit,
   });
@@ -689,6 +743,7 @@ class CommentComposer extends StatefulWidget {
 
 class _CommentComposerState extends State<CommentComposer> {
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
   bool _sending = false;
 
   // ── @mentions ───────────────────────────────────────────────────────────
@@ -720,9 +775,45 @@ class _CommentComposerState extends State<CommentComposer> {
   }
 
   @override
+  void didUpdateWidget(CommentComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final handle = widget.mentionHandle;
+    // Only on a CHANGE to a real handle: tapping Reply on the same person
+    // twice shouldn't stack the mention, and clearing the reply must not
+    // strip what has already been typed.
+    if (handle != null && handle != oldWidget.mentionHandle) {
+      _insertReplyMention(handle);
+    }
+  }
+
+  /// Appends "@handle " and puts the caret after it, ready to type.
+  ///
+  /// Append rather than replace, so a reply started mid-draft keeps the draft -
+  /// and skipped entirely when the handle is already mentioned, which is what
+  /// stops a second Reply tap from doubling it. Same rule webapp applies.
+  ///
+  /// The trailing space matters: it closes the "@..." token, so the mention
+  /// autocomplete doesn't spring open on a handle that is already complete.
+  void _insertReplyMention(String handle) {
+    if (extractMentionHandles(_controller.text)
+        .contains(handle.toLowerCase())) {
+      _focusNode.requestFocus();
+      return;
+    }
+    final existing = _controller.text.trimRight();
+    final next = existing.isEmpty ? '@$handle ' : '$existing @$handle ';
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+    _focusNode.requestFocus();
+  }
+
+  @override
   void dispose() {
     _controller.removeListener(_syncMentionQuery);
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -928,6 +1019,7 @@ class _CommentComposerState extends State<CommentComposer> {
                     ),
                     child: TextField(
                       controller: _controller,
+                      focusNode: _focusNode,
                       minLines: 1,
                       maxLines: 5,
                       textCapitalization: TextCapitalization.sentences,
