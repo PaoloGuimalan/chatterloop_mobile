@@ -296,8 +296,11 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
       if (mounted) {
         setState(() => _progress = 'Uploading ${i + 1} of ${_media.length}…');
       }
-      final result = await ProfileApi()
-          .uploadMediaRequest(pending.path, pending.mediaType);
+      final result = await ProfileApi().uploadMediaRequest(
+        pending.path,
+        pending.mediaType,
+        action: 'post',
+      );
       if (result == null) {
         if (!mounted) return;
         setState(() {

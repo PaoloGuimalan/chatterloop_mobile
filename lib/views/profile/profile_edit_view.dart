@@ -127,8 +127,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       errorMessage = null;
     });
 
-    final uploaded =
-        await ProfileApi().uploadMediaRequest(picked.path, 'image/jpeg');
+    final uploaded = await ProfileApi().uploadMediaRequest(
+      picked.path,
+      'image/jpeg',
+      action: isCover ? 'cover_photo' : 'profile',
+    );
     if (uploaded == null) {
       if (!mounted) return;
       setState(() {

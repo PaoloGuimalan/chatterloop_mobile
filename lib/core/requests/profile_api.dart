@@ -614,14 +614,32 @@ class ProfileApi {
   /// {url, mediaType, fileName} for the returned CDN reference (result[0]
   /// .fileDetails.data - confirmed by reading saveFileRecordToDatabase in
   /// server/reusables/hooks/firebaseupload.js).
+  /// [action] is what the file is FOR, and it is stored on the file record
+  /// (uploadedfiles.action) rather than used for routing - this one endpoint
+  /// serves avatars, covers, post media and diary attachments alike. One of:
+  ///
+  ///   profile | cover_photo | post | entry
+  ///
+  /// Distinct from [mediaType], which is the file's MIME type. Both travel on
+  /// the same request and neither substitutes for the other.
+  ///
+  /// Sent as a PLAIN field value, unlike the sibling `captions` and
+  /// `referenceMediaTypes` fields - those are genuine JSON arrays (one entry
+  /// per file), while this is a single scalar. The `[0]` the server indexes is
+  /// multiparty wrapping every field in an array, not an encoding.
   Future<({String url, String mediaType, String fileName, String? fileId})?>
-      uploadMediaRequest(String filePath, String mediaType) async {
+      uploadMediaRequest(
+    String filePath,
+    String mediaType, {
+    required String action,
+  }) async {
     try {
       final fileName = filePath.split(RegExp(r'[\\/]')).last;
       final form = FormData.fromMap({
         'media': await MultipartFile.fromFile(filePath, filename: fileName),
         'captions': '[""]',
         'referenceMediaTypes': '["$mediaType"]',
+        'action': action,
       });
 
       final response = await _mainDio.post('/posts/upload', data: form);

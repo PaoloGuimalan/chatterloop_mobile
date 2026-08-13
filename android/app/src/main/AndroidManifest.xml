@@ -1,9 +1,26 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- allowBackup MUST stay false, and push is the reason.
+         Auto Backup saves the app's plain files and shared prefs, which include
+         Firebase Installations' PersistedInstallation json - the record the FCM
+         registration token is derived from. Google deletes that installation
+         server-side on uninstall, so a restored copy is dead on arrival:
+         getToken() keeps handing back the pre-uninstall token, every send
+         against it fails NotRegistered, and no reinstall can fix it because the
+         restore happens again each time.
+         Nothing is lost by disabling it. All app state lives on the server, and
+         the one thing worth restoring - flutter_secure_storage - cannot survive
+         a restore anyway: its master key sits in the Android Keystore, which is
+         not backed up. That asymmetry is exactly what the symptom looked like -
+         a fresh device_token beside a resurrected FCM token.
+         Android 12+ routes device-to-device transfer through
+         android:dataExtractionRules instead; add that file with device-transfer
+         excluded if D2D ever resurrects a token too. -->
     <application
         android:label="Chatterloop"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
-        android:roundIcon="@mipmap/ic_launcher_icon">
+        android:roundIcon="@mipmap/ic_launcher_icon"
+        android:allowBackup="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

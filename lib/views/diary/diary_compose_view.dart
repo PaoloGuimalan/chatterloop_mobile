@@ -203,8 +203,11 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     // a failure here has to abort before anything is created.
     final uploaded = <DiaryAttachment>[];
     for (final pending in _attachments) {
-      final result = await ProfileApi()
-          .uploadMediaRequest(pending.path, _mediaTypeFor(pending.name));
+      final result = await ProfileApi().uploadMediaRequest(
+        pending.path,
+        _mediaTypeFor(pending.name),
+        action: 'entry',
+      );
       if (result == null) {
         if (!mounted) return;
         setState(() => _isSaving = false);
