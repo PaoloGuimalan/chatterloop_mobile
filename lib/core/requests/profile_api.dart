@@ -319,21 +319,79 @@ class ProfileApi {
 
   /// Removes members. Note this is the NODE api, not Django, and it takes a
   /// LIST even for one person (webapp's RemoveRealmMemberRequest).
-  Future<bool> removeRealmMembersRequest(
+  ///
+  /// Leaving is this same call with yourself as the only target - the server
+  /// skips its permission check for the acting entity. Its refusals are real
+  /// answers a 400 carries, above all "Transfer ownership to another member
+  /// before leaving.", so the message comes back rather than being flattened
+  /// to a bare false: a Leave button that silently does nothing is exactly
+  /// what that used to look like.
+  Future<({bool ok, String? message})> removeRealmMembersRequest(
       String realmId, List<String> accountIds) async {
-    if (accountIds.isEmpty) return true;
+    if (accountIds.isEmpty) return (ok: true, message: null);
     try {
       final response = await _mainDio.delete(
         _endpoints.realmRemoveUser,
         data: {'realm_id': realmId, 'account_ids': accountIds},
       );
-      return response.data?["status"] != false;
+      return (
+        ok: response.data?["status"] != false,
+        message: response.data?["message"]?.toString(),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        print("ERROR removeRealmMembersRequest");
+        print(e);
+      }
+      return (
+        ok: false,
+        message: e.response?.data is Map
+            ? e.response?.data["message"]?.toString()
+            : null,
+      );
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");
         print(e);
       }
-      return false;
+      return (ok: false, message: null);
+    }
+  }
+
+  /// Hand the realm to another member: they become owner, the acting entity
+  /// steps down to admin. Owner-exclusive server side (realm.ownership.
+  /// transfer is granted to owner alone), so the 401 here is a real answer
+  /// and not a bug - surface its message.
+  Future<({bool ok, String? message})> transferRealmOwnershipRequest({
+    required String realmId,
+    required String memberId,
+  }) async {
+    try {
+      final response = await _mainDio.put(
+        _endpoints.realmTransferOwnership,
+        data: {'realm_id': realmId, 'member_id': memberId},
+      );
+      return (
+        ok: response.data?["status"] == true,
+        message: response.data?["message"]?.toString(),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        print("ERROR transferRealmOwnershipRequest");
+        print(e);
+      }
+      return (
+        ok: false,
+        message: e.response?.data is Map
+            ? e.response?.data["message"]?.toString()
+            : null,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return (ok: false, message: null);
     }
   }
 

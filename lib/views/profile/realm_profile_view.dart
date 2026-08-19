@@ -19,7 +19,10 @@ import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_feed.dart';
+import 'package:chatterloop_app/views/profile/widgets/profile_feed_switcher.dart';
+import 'package:chatterloop_app/views/profile/widgets/saved_posts_feed.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
+import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -47,6 +50,16 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
   /// from here - see ProfileFeed.
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<ProfileFeedState> _feedKey = GlobalKey<ProfileFeedState>();
+
+  /// Separate keys: the archive is the same widget with one flag flipped, but
+  /// it holds its own list state and sharing a key would hand it whatever the
+  /// posts feed had already paged.
+  final GlobalKey<ProfileFeedState> _archiveKey = GlobalKey<ProfileFeedState>();
+  final GlobalKey<SavedPostsFeedState> _savesKey =
+      GlobalKey<SavedPostsFeedState>();
+
+  /// Which of Posts / Saved / Archived this page's feed column shows.
+  ProfileFeedMode _feedMode = ProfileFeedMode.posts;
 
   @override
   void initState() {
@@ -90,7 +103,16 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent - 400) {
-      _feedKey.currentState?.loadMore();
+      // Whichever list is on screen; the other two aren't built, so their
+      // currentState is null and this is a no-op for them.
+      switch (_feedMode) {
+        case ProfileFeedMode.posts:
+          _feedKey.currentState?.loadMore();
+        case ProfileFeedMode.saves:
+          _savesKey.currentState?.loadMore();
+        case ProfileFeedMode.archives:
+          _archiveKey.currentState?.loadMore();
+      }
     }
   }
 
@@ -103,6 +125,27 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
       _followers = result?.followersCount ?? 0;
       _isLoading = false;
     });
+  }
+
+  /// Pull-to-refresh: the page payload AND whichever list is showing.
+  ///
+  /// Both, because they go stale independently - a follower count moves
+  /// without the feed changing, and vice versa - and a gesture that visibly
+  /// refreshed half the screen would just invite a second pull.
+  ///
+  /// Concurrent, so the spinner lasts as long as the slower request rather
+  /// than their sum. _load only ever clears _isLoading, so the content stays
+  /// put instead of dropping back to the skeleton.
+  Future<void> _refresh() async {
+    final realm = _realm;
+    final feed = switch (realm != null && isActingEntity(realm.entityId)
+        ? _feedMode
+        : ProfileFeedMode.posts) {
+      ProfileFeedMode.posts => _feedKey.currentState?.reload(),
+      ProfileFeedMode.saves => _savesKey.currentState?.reload(),
+      ProfileFeedMode.archives => _archiveKey.currentState?.reload(),
+    };
+    await Future.wait([_load(), feed ?? Future<void>.value()]);
   }
 
   /// entity_id is the canonical contact target - the endpoint resolves it
@@ -182,6 +225,19 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     if (realm == null || _isUpdatingFollow) return;
 
     final wasFollowing = _isFollowing;
+
+    // Only the unfollow direction asks: following back costs nothing and
+    // undoes itself with the same button.
+    if (wasFollowing) {
+      final confirmed = await confirmUnfollow(
+        context,
+        name: realm.name,
+        isRealm: true,
+        realmNoun: realm.type,
+      );
+      if (!confirmed || !mounted) return;
+    }
+
     // Optimistic: following is cheap and reversible, and waiting on the round
     // trip makes the button feel broken.
     setState(() {
@@ -247,88 +303,145 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
           onPressed: () => context.pop(),
         ),
         actions: [
-          if (!_isLoading &&
-              realm != null &&
-              !isActingEntity(realm.entityId))
+          if (!_isLoading && realm != null && !isActingEntity(realm.entityId))
             _moreMenu(p, realm),
         ],
       ),
-      body: _isLoading
-          ? const SingleChildScrollView(child: ProfileHeaderSkeleton())
-          : realm == null
-              ? Center(
-                  child: CLEmptyState(
-                    icon: Icons.error_outline,
-                    iconBg: p.surface2,
-                    iconColor: p.text3,
-                    title: "Couldn't load this page",
-                    subtitle: "It may have been removed.",
-                  ),
-                )
-              : SingleChildScrollView(
-                  controller: _scrollController,
-                  child: Column(
+      // Wraps every state: a page that failed to load is exactly where
+      // pulling to retry earns its keep, so the error is a ListView rather
+      // than a Center - there has to be something to pull on.
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: _isLoading
+            ? const SingleChildScrollView(
+                physics: AlwaysScrollableScrollPhysics(),
+                child: ProfileHeaderSkeleton())
+            : realm == null
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     children: [
-                      ProfileHeader(
-                        id: realm.id,
-                        displayName: realm.name,
-                        username: realm.slug ?? realm.id,
-                        avatarSrc: realm.profile,
-                        coverSrc: realm.coverPhoto,
-                        isBadged: realm.isVerified,
-                        // Same rule as everywhere else: you can change a
-                        // page's picture when you ARE the page, not when you
-                        // merely administer it. The server agrees - its
-                        // profile/cover update branches on the ACTING entity's
-                        // type and writes community_realm for a realm, so
-                        // acting as your personal account would have changed
-                        // YOUR avatar from the page's own profile screen.
-                        onChangeAvatar: isActingEntity(realm.entityId)
-                            ? () => _changeRealmMedia(ComposerMode.profilePhoto)
-                            : null,
-                        onChangeCover: isActingEntity(realm.entityId)
-                            ? () => _changeRealmMedia(ComposerMode.coverPhoto)
-                            : null,
-                        actions: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: CLSpacing.contentGutter),
-                          child: _actions(p, realm),
-                        ),
+                      SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.25),
+                      CLEmptyState(
+                        icon: Icons.error_outline,
+                        iconBg: p.surface2,
+                        iconColor: p.text3,
+                        title: "Couldn't load this page",
+                        subtitle: "It may have been removed.",
                       ),
-                      const SizedBox(height: 10),
-                      _details(p, realm),
-                      const SizedBox(height: 16),
-                      // A page is an entity like any other here. NOT gated on
-                      // is_admin: administering a page isn't being it. While
-                      // you're acting as your personal account this profile is
-                      // someone else's, so the composer pre-tags it and the
-                      // post lands on YOUR feed - which is what the server
-                      // would do anyway, since it resolves the author from the
-                      // acting entity. Switch to the page and the same
-                      // composer publishes as the page. See isActingEntity.
-                      if (realm.entityId.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: CLSpacing.contentGutter),
-                          child: ProfileComposerCard.forProfile(
-                            profile: _realmAsTag(realm),
-                            ownPlaceholder: "Publish a post",
-                            onPosted: () => _feedKey.currentState?.reload(),
+                    ],
+                  )
+                : SingleChildScrollView(
+                    controller: _scrollController,
+                    // Without this a short page cannot be dragged at all, so
+                    // the gesture would be missing on exactly the pages with
+                    // the least on them.
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
+                      children: [
+                        ProfileHeader(
+                          id: realm.id,
+                          displayName: realm.name,
+                          username: realm.slug ?? realm.id,
+                          avatarSrc: realm.profile,
+                          coverSrc: realm.coverPhoto,
+                          isBadged: realm.isVerified,
+                          // Same rule as everywhere else: you can change a
+                          // page's picture when you ARE the page, not when you
+                          // merely administer it. The server agrees - its
+                          // profile/cover update branches on the ACTING entity's
+                          // type and writes community_realm for a realm, so
+                          // acting as your personal account would have changed
+                          // YOUR avatar from the page's own profile screen.
+                          onChangeAvatar: isActingEntity(realm.entityId)
+                              ? () =>
+                                  _changeRealmMedia(ComposerMode.profilePhoto)
+                              : null,
+                          onChangeCover: isActingEntity(realm.entityId)
+                              ? () => _changeRealmMedia(ComposerMode.coverPhoto)
+                              : null,
+                          actions: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: CLSpacing.contentGutter),
+                            child: _actions(p, realm),
                           ),
                         ),
-                      // Keyed on the slug, which is what the endpoint resolves;
-                      // realm.id is the fallback the header already uses when a
-                      // realm has no slug.
-                      ProfileFeed(
-                        key: _feedKey,
-                        handle: realm.slug ?? realm.id,
-                        emptyMessage:
-                            "${realm.name} hasn't posted anything yet.",
-                      ),
-                      const SizedBox(height: 24),
-                    ],
+                        const SizedBox(height: 10),
+                        _details(p, realm),
+                        const SizedBox(height: 16),
+                        // A page is an entity like any other here. NOT gated on
+                        // is_admin: administering a page isn't being it. While
+                        // you're acting as your personal account this profile is
+                        // someone else's, so the composer pre-tags it and the
+                        // post lands on YOUR feed - which is what the server
+                        // would do anyway, since it resolves the author from the
+                        // acting entity. Switch to the page and the same
+                        // composer publishes as the page. See isActingEntity.
+                        if (realm.entityId.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: CLSpacing.contentGutter),
+                            child: ProfileComposerCard.forProfile(
+                              profile: _realmAsTag(realm),
+                              ownPlaceholder: "Publish a post",
+                              onPosted: () => _feedKey.currentState?.reload(),
+                            ),
+                          ),
+                        // Saved and Archived are the ACTING entity's lists,
+                        // not this page's - PostSave is keyed on entity, and the
+                        // profile endpoint swaps its handle filter for
+                        // Q(entity=entity) when archive=true. So they are only
+                        // this page's while you ARE this page. Administering it
+                        // from your own account is not enough: that would list
+                        // your personal saves under the page's name.
+                        if (isActingEntity(realm.entityId))
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                                CLSpacing.contentGutter,
+                                0,
+                                CLSpacing.contentGutter,
+                                10),
+                            child: ProfileFeedSwitcher(
+                              active: _feedMode,
+                              onChanged: (mode) =>
+                                  setState(() => _feedMode = mode),
+                            ),
+                          ),
+                        // Guarded rather than trusting _feedMode alone: it lives
+                        // as long as this State does, and switching entity while
+                        // the page is open must not leave someone else's saves
+                        // on screen.
+                        switch (isActingEntity(realm.entityId)
+                            ? _feedMode
+                            : ProfileFeedMode.posts) {
+                          // Keyed on the slug, which is what the endpoint
+                          // resolves; realm.id is the fallback the header
+                          // already uses when a realm has no slug.
+                          ProfileFeedMode.posts => ProfileFeed(
+                              key: _feedKey,
+                              handle: realm.slug ?? realm.id,
+                              title:
+                                  isActingEntity(realm.entityId) ? "" : "Posts",
+                              emptyMessage:
+                                  "${realm.name} hasn't posted anything yet.",
+                            ),
+                          ProfileFeedMode.saves =>
+                            SavedPostsFeed(key: _savesKey),
+                          ProfileFeedMode.archives => ProfileFeed(
+                              key: _archiveKey,
+                              handle: realm.slug ?? realm.id,
+                              archive: true,
+                              title: "",
+                              emptyMessage:
+                                  "Posts this page archives are hidden from its "
+                                  "profile and kept here.",
+                            ),
+                        },
+                        const SizedBox(height: 24),
+                      ],
+                    ),
                   ),
-                ),
+      ),
     );
   }
 

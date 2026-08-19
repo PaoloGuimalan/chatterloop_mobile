@@ -14,7 +14,10 @@ import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/diary_card.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_feed.dart';
+import 'package:chatterloop_app/views/profile/widgets/profile_feed_switcher.dart';
+import 'package:chatterloop_app/views/profile/widgets/saved_posts_feed.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
+import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -34,12 +37,70 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<ProfileFeedState> _feedKey = GlobalKey<ProfileFeedState>();
 
+  /// Archived posts are the same widget with one flag flipped, but they need
+  /// their OWN key: the two hold separate list state, and sharing a key would
+  /// hand the archive whatever the posts feed had already paged.
+  final GlobalKey<ProfileFeedState> _archiveKey = GlobalKey<ProfileFeedState>();
+  final GlobalKey<SavedPostsFeedState> _savesKey =
+      GlobalKey<SavedPostsFeedState>();
+
+  /// Which of Posts / Saved / Archived the feed column shows. Own profile
+  /// only - neither of the other two is anyone else's to read.
+  ProfileFeedMode _feedMode = ProfileFeedMode.posts;
+
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent - 400) {
-      _feedKey.currentState?.loadMore();
+      // Whichever list is actually on screen. Paging the hidden ones would
+      // fetch pages nobody is looking at and leave the visible one stuck.
+      switch (_feedMode) {
+        case ProfileFeedMode.posts:
+          _feedKey.currentState?.loadMore();
+        case ProfileFeedMode.saves:
+          _savesKey.currentState?.loadMore();
+        case ProfileFeedMode.archives:
+          _archiveKey.currentState?.loadMore();
+      }
     }
+  }
+
+  /// Pull-to-refresh: the profile payload AND whichever list is showing.
+  ///
+  /// Both, because they go stale independently - a follow count changes
+  /// without the feed moving, and a new post arrives without the header
+  /// changing - and a gesture that visibly refreshed only half of the screen
+  /// would leave the user pulling again to find out which half.
+  ///
+  /// Concurrent rather than sequential: they are unrelated requests, and the
+  /// spinner should last as long as the slower one, not their sum. _load
+  /// never re-raises the skeleton (it only ever clears isLoading), so the
+  /// content stays put while this runs.
+  Future<void> _refresh() async {
+    final feed = switch (_isSelf(context) ? _feedMode : ProfileFeedMode.posts) {
+      ProfileFeedMode.posts => _feedKey.currentState?.reload(),
+      ProfileFeedMode.saves => _savesKey.currentState?.reload(),
+      ProfileFeedMode.archives => _archiveKey.currentState?.reload(),
+    };
+    await Future.wait([_load(), feed ?? Future<void>.value()]);
+  }
+
+  /// The Posts / Saved / Archived switcher, directly under the composer -
+  /// webapp puts the same three in its feed column. Only the profile owner
+  /// sees it; a visitor's column is just the posts.
+  ///
+  /// Top padding is zero and the bottom is 10 so the gap above matches the
+  /// gap below: ProfileComposerCard already carries a 10 bottom margin, and
+  /// the post rows below carry no top margin.
+  Widget _feedModeSwitcher() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          CLSpacing.contentGutter, 0, CLSpacing.contentGutter, 10),
+      child: ProfileFeedSwitcher(
+        active: _feedMode,
+        onChanged: (mode) => setState(() => _feedMode = mode),
+      ),
+    );
   }
 
   PublicProfile? profile;
@@ -122,6 +183,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     // Pending counts as "on": cancelling a request is the same DELETE as
     // unfollowing, since it drops the row whatever its status.
     final isActive = wasFollowing || wasPending;
+
+    if (isActive) {
+      final confirmed = await confirmUnfollow(
+        context,
+        name: '@${profile!.username}',
+        isRealm: false,
+        isPending: wasPending,
+      );
+      if (!confirmed || !mounted) return;
+    }
 
     setState(() {
       _isUpdatingFollow = true;
@@ -424,8 +495,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (_isSelf(context)) {
       final me = StoreProvider.of<AppState>(context).state.userAuth.user;
       if (me.isVerified) return const SizedBox.shrink();
-      return const CLBadge(
-          label: "Email not verified", tone: CLBadgeTone.pink);
+      return const CLBadge(label: "Email not verified", tone: CLBadgeTone.pink);
     }
 
     // Follow is independent of the connection state - you can follow someone
@@ -565,112 +635,161 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             _moreMenu(p),
         ],
       ),
-      body: isLoading
-          ? const SingleChildScrollView(child: ProfileHeaderSkeleton())
-          : notFound || profile == null
-              ? Center(
-                  child: Text("This profile is unavailable",
-                      style: TextStyle(color: p.text2)))
-              : SingleChildScrollView(
-                  controller: _scrollController,
-                  child: Column(
+      // Wraps every state, not just the loaded one: a profile that failed
+      // to load is exactly where pulling to retry is worth having, and the
+      // unavailable message is a ListView rather than a Center so there is
+      // something to pull on.
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: isLoading
+            ? const SingleChildScrollView(
+                physics: AlwaysScrollableScrollPhysics(),
+                child: ProfileHeaderSkeleton())
+            : notFound || profile == null
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     children: [
-                      StoreConnector<AppState, bool>(
-                        distinct: true,
-                        converter: (store) =>
-                            store.state.presence[profile!.entityId]?.online ??
-                            false,
-                        builder: (context, online) => ProfileHeader(
-                          id: profile!.id,
-                          displayName: profile!.displayName,
-                          username: profile!.username,
-                          email: profile!.email,
-                          avatarSrc: profile!.profile,
-                          coverSrc: profile!.coverphoto,
-                          isBadged: profile!.isBadged,
-                          isPrivate: profile!.isPrivate,
-                          gender: profile!.gender,
-                          online: online,
-                          // OWNER ONLY, and "owner" means the acting entity
-                          // IS this profile - the same rule the composer and
-                          // the post options use. Everyone else gets no camera
-                          // button at all, so there is nothing to press; the
-                          // server enforces it too, since it writes the avatar
-                          // of whoever the token says is posting.
-                          onChangeAvatar: isActingEntity(profile!.entityId)
-                              ? () => _changeProfileMedia(
-                                  ComposerMode.profilePhoto)
-                              : null,
-                          onChangeCover: isActingEntity(profile!.entityId)
-                              ? () => _changeProfileMedia(
-                                  ComposerMode.coverPhoto)
-                              : null,
-                          joinedLabel:
-                              formattedDateToWords(profile!.joinedDate),
-                          birthdateLabel: formattedBirthdate(
-                              profile!.birthMonth,
-                              profile!.birthDay,
-                              profile!.birthYear),
-                          actions: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: CLSpacing.contentGutter),
-                            child: _connectionActions(p),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      // A locked profile still renders its header above - name,
-                      // photos, join date and the follow/connect actions - so
-                      // it stays identifiable enough to send a request to. Only
-                      // the content below is withheld, and it says so rather
-                      // than showing an empty card that reads as broken.
-                      if (!profile!.canView)
-                        _LockedProfileNotice(
-                            displayName: profile!.displayName)
-                      else
-                        // Renders on anyone's profile - the totals endpoint is
-                        // public - but only links through on your own, since
-                        // the entries themselves are self-only.
-                        ProfileDiaryCard(
-                          username: profile!.username,
-                          isSelf: _isSelf(context),
-                        ),
-                      // Posts only on a profile you're allowed to see - the
-                      // endpoint enforces this too, but asking for a locked
-                      // profile's feed just to render an empty section is a
-                      // request that can only ever come back empty.
-                      if (profile!.canView) ...[
-                        const SizedBox(height: 16),
-                        // Sits directly above the feed, like web's. Gated on
-                        // the same canView as the feed itself: writing on a
-                        // profile means tagging its owner in a post, and a
-                        // profile you can't see isn't one you can write on.
-                        // No entity id means nothing to tag and no way to tell
-                        // whose profile this is - so no composer, rather than
-                        // one that might post the wrong thing.
-                        if (profile!.entityId.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: CLSpacing.contentGutter),
-                            // Own-vs-visitor, the placeholder and the
-                            // pre-selected tag are all decided from the acting
-                            // entity inside the card - see isActingEntity.
-                            child: ProfileComposerCard.forProfile(
-                              profile: _profileAsTag()!,
-                              onPosted: () => _feedKey.currentState?.reload(),
+                      SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.35),
+                      Center(
+                          child: Text("This profile is unavailable",
+                              style: TextStyle(color: p.text2))),
+                    ],
+                  )
+                : SingleChildScrollView(
+                    controller: _scrollController,
+                    // Without this a short profile cannot be dragged at all,
+                    // so the gesture would simply not exist on the profiles
+                    // with the least on them.
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
+                      children: [
+                        StoreConnector<AppState, bool>(
+                          distinct: true,
+                          converter: (store) =>
+                              store.state.presence[profile!.entityId]?.online ??
+                              false,
+                          builder: (context, online) => ProfileHeader(
+                            id: profile!.id,
+                            displayName: profile!.displayName,
+                            username: profile!.username,
+                            email: profile!.email,
+                            avatarSrc: profile!.profile,
+                            coverSrc: profile!.coverphoto,
+                            isBadged: profile!.isBadged,
+                            isPrivate: profile!.isPrivate,
+                            gender: profile!.gender,
+                            online: online,
+                            // OWNER ONLY, and "owner" means the acting entity
+                            // IS this profile - the same rule the composer and
+                            // the post options use. Everyone else gets no camera
+                            // button at all, so there is nothing to press; the
+                            // server enforces it too, since it writes the avatar
+                            // of whoever the token says is posting.
+                            onChangeAvatar: isActingEntity(profile!.entityId)
+                                ? () => _changeProfileMedia(
+                                    ComposerMode.profilePhoto)
+                                : null,
+                            onChangeCover: isActingEntity(profile!.entityId)
+                                ? () =>
+                                    _changeProfileMedia(ComposerMode.coverPhoto)
+                                : null,
+                            joinedLabel:
+                                formattedDateToWords(profile!.joinedDate),
+                            birthdateLabel: formattedBirthdate(
+                                profile!.birthMonth,
+                                profile!.birthDay,
+                                profile!.birthYear),
+                            actions: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: CLSpacing.contentGutter),
+                              child: _connectionActions(p),
                             ),
                           ),
-                        ProfileFeed(
-                          key: _feedKey,
-                          handle: profile!.username,
-                          emptyMessage: _isSelf(context)
-                              ? "Posts you share will show up here."
-                              : "${profile!.displayName} hasn't posted anything yet.",
                         ),
+                        const SizedBox(height: 10),
+                        // A locked profile still renders its header above - name,
+                        // photos, join date and the follow/connect actions - so
+                        // it stays identifiable enough to send a request to. Only
+                        // the content below is withheld, and it says so rather
+                        // than showing an empty card that reads as broken.
+                        if (!profile!.canView)
+                          _LockedProfileNotice(
+                              displayName: profile!.displayName)
+                        else
+                          // Renders on anyone's profile - the totals endpoint is
+                          // public - but only links through on your own, since
+                          // the entries themselves are self-only.
+                          ProfileDiaryCard(
+                            username: profile!.username,
+                            isSelf: _isSelf(context),
+                          ),
+                        // Posts only on a profile you're allowed to see - the
+                        // endpoint enforces this too, but asking for a locked
+                        // profile's feed just to render an empty section is a
+                        // request that can only ever come back empty.
+                        if (profile!.canView) ...[
+                          const SizedBox(height: 16),
+                          // Sits directly above the feed, like web's. Gated on
+                          // the same canView as the feed itself: writing on a
+                          // profile means tagging its owner in a post, and a
+                          // profile you can't see isn't one you can write on.
+                          // No entity id means nothing to tag and no way to tell
+                          // whose profile this is - so no composer, rather than
+                          // one that might post the wrong thing.
+                          if (profile!.entityId.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: CLSpacing.contentGutter),
+                              // Own-vs-visitor, the placeholder and the
+                              // pre-selected tag are all decided from the acting
+                              // entity inside the card - see isActingEntity.
+                              child: ProfileComposerCard.forProfile(
+                                profile: _profileAsTag()!,
+                                onPosted: () => _feedKey.currentState?.reload(),
+                              ),
+                            ),
+                          if (_isSelf(context)) _feedModeSwitcher(),
+                          // Only the chosen list is built, so the other two
+                          // neither fetch nor hold a scroll extent. Switching
+                          // back re-mounts and refetches, which is the honest
+                          // behaviour anyway: saves and archives both change
+                          // from elsewhere in the app.
+                          // Guarded rather than trusting _feedMode alone: it
+                          // survives as long as this State does, and a visitor
+                          // must never be shown the viewer's own saved list if
+                          // the screen is ever reused across handles.
+                          switch (_isSelf(context)
+                              ? _feedMode
+                              : ProfileFeedMode.posts) {
+                            ProfileFeedMode.posts => ProfileFeed(
+                                key: _feedKey,
+                                handle: profile!.username,
+                                // The heading is redundant once the switcher
+                                // above already names what is showing.
+                                title: _isSelf(context) ? "" : "Posts",
+                                emptyMessage: _isSelf(context)
+                                    ? "Posts you share will show up here."
+                                    : "${profile!.displayName} hasn't posted anything yet.",
+                              ),
+                            ProfileFeedMode.saves =>
+                              SavedPostsFeed(key: _savesKey),
+                            ProfileFeedMode.archives => ProfileFeed(
+                                key: _archiveKey,
+                                handle: profile!.username,
+                                archive: true,
+                                title: "",
+                                emptyMessage:
+                                    "Posts you archive are hidden from your "
+                                    "profile and kept here.",
+                              ),
+                          },
+                        ],
+                        const SizedBox(height: 24),
                       ],
-                      const SizedBox(height: 24),
-                    ],
+                    ),
                   ),
-                ),
+      ),
     );
   }
 }

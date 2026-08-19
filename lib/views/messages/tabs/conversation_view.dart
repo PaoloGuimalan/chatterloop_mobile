@@ -593,13 +593,17 @@ class ConversationStateView extends State<ConversationView> {
     // is exactly what "Leave doesn't work" looked like.
     final entityId = appStore.state.userAuth.user.entityId;
     final realmId = conversationInfo?.contactID ?? widget.conversationId;
-    final ok =
+    final result =
         await ProfileApi().removeRealmMembersRequest(realmId, [entityId]);
     if (!mounted) return;
 
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not leave. Please try again.')));
+    if (!result.ok) {
+      // Usually "Transfer ownership to another member before leaving." - a
+      // thread has no my_role to check up front, so the server's own reason
+      // is what explains why nothing happened.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(result.message ?? 'Could not leave. Please try again.')));
       return;
     }
     // Refresh the list this thread just dropped off, then leave the screen -

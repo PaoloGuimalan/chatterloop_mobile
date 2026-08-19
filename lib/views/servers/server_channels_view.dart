@@ -209,12 +209,16 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     );
     if (confirmed != true || !mounted) return;
 
-    final ok = await ProfileApi().removeRealmMembersRequest(
+    final result = await ProfileApi().removeRealmMembersRequest(
         widget.serverId, [appStore.state.userAuth.user.entityId]);
     if (!mounted) return;
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not leave. Please try again.')));
+    if (!result.ok) {
+      // The owner is refused here ("Transfer ownership to another member
+      // before leaving.") - this screen does not carry the realm payload, so
+      // it reports the server's reason rather than pre-empting it.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(result.message ?? 'Could not leave. Please try again.')));
       return;
     }
     // Back to the directory, NOT out to the Servers tab. You have left one

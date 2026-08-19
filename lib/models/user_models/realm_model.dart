@@ -86,6 +86,16 @@ class RealmProfile {
 
   final bool isAdmin;
 
+  /// MY role here: "owner" | "admin" | "moderator" | "member", or null when
+  /// I am not a member. [isAdmin] cannot answer this - it is true for owner
+  /// AND admin alike, while every rule that matters turns on the difference:
+  /// only an owner may remove or re-role a fellow admin, transfer the realm,
+  /// and only an owner is blocked from leaving it.
+  ///
+  /// Server-side it resolves acting-AS-the-realm to "owner", matching what
+  /// the write routes allow (see community/annotations.py).
+  final String? myRole;
+
   /// Realm.is_verified - the same blue badge a person's profile gets. Arrives
   /// on every realm payload (RealmSerializer is fields="__all__"); the app
   /// simply wasn't reading it, so verified pages showed no badge anywhere.
@@ -122,6 +132,7 @@ class RealmProfile {
     this.membersCount = 0,
     this.isMember = false,
     required this.isAdmin,
+    this.myRole,
     this.isVerified = false,
     this.isFollower = false,
     this.hasConnection = false,
@@ -161,6 +172,7 @@ class RealmProfile {
           : int.tryParse(json["members"]?.toString() ?? '') ?? 0,
       isMember: json["is_member"] == true,
       isAdmin: json["is_admin"] == true,
+      myRole: json["my_role"]?.toString(),
       isVerified: json["is_verified"] == true,
       isFollower: json["is_follower"] == true,
       hasConnection: connection["is_connection_present"] == true,

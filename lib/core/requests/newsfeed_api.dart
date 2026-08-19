@@ -17,6 +17,7 @@ import 'package:chatterloop_app/core/utils/view_cache.dart';
 import 'package:chatterloop_app/models/http_models/paged_result.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/models/post_models/saved_post_model.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -406,6 +407,34 @@ class NewsfeedApi {
   Future<void> _flushViewCache(List<Map<String, dynamic>> sent) async {
     if (sent.isEmpty) return;
     await ViewCache.instance.clear();
+  }
+
+  /// The bookmark list - every post the ACTING entity has saved, newest
+  /// first, minus any since deleted (the server filters deleted_at itself).
+  ///
+  /// Plain DRF pagination like the roster endpoints, not the newsfeed's
+  /// viewcache POST: saving is a private list, so there is no engagement to
+  /// record for reading it back.
+  ///
+  /// Rows are [SavedPost], not PostPreview - see that model for why the
+  /// nested post is deliberately not treated as a full feed post.
+  Future<PagedResult<SavedPost>> getSavedPostsRequest({
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    try {
+      final response = await _dio.get(
+        _endpoints.newsfeedSaves,
+        queryParameters: {'page': page, 'page_size': pageSize},
+      );
+      return PagedResult.fromDrf(response.data, SavedPost.fromJson);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR getSavedPostsRequest");
+        print(e);
+      }
+      return PagedResult.empty();
+    }
   }
 
   /// Save / unsave a post. Available to ANYONE who can see it, not just the

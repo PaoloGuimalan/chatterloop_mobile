@@ -285,6 +285,11 @@ class Endpoints {
   /// Note the /s/ prefix, not /realms/.
   String realmMemberRole = '/s/update-member-realm-role';
 
+  /// Hand a realm to another member. Separate from [realmMemberRole], which
+  /// refuses new_role "owner" - promoting without demoting the current owner
+  /// would leave the realm with two.
+  String realmTransferOwnership = '/s/transfer-realm-ownership';
+
   /// NODE, and JWT-signed. Adds people to a group/realm - the body is
   /// {token: sign({conversationID, memberstoadd, receivers})}.
   String addNewMember = '/m/addnewmember';

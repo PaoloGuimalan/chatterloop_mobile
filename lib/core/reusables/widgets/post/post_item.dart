@@ -51,6 +51,12 @@ class PostItem extends StatelessWidget {
   /// [PostViewTracker] for why the answer differs by surface.
   final bool trackOwnPosts;
 
+  /// False drops the reaction summary and the react/comment/share row,
+  /// keeping the post itself. For the archive, where the post is hidden from
+  /// everyone but its author: there is no audience to react, and offering
+  /// Share on something nobody can open reads as a bug.
+  final bool showEngagement;
+
   const PostItem({
     super.key,
     required this.post,
@@ -58,6 +64,7 @@ class PostItem extends StatelessWidget {
     this.onOpen,
     this.onDeleted,
     this.trackOwnPosts = false,
+    this.showEngagement = true,
   });
 
   @override
@@ -87,8 +94,11 @@ class PostItem extends StatelessWidget {
           // onComment is the only way into the post from here, so tapping a
           // video in a row plays it instead of navigating off it.
           onOpen: open,
-          onComment: open,
+          // Without the engagement row there is no comment affordance to
+          // route, and it is the only way a row opens the post.
+          onComment: showEngagement ? open : null,
           onDeleted: onDeleted,
+          showEngagement: showEngagement,
         ),
       ),
     );

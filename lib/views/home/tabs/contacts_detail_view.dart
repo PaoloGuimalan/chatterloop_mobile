@@ -18,6 +18,7 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/user_models/network_models.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
+import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -138,6 +139,16 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
   }
 
   Future<void> _toggleFollow(NetworkEntityResult item) async {
+    if (item.followsRightNow) {
+      final confirmed = await confirmUnfollow(
+        context,
+        name: item.isRealm ? item.displayName : '@${item.handle}',
+        isRealm: item.isRealm,
+        realmNoun: item.realmType ?? 'page',
+      );
+      if (!confirmed || !mounted) return;
+    }
+
     if (_followBusy.contains(item.entityId)) return;
     final isFollowing = item.followsRightNow;
 

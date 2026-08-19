@@ -26,6 +26,7 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/user_models/network_models.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_detail_view.dart';
+import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -133,6 +134,18 @@ class _ContactsViewState extends State<ContactsView> {
   Future<void> _toggleFollow(NetworkEntityResult item) async {
     if (_followBusy.contains(item.entityId)) return;
     final isFollowing = item.followsRightNow;
+
+    // Following back is cheap and reversible; dropping a follow is quiet and
+    // one-way from this side, so it asks first.
+    if (isFollowing) {
+      final confirmed = await confirmUnfollow(
+        context,
+        name: item.isRealm ? item.displayName : '@${item.handle}',
+        isRealm: item.isRealm,
+        realmNoun: item.realmType ?? 'page',
+      );
+      if (!confirmed || !mounted) return;
+    }
 
     setState(() {
       _followBusy.add(item.entityId);

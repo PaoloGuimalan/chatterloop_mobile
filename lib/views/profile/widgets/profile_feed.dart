@@ -34,11 +34,21 @@ class ProfileFeed extends StatefulWidget {
   /// the wording.
   final String emptyMessage;
 
+  /// Your OWN archived posts instead of the visible ones. Same endpoint and
+  /// same rows - the server swaps which set it returns - so the archive
+  /// screen is this widget with one flag rather than a second copy of the
+  /// paging, dedupe and empty-state handling.
+  ///
+  /// Only ever true for your own handle: the server returns nobody else's
+  /// archive regardless of what is asked for.
+  final bool archive;
+
   const ProfileFeed({
     super.key,
     required this.handle,
     this.title = "Posts",
     required this.emptyMessage,
+    this.archive = false,
   });
 
   @override
@@ -75,6 +85,7 @@ class ProfileFeedState extends State<ProfileFeed> {
       handle: widget.handle,
       page: page,
       pageSize: _kPageSize,
+      archive: widget.archive,
     );
     if (!mounted) return;
 
@@ -125,7 +136,9 @@ class ProfileFeedState extends State<ProfileFeed> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_posts.isNotEmpty)
+          // An empty title is a host that wants the rows without a
+          // heading (the archive screen), not a blank one.
+          if (_posts.isNotEmpty && widget.title.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Text(
@@ -147,6 +160,9 @@ class ProfileFeedState extends State<ProfileFeed> {
           else
             ..._posts.map((post) => PostItem(
                   post: post,
+                  // Archived posts are visible to nobody but their author, so
+                  // the react/comment/share row has no one to act on.
+                  showEngagement: !widget.archive,
                   // A reaction inside a row updates that row in place - without
                   // this the tally would snap back on the next rebuild, since
                   // PostCard holds no post state of its own.

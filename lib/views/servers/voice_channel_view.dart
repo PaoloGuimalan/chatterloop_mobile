@@ -343,13 +343,14 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
     setState(() => _leavingChannel = true);
     // The ENTITY id, despite the endpoint's field being `account_ids` - the
     // same call and the same trap as leaving a server.
-    final ok = await ProfileApi().removeRealmMembersRequest(
+    final result = await ProfileApi().removeRealmMembersRequest(
         widget.conversationId, [appStore.state.userAuth.user.entityId]);
     if (!mounted) return;
-    if (!ok) {
+    if (!result.ok) {
       setState(() => _leavingChannel = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not leave the channel. Please try again.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(result.message ??
+              'Could not leave the channel. Please try again.')));
       return;
     }
     // The channel list refetches on its own: removed_user_notif is published

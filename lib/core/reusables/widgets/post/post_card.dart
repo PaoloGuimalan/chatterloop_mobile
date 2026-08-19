@@ -57,9 +57,19 @@ class PostCard extends StatefulWidget {
   /// just leaves the caller to notice, so surfaces that can react pass this.
   final VoidCallback? onDeleted;
 
-  /// Shared-post recursion mode: false hides the reaction summary and
-  /// react/comment/share row while keeping the full body (header/caption/media).
+  /// False hides the reaction summary and the react/comment/share row while
+  /// keeping the full body (header/caption/media).
+  ///
+  /// Separate from [showOptions] because the two are not the same question. A
+  /// nested shared post wants neither. An ARCHIVED post wants no engagement -
+  /// nobody else can see it, so there is no one to react - but very much
+  /// wants its options: Unarchive lives there, and without it the archive is
+  /// a screen you cannot act on.
   final bool showEngagement;
+
+  /// False hides the ⋯ menu. Only a nested shared post does this: its options
+  /// belong to the original, which the reader can open in its own right.
+  final bool showOptions;
 
   /// Current nesting depth when rendering shared-post recursion.
   final int sharedDepth;
@@ -75,6 +85,7 @@ class PostCard extends StatefulWidget {
     this.onComment,
     this.onDeleted,
     this.showEngagement = true,
+    this.showOptions = true,
     this.sharedDepth = 0,
     this.maxSharedDepth = 6,
   });
@@ -262,6 +273,7 @@ class _PostCardState extends State<PostCard> {
               post: shared,
               onOpen: () => context.push('/post/${shared.postId}'),
               showEngagement: false,
+              showOptions: false,
               sharedDepth: widget.sharedDepth + 1,
               maxSharedDepth: widget.maxSharedDepth,
             ),
@@ -423,9 +435,7 @@ class _PostCardState extends State<PostCard> {
                   ],
                 ),
               ),
-              // Hidden inside a nested shared post: its options belong to the
-              // original, which the reader can open in its own right.
-              if (widget.showEngagement)
+              if (widget.showOptions)
                 PostOptionsButton(
                   post: post,
                   onChanged: widget.onChanged,

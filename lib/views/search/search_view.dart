@@ -20,6 +20,7 @@ import 'package:chatterloop_app/core/reusables/widgets/search_cards.dart';
 import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:chatterloop_app/views/search/search_detail_view.dart';
+import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -153,8 +154,24 @@ class _SearchScreenState extends State<SearchScreen> {
   /// "Following" is corrected to "Requested" from the response. Reverting
   /// restores BOTH flags; assuming `!current` would lose the pending state.
   Future<void> _toggleFollow(String entityId, bool currentlyFollowing,
-      {bool currentlyPending = false}) async {
+      {bool currentlyPending = false,
+      String name = '',
+      bool isRealm = false,
+      String realmNoun = 'page'}) async {
     if (_followBusy.contains(entityId)) return;
+
+    // Dropping a follow (or withdrawing a pending request) confirms first -
+    // the name has to come from the card, since this only ever had the id.
+    if (currentlyFollowing || currentlyPending) {
+      final confirmed = await confirmUnfollow(
+        context,
+        name: name,
+        isRealm: isRealm,
+        isPending: currentlyPending,
+        realmNoun: realmNoun,
+      );
+      if (!confirmed || !mounted) return;
+    }
     setState(() => _followBusy.add(entityId));
 
     final isActive = currentlyFollowing || currentlyPending;
@@ -327,7 +344,8 @@ class _SearchScreenState extends State<SearchScreen> {
                     busy: _followBusy.contains(person.entityId),
                     onToggleFollow: (target) => _toggleFollow(
                         target.entityId, target.isFollowed,
-                        currentlyPending: target.isFollowPending),
+                        currentlyPending: target.isFollowPending,
+                        name: '@${target.handle}'),
                     onOpen: _openPerson,
                   ))
               .toList(),
@@ -357,7 +375,10 @@ class _SearchScreenState extends State<SearchScreen> {
                     joinBusy: _joinBusy.contains(realm.entityId),
                     onToggleFollow: (target) =>
                         // Realms are never private - no pending state.
-                        _toggleFollow(target.entityId, target.isFollower),
+                        _toggleFollow(target.entityId, target.isFollower,
+                            name: target.displayName,
+                            isRealm: true,
+                            realmNoun: target.realmType),
                     onJoinGroup: _joinGroup,
                     onOpen: _openRealm,
                   ))

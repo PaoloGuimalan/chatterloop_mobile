@@ -64,7 +64,67 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   bool _loadingMore = false;
   String? _busyId;
 
+  /// Kept locally because a transfer changes MY OWN role here, and every
+  /// "may I act on this person" answer below reads it. Without refetching it,
+  /// a former owner keeps seeing owner-only actions on the person they just
+  /// handed the realm to until the screen is reopened.
+  late RealmProfile _realm = widget.realm;
+
   String get _title => widget.members ? 'Members' : 'Followers';
+
+  /// Only an owner may remove or re-role a fellow admin/owner - the rule both
+  /// /realms/remove-user and /s/update-member-realm-role enforce with a 401
+  /// (see the NOTE in entity/permissions.py). Followers have no roles, so it
+  /// only applies to the members list.
+  bool get _viewerIsOwner => _realm.myRole == 'owner';
+
+  bool _canActOn(RealmPerson person) {
+    if (!widget.members) return true;
+    if (_viewerIsOwner) return true;
+    return person.role != 'admin' && person.role != 'owner';
+  }
+
+  /// One dialog shape for every confirm on this screen. A null [confirmLabel]
+  /// makes it informational - a single dismiss button, for the case where the
+  /// action is refused outright and there is nothing to confirm.
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    String? confirmLabel,
+  }) async {
+    final p = cl(context);
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text(title,
+            style: TextStyle(color: p.text, fontSize: CLType.screenTitle)),
+        content: Text(message,
+            style: TextStyle(color: p.text2, fontSize: CLType.body)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, confirmLabel == null),
+              child: Text(confirmLabel == null ? 'Got it' : 'Cancel',
+                  style: TextStyle(color: p.text2))),
+          if (confirmLabel != null)
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: TextButton.styleFrom(foregroundColor: p.pink),
+                child: Text(confirmLabel)),
+        ],
+      ),
+    );
+    return answer == true;
+  }
+
+  /// After a transfer MY role has changed too, so the realm payload is
+  /// refetched alongside the roster.
+  Future<void> _refreshRealm() async {
+    final fresh =
+        await ProfileApi().getRealmProfileRequest(_realm.id, forManage: true);
+    if (!mounted || fresh == null) return;
+    setState(() => _realm = fresh);
+  }
 
   @override
   void initState() {
@@ -134,54 +194,120 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   }
 
   Future<void> _remove(RealmPerson person) async {
-    final p = cl(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: p.surface,
-        title: Text('Remove ${person.displayName}?',
-            style: TextStyle(color: p.text, fontSize: CLType.screenTitle)),
-        content: Text(
-          widget.members
-              ? "They'll lose access to this ${realmKindNoun(widget.realm)}."
-              : "They'll stop following this page, and can follow again "
-                  "themselves.",
-          style: TextStyle(color: p.text2, fontSize: CLType.body),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: TextStyle(color: p.text2))),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: TextButton.styleFrom(foregroundColor: p.pink),
-              child: const Text('Remove')),
-        ],
-      ),
+    final confirmed = await _confirm(
+      title: 'Remove ${person.displayName}?',
+      message: widget.members
+          ? "They'll lose access to this ${realmKindNoun(_realm)}."
+          : "They'll stop following this page, and can follow again "
+              "themselves.",
+      confirmLabel: 'Remove',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     setState(() => _busyId = person.removalId);
     // The realm id from the ROW, falling back to the screen's - webapp passes
     // member.realm here, not the realm it was opened with.
-    final realmId =
-        person.realmId.isNotEmpty ? person.realmId : widget.realm.id;
-    final ok = widget.members
-        ? await ProfileApi()
-            .removeRealmMembersRequest(realmId, [person.removalId])
-        : await ProfileApi()
-            .removeRealmFollowerRequest(widget.realm.id, person.removalId);
+    final realmId = person.realmId.isNotEmpty ? person.realmId : _realm.id;
+    // The members call carries a reason on refusal; the followers one is a
+    // plain bool, so 'unknown' stands in for "no message, use the generic".
+    final String? failure;
+    if (widget.members) {
+      final result = await ProfileApi()
+          .removeRealmMembersRequest(realmId, [person.removalId]);
+      failure = result.ok ? null : (result.message ?? 'unknown');
+    } else {
+      final ok = await ProfileApi()
+          .removeRealmFollowerRequest(_realm.id, person.removalId);
+      failure = ok ? null : 'unknown';
+    }
     if (!mounted) return;
     setState(() {
       _busyId = null;
-      if (ok) {
+      if (failure == null) {
         _people.removeWhere((entry) => entry.removalId == person.removalId);
       }
     });
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not remove them. Please try again.')));
+    if (failure != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(failure == 'unknown'
+              ? 'Could not remove them. Please try again.'
+              : failure)));
     }
+  }
+
+  /// Hand the realm over. Owner-only, and the one action here that changes
+  /// what the viewer may do next - hence the realm refetch afterwards.
+  Future<void> _transferOwnership(RealmPerson person) async {
+    final noun = realmKindNoun(_realm);
+    final confirmed = await _confirm(
+      title: 'Make ${person.displayName} the owner?',
+      message: "They'll get full control of this $noun, including deleting it "
+          "and removing admins. You'll stay on as an admin, and only they can "
+          "transfer it back.",
+      confirmLabel: 'Transfer',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyId = person.removalId);
+    final result = await ProfileApi().transferRealmOwnershipRequest(
+      realmId: person.realmId.isNotEmpty ? person.realmId : _realm.id,
+      memberId: person.memberId,
+    );
+    if (!mounted) return;
+    setState(() => _busyId = null);
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result.message ??
+            (result.ok
+                ? 'Ownership transferred'
+                : 'Could not transfer ownership'))));
+    if (!result.ok) return;
+
+    // Both halves: the roster so their role reads "owner", and the realm so
+    // mine stops reading "owner".
+    await Future.wait([_refreshRealm(), _fetch(1)]);
+  }
+
+  /// Your own row. Leaving IS removing yourself, so it is the same call - but
+  /// the sole owner is refused, and there is nothing to offer them here
+  /// beyond the reason, since they are already looking at the list they would
+  /// transfer from.
+  Future<void> _leaveSelf(RealmPerson person) async {
+    final noun = realmKindNoun(_realm);
+
+    if (_viewerIsOwner) {
+      await _confirm(
+        title: 'You own this $noun',
+        message: "A $noun can't be left without an owner. Transfer ownership "
+            "to someone in this list first, then you can leave.",
+      );
+      return;
+    }
+
+    final confirmed = await _confirm(
+      title: 'Leave $noun?',
+      message: "You'll lose access to this $noun, and you'll need to be added "
+          "back to return.",
+      confirmLabel: 'Leave',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyId = person.removalId);
+    final realmId = person.realmId.isNotEmpty ? person.realmId : _realm.id;
+    final result = await ProfileApi()
+        .removeRealmMembersRequest(realmId, [person.removalId]);
+    if (!mounted) return;
+    setState(() => _busyId = null);
+
+    if (!result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(result.message ?? 'Could not leave. Please try again.')));
+      return;
+    }
+    // Nothing to stay for: this screen is reached through the manage shell,
+    // which is admin-only and no longer ours.
+    if (mounted) Navigator.of(context).pop();
   }
 
   /// Promote to admin / demote to member. Webapp offers exactly these two,
@@ -312,13 +438,11 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                               return const CLLoadMoreIndicator();
                             }
                             final person = _people[index];
-                            // Nothing actionable on your own row. Removing or
-                            // demoting yourself is a change you cannot undo -
-                            // you would lose the very screen that does it - so
-                            // leaving is a deliberate action elsewhere (the
-                            // conversation's Leave entry), not a stray tap in
-                            // a roster.
-                            final actionable = !isSelf(person);
+                            // Your own row offers exactly one thing: Leave.
+                            // Promote/demote, Remove and Transfer all target
+                            // someone else by definition.
+                            final self = isSelf(person);
+                            final actionable = !self && _canActOn(person);
                             return _RosterRow(
                               person: person,
                               busy: _busyId == person.removalId,
@@ -332,6 +456,23 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                                       actionable &&
                                       person.memberId.isNotEmpty
                                   ? (role) => _setRole(person, role)
+                                  : null,
+                              // Owner-exclusive, and pointless on whoever
+                              // already owns it.
+                              onTransfer: widget.members &&
+                                      !self &&
+                                      _viewerIsOwner &&
+                                      person.role != 'owner' &&
+                                      person.memberId.isNotEmpty
+                                  ? () => _transferOwnership(person)
+                                  : null,
+                              // Leaving is the same endpoint as removal, so
+                              // it is offered on the same terms.
+                              onLeave: widget.members &&
+                                      self &&
+                                      widget.allowRemoval &&
+                                      person.removalId.isNotEmpty
+                                  ? () => _leaveSelf(person)
                                   : null,
                             );
                           },
@@ -395,11 +536,19 @@ class _RosterRow extends StatelessWidget {
   /// Takes "admin" or "member". Null for a follower, and for your own row.
   final void Function(String role)? onSetRole;
 
+  /// Hand the realm to this person. Null unless the viewer owns it.
+  final VoidCallback? onTransfer;
+
+  /// Your own row only - the sole action a member has over themselves.
+  final VoidCallback? onLeave;
+
   const _RosterRow({
     required this.person,
     required this.busy,
     this.onRemove,
     this.onSetRole,
+    this.onTransfer,
+    this.onLeave,
   });
 
   @override
@@ -469,7 +618,10 @@ class _RosterRow extends StatelessWidget {
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2))
-          else if (onRemove != null || onSetRole != null)
+          else if (onRemove != null ||
+              onSetRole != null ||
+              onTransfer != null ||
+              onLeave != null)
             // One menu rather than a row of icons, matching webapp's
             // three-dots options popover - and it keeps promote/demote and
             // remove one deliberate tap apart from each other.
@@ -480,11 +632,26 @@ class _RosterRow extends StatelessWidget {
               onSelected: (value) {
                 if (value == 'remove') {
                   onRemove?.call();
+                } else if (value == 'transfer') {
+                  onTransfer?.call();
+                } else if (value == 'leave') {
+                  onLeave?.call();
                 } else {
                   onSetRole?.call(value);
                 }
               },
               itemBuilder: (context) => [
+                if (onLeave != null)
+                  PopupMenuItem(
+                    value: 'leave',
+                    child: Row(children: [
+                      Icon(Icons.logout, size: 18, color: p.pink),
+                      const SizedBox(width: 10),
+                      Text('Leave',
+                          style:
+                              TextStyle(color: p.pink, fontSize: CLType.body)),
+                    ]),
+                  ),
                 if (onSetRole != null)
                   PopupMenuItem(
                     // Toggled on their CURRENT role, exactly as web does it:
@@ -502,6 +669,18 @@ class _RosterRow extends StatelessWidget {
                           person.isRealmAdmin
                               ? 'Demote to Member'
                               : 'Promote to Admin',
+                          style:
+                              TextStyle(color: p.text, fontSize: CLType.body)),
+                    ]),
+                  ),
+                if (onTransfer != null)
+                  PopupMenuItem(
+                    value: 'transfer',
+                    child: Row(children: [
+                      Icon(Icons.workspace_premium_outlined,
+                          size: 18, color: p.text2),
+                      const SizedBox(width: 10),
+                      Text('Transfer ownership',
                           style:
                               TextStyle(color: p.text, fontSize: CLType.body)),
                     ]),
