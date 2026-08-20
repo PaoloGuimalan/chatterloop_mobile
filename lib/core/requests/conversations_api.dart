@@ -3,6 +3,7 @@
 
 import 'dart:convert';
 
+import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
@@ -52,12 +53,28 @@ class ConversationsApi {
       final items = result["items"];
       if (items is! List) return null;
 
+      final parsed = items
+          .whereType<Map>()
+          .map((item) => MessageItem.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
+
+      // Seed which conversations have a call running, the same way the
+      // channels list seeds it for voice channels. Web does this from the
+      // identical payload (ConversationV2.tsx / Messages.tsx bulk-set
+      // previewparticipants off `voice_participants`).
+      //
+      // Without it presence would only ever be known for calls that started
+      // while this app was already running and listening - so opening the app
+      // mid-call would show nothing live, and the call button would ring a
+      // conversation that is already talking.
+      for (final item in parsed) {
+        if (item.conversationID.isEmpty) continue;
+        VoiceRoomPresence.instance
+            .seed(item.conversationID, item.voiceParticipantIds);
+      }
+
       return (
-        items: items
-            .whereType<Map>()
-            .map(
-                (item) => MessageItem.fromJson(Map<String, dynamic>.from(item)))
-            .toList(),
+        items: parsed,
         total: _intValue(result["total"]),
         hasNext: result["next"] == true,
       );

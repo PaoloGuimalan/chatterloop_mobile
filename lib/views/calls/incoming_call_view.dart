@@ -37,13 +37,20 @@ class _IncomingCallViewState extends State<IncomingCallView> {
   @override
   void initState() {
     super.initState();
-    // Already on a call somewhere else in the app (e.g. we're the caller
-    // of a different conversation) - decline immediately rather than show
-    // an alert the user can't actually act on without first ending their
-    // current call. Real group-call "second incoming call" UX (hold/
-    // switch) is out of scope for this pass.
-    if (appStore.state.currentCall != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _decline());
+    // Busy on this device. sse_events.dart's "incomingcall" case now drops
+    // these before the route is ever pushed, so this is a backstop for the
+    // race where the engine goes busy between that check and this frame -
+    // it should not normally be reached.
+    //
+    // Two changes from what used to live here. It reads the ENGINE rather
+    // than appStore.state.currentCall, which a voice channel never sets (see
+    // CallController.isBusy); and it dismisses SILENTLY rather than calling
+    // _decline(), because declining tells the caller they were refused and
+    // ends their call - taking it away from this user's other devices, any
+    // of which may be free and ringing. Real "second incoming call" UX
+    // (hold/switch) is still out of scope.
+    if (CallController.instance.isBusy) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _dismissBusy());
       return;
     }
     CallRingManager.start();
@@ -87,6 +94,20 @@ class _IncomingCallViewState extends State<IncomingCallView> {
     );
     if (!mounted) return;
     if (!joined) {
+      // joinCall refuses anything but an idle engine, so the usual reason to
+      // land here is that this device is already occupied - most often a
+      // voice channel, which does not set currentCall and so does not read as
+      // busy to the guards above. It used to pop in silence: the alert simply
+      // vanished on Accept, with no call and no explanation.
+      //
+      // Says so, and still declines nothing - the caller keeps ringing, and
+      // this user's other devices keep their chance to answer.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(CallController.instance.isBusy
+            ? "Leave your current call before answering."
+            : (CallController.instance.lastError ??
+                "Could not join the call.")),
+      ));
       Navigator.of(context).pop();
       return;
     }
@@ -120,6 +141,21 @@ class _IncomingCallViewState extends State<IncomingCallView> {
       conversationID: widget.alert.conversationID,
       caller: widget.alert.caller,
     ));
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Busy on this device: take the alert away without telling anybody.
+  ///
+  /// Clears the pending state the SSE handler may already have dispatched
+  /// (the race this guards), stops any ringtone, and pops. Notifies nothing -
+  /// see initState for why a busy device must not decline on the user's
+  /// behalf.
+  void _dismissBusy() {
+    if (_resolving) return;
+    setState(() => _resolving = true);
+    _autoDeclineTimer?.cancel();
+    CallRingManager.stop();
+    appStore.dispatch(DispatchModel(clearPendingIncomingCallT, null));
     if (mounted) Navigator.of(context).pop();
   }
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
+import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
@@ -40,73 +41,6 @@ class ProfileRelationshipUpdate {
 /// showing before refetching.
 final ValueNotifier<ProfileRelationshipUpdate?> profileRelationshipUpdates =
     ValueNotifier<ProfileRelationshipUpdate?>(null);
-
-/// Who is sitting in which voice room, right now - webapp's `previewparticipants`
-/// redux slice.
-///
-/// Kept as clientIds per channel rather than a bare count, because that is what
-/// the events actually carry: "voice-joined" adds ONE participant and
-/// "update_participants" removes ONE by clientId, so a counter could not apply
-/// either without double-counting a rejoin or going negative on a duplicate
-/// leave.
-///
-/// Seeded from the channels payload (`voice_participants`, which the server
-/// fills from redis) and then kept live by the two events. Web does exactly
-/// this: Channels.tsx bulk-sets it on every fetch, sse.ts patches it in between.
-class VoiceRoomPresence {
-  VoiceRoomPresence._();
-  static final VoiceRoomPresence instance = VoiceRoomPresence._();
-
-  final Map<String, Set<String>> _byChannel = {};
-
-  /// Bumped on every change - listeners rebuild off this rather than off the
-  /// map, so the map can stay a plain mutable structure.
-  final ValueNotifier<int> revision = ValueNotifier<int>(0);
-
-  int countFor(String channelId) => _byChannel[channelId]?.length ?? 0;
-
-  /// Replaces one channel's occupancy from a fetched payload. Does NOT touch
-  /// other channels, so a server-scoped refetch cannot wipe presence for rooms
-  /// it did not include.
-  void seed(String channelId, Iterable<String> clientIds) {
-    final next = clientIds.where((id) => id.isNotEmpty).toSet();
-    final current = _byChannel[channelId];
-    // An EMPTY snapshot never wipes what the events have established.
-    //
-    // This is the one that made it look like nothing was live: the channels
-    // list is refetched on every messages_list signal - i.e. on any message
-    // anywhere - and redis fills voice_participants a moment AFTER the
-    // voice-joined fan-out, so a refetch landing in that window came back with
-    // an empty list and reset the room to nobody. The snapshot is a starting
-    // point, not the truth; the truth is the event stream.
-    if (next.isEmpty && current != null && current.isNotEmpty) return;
-    if (current != null &&
-        current.length == next.length &&
-        current.containsAll(next)) {
-      return; // no change - do not wake listeners
-    }
-    _byChannel[channelId] = next;
-    revision.value++;
-  }
-
-  void add(String channelId, String clientId) {
-    if (channelId.isEmpty || clientId.isEmpty) return;
-    final set = _byChannel.putIfAbsent(channelId, () => <String>{});
-    if (set.add(clientId)) revision.value++;
-  }
-
-  /// The leave event names only the clientId - not which room it was in - so
-  /// this drops it from wherever it is found. Matches web's
-  /// REMOVE_PREVIEW_PARTICIPANT, which filters the whole array on clientID.
-  void removeClient(String clientId) {
-    if (clientId.isEmpty) return;
-    var changed = false;
-    for (final entry in _byChannel.entries) {
-      if (entry.value.remove(clientId)) changed = true;
-    }
-    if (changed) revision.value++;
-  }
-}
 
 /// You have been removed from a realm - a server, a channel, a group.
 ///
@@ -407,9 +341,34 @@ class SseEvents {
           if (rawCallMetadata is Map) {
             final alert = IncomingCallAlert.fromJson(
                 Map<String, dynamic>.from(rawCallMetadata));
-            // Busy-handling (auto-decline while already in a call) lives in
-            // IncomingCallView's initState, not here - this just surfaces
-            // the ring signal into Redux and pushes the full-screen alert.
+
+            // Busy on THIS device - drop the signal here, before anything is
+            // pushed or dispatched.
+            //
+            // This used to be handled a layer down, in IncomingCallView's
+            // initState, which meant the route was already pushed and one
+            // frame of a full-screen incoming-call alert was already painted
+            // over the live call before it dismissed itself. Checking here is
+            // what makes it invisible rather than a flash.
+            //
+            // And SILENT, where the old handling auto-DECLINED. Declining
+            // posts /rejectcall, which tells the caller they were refused and
+            // tears their call down - so being busy on this phone would
+            // cancel a call the same person could have taken on their laptop.
+            // Every device on this entity's channel gets this event; each one
+            // answers for itself, and a free one still rings.
+            //
+            // CallController.isBusy, not appStore.state.currentCall: a voice
+            // channel never sets currentCall. See its doc comment.
+            if (CallController.instance.isBusy) {
+              if (kDebugMode) {
+                print("[SSE] incomingcall suppressed - already in a call "
+                    "(engine=${CallController.instance.status}, "
+                    "conversation=${CallController.instance.conversationID})");
+              }
+              return;
+            }
+
             // appRouter (not a BuildContext) since this fires outside any
             // widget's tree.
             appStore.dispatch(DispatchModel(setPendingIncomingCallT, alert));

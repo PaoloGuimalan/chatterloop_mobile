@@ -147,6 +147,21 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   bool isOutgoing = false;
   List<String> endCallRecepients = const [];
 
+  /// Whether THIS DEVICE is occupied by a call right now.
+  ///
+  /// The engine, not `appStore.state.currentCall`, is the honest answer.
+  /// currentCall is only ever set by the two paths that go through a call
+  /// SCREEN - placing one from a conversation, and answering one - while a
+  /// server voice channel drives this controller directly and never
+  /// dispatches it (voice_channel_view.dart's _join). So a user sitting in a
+  /// voice channel read as "free", which is how an incoming call could ring
+  /// straight over one.
+  ///
+  /// `joining` and `leaving` count: a call half-built or half-torn-down is
+  /// still a call as far as interrupting the user goes, and joinCall itself
+  /// already refuses anything but idle.
+  bool get isBusy => status != CallEngineStatus.idle;
+
   // ── State (mirrors webapp's useState, CallWindow.tsx lines 43-86) ─────
   MediaStream? mediaStream;
   Device? device;

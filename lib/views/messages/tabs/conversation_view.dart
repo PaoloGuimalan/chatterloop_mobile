@@ -25,6 +25,7 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
+import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
 import 'package:chatterloop_app/core/requests/call_api.dart';
 import 'package:chatterloop_app/models/call_models/call_session_model.dart';
 import 'package:chatterloop_app/models/call_models/call_signed_payloads_model.dart';
@@ -831,6 +832,44 @@ class ConversationStateView extends State<ConversationView> {
     if (appStore.state.currentCall != null) return; // already on a call
     final recipients = _callRecipients;
     if (recipients.isEmpty) return;
+
+    // A call is ALREADY running in this conversation - walk into it instead
+    // of announcing a new one. Matches webapp, where initializeCall returns
+    // before CallRequest when getChannelPreviewParticipants is non-empty
+    // (ConversationV2.tsx).
+    //
+    // Ringing here is not merely redundant, it is wrong twice over: everyone
+    // already in the call gets an incoming-call alert for the call they are
+    // in, and the ring announces a "new call" that nobody is actually
+    // starting. Presence comes from the same /u/notify-voice-join fan-out the
+    // call engine emits on join, seeded on fetch by conversations_api.
+    //
+    // isOutgoing:false, because nothing is being rung: it is the accept path's
+    // value, and it keeps the engine's 45s ringing watchdog off a call that
+    // was never ringing (see CallController._startRingingWatch).
+    if (VoiceRoomPresence.instance.countFor(widget.conversationId) > 0) {
+      final joinedOngoing = await CallController.instance.joinCall(
+        conversationID: widget.conversationId,
+        conversationType: _conversationType,
+        callType: callType,
+        isOutgoing: false,
+        recepients: recipients,
+        startCameraOff: callType != "video",
+      );
+      if (!joinedOngoing) return;
+
+      appStore.dispatch(DispatchModel(
+          setCurrentCallT,
+          CallSession(
+              conversationID: widget.conversationId,
+              conversationType: _conversationType,
+              callType: callType,
+              isOutgoing: false,
+              recepients: recipients)));
+
+      if (mounted) context.push('/call/active');
+      return;
+    }
 
     final me = appStore.state.userAuth.user;
     final caller = CallerInfo(name: me.firstname, entityId: me.entityId);

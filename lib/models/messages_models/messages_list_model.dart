@@ -31,6 +31,18 @@ class MessageItem {
   final int unread;
   final ConversationDisplayDetails details;
 
+  /// The clientIds in this conversation's CALL at fetch time - the payload's
+  /// `voice_participants`, which the server fills from redis
+  /// (routes/messages/index.js's getAllParticipants) rather than from Mongo.
+  /// Empty when no call is running.
+  ///
+  /// Not only a server-channel concept: an ordinary 1:1 or group call
+  /// announces itself through the same /u/notify-voice-join fan-out, so a
+  /// conversation row carries this too. It seeds [VoiceRoomPresence], which is
+  /// what lets the call button tell "start a call" from "join the one already
+  /// running" - see conversation_view.dart's _initiateCall.
+  final List<String> voiceParticipantIds;
+
   const MessageItem({
     required this.id,
     required this.conversationID,
@@ -49,6 +61,7 @@ class MessageItem {
     required this.messageType,
     required this.unread,
     required this.details,
+    this.voiceParticipantIds = const [],
   });
 
   factory MessageItem.fromJson(Map<String, dynamic> json) {
@@ -80,6 +93,19 @@ class MessageItem {
       details: ConversationDisplayDetails.fromJson(json["details"] is Map
           ? Map<String, dynamic>.from(json["details"])
           : const {}),
+      // Each entry is a whole participant record ({entityID, username,
+      // profile, clientID, channelID, instance}); only the clientID is kept,
+      // because that is the unit the voice-joined / update_participants
+      // events add and remove by.
+      voiceParticipantIds: json["voice_participants"] is List
+          ? (json["voice_participants"] as List)
+              .whereType<Map>()
+              .map((participant) =>
+                  (participant["clientID"] ?? participant["clientId"] ?? "")
+                      .toString())
+              .where((clientId) => clientId.isNotEmpty)
+              .toList()
+          : const [],
     );
   }
 
