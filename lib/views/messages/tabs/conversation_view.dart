@@ -617,6 +617,114 @@ class ConversationStateView extends State<ConversationView> {
     if (mounted) context.go('/messages');
   }
 
+  /// "Ongoing Call" + Join, shown while somebody is in this conversation's
+  /// room. Web's equivalent (ConversationV2.tsx) renders the same card inside
+  /// the message list; this sits pinned under the header instead, because that
+  /// list is `reverse: true` and an entry injected into it would ride the
+  /// scroll away from view. Same content, same action.
+  ///
+  /// Rebuilt off VoiceRoomPresence.revision rather than setState, so people
+  /// joining and leaving move the banner without the whole conversation
+  /// rebuilding.
+  Widget _ongoingCallBanner(CLPalette p) {
+    return ValueListenableBuilder<int>(
+      valueListenable: VoiceRoomPresence.instance.revision,
+      builder: (context, _, __) {
+        // Same conversation kinds the call buttons themselves allow - a
+        // conference or a realm DM has no "join this call" of its own.
+        if (_conversationType != "single" && _conversationType != "group") {
+          return const SizedBox.shrink();
+        }
+
+        final participants =
+            VoiceRoomPresence.instance.participantsFor(widget.conversationId);
+        if (participants.isEmpty) return const SizedBox.shrink();
+
+        // Already in THIS call - offering "Join" would be offering what the
+        // user is doing. (Reachable by navigating back from the call screen
+        // without hanging up.)
+        final engine = CallController.instance;
+        if (engine.isBusy && engine.conversationID == widget.conversationId) {
+          return const SizedBox.shrink();
+        }
+
+        // Web's wording exactly: one occupant is named, several are counted.
+        // The name can be absent when presence came from an ids-only source,
+        // so it degrades to the count rather than rendering "@null".
+        final firstName = participants.first.username;
+        final who = participants.length == 1 && (firstName?.isNotEmpty ?? false)
+            ? "@$firstName"
+            : "${participants.length} participants";
+
+        // Full-bleed and square, sharing the header's surface and its 0.5
+        // bottom border - so it reads as a continuation of the header band
+        // rather than a card floating over the message list. The only rule
+        // between the two is the header's own bottom border.
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: p.surface,
+            border: Border(
+              bottom: BorderSide(width: 0.5, color: p.border),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "Ongoing Call",
+                      style: TextStyle(
+                        color: p.text,
+                        fontSize: CLType.body,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "$who joined the call",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: p.text2, fontSize: CLType.caption),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              // "audio" matches web's button, which calls initializeCall
+              // ("audio") regardless of how the call was started - joining
+              // never turns your camera on for you.
+              TextButton(
+                onPressed: () => _initiateCall("audio"),
+                style: TextButton.styleFrom(
+                  backgroundColor: p.surface2,
+                  foregroundColor: p.text,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(color: p.border),
+                  ),
+                ),
+                child: Text(
+                  "Join Call",
+                  style: TextStyle(
+                    fontSize: CLType.bodySm,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// Archive / Unarchive + Delete menu - webapp's ConversationV2 options
   /// (minus Minimize, which is desktop-only). Strictly single + group only
   /// (the caller gates on _conversationType). Archive/Delete remove the
@@ -2161,6 +2269,10 @@ class ConversationStateView extends State<ConversationView> {
                                   ),
                                 ),
                               ),
+                              // Between the header and the messages, so it is
+                              // visible the moment the conversation opens
+                              // rather than wherever the scroll happens to be.
+                              _ongoingCallBanner(p),
                               Expanded(
                                 child: conversationLoadError != null
                                     ? Center(

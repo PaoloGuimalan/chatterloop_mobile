@@ -70,7 +70,7 @@ class ConversationsApi {
       for (final item in parsed) {
         if (item.conversationID.isEmpty) continue;
         VoiceRoomPresence.instance
-            .seed(item.conversationID, item.voiceParticipantIds);
+            .seedParticipants(item.conversationID, item.voiceParticipants);
       }
 
       return (

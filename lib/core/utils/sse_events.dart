@@ -563,11 +563,18 @@ class SseEvents {
           final participant =
               decoded?["voice_participant"] ?? parsed["voice_participant"];
           if (participant is Map) {
+            // username/entityID come through too - the ongoing-call banner
+            // names who is in the room, and this event is the only place a
+            // live join's name is available.
             VoiceRoomPresence.instance.add(
               (participant["channelID"] ?? participant["channelId"] ?? '')
                   .toString(),
               (participant["clientID"] ?? participant["clientId"] ?? '')
                   .toString(),
+              username: participant["username"]?.toString(),
+              entityId:
+                  (participant["entityID"] ?? participant["entityId"])?.toString(),
+              profile: participant["profile"]?.toString(),
             );
             if (kDebugMode) {
               print("[voice] joined room "

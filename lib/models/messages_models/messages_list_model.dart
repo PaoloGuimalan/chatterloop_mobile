@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/models/call_models/voice_participant_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 
@@ -31,7 +32,7 @@ class MessageItem {
   final int unread;
   final ConversationDisplayDetails details;
 
-  /// The clientIds in this conversation's CALL at fetch time - the payload's
+  /// Who is in this conversation's CALL at fetch time - the payload's
   /// `voice_participants`, which the server fills from redis
   /// (routes/messages/index.js's getAllParticipants) rather than from Mongo.
   /// Empty when no call is running.
@@ -40,8 +41,9 @@ class MessageItem {
   /// announces itself through the same /u/notify-voice-join fan-out, so a
   /// conversation row carries this too. It seeds [VoiceRoomPresence], which is
   /// what lets the call button tell "start a call" from "join the one already
-  /// running" - see conversation_view.dart's _initiateCall.
-  final List<String> voiceParticipantIds;
+  /// running", and what the ongoing-call banner names its occupants from -
+  /// see conversation_view.dart.
+  final List<VoiceParticipant> voiceParticipants;
 
   const MessageItem({
     required this.id,
@@ -61,7 +63,7 @@ class MessageItem {
     required this.messageType,
     required this.unread,
     required this.details,
-    this.voiceParticipantIds = const [],
+    this.voiceParticipants = const [],
   });
 
   factory MessageItem.fromJson(Map<String, dynamic> json) {
@@ -94,16 +96,16 @@ class MessageItem {
           ? Map<String, dynamic>.from(json["details"])
           : const {}),
       // Each entry is a whole participant record ({entityID, username,
-      // profile, clientID, channelID, instance}); only the clientID is kept,
-      // because that is the unit the voice-joined / update_participants
-      // events add and remove by.
-      voiceParticipantIds: json["voice_participants"] is List
+      // profile, clientID, channelID, instance}). Keyed on clientID, since
+      // that is the unit the voice-joined / update_participants events add and
+      // remove by, but the name is kept too - the banner names who is in
+      // there.
+      voiceParticipants: json["voice_participants"] is List
           ? (json["voice_participants"] as List)
               .whereType<Map>()
-              .map((participant) =>
-                  (participant["clientID"] ?? participant["clientId"] ?? "")
-                      .toString())
-              .where((clientId) => clientId.isNotEmpty)
+              .map((participant) => VoiceParticipant.fromJson(
+                  Map<String, dynamic>.from(participant)))
+              .where((participant) => participant.clientId.isNotEmpty)
               .toList()
           : const [],
     );

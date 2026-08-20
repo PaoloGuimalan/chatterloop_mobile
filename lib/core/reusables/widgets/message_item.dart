@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -242,6 +243,30 @@ class MessageItemView extends StatelessWidget {
                         const SizedBox(height: 6),
                         _UnreadDot(count: message.unread),
                       ],
+                      // A call is running in this conversation - the same
+                      // green phone glyph web puts here (Messages.tsx's
+                      // `showCall`), in the same trailing column under the
+                      // unread badge.
+                      //
+                      // ValueListenableBuilder rather than the StoreConnector
+                      // above, because presence lives in VoiceRoomPresence and
+                      // not in Redux - so this repaints as people join and
+                      // leave without the row's converter running.
+                      ValueListenableBuilder<int>(
+                        valueListenable: VoiceRoomPresence.instance.revision,
+                        builder: (context, _, __) {
+                          if (VoiceRoomPresence.instance
+                                  .countFor(message.conversationID) ==
+                              0) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Icon(Icons.phone_in_talk,
+                                size: 16, color: p.green),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ],
