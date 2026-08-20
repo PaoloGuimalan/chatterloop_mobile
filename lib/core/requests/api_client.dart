@@ -19,6 +19,7 @@ import 'dart:math';
 import 'package:chatterloop_app/core/configs/keys.dart';
 import 'package:chatterloop_app/core/notifications/fcm_token_holder.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/utils/app_version.dart';
 import 'package:chatterloop_app/core/utils/device_token.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:crypto/crypto.dart' as crypto;
@@ -63,6 +64,16 @@ class ApiClient {
         final fcmToken = fcmTokenForHeader;
         if (fcmToken != null && fcmToken.isNotEmpty) {
           options.headers['fcm-token'] = fcmToken;
+        }
+        // Which build is talking. Omitted rather than faked when the manifest
+        // read has not succeeded (see AppVersion.ensureLoaded) - a server
+        // deciding what an old client can be sent must be able to distinguish
+        // "did not say" from a version it recognises.
+        await AppVersion.ensureLoaded();
+        final appVersion = AppVersion.header;
+        if (appVersion != null) {
+          options.headers['X-App-Version'] = appVersion;
+          options.headers['X-Platform'] = AppVersion.platform;
         }
         handler.next(options);
       },

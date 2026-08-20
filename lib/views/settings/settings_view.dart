@@ -14,8 +14,10 @@
 // item (Settings.tsx:122's isDisabled), rather than a dead-end tap.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/utils/app_version.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 class _SettingsItem {
@@ -106,8 +108,12 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(title: const Text("Settings")),
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: categories.length,
+        // +1 for the version footer, which scrolls with the list rather than
+        // pinning to the bottom - it is a fact about the install, not an
+        // action, so it belongs after the content and not over it.
+        itemCount: categories.length + 1,
         itemBuilder: (context, index) {
+          if (index == categories.length) return const _VersionFooter();
           final category = categories[index];
           return Padding(
             padding: const EdgeInsets.only(bottom: 20),
@@ -185,5 +191,80 @@ class _SettingsRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// The running build, spelled out where a user can read it back to support.
+///
+/// Deliberately shows the build number alongside the marketing version: two
+/// builds can share a version name (a rebuild, a hotfix that was never
+/// renamed), and the build number is the half that actually identifies which
+/// artifact is installed - the same value the server sees in X-App-Version.
+///
+/// Tapping copies it, since transcribing a version by hand into a support
+/// message is exactly where it gets mistyped.
+class _VersionFooter extends StatefulWidget {
+  const _VersionFooter();
+
+  @override
+  State<_VersionFooter> createState() => _VersionFooterState();
+}
+
+class _VersionFooterState extends State<_VersionFooter> {
+  /// Held in state rather than created in build(): AppVersion caches after a
+  /// successful read, so this is all but resolved by the time Settings opens,
+  /// but a rebuild must not kick off a fresh platform call to find that out.
+  late final Future<void> _loaded = AppVersion.ensureLoaded();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return FutureBuilder<void>(
+      future: _loaded,
+      builder: (context, snapshot) {
+        // Nothing at all rather than "Version unknown" - on the one path where
+        // the manifest read fails there is no useful thing to say, and an
+        // error string in a settings list reads as something being broken.
+        if (!AppVersion.isReady) return const SizedBox.shrink();
+        final label = "Version ${AppVersion.name} (build ${AppVersion.build})";
+        return Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 24),
+          child: Center(
+            // Sized to the text rather than filling the row: a full-width tap
+            // target under a settings list invites taps from people who were
+            // aiming at the last item and did not mean to hit anything.
+            child: InkWell(
+              onTap: () => _copy(label),
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: CLType.caption, color: p.text3),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Copies the version, plus the platform the server keys off in X-Platform -
+  /// a pasted "android" saves support a round trip asking which phone.
+  ///
+  /// The messenger is captured BEFORE the await: Clipboard.setData is async,
+  /// and reaching back through `context` after it resolves is the standard way
+  /// this crashes when the user leaves Settings in the meantime.
+  Future<void> _copy(String label) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await Clipboard.setData(
+        ClipboardData(text: "$label - ${AppVersion.platform}"));
+    if (!mounted) return;
+    messenger.showSnackBar(const SnackBar(
+      content: Text("Version copied."),
+      duration: Duration(seconds: 2),
+    ));
   }
 }

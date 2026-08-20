@@ -2,6 +2,7 @@
 import 'dart:async';
 
 import 'package:chatterloop_app/core/configs/keys.dart';
+import 'package:chatterloop_app/core/utils/app_version.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/device_token.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
@@ -56,6 +57,17 @@ class SseConnection {
 
     ContentValidator().printer(url);
 
+    // Same X-App-Version/X-Platform pair the dio interceptor attaches
+    // (api_client.dart), so a client is identifiable on the stream it holds
+    // open and not only on the requests it makes. Read before the map is
+    // built rather than inside it: this map is what PatchedSSEClient's
+    // _retryConnection closes over and replays on every auto-reconnect, and
+    // a header that resolved to null on the first attempt would stay absent
+    // for the life of the connection. Baking the value in is correct anyway
+    // - the running build cannot change without the process restarting.
+    await AppVersion.ensureLoaded();
+    final appVersion = AppVersion.header;
+
     _subscription = PatchedSSEClient.subscribeToSSE(
         method: SSERequestType.GET,
         url: url,
@@ -78,6 +90,8 @@ class SseConnection {
           // uncompressed chunk, so the parser sees it right away.
           "Accept-Encoding": "identity",
           "Cache-Control": "no-cache",
+          if (appVersion != null) "X-App-Version": appVersion,
+          if (appVersion != null) "X-Platform": AppVersion.platform,
         }).listen((event) {
       eventBus.fire(event);
       SseEvents().listen(event, true);

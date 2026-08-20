@@ -114,6 +114,17 @@ dependencies:
   flutter_widget_from_html_core: ^0.17.2
   video_thumbnail: ^0.5.6
 
+  # Reads the RUNNING build's version/build number out of the platform
+  # manifest (Android PackageManager, iOS Info.plist) - the app had no way to
+  # know its own version, so nothing could be gated on it. Feeds the
+  # X-App-Version/X-Platform headers in api_client.dart.
+  #
+  # Held at 9: package_info_plus 10 needs win32 ^6, and share_plus <13 pins
+  # win32 ^5 - the same Windows-only transitive conflict already described
+  # under share_plus above. 9.x reads the same manifest fields, so nothing
+  # this app uses is missing.
+  package_info_plus: ^9.0.1
+
 dependency_overrides:
   # PINNED, not merely constrained, because nothing in the tree constrains it
   # correctly: flutter_webrtc asks for `^1.1.2`, which happily resolves to
