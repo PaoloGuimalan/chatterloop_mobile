@@ -75,6 +75,16 @@ class Endpoints {
   /// Tag autocomplete, backed by the shared Interest table rather than
   /// anything diary-specific. Takes ?search=&page=&page_size=.
   String diaryTags = '/api/diary/tags/';
+  /// Popular Topics - the interest ranking behind Explore's first section.
+  /// Takes ?limit= (server caps at 8). Counts and participant faces are
+  /// filtered per-viewer, so responses must not be shared between accounts.
+  String popularTopics = '/api/interests/popular/';
+
+  /// Posts inside one topic, addressed by the interest's normalized_name -
+  /// the same string a hashtag normalises to. Plain DRF pagination plus a
+  /// `topic` object naming what is being listed. Takes ?page=&page_size=.
+  String topicPosts = '/api/interests/topics/'; // :slug/posts/
+
   String search = '/api/user/search/'; // :query
 
   /// Search v2 - unified entity search returning users AND realms/pages in

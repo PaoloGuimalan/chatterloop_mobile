@@ -104,6 +104,8 @@ void main() {
             'hi @ana see https://example.com ok',
             const TextStyle(fontSize: CLType.body),
             mentionColor: const Color(0xFF1C7DEF),
+            hashtagColor: const Color(0xFF1C7DEF),
+            onHashtagTap: (_) {},
           );
           return const SizedBox.shrink();
         }),

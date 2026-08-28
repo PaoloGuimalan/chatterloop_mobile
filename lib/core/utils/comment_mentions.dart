@@ -21,7 +21,7 @@
 // the server gives it.
 
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
-import 'package:chatterloop_app/core/utils/linkify_text.dart';
+import 'package:chatterloop_app/core/utils/hashtags.dart';
 import 'package:flutter/material.dart';
 
 /// The leading (^|\s) is what stops "you@example.com" mentioning @example.
@@ -72,15 +72,20 @@ List<MentionSpan> splitCommentMentionSpans(String text) {
   return spans.isEmpty ? [MentionSpan(text)] : spans;
 }
 
-/// Comment text as spans: mentions highlighted, everything else linkified.
+/// Comment text as spans: mentions highlighted, hashtags tappable, everything
+/// else linkified.
 ///
-/// One helper because the two passes have to run in this order - linkifying
-/// first would leave a mention inside a matched URL, and the message renderer
-/// splits mentions first for the same reason.
+/// One helper because the passes have to run in this order - linkifying first
+/// would leave a mention inside a matched URL, and the message renderer splits
+/// mentions first for the same reason. Hashtags are split out of what is left
+/// AFTER mentions, so "@ana" is never re-read as a tag and a "#" inside a URL
+/// is never lifted out of the link.
 List<InlineSpan> commentTextSpans(
   String text,
   TextStyle baseStyle, {
   required Color mentionColor,
+  required Color hashtagColor,
+  required void Function(String name) onHashtagTap,
 }) {
   final out = <InlineSpan>[];
   for (final span in splitCommentMentionSpans(text)) {
@@ -91,7 +96,12 @@ List<InlineSpan> commentTextSpans(
             baseStyle.copyWith(color: mentionColor, fontWeight: FontWeight.w700),
       ));
     } else {
-      out.addAll(linkifySpans(span.text, baseStyle));
+      out.addAll(hashtagifySpans(
+        span.text,
+        baseStyle,
+        hashtagColor: hashtagColor,
+        onHashtagTap: onHashtagTap,
+      ));
     }
   }
   return out;

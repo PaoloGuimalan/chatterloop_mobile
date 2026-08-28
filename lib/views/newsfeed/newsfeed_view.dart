@@ -21,6 +21,9 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_item.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/foundation.dart';
+import 'package:chatterloop_app/core/reusables/widgets/popular_topics.dart';
+import 'package:go_router/go_router.dart';
+import 'package:chatterloop_app/models/user_models/popular_topic_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -196,6 +199,10 @@ class _NewsfeedViewState extends State<NewsfeedView>
   /// the first load.
   String? _lastEntityId;
 
+  void _openTopic(PopularTopic topic) {
+    context.push('/topics/${Uri.encodeComponent(topic.slug)}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
@@ -244,6 +251,29 @@ class _NewsfeedViewState extends State<NewsfeedView>
               placeholder: "Share your thoughts…",
               onPosted: _refresh,
             ),
+            // Popular topics as a feed section, directly under the composer.
+            // Renders nothing at all when there are no topics yet, so a quiet
+            // platform does not get an empty card between the composer and
+            // the first post.
+            const SizedBox(height: 12),
+            CLPopularTopics(
+              // Top three only - this is a teaser between the composer and the
+              // feed, and "See all" is how you get the rest.
+              limit: kPopularTopicFeedPreview,
+              onTopicTap: _openTopic,
+              // go, NOT push. Explore is a shell BRANCH (the header reaches
+              // it with goBranch), so pushing '/search' stacked the Explore
+              // screen inside the newsfeed's own navigator - it rendered, but
+              // the shell still considered you on Newsfeed, with that tab lit
+              // and Back returning into the feed. go switches branches, which
+              // is what tapping the header search does.
+              onExplore: () => context.go('/search'),
+            ),
+            // A section break, not a row gap. PostItem's own margin is
+            // bottom-only, so nothing else separates the topics card from the
+            // first post - 4 here left them looking like one stack. Matches
+            // the 22 Explore puts between its sections.
+            const SizedBox(height: 22),
             if (_isLoading) ...[
               const PostItemSkeleton(),
               const PostItemSkeleton(),

@@ -150,6 +150,11 @@ class CLNotificationRow extends StatelessWidget {
     final content = Padding(
       padding: EdgeInsets.all(detail ? 10 : 9),
       child: Row(
+        // Top-aligned, matching the web notification row. A notification's
+        // text runs to two or three lines while the avatar is one fixed
+        // square, so centring floated the avatar down beside the middle of
+        // the sentence instead of sitting beside its first line.
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: avatarSize,
@@ -392,6 +397,9 @@ class CLNotificationRowSkeleton extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.all(detail ? 10 : 9),
       child: Row(
+        // Same alignment as the real row above - a loader that lays out
+        // differently than what replaces it makes the list jump on load.
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CLSkeleton(
               width: size,

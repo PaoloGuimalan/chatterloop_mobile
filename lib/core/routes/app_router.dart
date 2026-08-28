@@ -18,6 +18,7 @@ import 'package:chatterloop_app/views/calls/incoming_call_view.dart';
 import 'package:chatterloop_app/views/auth/signup_view.dart';
 import 'package:chatterloop_app/views/auth/verify_email_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_detail_view.dart';
+import 'package:chatterloop_app/views/search/topic_detail_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
 import 'package:chatterloop_app/views/newsfeed/newsfeed_view.dart';
@@ -321,7 +322,13 @@ GoRouter buildAppRouter(AuthController authController) {
               StatefulShellBranch(routes: [
                 GoRoute(
                     path: '/search',
-                    pageBuilder: (c, s) => _clPage(s, const SearchScreen()))
+                    // ?q= opens Explore already searching - a #hashtag tapped
+                    // in a post or comment lands here. Same convention as
+                    // /search/:kind below.
+                    pageBuilder: (c, s) => _clPage(
+                        s,
+                        SearchScreen(
+                            initialQuery: s.uri.queryParameters['q'] ?? '')))
               ]),
               // No profile branch. Your own profile is not a tab: it pushes
               // /user/<your username> like any other, so one screen renders
@@ -405,6 +412,15 @@ GoRouter buildAppRouter(AuthController authController) {
                   section: ContactsDetailSectionMeta.fromSlug(
                       s.pathParameters['section']!)!,
                 )),
+          ),
+          // A topic's own feed. Addressed by the interest's normalized_name,
+          // so a #hashtag tapped in a post and a Popular Topics row lead to
+          // the same place. Declared BEFORE /search/:kind so "topics" is never
+          // read as a search-detail kind.
+          GoRoute(
+            path: '/topics/:slug',
+            pageBuilder: (c, s) => _clPage(
+                s, TopicDetailScreen(slug: s.pathParameters['slug']!)),
           ),
           // ?q= carries the query the section was opened for - the detail
           // screen pages the same search, it doesn't start a new one.

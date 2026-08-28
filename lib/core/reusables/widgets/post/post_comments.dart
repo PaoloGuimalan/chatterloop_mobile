@@ -22,6 +22,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
 import 'package:chatterloop_app/core/utils/comment_mentions.dart';
+import 'package:chatterloop_app/core/utils/hashtags.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
@@ -591,6 +592,9 @@ class CommentRow extends StatelessWidget {
                                     height: 1.35,
                                     color: p.text),
                                 mentionColor: p.brand,
+                                hashtagColor: p.brand,
+                                onHashtagTap: (name) =>
+                                    openHashtagTopic(context, name),
                               ),
                             ),
                           ),

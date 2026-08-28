@@ -21,19 +21,22 @@ import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:chatterloop_app/views/search/search_detail_view.dart';
 import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
+import 'package:chatterloop_app/core/reusables/widgets/popular_topics.dart';
+import 'package:chatterloop_app/models/user_models/popular_topic_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
 /// Client-side section filter - no refetch, the overview already holds all
 /// three sections.
-enum _ExploreFilter { all, people, realms, posts }
+enum _ExploreFilter { all, people, realms, posts, topics }
 
 const _filterDefs = <(_ExploreFilter, String, IconData)>[
   (_ExploreFilter.all, "All", Icons.apps),
   (_ExploreFilter.people, "People", Icons.group),
   (_ExploreFilter.realms, "Realms", Icons.public),
   (_ExploreFilter.posts, "Posts", Icons.article),
+  (_ExploreFilter.topics, "Topics", Icons.tag),
 ];
 
 /// The server's own preview caps are 8 people / 6 realms / 5 posts. People and
@@ -44,7 +47,12 @@ const _filterDefs = <(_ExploreFilter, String, IconData)>[
 const int _kPostsPreview = 3;
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  /// Seeds the field and runs the search on open. Used when Explore is entered
+  /// FOR something - tapping a #hashtag in a post or comment - rather than to
+  /// start a search from scratch.
+  final String initialQuery;
+
+  const SearchScreen({super.key, this.initialQuery = ''});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -65,10 +73,35 @@ class _SearchScreenState extends State<SearchScreen> {
   final Set<String> _joinBusy = <String>{};
 
   @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialQuery.trim();
+    if (initial.isEmpty) return;
+
+    _query = initial;
+    _controller.text = initial;
+    // Fired after the first frame rather than from initState directly: _load
+    // calls setState on completion, and the widget has to be mounted and laid
+    // out before that is legal.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load(initial);
+    });
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  /// A Popular Topics row was tapped: open the topic's own feed.
+  ///
+  /// The endpoint behind that screen lists exactly the posts filed under the
+  /// interest, which a text search only approximates - searching "north edsa"
+  /// also returns posts that merely say the words.
+  void _onTopicTap(PopularTopic topic) {
+    context.push('/topics/${Uri.encodeComponent(topic.slug)}');
   }
 
   void _onQueryChanged(String value) {
@@ -432,6 +465,11 @@ class _SearchScreenState extends State<SearchScreen> {
         _filter == _ExploreFilter.all || _filter == _ExploreFilter.realms;
     final showPosts =
         _filter == _ExploreFilter.all || _filter == _ExploreFilter.posts;
+    final showTopics =
+        _filter == _ExploreFilter.all || _filter == _ExploreFilter.topics;
+    // Under the Topics chip the screen is topics and nothing else - no empty
+    // state, no people/realm/post sections competing with it.
+    final topicsOnly = _filter == _ExploreFilter.topics;
 
     // Deliberately a bare Scaffold with NO SafeArea - this is a tab, and the
     // shell owns both insets: its header reserves the status bar and its bottom
@@ -460,9 +498,24 @@ class _SearchScreenState extends State<SearchScreen> {
                   .toList(),
             ),
             const SizedBox(height: 22),
-            if (!hasQuery)
+            // Popular topics sits in the IDLE state, under the chips - it is
+            // the answer to "what do I search for", so it belongs before a
+            // query exists rather than competing with results. Under the
+            // Topics chip it becomes the whole screen and shows the full list.
+            if (showTopics && (!hasQuery || topicsOnly)) ...[
+              CLPopularTopics(
+                // The full eight, matching the web rail. There is no "See
+                // all" because there is nothing further to see - the endpoint
+                // caps here, and the Topics chip shows the same list with the
+                // other sections out of the way.
+                limit: kPopularTopicMax,
+                onTopicTap: _onTopicTap,
+              ),
+              const SizedBox(height: 22),
+            ],
+            if (!hasQuery && !topicsOnly)
               _initialState(p)
-            else ...[
+            else if (hasQuery && !topicsOnly) ...[
               if (showPeople) _peopleSection(presence),
               if (showPeople && (showRealms || showPosts))
                 const SizedBox(height: 26),

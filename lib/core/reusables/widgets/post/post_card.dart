@@ -25,7 +25,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart'
 import 'package:chatterloop_app/core/reusables/widgets/post/post_share.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
-import 'package:chatterloop_app/core/utils/linkify_text.dart';
+import 'package:chatterloop_app/core/utils/hashtags.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -454,10 +454,15 @@ class _PostCardState extends State<PostCard> {
             child: GestureDetector(
               child: Text.rich(
                 TextSpan(
-                  children: linkifySpans(
+                  // hashtagifySpans rather than linkifySpans: it linkifies
+                  // everything that is not a hashtag, so URLs behave exactly
+                  // as before and #tags become tappable on top of that.
+                  children: hashtagifySpans(
                     post.caption,
                     TextStyle(
                         fontSize: CLType.title, height: 1.45, color: p.text),
+                    hashtagColor: p.brand,
+                    onHashtagTap: (name) => openHashtagTopic(context, name),
                   ),
                 ),
                 // A feed row clamps; the post screen shows the lot.
