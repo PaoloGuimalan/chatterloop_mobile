@@ -1,10 +1,11 @@
 // Topic rows - the 2a/2b list layout.
 //
 // What is pinned here is the stuff that only breaks visually: a loader that is
-// a different height than the row it stands in for, a match highlight that
-// marks the wrong run (or the wrong screen's worth of them), and the two things
-// that must NOT appear on a row - a post count ("rows carry topic name,
-// category and participant avatars only") and any follow control.
+// a different height than the row it stands in for, a category pill that fills
+// the row instead of hugging its label, a match highlight that marks the wrong
+// run, and the things that must NOT appear on a row - a post count ("rows carry
+// topic name, category and participant avatars only"), a follow control, and a
+// "#" on the name when the tile beside it already carries one.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/reusables/widgets/popular_topics.dart';
@@ -57,12 +58,21 @@ void main() {
     testWidgets('name and category, nothing numeric', (tester) async {
       await _pumpRow(tester);
 
-      expect(find.text('#sunsetseries'), findsOneWidget);
+      expect(find.text('sunsetseries'), findsOneWidget);
       expect(find.text('Photography'), findsOneWidget);
 
       // The count is still in the payload; it must not be drawn.
       expect(find.textContaining('412'), findsNothing);
       expect(find.textContaining('post'), findsNothing);
+    });
+
+    testWidgets('the hash is on the tile, not on the name too', (tester) async {
+      await _pumpRow(tester);
+
+      // Exactly one "#" on the row - the tile's. A name drawn as "#sunsetseries"
+      // beside a "#" tile says it twice.
+      expect(find.text('#'), findsOneWidget);
+      expect(find.text('#sunsetseries'), findsNothing);
     });
 
     testWidgets('there is no follow control on a topic row', (tester) async {
@@ -79,7 +89,7 @@ void main() {
         ),
       ));
 
-      expect(find.text('#sunsetseries'), findsOneWidget);
+      expect(find.text('sunsetseries'), findsOneWidget);
       expect(find.text('Photography'), findsOneWidget);
       expect(find.textContaining('Follow'), findsNothing);
     });
@@ -92,7 +102,7 @@ void main() {
 
       // Drawn as three spans, but it still reads as the whole tag - a
       // highlight that drops or reorders characters is the failure mode.
-      expect(_renderedName(tester), '#sunsetseries');
+      expect(_renderedName(tester), 'sunsetseries');
     });
 
     testWidgets('normalises the query the way a hashtag normalises',
@@ -105,7 +115,7 @@ void main() {
           topic: _topic(slug: 'northedsa'),
           highlight: query,
         );
-        expect(_renderedName(tester), '#northedsa', reason: 'query: $query');
+        expect(_renderedName(tester), 'northedsa', reason: 'query: $query');
         // Three spans means a run was actually marked; one means it fell back
         // to the plain name.
         expect(
@@ -122,7 +132,7 @@ void main() {
     testWidgets('a query that matches nothing leaves the name alone',
         (tester) async {
       await _pumpRow(tester, highlight: 'zzz');
-      expect(find.text('#sunsetseries'), findsOneWidget);
+      expect(find.text('sunsetseries'), findsOneWidget);
     });
   });
 
@@ -152,6 +162,47 @@ void main() {
         tester.getSize(find.byType(CLTopicRowSkeleton)).height,
         tester.getSize(find.byType(CLTopicRow)).height,
       );
+    });
+
+    testWidgets('the category pill hugs its label instead of filling the row',
+        (tester) async {
+      // A Container with an `alignment` expands to its bounded constraints
+      // rather than sizing to its child - which stretched this pill across the
+      // whole row once before, and is invisible in a static read of the tree.
+      Future<double> widthFor(String category) async {
+        await _pumpRow(tester, topic: _topic(category: category));
+        final pill = find.ancestor(
+          of: find.text(category),
+          matching: find.byType(Container),
+        );
+        return tester.getSize(pill.first).width;
+      }
+
+      final short = await widthFor('Tech');
+      final long = await widthFor('Pets and Animals');
+
+      expect(short, lessThan(150));
+      expect(long, greaterThan(short),
+          reason: 'a longer category must produce a wider pill');
+      expect(long, lessThanOrEqualTo(kTopicPillMaxWidth));
+    });
+
+    testWidgets('the same category always gets the same colour',
+        (tester) async {
+      // Hashed, not positional: the colour must not change as the list
+      // reorders, and it must agree with the web for the same category.
+      Future<Color> colourFor(String category, String slug) async {
+        await _pumpRow(tester, topic: _topic(slug: slug, category: category));
+        final pill = tester.widget<Container>(find
+            .ancestor(of: find.text(category), matching: find.byType(Container))
+            .first);
+        return (pill.decoration as BoxDecoration).color!;
+      }
+
+      expect(await colourFor('Technology', 'a'),
+          await colourFor('Technology', 'b'));
+      expect(await colourFor('Technology', 'a'),
+          isNot(await colourFor('Food and Drink', 'a')));
     });
 
     testWidgets('a long category truncates instead of widening the row',
@@ -208,8 +259,8 @@ void main() {
 
       expect(find.byType(CLTopicRow), findsNWidgets(3));
       // Between the rows, never above the first or below the last.
-      expect(find.text('#one'), findsOneWidget);
-      expect(find.text('#three'), findsOneWidget);
+      expect(find.text('one'), findsOneWidget);
+      expect(find.text('three'), findsOneWidget);
     });
   });
 }

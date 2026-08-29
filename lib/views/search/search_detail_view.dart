@@ -25,30 +25,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
-enum SearchDetailKind { tags, people, realms, posts }
+enum SearchDetailKind { topics, people, realms, posts }
 
 extension SearchDetailKindMeta on SearchDetailKind {
   /// Route segment. "posts" is the endpoint's name; the section is titled
   /// "Content" in the UI, matching web.
   String get slug => switch (this) {
-        SearchDetailKind.tags => "tags",
+        SearchDetailKind.topics => "topics",
         SearchDetailKind.people => "people",
         SearchDetailKind.realms => "realms",
         SearchDetailKind.posts => "posts",
       };
 
-  /// Tags are the one kind that is meaningful with NO query - with an empty
-  /// one the endpoint returns the trending directory, which is what Explore's
-  /// idle "Trending tags - See all" opens onto. Hence the two titles: the same
-  /// screen is "the whole trending list" and "the tags matching this" depending
-  /// on how it was entered.
+  /// Topics are the one kind that is meaningful with NO query - with an empty
+  /// one the endpoint returns the ranking itself, which is what Explore's idle
+  /// "Popular Topics - See all" opens onto. Hence the two titles: the same
+  /// screen is "the whole ranking" and "the topics matching this" depending on
+  /// how it was entered.
   String titleFor(String query) =>
-      this == SearchDetailKind.tags && query.trim().isEmpty
-          ? "Trending tags"
+      this == SearchDetailKind.topics && query.trim().isEmpty
+          ? "Popular Topics"
           : title;
 
   String get title => switch (this) {
-        SearchDetailKind.tags => "Tags",
+        SearchDetailKind.topics => "Topics",
         SearchDetailKind.people => "People",
         SearchDetailKind.realms => "Realms",
         SearchDetailKind.posts => "Content",
@@ -80,7 +80,7 @@ class SearchDetailScreen extends StatefulWidget {
 
 class _SearchDetailScreenState extends State<SearchDetailScreen>
     with PaginatedScrollMixin<SearchDetailScreen> {
-  final List<PopularTopic> _tags = [];
+  final List<PopularTopic> _topics = [];
   final List<SearchPersonResult> _people = [];
   final List<SearchRealmResult> _realms = [];
   final List<SearchPostResult> _posts = [];
@@ -119,14 +119,14 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
     bool hasNext = false;
 
     switch (widget.kind) {
-      case SearchDetailKind.tags:
-        // InterestsApi, not SearchApi: a tag is an interest, so its list lives
+      case SearchDetailKind.topics:
+        // InterestsApi, not SearchApi: a topic is an interest, so its list lives
         // with the rest of the interests endpoints rather than under search.
         final result = await InterestsApi()
             .searchTopics(query: widget.query, page: page, pageSize: _kPageSize);
         if (!mounted) return;
-        if (page == 1) _tags.clear();
-        _tags.addAll(result.results);
+        if (page == 1) _topics.clear();
+        _topics.addAll(result.results);
         count = result.count;
         hasNext = result.hasNext;
         break;
@@ -268,10 +268,10 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
 
   ({IconData icon, String title, String subtitle}) get _emptyState =>
       switch (widget.kind) {
-        SearchDetailKind.tags => (
+        SearchDetailKind.topics => (
             icon: Icons.tag,
-            title: "No tags found",
-            subtitle: "Hashtags people post with show up here."
+            title: "No topics found",
+            subtitle: "Hashtags people post with become topics."
           ),
         SearchDetailKind.people => (
             icon: Icons.group,
@@ -291,7 +291,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
       };
 
   int get _itemCount => switch (widget.kind) {
-        SearchDetailKind.tags => _tags.length,
+        SearchDetailKind.topics => _topics.length,
         SearchDetailKind.people => _people.length,
         SearchDetailKind.realms => _realms.length,
         SearchDetailKind.posts => _posts.length,
@@ -299,8 +299,8 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
 
   Widget _item(int index, Map<String, PresenceInfo> presence) {
     switch (widget.kind) {
-      case SearchDetailKind.tags:
-        final topic = _tags[index];
+      case SearchDetailKind.topics:
+        final topic = _topics[index];
         return CLTopicRow(
           topic: topic,
           // Marked only when there is something to mark - an empty query is
@@ -362,7 +362,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
   }
 
   Widget _skeleton() => switch (widget.kind) {
-        SearchDetailKind.tags => const CLTopicRowSkeleton(),
+        SearchDetailKind.topics => const CLTopicRowSkeleton(),
         SearchDetailKind.people => const CLEntityRowSkeleton(),
         SearchDetailKind.realms => const SearchRealmCardSkeleton(wide: true),
         SearchDetailKind.posts => const SearchContentCardSkeleton(),
@@ -393,7 +393,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
               padding: const EdgeInsets.all(14),
               itemCount: 6,
               separatorBuilder: (_, __) => SizedBox(
-                  height: widget.kind == SearchDetailKind.tags ? 0 : 10),
+                  height: widget.kind == SearchDetailKind.topics ? 0 : 10),
               itemBuilder: (_, __) => _skeleton(),
             );
           }
@@ -416,11 +416,11 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
             controller: paginationController,
             padding: const EdgeInsets.all(14),
             itemCount: _itemCount + (_isLoadingMore ? 1 : 0),
-            // Tags are LIST ROWS, not cards - they carry their own vertical
+            // Topics are LIST ROWS, not cards - they carry their own vertical
             // padding and read as one continuous list, so a card gap between
             // them would break the column of "#" tiles that makes it scannable.
             separatorBuilder: (_, __) => SizedBox(
-                height: widget.kind == SearchDetailKind.tags ? 0 : 10),
+                height: widget.kind == SearchDetailKind.topics ? 0 : 10),
             itemBuilder: (context, index) => index >= _itemCount
                 ? const CLLoadMoreIndicator()
                 : _item(index, presence),

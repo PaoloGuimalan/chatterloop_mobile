@@ -13,7 +13,7 @@
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// How many to keep. Short by design: this list sits above the trending tags
+/// How many to keep. Short by design: this list sits above the popular topics
 /// and is meant to catch "the thing I looked up ten minutes ago", not to be a
 /// history screen. The design's idle state has room for a handful before the
 /// tags below it start losing the fold.

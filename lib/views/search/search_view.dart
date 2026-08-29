@@ -12,17 +12,25 @@
 // ------------------------
 // The magnifier "start typing" panel is gone, and so is the topics card that
 // used to sit above it. Explore IS a search screen, so before you type it
-// offers things to search - your recent queries, then the trending tags -
+// offers things to search - your recent queries, then the popular topics -
 // rather than a placeholder telling you to type. Tapping one of those rows
 // FILLS THE FIELD instead of pushing a screen, which is what makes the list
 // belong to the search box rather than float above it.
 //
-// The filter chips moved below the field and appear only once there is a
-// query: they scope RESULTS. Over the idle list they scoped nothing, and the
+// The filter chips moved below the field and appear only once a search has
+// RUN: they scope results. Over the idle list they scoped nothing, and the
 // Topics chip in particular turned the whole screen into a second, differently
 // shaped copy of the list already on it.
-
-import 'dart:async';
+//
+// SEARCHING IS AN ACT, NOT A SIDE EFFECT OF TYPING
+// ------------------------------------------------
+// There is no debounce here any more. Typing used to fire the query on its own
+// after 450ms, which meant results arrived before anybody asked for them and -
+// worse - the search was never "made", so it never reached Recent. The list of
+// recent searches was therefore empty for exactly the searches somebody had
+// actually run. Now the request goes out when the search is submitted (the
+// keyboard's Search key) or when a suggestion is tapped, and those are the same
+// two moments that record it. Typing alone changes nothing but the field.
 
 import 'package:chatterloop_app/core/design/rails.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -45,17 +53,17 @@ import 'package:go_router/go_router.dart';
 
 /// Client-side section filter - no refetch, the overview already holds every
 /// section.
-enum _ExploreFilter { all, tags, people, realms, posts }
+enum _ExploreFilter { all, topics, people, realms, posts }
 
 const _filterDefs = <(_ExploreFilter, String, IconData)>[
   (_ExploreFilter.all, "All", Icons.apps),
-  (_ExploreFilter.tags, "Tags", Icons.tag),
+  (_ExploreFilter.topics, "Topics", Icons.tag),
   (_ExploreFilter.people, "People", Icons.group),
   (_ExploreFilter.realms, "Realms", Icons.public),
   (_ExploreFilter.posts, "Posts", Icons.article),
 ];
 
-/// The server's own preview caps are 5 tags / 8 people / 6 realms / 5 posts.
+/// The server's own preview caps are 5 topics / 8 people / 6 realms / 5 posts.
 /// People and realms are rails, so their full preview fits regardless of screen
 /// width; content is a vertical list, and five full-width cards push everything
 /// below them off a phone screen - so it's trimmed here and "See all" covers
@@ -76,9 +84,16 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
-  Timer? _debounce;
 
+  /// What is in the FIELD - drives the clear button and nothing else.
   String _query = "";
+
+  /// What was actually SEARCHED FOR. This is what decides whether the screen
+  /// shows suggestions or results, and what the tag highlight marks against;
+  /// keeping it apart from _query is what stops a half-typed word from
+  /// replacing the idle list with the previous query's results.
+  String _searched = "";
+
   _ExploreFilter _filter = _ExploreFilter.all;
 
   SearchOverview? _overview;
@@ -105,10 +120,14 @@ class _SearchScreenState extends State<SearchScreen> {
     if (initial.isEmpty) return;
 
     _query = initial;
+    _searched = initial;
     _controller.text = initial;
     // Fired after the first frame rather than from initState directly: _load
     // calls setState on completion, and the widget has to be mounted and laid
     // out before that is legal.
+    //
+    // NOT recorded in Recent: arriving here from a tapped #hashtag is
+    // navigation, not a search somebody made.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _load(initial);
     });
@@ -116,7 +135,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -150,21 +168,39 @@ class _SearchScreenState extends State<SearchScreen> {
   /// list belongs to the search box, so using it leaves you on the same screen
   /// with the field now holding what you picked.
   void _useSuggestion(String query) {
-    _debounce?.cancel();
     _controller.text = query;
     _controller.selection =
         TextSelection.collapsed(offset: _controller.text.length);
-    setState(() => _query = query);
+    _search(query);
+  }
+
+  /// The one path that runs a search. Recording and requesting happen together
+  /// here so they cannot drift apart - which is exactly what the debounce used
+  /// to do.
+  void _search(String raw) {
+    final query = raw.trim();
+    if (query.isEmpty) return;
+    setState(() {
+      _query = query;
+      _searched = query;
+    });
     _recordRecent(query);
     _load(query);
   }
 
+  /// Typing does NOT search - see the file header. Emptying the field does
+  /// return to the idle list, though: a cleared box has nothing to show results
+  /// for, and leaving the last query's results under an empty field reads as a
+  /// screen that has stopped responding.
   void _onQueryChanged(String value) {
-    _debounce?.cancel();
-    // Same 450ms as web - long enough that typing a handle doesn't fire a
-    // request per keystroke.
-    _debounce = Timer(const Duration(milliseconds: 450), () => _load(value));
-    setState(() => _query = value);
+    setState(() {
+      _query = value;
+      if (value.trim().isEmpty) {
+        _searched = "";
+        _overview = null;
+        _isLoading = false;
+      }
+    });
   }
 
   Future<void> _load(String raw) async {
@@ -181,8 +217,11 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() => _isLoading = true);
     final result = await SearchApi().searchOverviewV2Request(query);
     if (!mounted) return;
-    // A slower earlier request must not overwrite a newer query's results.
-    if (_query.trim() != query) return;
+    // A slower earlier request must not overwrite a newer one's results.
+    // Compared against what was SEARCHED, not what is in the field: typing on
+    // after submitting does not invalidate the search you just ran, and
+    // discarding on _query would leave that search spinning forever.
+    if (_searched != query) return;
     setState(() {
       _overview = result;
       _isLoading = false;
@@ -190,10 +229,10 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _clearQuery() {
-    _debounce?.cancel();
     _controller.clear();
     setState(() {
       _query = "";
+      _searched = "";
       _overview = null;
       _isLoading = false;
       // Back to the idle list, which the chips do not scope.
@@ -327,8 +366,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _openPost(SearchPostResult post) => context.push('/post/${post.postId}');
 
-  /// A tag RESULT opens the topic's own feed, unlike a tag SUGGESTION, which
-  /// fills the field. The difference is what the row means in each place: in
+  /// A topic RESULT opens the topic's own feed, unlike a topic SUGGESTION,
+  /// which fills the field. The difference is what the row means in each place: in
   /// the idle list it is a query you might want to run, and in the results it
   /// is the thing you were looking for.
   ///
@@ -340,11 +379,11 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _openDetail(SearchDetailKind kind) {
-    final query = _query.trim();
-    // Tags are the one section whose detail screen is meaningful with no query:
-    // it is the trending directory, which is exactly what "See all" means on
-    // the idle list. Every other section needs something to search for.
-    if (query.isEmpty && kind != SearchDetailKind.tags) return;
+    final query = _searched;
+    // Topics are the one section whose detail screen is meaningful with no
+    // query: it is the popularity ranking itself, which is exactly what "See
+    // all" means on the idle list. Every other section needs a query.
+    if (query.isEmpty && kind != SearchDetailKind.topics) return;
     context.push('/search/${kind.slug}?q=${Uri.encodeQueryComponent(query)}');
   }
 
@@ -374,13 +413,9 @@ class _SearchScreenState extends State<SearchScreen> {
               controller: _controller,
               onChanged: _onQueryChanged,
               textInputAction: TextInputAction.search,
-              onSubmitted: (value) {
-                _debounce?.cancel();
-                // Submitting is the deliberate act that earns a place in
-                // Recent - see _recordRecent.
-                _recordRecent(value);
-                _load(value);
-              },
+              // Submitting is the deliberate act that both runs the search and
+              // earns it a place in Recent - see _search.
+              onSubmitted: _search,
               style: TextStyle(color: p.text, fontSize: CLType.title),
               decoration: InputDecoration(
                 border: InputBorder.none,
@@ -407,7 +442,7 @@ class _SearchScreenState extends State<SearchScreen> {
   /// The idle state: what to search, not a note saying to search.
   ///
   /// Both lists render nothing when they are empty - a first-run account with
-  /// no history on a platform with no trending tags gets a bare search field,
+  /// no history on a platform with no popular topics gets a bare search field,
   /// which is honest, rather than two empty panels.
   Widget _suggestions(CLPalette p) {
     return Column(
@@ -437,22 +472,23 @@ class _SearchScreenState extends State<SearchScreen> {
           faceRingColor: p.bg,
           // Fills the field. See _useSuggestion.
           onTopicTap: (topic) => _useSuggestion(topic.slug),
-          onSeeAll: () => _openDetail(SearchDetailKind.tags),
+          onSeeAll: () => _openDetail(SearchDetailKind.topics),
         ),
       ],
     );
   }
 
-  Widget _tagsSection(CLPalette p) {
-    final tags = _overview?.tags.results ?? const <PopularTopic>[];
+  Widget _topicsSection(CLPalette p) {
+    final topics = _overview?.topics.results ?? const <PopularTopic>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         CLSectionHeader(
-          title: "Tags",
-          actionLabel: tags.isEmpty ? null : "See all",
-          onAction: tags.isEmpty ? null : () => _openDetail(SearchDetailKind.tags),
+          title: "Topics",
+          actionLabel: topics.isEmpty ? null : "See all",
+          onAction:
+              topics.isEmpty ? null : () => _openDetail(SearchDetailKind.topics),
         ),
         if (_isLoading)
           CLTopicList(
@@ -462,16 +498,16 @@ class _SearchScreenState extends State<SearchScreen> {
             faceRingColor: p.bg,
             onTopicTap: _openTopic,
           )
-        else if (tags.isEmpty)
+        else if (topics.isEmpty)
           const CLSectionEmpty(
             icon: Icons.tag,
-            title: "No tags found",
-            subtitle: "Hashtags people post with show up here.",
+            title: "No topics found",
+            subtitle: "Hashtags people post with become topics.",
           )
         else
           CLTopicList(
-            topics: tags,
-            highlight: _query,
+            topics: topics,
+            highlight: _searched,
             faceRingColor: p.bg,
             onTopicTap: _openTopic,
           ),
@@ -583,7 +619,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    final hasQuery = _query.trim().isNotEmpty;
+    final hasResults = _searched.isNotEmpty;
 
     // Deliberately a bare Scaffold with NO SafeArea - this is a tab, and the
     // shell owns both insets: its header reserves the status bar and its bottom
@@ -602,7 +638,7 @@ class _SearchScreenState extends State<SearchScreen> {
             _searchField(p),
             // The chips scope RESULTS, so they exist only when there are
             // results to scope - see the file header.
-            if (hasQuery) ...[
+            if (hasResults) ...[
               const SizedBox(height: 14),
               CLChipsRail(
                 children: _filterDefs
@@ -616,7 +652,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ],
             const SizedBox(height: 22),
-            if (!hasQuery)
+            if (!hasResults)
               _suggestions(p)
             else
               ..._resultSections(p, presence),
@@ -633,8 +669,8 @@ class _SearchScreenState extends State<SearchScreen> {
   /// list of one, and there is no leading or trailing gap to suppress.
   List<Widget> _resultSections(CLPalette p, Map<String, PresenceInfo> presence) {
     final sections = <Widget>[
-      if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.tags)
-        _tagsSection(p),
+      if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.topics)
+        _topicsSection(p),
       if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.people)
         _peopleSection(presence),
       if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.realms)

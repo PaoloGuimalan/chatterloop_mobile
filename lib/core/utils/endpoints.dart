@@ -82,7 +82,7 @@ class Endpoints {
 
   /// The topic DIRECTORY - one paginated list, ranked by relevance when ?q= is
   /// given and by trending score when it is not. Backs both Explore's
-  /// "Trending tags - See all" and its Tags results, which differ only in
+  /// "Popular Topics - See all" and its Topics results, which differ only in
   /// whether there is a query. Takes ?q=&page=&page_size=.
   ///
   /// Same path as `topicPosts` below, which is why the two share a prefix: the

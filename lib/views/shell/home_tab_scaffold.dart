@@ -42,7 +42,13 @@ import 'package:go_router/go_router.dart';
 // shorter than the branch list, and why _tabTitles is indexed defensively
 // below rather than with [currentIndex].
 const List<String> _tabTitles = [
-  "Newsfeed",
+  // The home tab is titled with the WORDMARK rather than "Newsfeed". Every
+  // other tab names a section you navigated to; the first one is just where
+  // the app opens, so naming its mechanism reads like a label on a machine.
+  // Spelled the way every other user-facing string spells it (the welcome and
+  // login screens, the notification titles) - not the "ChatterLoop" of the
+  // code comments.
+  "Chatterloop",
   "Messages",
   "Contacts",
   "Servers",

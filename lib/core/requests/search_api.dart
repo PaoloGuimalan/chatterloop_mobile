@@ -98,6 +98,17 @@ class SearchApi {
       if (response.data["status"] != true) return null;
       final result = response.data["result"];
       if (result is! Map) return null;
+
+      // A section the server does not send at all renders exactly like a
+      // section with no matches - "No topics found" over a response that looks
+      // fine at a glance. That is the shape of a client running ahead of the
+      // API it is pointed at, and it is worth one line to make it say so.
+      if (kDebugMode) {
+        if (result["topics"] == null && result["tags"] == null) {
+          print("[search] overview carried no topics section - the server at "
+              "this base URL predates it. Sections present: ${result.keys}");
+        }
+      }
       return SearchOverview.fromJson(Map<String, dynamic>.from(result));
     } catch (e) {
       if (kDebugMode) {

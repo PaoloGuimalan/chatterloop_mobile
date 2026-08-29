@@ -4,10 +4,13 @@
 // card was ADDED ABOVE surfaces that already had an empty state - so Explore
 // and the Newsfeed each showed two half-filled things at once. Turn 2 fixes
 // both the same way: let topics BE the empty state rather than sit on top of
-// one. Practically, for this file, that means the rows lost their card, their
-// rank numbers and their category pills, and became plain list rows - a "#"
-// tile, the tag, its category, and who is in it - so they read as suggestions
-// belonging to the surface around them.
+// one. Practically, for this file, that means the rows lost their card and
+// their rank numbers and became plain list rows - a "#" tile, the tag, its
+// category pill, and who is in it - so they read as suggestions belonging to
+// the surface around them.
+//
+// The tag itself is drawn WITHOUT a leading "#": the tile immediately left of
+// it is the hash mark, and carrying both put it on the row twice.
 //
 // Rows carry topic name, category and participant avatars ONLY. No post
 // counts: a count is a number the reader cannot act on.
@@ -36,7 +39,8 @@ const int kPopularTopicMax = 8;
 
 /// What the newsfeed's empty state shows. Four rows, because that empty state
 /// also carries a heading, a subtitle and an "Explore more" button, and the
-/// card has to fit them all on the shortest phone without scrolling.
+/// card sizes to all of them together - past four it stops being an empty state
+/// with somewhere to go and becomes a list with a notice on top.
 const int kPopularTopicFeedPreview = 4;
 
 /// Row metrics, shared by the row and its skeleton so the two cannot drift -
@@ -45,11 +49,55 @@ const double kTopicRowPaddingV = 9;
 const double kTopicTileSize = 36;
 const double kTopicNameHeight = 17;
 const double kTopicNameGap = 2;
-const double kTopicCategoryHeight = 15;
+const double kTopicPillHeight = 20;
+
+/// Matches the web's .cl-topic-pill max-width, so a long category ellipsises
+/// rather than shoving the avatars off the row.
+const double kTopicPillMaxWidth = 160;
 const double kTopicFaceSize = 24;
 
 /// How far each avatar laps the one before it.
 const double kTopicFaceOverlap = 9;
+
+/// The category pill's colours, picked by hashing the CATEGORY name so a
+/// category keeps its colour across sessions AND between the two clients - the
+/// same eight variants and the same hash the web uses, so "Technology" is the
+/// same colour in the app as in the browser.
+///
+/// Mirrors .cl-topic-pill--N in webapp/src/styles/styles.css, dark variants
+/// included: a light tint that reads correctly on a white card glows on a dark
+/// one, so dark mode uses a translucent wash of the same hue instead.
+const List<(Color, Color)> _pillLight = [
+  (Color(0xFFE7F0FE), Color(0xFF1B5FC1)),
+  (Color(0xFFE3F7ED), Color(0xFF12805A)),
+  (Color(0xFFFDF0D9), Color(0xFFA06400)),
+  (Color(0xFFFFE9EC), Color(0xFFC2334A)),
+  (Color(0xFFF0EAFF), Color(0xFF6B3FD4)),
+  (Color(0xFFE0F5F8), Color(0xFF0B7183)),
+  (Color(0xFFFFE9F3), Color(0xFFBF3579)),
+  (Color(0xFFECEEF2), Color(0xFF4A5462)),
+];
+
+const List<(Color, Color)> _pillDark = [
+  (Color(0x293C8BFF), Color(0xFF9EC5FF)),
+  (Color(0x2920BD7C), Color(0xFF74E0AE)),
+  (Color(0x2EE69500), Color(0xFFF5C46A)),
+  (Color(0x29FF5B6B), Color(0xFFFF9AA6)),
+  (Color(0x2E8B5CF6), Color(0xFFC4A8FF)),
+  (Color(0x2E0EA5B7), Color(0xFF6FD8E8)),
+  (Color(0x29F0518C), Color(0xFFFF9CC6)),
+  (Color(0x14FFFFFF), Color(0xFFB7C0CC)),
+];
+
+/// Stable hash - the same function the web's pillClassFor uses, so the two
+/// clients land on the same variant for the same category.
+int _hash(String value) {
+  var h = 0;
+  for (var i = 0; i < value.length; i++) {
+    h = (h * 31 + value.codeUnitAt(i)) & 0xFFFFFFFF;
+  }
+  return h;
+}
 
 /// The trending list, fetched.
 ///
@@ -65,9 +113,9 @@ class CLPopularTopics extends StatefulWidget {
   /// carries an "Explore more" button of its own below the rows.
   final VoidCallback? onSeeAll;
 
-  /// Section label above the rows. Both current surfaces call it "Trending
-  /// tags" - which is what it is - rather than "Popular topics", the internal
-  /// name of the ranking.
+  /// Section label above the rows. "Popular Topics" everywhere - the same words
+  /// the ranking is called internally, so what a surface shows and what the
+  /// endpoint is named cannot drift apart.
   final String title;
 
   /// How many rows to show.
@@ -85,7 +133,7 @@ class CLPopularTopics extends StatefulWidget {
     super.key,
     required this.onTopicTap,
     this.onSeeAll,
-    this.title = "Trending tags",
+    this.title = "Popular Topics",
     this.limit = kPopularTopicMax,
     this.dividers = false,
     this.faceRingColor,
@@ -279,19 +327,7 @@ class CLTopicRow extends StatelessWidget {
                   children: [
                     _TopicName(slug: topic.slug, highlight: highlight),
                     const SizedBox(height: kTopicNameGap),
-                    Text(
-                      topic.category,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: p.text3,
-                        fontSize: CLType.caption,
-                        // Pinned so the row's height is deterministic rather
-                        // than a property of whatever font the device
-                        // resolves - the skeleton reserves exactly this.
-                        height: kTopicCategoryHeight / CLType.caption,
-                      ),
-                    ),
+                    _CategoryPill(category: topic.category),
                   ],
                 ),
               ),
@@ -305,7 +341,60 @@ class CLTopicRow extends StatelessWidget {
   }
 }
 
-/// "#sunsetseries", with the matched run marked when there is a query.
+/// The category, as a colour-coded pill.
+///
+/// The pill HUGS its label, like the web's inline-flex. Two things make that
+/// work in Flutter and both are easy to lose: a Container with an `alignment`
+/// expands to its bounded constraints instead of sizing to its child, so the
+/// vertical centring is done by an inner Align with widthFactor: 1; and the
+/// outer Align keeps the hugged pill at the start of the column rather than
+/// centred in the leftover space.
+class _CategoryPill extends StatelessWidget {
+  final String category;
+
+  const _CategoryPill({required this.category});
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final (background, foreground) =
+        (dark ? _pillDark : _pillLight)[_hash(category) % _pillLight.length];
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: kTopicPillMaxWidth),
+        child: Container(
+          height: kTopicPillHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 9),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Align(
+            alignment: Alignment.center,
+            widthFactor: 1,
+            child: Text(
+              category,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: foreground,
+                fontSize: CLType.meta,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The tag, with the matched run marked when there is a query.
+///
+/// No leading "#": the tile to the left of this IS the hash mark, and drawing
+/// both put it on the row twice.
 ///
 /// Matched against the SLUG, which is what is drawn: the query is normalised
 /// the same way a hashtag is (a leading "#" and any spaces removed, lowercased)
@@ -337,7 +426,7 @@ class _TopicName extends StatelessWidget {
     final start = needle.isEmpty ? -1 : slug.toLowerCase().indexOf(needle);
 
     if (start < 0) {
-      return Text('#$slug',
+      return Text(slug,
           maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
     }
 
@@ -345,7 +434,7 @@ class _TopicName extends StatelessWidget {
       TextSpan(
         style: style,
         children: [
-          TextSpan(text: '#${slug.substring(0, start)}'),
+          TextSpan(text: slug.substring(0, start)),
           TextSpan(
             text: slug.substring(start, start + needle.length),
             style: TextStyle(
@@ -443,7 +532,11 @@ class CLTopicRowSkeleton extends StatelessWidget {
               children: const [
                 CLSkeleton(width: 118, height: kTopicNameHeight),
                 SizedBox(height: kTopicNameGap),
-                CLSkeleton(width: 84, height: kTopicCategoryHeight),
+                CLSkeleton(
+                  width: 84,
+                  height: kTopicPillHeight,
+                  borderRadius: BorderRadius.all(Radius.circular(999)),
+                ),
               ],
             ),
           ),
@@ -523,7 +616,7 @@ class CLTopicHeaderCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '#${topic.slug}',
+                  topic.slug,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -533,12 +626,11 @@ class CLTopicHeaderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: kTopicNameGap),
-                Text(
-                  topic.category,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: p.text3, fontSize: CLType.caption),
-                ),
+                // The same pill the rows carry, and the same hashed colour -
+                // this card is what a row becomes when you open it, so a
+                // category that changed appearance between the two would read
+                // as a different category.
+                _CategoryPill(category: topic.category),
               ],
             ),
           ),

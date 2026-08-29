@@ -112,8 +112,13 @@ class _TopicDetailScreenState extends State<TopicDetailScreen>
     return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(
-        // The slug, not the readable name: it is what the URL and the hashtag
-        // both say, so the title matches what was tapped.
+        // The slug, with its "#". The redundancy rule that stripped the hash
+        // off the row and card names does not reach up here: those sit beside a
+        // "#" tile that already carries the mark, and this does not. Written
+        // bare, a title would just be a word.
+        //
+        // The slug rather than the readable name, because it is what the URL
+        // and the hashtag both say - so the title matches what was tapped.
         title: Text('#${topic?.slug ?? widget.slug}'),
       ),
       body: RefreshIndicator(

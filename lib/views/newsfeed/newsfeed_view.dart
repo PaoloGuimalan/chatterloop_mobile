@@ -235,23 +235,25 @@ class _NewsfeedViewState extends State<NewsfeedView>
       },
       child: RefreshIndicator(
         onRefresh: _refresh,
-        // Slivers rather than a ListView, for ONE reason: 2b's empty state has
-        // to fill the screen below the composer exactly. SliverFillRemaining is
-        // the only way to say "whatever height is left" inside a scroll view -
-        // a ListView child can only be given a number, and any number is wrong
-        // on some phone.
+        // Slivers rather than a ListView so the three bodies below - skeletons,
+        // empty card, posts - are each their own sliver rather than branches
+        // inside one children list.
         child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverPadding(
+              // No bottom padding: ProfileComposerCard already carries a 10
+              // bottom margin of its own, so anything here is ADDED to it - a
+              // second 10 put the feed 20 below the composer while the empty
+              // card sat at the same 20, both further down than either wanted.
+              // Zero here leaves the composer's own margin as the whole gap,
+              // which is the one number both branches below inherit.
               padding: const EdgeInsets.fromLTRB(
                 CLSpacing.contentGutter,
                 12,
                 CLSpacing.contentGutter,
-                // The composer sits tight against what follows it when that is
-                // the empty card, and clears the first post otherwise.
-                10,
+                0,
               ),
               // The same composer the profiles use. No autoTag: this is your
               // own feed, not someone's profile, so there is nobody to tag by
@@ -267,7 +269,7 @@ class _NewsfeedViewState extends State<NewsfeedView>
               const SliverPadding(
                 padding: EdgeInsets.fromLTRB(
                   CLSpacing.contentGutter,
-                  12,
+                  0,
                   CLSpacing.contentGutter,
                   24,
                 ),
@@ -285,12 +287,13 @@ class _NewsfeedViewState extends State<NewsfeedView>
                   CLSpacing.contentGutter,
                   24,
                 ),
-                // hasScrollBody: false makes this size to its child but grow to
-                // fill the viewport - so the card is exactly as tall as the
-                // space left, and the screen reads as deliberately empty rather
-                // than half-empty.
-                sliver: SliverFillRemaining(
-                  hasScrollBody: false,
+                // Sized to its CONTENT, not to the viewport. An earlier version
+                // used SliverFillRemaining to make the card fill the screen,
+                // which stretched it on a tall phone and left a growing band of
+                // dead white between the last topic and the button at its foot.
+                // A card that ends where its content ends reads as finished;
+                // one padded out to the fold reads as still loading.
+                sliver: SliverToBoxAdapter(
                   child: _EmptyFeed(onTopicTap: _openTopic),
                 ),
               )
@@ -342,9 +345,9 @@ class _NewsfeedViewState extends State<NewsfeedView>
 ///
 /// ONE state, not two. The topics used to be a permanent card between the
 /// composer and the feed, which meant an empty feed showed a half-filled topics
-/// card above a half-filled "your feed is quiet" panel. Here the whole scroll
-/// below the composer IS the empty state, and the topics are what fills it:
-/// something to do about the emptiness, in the place the emptiness is.
+/// card above a half-filled "your feed is quiet" panel. Here the empty state
+/// OWNS the topics: one card, holding both the fact that there is nothing and
+/// something to do about it.
 ///
 /// The other half of that rule lives in the caller: once there are posts, this
 /// widget is not built at all, and topics live only in Explore. A feed with
@@ -367,6 +370,7 @@ class _EmptyFeed extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
           CLEmptyState(
             compact: true,
@@ -374,10 +378,10 @@ class _EmptyFeed extends StatelessWidget {
             iconBg: p.brandSoft,
             iconColor: p.brand,
             title: "You're all caught up!",
-            // Names the action the tags below it are FOR. The old copy
+            // Names the action the topics below it are FOR. The old copy
             // ("posts from people and pages you follow show up here") described
             // a mechanism with nothing to do about it.
-            subtitle: "Follow a tag and posts from it will show up here.",
+            subtitle: "Follow a topic and posts from it will show up here.",
           ),
           const SizedBox(height: 24),
           Container(height: 1, color: p.border),
@@ -387,9 +391,9 @@ class _EmptyFeed extends StatelessWidget {
             dividers: true,
             onTopicTap: onTopicTap,
           ),
-          // Pushes the button to the bottom of however much room the card was
-          // given, so it lands on the same edge whatever the phone.
-          const Spacer(),
+          // Close to the last row on purpose - the button is where that list
+          // continues, not a separate thing at the foot of a panel. The rows
+          // carry 9 of their own padding below them, so this reads as ~21.
           const SizedBox(height: 12),
           _ExploreMoreButton(),
         ],

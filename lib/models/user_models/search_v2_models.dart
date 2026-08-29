@@ -263,17 +263,18 @@ class SearchOverviewSection<T> {
 }
 
 class SearchOverview {
-  /// Tags first, because that is the order Explore renders them in: somebody
+  /// Topics first, because that is the order Explore renders them in: somebody
   /// typing "sunset" usually means the topic, not a person whose surname
-  /// contains it. Rows are PopularTopic - the same shape the trending list and
-  /// the topic directory return, so one widget draws a tag wherever it appears.
-  final SearchOverviewSection<PopularTopic> tags;
+  /// contains it. Rows are PopularTopic - the same shape the popular list and
+  /// the topic directory return, so one widget draws a topic wherever it
+  /// appears.
+  final SearchOverviewSection<PopularTopic> topics;
   final SearchOverviewSection<SearchPersonResult> people;
   final SearchOverviewSection<SearchRealmResult> realms;
   final SearchOverviewSection<SearchPostResult> posts;
 
   const SearchOverview({
-    required this.tags,
+    required this.topics,
     required this.people,
     required this.realms,
     required this.posts,
@@ -284,7 +285,7 @@ class SearchOverview {
     SearchOverviewSection<SearchRealmResult>? realms,
   }) =>
       SearchOverview(
-        tags: tags,
+        topics: topics,
         people: people ?? this.people,
         realms: realms ?? this.realms,
         posts: posts,
@@ -292,7 +293,14 @@ class SearchOverview {
 
   factory SearchOverview.fromJson(Map<String, dynamic> json) {
     return SearchOverview(
-      tags: SearchOverviewSection.parse(json["tags"], PopularTopic.fromJson),
+      // "tags" is the same section under the name it shipped with first. The
+      // key was renamed to "topics" along with the labels, and a client that
+      // only reads the new one goes blank against a server still serving the
+      // old one - which looks identical to "no results", right down to a
+      // response that reads correctly if you eyeball it. Cheaper to accept
+      // both than to require the two to be deployed in the same minute.
+      topics: SearchOverviewSection.parse(
+          json["topics"] ?? json["tags"], PopularTopic.fromJson),
       people: SearchOverviewSection.parse(
           json["people"], SearchPersonResult.fromJson),
       realms: SearchOverviewSection.parse(

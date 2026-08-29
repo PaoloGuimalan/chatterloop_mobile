@@ -245,7 +245,7 @@ class CLSectionHeader extends StatelessWidget {
 /// The distinction is what the list below it IS. A CLSectionHeader titles a
 /// destination ("People", with a See all that opens it); this labels a group of
 /// rows inside a screen that is about something else - Explore's idle
-/// suggestions, the trending tags inside the newsfeed's empty state - where a
+/// suggestions, the popular topics inside the newsfeed's empty state - where a
 /// full-size heading would claim more of the screen than the rows underneath it
 /// are worth.
 class CLOverlineHeader extends StatelessWidget {
