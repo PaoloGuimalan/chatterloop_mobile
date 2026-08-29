@@ -381,7 +381,7 @@ class _EmptyFeed extends StatelessWidget {
             // Names the action the topics below it are FOR. The old copy
             // ("posts from people and pages you follow show up here") described
             // a mechanism with nothing to do about it.
-            subtitle: "Follow a topic and posts from it will show up here.",
+            subtitle: "Browse popular topics to find new posts and people to follow.",
           ),
           const SizedBox(height: 24),
           Container(height: 1, color: p.border),
