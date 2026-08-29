@@ -80,6 +80,15 @@ class Endpoints {
   /// filtered per-viewer, so responses must not be shared between accounts.
   String popularTopics = '/api/interests/popular/';
 
+  /// The topic DIRECTORY - one paginated list, ranked by relevance when ?q= is
+  /// given and by trending score when it is not. Backs both Explore's
+  /// "Trending tags - See all" and its Tags results, which differ only in
+  /// whether there is a query. Takes ?q=&page=&page_size=.
+  ///
+  /// Same path as `topicPosts` below, which is why the two share a prefix: the
+  /// bare list is the collection, `:slug/posts/` is one member's contents.
+  String topicList = '/api/interests/topics/';
+
   /// Posts inside one topic, addressed by the interest's normalized_name -
   /// the same string a hashtag normalises to. Plain DRF pagination plus a
   /// `topic` object naming what is being listed. Takes ?page=&page_size=.

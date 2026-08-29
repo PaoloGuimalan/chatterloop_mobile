@@ -239,6 +239,69 @@ class CLSectionHeader extends StatelessWidget {
   }
 }
 
+/// A quieter section label than [CLSectionHeader] - small, uppercase, tracked
+/// out, sitting directly on top of a list rather than titling a whole section.
+///
+/// The distinction is what the list below it IS. A CLSectionHeader titles a
+/// destination ("People", with a See all that opens it); this labels a group of
+/// rows inside a screen that is about something else - Explore's idle
+/// suggestions, the trending tags inside the newsfeed's empty state - where a
+/// full-size heading would claim more of the screen than the rows underneath it
+/// are worth.
+class CLOverlineHeader extends StatelessWidget {
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  const CLOverlineHeader({
+    super.key,
+    required this.title,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, right: 2, bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: CLType.caption,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+                color: p.text3,
+              ),
+            ),
+          ),
+          if (actionLabel != null && onAction != null)
+            InkWell(
+              onTap: onAction,
+              borderRadius: BorderRadius.circular(CLRadii.xs),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  actionLabel!,
+                  style: TextStyle(
+                    fontSize: CLType.label,
+                    fontWeight: FontWeight.w600,
+                    color: p.brand,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Header + horizontally scrolling track, with the chevrons in the header.
 ///
 /// The track is as tall as its tallest child and no taller: a

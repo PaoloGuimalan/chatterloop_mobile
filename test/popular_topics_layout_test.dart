@@ -1,10 +1,10 @@
-// Popular Topics - the ranked-list layout (1b).
+// Topic rows - the 2a/2b list layout.
 //
 // What is pinned here is the stuff that only breaks visually: a loader that is
-// a different height than the row it stands in for, a rank that does not mark
-// the leader, and the two things that must NOT appear on a card - a post count
-// ("cards carry topic name, category label and participant avatars only") and
-// any follow control.
+// a different height than the row it stands in for, a match highlight that
+// marks the wrong run (or the wrong screen's worth of them), and the two things
+// that must NOT appear on a row - a post count ("rows carry topic name,
+// category and participant avatars only") and any follow control.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/reusables/widgets/popular_topics.dart';
@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 PopularTopic _topic({
+  String slug = 'sunsetseries',
   String category = 'Photography',
   int posts = 412,
   List<PopularTopicFace> faces = const [],
@@ -20,7 +21,7 @@ PopularTopic _topic({
     PopularTopic(
       id: 1,
       name: 'sunset series',
-      slug: 'sunsetseries',
+      slug: slug,
       category: category,
       score: 12.0,
       posts: posts,
@@ -29,17 +30,17 @@ PopularTopic _topic({
 
 Future<void> _pumpRow(
   WidgetTester tester, {
-  required int rank,
   PopularTopic? topic,
+  String? highlight,
 }) async {
   await tester.pumpWidget(MaterialApp(
     theme: buildCLTheme(Brightness.light),
     home: Scaffold(
       body: SizedBox(
         width: 390, // the design's frame
-        child: CLPopularTopicsRow(
+        child: CLTopicRow(
           topic: topic ?? _topic(),
-          rank: rank,
+          highlight: highlight,
           onTap: () {},
         ),
       ),
@@ -47,26 +48,14 @@ Future<void> _pumpRow(
   ));
 }
 
-Color _rankColour(WidgetTester tester, String rank) =>
-    tester.widget<Text>(find.text(rank)).style!.color!;
+/// The name as the user reads it, whether it was drawn as one span or three.
+String _renderedName(WidgetTester tester) =>
+    tester.widget<Text>(find.byType(Text).at(1)).textSpan!.toPlainText();
 
 void main() {
-  group('the chart reads as a chart', () {
-    testWidgets('the leader is brand-coloured and the rest are muted',
-        (tester) async {
-      await _pumpRow(tester, rank: 1);
-      final first = _rankColour(tester, '1');
-
-      await _pumpRow(tester, rank: 2);
-      final second = _rankColour(tester, '2');
-
-      expect(first, isNot(second),
-          reason: 'rank 1 must stand out from the rows below it');
-    });
-
-    testWidgets('a row carries name and category, and nothing numeric',
-        (tester) async {
-      await _pumpRow(tester, rank: 1);
+  group('a row says what a topic is, and nothing else', () {
+    testWidgets('name and category, nothing numeric', (tester) async {
+      await _pumpRow(tester);
 
       expect(find.text('#sunsetseries'), findsOneWidget);
       expect(find.text('Photography'), findsOneWidget);
@@ -77,7 +66,7 @@ void main() {
     });
 
     testWidgets('there is no follow control on a topic row', (tester) async {
-      await _pumpRow(tester, rank: 1);
+      await _pumpRow(tester);
       expect(find.textContaining('Follow'), findsNothing);
     });
 
@@ -96,11 +85,52 @@ void main() {
     });
   });
 
+  group('the match highlight', () {
+    testWidgets('marks the matched run without changing the name',
+        (tester) async {
+      await _pumpRow(tester, highlight: 'sunset');
+
+      // Drawn as three spans, but it still reads as the whole tag - a
+      // highlight that drops or reorders characters is the failure mode.
+      expect(_renderedName(tester), '#sunsetseries');
+    });
+
+    testWidgets('normalises the query the way a hashtag normalises',
+        (tester) async {
+      // "north edsa" and "#northedsa" are the same interest, so both must mark
+      // the same run rather than one of them silently matching nothing.
+      for (final query in ['north edsa', '#northedsa', 'North Edsa']) {
+        await _pumpRow(
+          tester,
+          topic: _topic(slug: 'northedsa'),
+          highlight: query,
+        );
+        expect(_renderedName(tester), '#northedsa', reason: 'query: $query');
+        // Three spans means a run was actually marked; one means it fell back
+        // to the plain name.
+        expect(
+          (tester.widget<Text>(find.byType(Text).at(1)).textSpan
+                  as TextSpan)
+              .children!
+              .length,
+          3,
+          reason: 'query: $query',
+        );
+      }
+    });
+
+    testWidgets('a query that matches nothing leaves the name alone',
+        (tester) async {
+      await _pumpRow(tester, highlight: 'zzz');
+      expect(find.text('#sunsetseries'), findsOneWidget);
+    });
+  });
+
   group('layout', () {
     testWidgets('the skeleton is exactly as tall as the row it stands in for',
         (tester) async {
       // The invariant that matters: a loader of a different height makes the
-      // card resize when the data lands. Asserted as an equality rather than a
+      // list resize when the data lands. Asserted as an equality rather than a
       // magic number, so it survives a deliberate metric change.
       await tester.pumpWidget(MaterialApp(
         theme: buildCLTheme(Brightness.light),
@@ -110,8 +140,8 @@ void main() {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CLPopularTopicsRow(topic: _topic(), rank: 1, onTap: () {}),
-                const CLPopularTopicsRowSkeleton(),
+                CLTopicRow(topic: _topic(), onTap: () {}),
+                const CLTopicRowSkeleton(),
               ],
             ),
           ),
@@ -119,63 +149,21 @@ void main() {
       ));
 
       expect(
-        tester.getSize(find.byType(CLPopularTopicsRowSkeleton)).height,
-        tester.getSize(find.byType(CLPopularTopicsRow)).height,
+        tester.getSize(find.byType(CLTopicRowSkeleton)).height,
+        tester.getSize(find.byType(CLTopicRow)).height,
       );
-    });
-
-    testWidgets('the category pill hugs its label instead of filling the row',
-        (tester) async {
-      // A Container with an `alignment` expands to its bounded constraints
-      // rather than sizing to its child - which stretched this pill across the
-      // whole row once before, and is invisible in a static read of the tree.
-      Future<double> widthFor(String category) async {
-        await _pumpRow(tester, rank: 1, topic: _topic(category: category));
-        final pill = find.ancestor(
-          of: find.text(category),
-          matching: find.byType(Container),
-        );
-        return tester.getSize(pill.first).width;
-      }
-
-      final short = await widthFor('Tech');
-      final long = await widthFor('Pets and Animals');
-
-      expect(short, lessThan(150));
-      expect(long, greaterThan(short),
-          reason: 'a longer category must produce a wider pill');
-      expect(long, lessThanOrEqualTo(kTopicPillMaxWidth));
-    });
-
-    testWidgets('the same category always gets the same colour',
-        (tester) async {
-      // Hashed, not positional: the colour must not change as the chart
-      // reorders, and it must agree with the web for the same category.
-      Future<Color> colourFor(String category, int rank) async {
-        await _pumpRow(tester, rank: rank, topic: _topic(category: category));
-        final pill = tester.widget<Container>(find
-            .ancestor(
-                of: find.text(category), matching: find.byType(Container))
-            .first);
-        return (pill.decoration as BoxDecoration).color!;
-      }
-
-      expect(await colourFor('Technology', 1), await colourFor('Technology', 5));
-      expect(await colourFor('Technology', 1),
-          isNot(await colourFor('Food and Drink', 1)));
     });
 
     testWidgets('a long category truncates instead of widening the row',
         (tester) async {
       await _pumpRow(
         tester,
-        rank: 1,
         topic: _topic(
             category: 'An Extremely Long Category Name That Would Overflow'),
       );
 
       expect(tester.takeException(), isNull);
-      expect(tester.getSize(find.byType(CLPopularTopicsRow)).width, 390);
+      expect(tester.getSize(find.byType(CLTopicRow)).width, 390);
     });
 
     testWidgets('avatars lap each other rather than sitting side by side',
@@ -189,13 +177,39 @@ void main() {
           initials: 'P$i',
         ),
       );
-      await _pumpRow(tester, rank: 1, topic: _topic(faces: faces));
+      await _pumpRow(tester, topic: _topic(faces: faces));
 
       // Three 24px avatars lapping by 9 occupy 24 + 2*15 = 54, not 72.
       expect(
         tester.getSize(find.byType(Stack).first).width,
         kTopicFaceSize + 2 * (kTopicFaceSize - kTopicFaceOverlap),
       );
+    });
+
+    testWidgets('a list draws one row per topic, dividers between them',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: Scaffold(
+          body: SizedBox(
+            width: 390,
+            child: CLTopicList(
+              topics: [
+                _topic(slug: 'one'),
+                _topic(slug: 'two'),
+                _topic(slug: 'three'),
+              ],
+              dividers: true,
+              onTopicTap: (_) {},
+            ),
+          ),
+        ),
+      ));
+
+      expect(find.byType(CLTopicRow), findsNWidgets(3));
+      // Between the rows, never above the first or below the last.
+      expect(find.text('#one'), findsOneWidget);
+      expect(find.text('#three'), findsOneWidget);
     });
   });
 }

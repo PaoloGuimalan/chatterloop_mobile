@@ -8,6 +8,8 @@
 // sentinels - user "none" and realm "N/A" - come back as null), so nothing
 // here needs to re-check for them.
 
+import 'package:chatterloop_app/models/user_models/popular_topic_model.dart';
+
 /// A person hit. `is_followed` and `is_follow_pending` together drive the
 /// card's Follow / Requested / Following toggle - they are mutually
 /// exclusive, and pending means a follow of a PRIVATE profile awaiting its
@@ -261,11 +263,17 @@ class SearchOverviewSection<T> {
 }
 
 class SearchOverview {
+  /// Tags first, because that is the order Explore renders them in: somebody
+  /// typing "sunset" usually means the topic, not a person whose surname
+  /// contains it. Rows are PopularTopic - the same shape the trending list and
+  /// the topic directory return, so one widget draws a tag wherever it appears.
+  final SearchOverviewSection<PopularTopic> tags;
   final SearchOverviewSection<SearchPersonResult> people;
   final SearchOverviewSection<SearchRealmResult> realms;
   final SearchOverviewSection<SearchPostResult> posts;
 
   const SearchOverview({
+    required this.tags,
     required this.people,
     required this.realms,
     required this.posts,
@@ -276,6 +284,7 @@ class SearchOverview {
     SearchOverviewSection<SearchRealmResult>? realms,
   }) =>
       SearchOverview(
+        tags: tags,
         people: people ?? this.people,
         realms: realms ?? this.realms,
         posts: posts,
@@ -283,6 +292,7 @@ class SearchOverview {
 
   factory SearchOverview.fromJson(Map<String, dynamic> json) {
     return SearchOverview(
+      tags: SearchOverviewSection.parse(json["tags"], PopularTopic.fromJson),
       people: SearchOverviewSection.parse(
           json["people"], SearchPersonResult.fromJson),
       realms: SearchOverviewSection.parse(

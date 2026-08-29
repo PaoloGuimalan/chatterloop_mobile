@@ -43,6 +43,36 @@ class InterestsApi {
     }
   }
 
+  /// One page of the topic directory: matches for [query], or the trending
+  /// list when it is empty.
+  ///
+  /// Both cases are the SAME request - the server switches its ordering on the
+  /// presence of a query and nothing else - so Explore's "See all" and its Tags
+  /// results page the identical endpoint rather than one screen having to know
+  /// which of two it is looking at.
+  Future<PagedResult<PopularTopic>> searchTopics({
+    String query = '',
+    int page = 1,
+    int pageSize = 12,
+  }) async {
+    try {
+      final response = await _dio.get(
+        _endpoints.topicList,
+        queryParameters: {
+          if (query.trim().isNotEmpty) 'q': query.trim(),
+          'page': page,
+          'page_size': pageSize,
+        },
+      );
+      return PagedResult.fromDrf(response.data, PopularTopic.fromJson);
+    } catch (e) {
+      if (kDebugMode) {
+        print('searchTopics failed: $e');
+      }
+      return PagedResult.empty<PopularTopic>();
+    }
+  }
+
   /// One page of the posts filed under [slug], plus the topic itself.
   ///
   /// The topic travels with every page so a drill-down header can name what it

@@ -205,8 +205,6 @@ class _NewsfeedViewState extends State<NewsfeedView>
 
   @override
   Widget build(BuildContext context) {
-    final p = cl(context);
-
     return StoreConnector<AppState, String>(
       distinct: true,
       converter: (store) => store.state.userAuth.user.entityId,
@@ -219,12 +217,14 @@ class _NewsfeedViewState extends State<NewsfeedView>
           });
         }
         _lastEntityId = entityId;
-        return _feed(p);
+        return _feed();
       },
     );
   }
 
-  Widget _feed(CLPalette p) {
+  Widget _feed() {
+    final isEmpty = !_isLoading && _posts.isEmpty;
+
     return VisibilityDetector(
       // The other flush trigger: switching tabs, or pushing any screen over
       // the feed. An IndexedStack branch that isn't selected doesn't paint,
@@ -235,90 +235,207 @@ class _NewsfeedViewState extends State<NewsfeedView>
       },
       child: RefreshIndicator(
         onRefresh: _refresh,
-        child: ListView(
+        // Slivers rather than a ListView, for ONE reason: 2b's empty state has
+        // to fill the screen below the composer exactly. SliverFillRemaining is
+        // the only way to say "whatever height is left" inside a scroll view -
+        // a ListView child can only be given a number, and any number is wrong
+        // on some phone.
+        child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
-            CLSpacing.contentGutter,
-            12,
-            CLSpacing.contentGutter,
-            24,
-          ),
-          children: [
-            // The same composer the profiles use. No autoTag: this is your own
-            // feed, not someone's profile, so there is nobody to tag by default.
-            ProfileComposerCard.forActingEntity(
-              placeholder: "Share your thoughts…",
-              onPosted: _refresh,
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                CLSpacing.contentGutter,
+                12,
+                CLSpacing.contentGutter,
+                // The composer sits tight against what follows it when that is
+                // the empty card, and clears the first post otherwise.
+                10,
+              ),
+              // The same composer the profiles use. No autoTag: this is your
+              // own feed, not someone's profile, so there is nobody to tag by
+              // default.
+              sliver: SliverToBoxAdapter(
+                child: ProfileComposerCard.forActingEntity(
+                  placeholder: "Share your thoughts…",
+                  onPosted: _refresh,
+                ),
+              ),
             ),
-            // Popular topics as a feed section, directly under the composer.
-            // Renders nothing at all when there are no topics yet, so a quiet
-            // platform does not get an empty card between the composer and
-            // the first post.
-            const SizedBox(height: 12),
-            CLPopularTopics(
-              // Top three only - this is a teaser between the composer and the
-              // feed, and "See all" is how you get the rest.
-              limit: kPopularTopicFeedPreview,
-              onTopicTap: _openTopic,
-              // go, NOT push. Explore is a shell BRANCH (the header reaches
-              // it with goBranch), so pushing '/search' stacked the Explore
-              // screen inside the newsfeed's own navigator - it rendered, but
-              // the shell still considered you on Newsfeed, with that tab lit
-              // and Back returning into the feed. go switches branches, which
-              // is what tapping the header search does.
-              onExplore: () => context.go('/search'),
-            ),
-            // A section break, not a row gap. PostItem's own margin is
-            // bottom-only, so nothing else separates the topics card from the
-            // first post - 4 here left them looking like one stack. Matches
-            // the 22 Explore puts between its sections.
-            const SizedBox(height: 22),
-            if (_isLoading) ...[
-              const PostItemSkeleton(),
-              const PostItemSkeleton(),
-            ] else if (_posts.isEmpty)
-              Padding(
-                // Enough height that the empty state sits in the body of the
-                // screen rather than clinging to the composer above it.
-                padding: const EdgeInsets.only(top: 48),
-                child: CLEmptyState(
-                  icon: Icons.dynamic_feed_outlined,
-                  iconBg: p.surface2,
-                  iconColor: p.text2,
-                  iconBorderColor: p.border,
-                  title: "Your feed is quiet",
-                  // One sentence per line. CLEmptyState's subtitle sets no
-                  // maxLines, so the breaks render rather than being collapsed
-                  // or clipped.
-                  subtitle:
-                      "Posts from people and pages you follow show up here.\n"
-                      "Follow a few, or share something yourself to get started.",
+            if (_isLoading)
+              const SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  CLSpacing.contentGutter,
+                  12,
+                  CLSpacing.contentGutter,
+                  24,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    children: [PostItemSkeleton(), PostItemSkeleton()],
+                  ),
+                ),
+              )
+            else if (isEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  CLSpacing.contentGutter,
+                  0,
+                  CLSpacing.contentGutter,
+                  24,
+                ),
+                // hasScrollBody: false makes this size to its child but grow to
+                // fill the viewport - so the card is exactly as tall as the
+                // space left, and the screen reads as deliberately empty rather
+                // than half-empty.
+                sliver: SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _EmptyFeed(onTopicTap: _openTopic),
                 ),
               )
             else
-              // No separators or padding of their own - PostItem already carries
-              // its own card margin, and adding spacing here would double it and
-              // leave a dead band between every row.
-              ..._posts.map((post) => PostItem(
-                    post: post,
-                    // Including your own. Their NewsfeedIndex rows are drained
-                    // by a view arriving like anyone else's, and nothing else
-                    // drains them - skip them and your own post is pinned to
-                    // the top of your feed forever.
-                    trackOwnPosts: true,
-                    onChanged: (updated) => setState(() {
-                      for (var i = 0; i < _posts.length; i++) {
-                        if (_posts[i].postId == updated.postId) {
-                          _posts[i] = updated;
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  CLSpacing.contentGutter,
+                  0,
+                  CLSpacing.contentGutter,
+                  24,
+                ),
+                // No separators - PostItem already carries its own card margin,
+                // and adding spacing here would double it and leave a dead band
+                // between every row.
+                sliver: SliverList.builder(
+                  itemCount: _posts.length,
+                  itemBuilder: (context, index) {
+                    final post = _posts[index];
+                    return PostItem(
+                      post: post,
+                      // Including your own. Their NewsfeedIndex rows are
+                      // drained by a view arriving like anyone else's, and
+                      // nothing else drains them - skip them and your own post
+                      // is pinned to the top of your feed forever.
+                      trackOwnPosts: true,
+                      onChanged: (updated) => setState(() {
+                        for (var i = 0; i < _posts.length; i++) {
+                          if (_posts[i].postId == updated.postId) {
+                            _posts[i] = updated;
+                          }
                         }
-                      }
-                    }),
-                    onDeleted: () => setState(() => _posts
-                        .removeWhere((entry) => entry.postId == post.postId)),
-                  )),
-            if (_isLoadingMore) const CLLoadMoreIndicator(),
+                      }),
+                      onDeleted: () => setState(() => _posts
+                          .removeWhere((entry) => entry.postId == post.postId)),
+                    );
+                  },
+                ),
+              ),
+            if (_isLoadingMore)
+              const SliverToBoxAdapter(child: CLLoadMoreIndicator()),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The feed with nothing in it - design 2b.
+///
+/// ONE state, not two. The topics used to be a permanent card between the
+/// composer and the feed, which meant an empty feed showed a half-filled topics
+/// card above a half-filled "your feed is quiet" panel. Here the whole scroll
+/// below the composer IS the empty state, and the topics are what fills it:
+/// something to do about the emptiness, in the place the emptiness is.
+///
+/// The other half of that rule lives in the caller: once there are posts, this
+/// widget is not built at all, and topics live only in Explore. A feed with
+/// something to read should not also be advertising somewhere else to read.
+class _EmptyFeed extends StatelessWidget {
+  final void Function(PopularTopic topic) onTopicTap;
+
+  const _EmptyFeed({required this.onTopicTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 26, 18, 18),
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border.all(color: p.border),
+        borderRadius: BorderRadius.circular(CLRadii.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CLEmptyState(
+            compact: true,
+            icon: Icons.inbox_outlined,
+            iconBg: p.brandSoft,
+            iconColor: p.brand,
+            title: "You're all caught up!",
+            // Names the action the tags below it are FOR. The old copy
+            // ("posts from people and pages you follow show up here") described
+            // a mechanism with nothing to do about it.
+            subtitle: "Follow a tag and posts from it will show up here.",
+          ),
+          const SizedBox(height: 24),
+          Container(height: 1, color: p.border),
+          const SizedBox(height: 16),
+          CLPopularTopics(
+            limit: kPopularTopicFeedPreview,
+            dividers: true,
+            onTopicTap: onTopicTap,
+          ),
+          // Pushes the button to the bottom of however much room the card was
+          // given, so it lands on the same edge whatever the phone.
+          const Spacer(),
+          const SizedBox(height: 12),
+          _ExploreMoreButton(),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExploreMoreButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        // go, NOT push. Explore is a shell BRANCH (the header reaches it with
+        // goBranch), so pushing '/search' stacked the Explore screen inside the
+        // newsfeed's own navigator - it rendered, but the shell still
+        // considered you on Newsfeed, with that tab lit and Back returning into
+        // the feed. go switches branches, which is what tapping the header
+        // search does.
+        onTap: () => context.go('/search'),
+        borderRadius: BorderRadius.circular(CLRadii.sm),
+        child: Container(
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            border: Border.all(color: p.border2),
+            borderRadius: BorderRadius.circular(CLRadii.sm),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.search, size: 18, color: p.brand),
+              const SizedBox(width: 8),
+              Text(
+                "Explore more",
+                style: TextStyle(
+                  color: p.brand,
+                  fontSize: CLType.body,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -10,10 +10,13 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/requests/interests_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/entity_row.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
+import 'package:chatterloop_app/core/reusables/widgets/popular_topics.dart';
+import 'package:chatterloop_app/models/user_models/popular_topic_model.dart';
 import 'package:chatterloop_app/core/reusables/widgets/search_cards.dart';
 import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
@@ -22,18 +25,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
-enum SearchDetailKind { people, realms, posts }
+enum SearchDetailKind { tags, people, realms, posts }
 
 extension SearchDetailKindMeta on SearchDetailKind {
   /// Route segment. "posts" is the endpoint's name; the section is titled
   /// "Content" in the UI, matching web.
   String get slug => switch (this) {
+        SearchDetailKind.tags => "tags",
         SearchDetailKind.people => "people",
         SearchDetailKind.realms => "realms",
         SearchDetailKind.posts => "posts",
       };
 
+  /// Tags are the one kind that is meaningful with NO query - with an empty
+  /// one the endpoint returns the trending directory, which is what Explore's
+  /// idle "Trending tags - See all" opens onto. Hence the two titles: the same
+  /// screen is "the whole trending list" and "the tags matching this" depending
+  /// on how it was entered.
+  String titleFor(String query) =>
+      this == SearchDetailKind.tags && query.trim().isEmpty
+          ? "Trending tags"
+          : title;
+
   String get title => switch (this) {
+        SearchDetailKind.tags => "Tags",
         SearchDetailKind.people => "People",
         SearchDetailKind.realms => "Realms",
         SearchDetailKind.posts => "Content",
@@ -65,6 +80,7 @@ class SearchDetailScreen extends StatefulWidget {
 
 class _SearchDetailScreenState extends State<SearchDetailScreen>
     with PaginatedScrollMixin<SearchDetailScreen> {
+  final List<PopularTopic> _tags = [];
   final List<SearchPersonResult> _people = [];
   final List<SearchRealmResult> _realms = [];
   final List<SearchPostResult> _posts = [];
@@ -103,6 +119,17 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
     bool hasNext = false;
 
     switch (widget.kind) {
+      case SearchDetailKind.tags:
+        // InterestsApi, not SearchApi: a tag is an interest, so its list lives
+        // with the rest of the interests endpoints rather than under search.
+        final result = await InterestsApi()
+            .searchTopics(query: widget.query, page: page, pageSize: _kPageSize);
+        if (!mounted) return;
+        if (page == 1) _tags.clear();
+        _tags.addAll(result.results);
+        count = result.count;
+        hasNext = result.hasNext;
+        break;
       case SearchDetailKind.people:
         final result = await api.searchPeopleV2Request(widget.query,
             page: page, pageSize: _kPageSize);
@@ -241,6 +268,11 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
 
   ({IconData icon, String title, String subtitle}) get _emptyState =>
       switch (widget.kind) {
+        SearchDetailKind.tags => (
+            icon: Icons.tag,
+            title: "No tags found",
+            subtitle: "Hashtags people post with show up here."
+          ),
         SearchDetailKind.people => (
             icon: Icons.group,
             title: "No people found",
@@ -259,6 +291,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
       };
 
   int get _itemCount => switch (widget.kind) {
+        SearchDetailKind.tags => _tags.length,
         SearchDetailKind.people => _people.length,
         SearchDetailKind.realms => _realms.length,
         SearchDetailKind.posts => _posts.length,
@@ -266,6 +299,17 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
 
   Widget _item(int index, Map<String, PresenceInfo> presence) {
     switch (widget.kind) {
+      case SearchDetailKind.tags:
+        final topic = _tags[index];
+        return CLTopicRow(
+          topic: topic,
+          // Marked only when there is something to mark - an empty query is
+          // the trending list, which matched nothing.
+          highlight: widget.query.trim().isEmpty ? null : widget.query,
+          faceRingColor: cl(context).bg,
+          onTap: () =>
+              context.push('/topics/${Uri.encodeComponent(topic.slug)}'),
+        );
       case SearchDetailKind.people:
         final person = _people[index];
         return CLEntityRow(
@@ -318,6 +362,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
   }
 
   Widget _skeleton() => switch (widget.kind) {
+        SearchDetailKind.tags => const CLTopicRowSkeleton(),
         SearchDetailKind.people => const CLEntityRowSkeleton(),
         SearchDetailKind.realms => const SearchRealmCardSkeleton(wide: true),
         SearchDetailKind.posts => const SearchContentCardSkeleton(),
@@ -331,7 +376,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
     return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(
-        title: Text(widget.kind.title),
+        title: Text(widget.kind.titleFor(widget.query)),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 14),
@@ -347,7 +392,8 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
             return ListView.separated(
               padding: const EdgeInsets.all(14),
               itemCount: 6,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, __) => SizedBox(
+                  height: widget.kind == SearchDetailKind.tags ? 0 : 10),
               itemBuilder: (_, __) => _skeleton(),
             );
           }
@@ -370,7 +416,11 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
             controller: paginationController,
             padding: const EdgeInsets.all(14),
             itemCount: _itemCount + (_isLoadingMore ? 1 : 0),
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            // Tags are LIST ROWS, not cards - they carry their own vertical
+            // padding and read as one continuous list, so a card gap between
+            // them would break the column of "#" tiles that makes it scannable.
+            separatorBuilder: (_, __) => SizedBox(
+                height: widget.kind == SearchDetailKind.tags ? 0 : 10),
             itemBuilder: (context, index) => index >= _itemCount
                 ? const CLLoadMoreIndicator()
                 : _item(index, presence),

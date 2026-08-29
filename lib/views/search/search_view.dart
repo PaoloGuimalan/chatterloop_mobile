@@ -1,12 +1,26 @@
 // Explore - the redesigned search screen. Ported from webapp's
 // src/app/tabs/search/Search.tsx at the mobile sizes in
-// "ChatterLoop Mobile.dc.html".
+// "ChatterLoop Mobile.dc.html", then reworked to design 2a.
 //
-// One overview call settles all three section previews per query; each
-// "See all" pushes a detail screen that infinite-scrolls its OWN paginated v2
-// endpoint (see search_detail_view.dart). The previous implementation called
-// the flat v1/v2 entity search and rendered a single people-and-pages list -
-// that endpoint is untouched and still used elsewhere.
+// One overview call settles every section preview per query; each "See all"
+// pushes a detail screen that infinite-scrolls its OWN paginated v2 endpoint
+// (see search_detail_view.dart). The previous implementation called the flat
+// v1/v2 entity search and rendered a single people-and-pages list - that
+// endpoint is untouched and still used elsewhere.
+//
+// WHAT 2a CHANGED, AND WHY
+// ------------------------
+// The magnifier "start typing" panel is gone, and so is the topics card that
+// used to sit above it. Explore IS a search screen, so before you type it
+// offers things to search - your recent queries, then the trending tags -
+// rather than a placeholder telling you to type. Tapping one of those rows
+// FILLS THE FIELD instead of pushing a screen, which is what makes the list
+// belong to the search box rather than float above it.
+//
+// The filter chips moved below the field and appear only once there is a
+// query: they scope RESULTS. Over the idle list they scoped nothing, and the
+// Topics chip in particular turned the whole screen into a second, differently
+// shaped copy of the list already on it.
 
 import 'dart:async';
 
@@ -14,9 +28,11 @@ import 'package:chatterloop_app/core/design/rails.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/search_cards.dart';
+import 'package:chatterloop_app/core/utils/recent_searches.dart';
 import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:chatterloop_app/views/search/search_detail_view.dart';
@@ -27,23 +43,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
-/// Client-side section filter - no refetch, the overview already holds all
-/// three sections.
-enum _ExploreFilter { all, people, realms, posts, topics }
+/// Client-side section filter - no refetch, the overview already holds every
+/// section.
+enum _ExploreFilter { all, tags, people, realms, posts }
 
 const _filterDefs = <(_ExploreFilter, String, IconData)>[
   (_ExploreFilter.all, "All", Icons.apps),
+  (_ExploreFilter.tags, "Tags", Icons.tag),
   (_ExploreFilter.people, "People", Icons.group),
   (_ExploreFilter.realms, "Realms", Icons.public),
   (_ExploreFilter.posts, "Posts", Icons.article),
-  (_ExploreFilter.topics, "Topics", Icons.tag),
 ];
 
-/// The server's own preview caps are 8 people / 6 realms / 5 posts. People and
-/// realms are rails, so their full preview fits regardless of screen width;
-/// content is a vertical list, and five full-width cards push everything below
-/// them off a phone screen - so it's trimmed here and "See all" covers the
-/// rest.
+/// The server's own preview caps are 5 tags / 8 people / 6 realms / 5 posts.
+/// People and realms are rails, so their full preview fits regardless of screen
+/// width; content is a vertical list, and five full-width cards push everything
+/// below them off a phone screen - so it's trimmed here and "See all" covers
+/// the rest.
 const int _kPostsPreview = 3;
 
 class SearchScreen extends StatefulWidget {
@@ -68,13 +84,23 @@ class _SearchScreenState extends State<SearchScreen> {
   SearchOverview? _overview;
   bool _isLoading = false;
 
+  /// Local only - there is no search-history endpoint. See RecentSearches.
+  List<String> _recent = const [];
+
   /// Keyed per entity so acting on one card never freezes the others.
   final Set<String> _followBusy = <String>{};
   final Set<String> _joinBusy = <String>{};
 
+  /// Whose recent searches these are. Read once rather than watched: the shell
+  /// rebuilds this screen on an entity switch, and a switch mid-search is not a
+  /// case worth carrying state for.
+  String get _entityId => appStore.state.userAuth.user.entityId;
+
   @override
   void initState() {
     super.initState();
+    _loadRecent();
+
     final initial = widget.initialQuery.trim();
     if (initial.isEmpty) return;
 
@@ -95,13 +121,42 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  /// A Popular Topics row was tapped: open the topic's own feed.
-  ///
-  /// The endpoint behind that screen lists exactly the posts filed under the
-  /// interest, which a text search only approximates - searching "north edsa"
-  /// also returns posts that merely say the words.
-  void _onTopicTap(PopularTopic topic) {
-    context.push('/topics/${Uri.encodeComponent(topic.slug)}');
+  // -------- recent searches --------------------------------------------------
+
+  Future<void> _loadRecent() async {
+    final recent = await RecentSearches.read(_entityId);
+    if (!mounted) return;
+    setState(() => _recent = recent);
+  }
+
+  /// Recorded on DELIBERATE searches only - submitting the field, or tapping a
+  /// suggestion. Recording every debounce tick would fill the list with the
+  /// prefixes of one query ("r", "ri", "rin", "rina") and bury the searches
+  /// somebody actually made.
+  Future<void> _recordRecent(String query) async {
+    final recent = await RecentSearches.record(_entityId, query);
+    if (!mounted) return;
+    setState(() => _recent = recent);
+  }
+
+  Future<void> _removeRecent(String query) async {
+    final recent = await RecentSearches.remove(_entityId, query);
+    if (!mounted) return;
+    setState(() => _recent = recent);
+  }
+
+  /// A suggestion row - a recent query or a trending tag - fills the field and
+  /// searches, rather than navigating. That is the whole point of 2a: the idle
+  /// list belongs to the search box, so using it leaves you on the same screen
+  /// with the field now holding what you picked.
+  void _useSuggestion(String query) {
+    _debounce?.cancel();
+    _controller.text = query;
+    _controller.selection =
+        TextSelection.collapsed(offset: _controller.text.length);
+    setState(() => _query = query);
+    _recordRecent(query);
+    _load(query);
   }
 
   void _onQueryChanged(String value) {
@@ -141,6 +196,8 @@ class _SearchScreenState extends State<SearchScreen> {
       _query = "";
       _overview = null;
       _isLoading = false;
+      // Back to the idle list, which the chips do not scope.
+      _filter = _ExploreFilter.all;
     });
   }
 
@@ -270,9 +327,24 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _openPost(SearchPostResult post) => context.push('/post/${post.postId}');
 
+  /// A tag RESULT opens the topic's own feed, unlike a tag SUGGESTION, which
+  /// fills the field. The difference is what the row means in each place: in
+  /// the idle list it is a query you might want to run, and in the results it
+  /// is the thing you were looking for.
+  ///
+  /// The endpoint behind that screen lists exactly the posts filed under the
+  /// interest, which a text search only approximates - searching "north edsa"
+  /// also returns posts that merely say the words.
+  void _openTopic(PopularTopic topic) {
+    context.push('/topics/${Uri.encodeComponent(topic.slug)}');
+  }
+
   void _openDetail(SearchDetailKind kind) {
     final query = _query.trim();
-    if (query.isEmpty) return;
+    // Tags are the one section whose detail screen is meaningful with no query:
+    // it is the trending directory, which is exactly what "See all" means on
+    // the idle list. Every other section needs something to search for.
+    if (query.isEmpty && kind != SearchDetailKind.tags) return;
     context.push('/search/${kind.slug}?q=${Uri.encodeQueryComponent(query)}');
   }
 
@@ -304,6 +376,9 @@ class _SearchScreenState extends State<SearchScreen> {
               textInputAction: TextInputAction.search,
               onSubmitted: (value) {
                 _debounce?.cancel();
+                // Submitting is the deliberate act that earns a place in
+                // Recent - see _recordRecent.
+                _recordRecent(value);
                 _load(value);
               },
               style: TextStyle(color: p.text, fontSize: CLType.title),
@@ -329,28 +404,78 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _initialState(CLPalette p) {
-    return Container(
-      // Sized to the panel's own contents rather than to a share of the screen:
-      // this sits under a search field and a chip row, so a tall block here
-      // reads as the point of the screen instead of a placeholder waiting for a
-      // query. The mockup's 260 was drawn in a 428px frame.
-      constraints: const BoxConstraints(minHeight: 168),
-      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
-      decoration: BoxDecoration(
-        color: p.surface,
-        border: Border.all(color: p.border),
-        borderRadius: BorderRadius.circular(CLRadii.md),
-      ),
-      alignment: Alignment.center,
-      child: CLEmptyState(
-        compact: true,
-        icon: Icons.manage_search,
-        iconBg: p.brandSoft,
-        iconColor: p.brand,
-        title: "Search people, realms and posts",
-        subtitle: "Start typing a name, handle or keyword.",
-      ),
+  /// The idle state: what to search, not a note saying to search.
+  ///
+  /// Both lists render nothing when they are empty - a first-run account with
+  /// no history on a platform with no trending tags gets a bare search field,
+  /// which is honest, rather than two empty panels.
+  Widget _suggestions(CLPalette p) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_recent.isNotEmpty) ...[
+          CLOverlineHeader(
+            title: "Recent",
+            actionLabel: "Clear",
+            onAction: () async {
+              await RecentSearches.clear(_entityId);
+              if (mounted) setState(() => _recent = const []);
+            },
+          ),
+          ..._recent.map((query) => _RecentRow(
+                query: query,
+                onTap: () => _useSuggestion(query),
+                onRemove: () => _removeRecent(query),
+              )),
+          const SizedBox(height: 22),
+        ],
+        CLPopularTopics(
+          limit: kPopularTopicMax,
+          // The rows sit on the page here, not in a card, so the avatar rings
+          // have to be the page's colour.
+          faceRingColor: p.bg,
+          // Fills the field. See _useSuggestion.
+          onTopicTap: (topic) => _useSuggestion(topic.slug),
+          onSeeAll: () => _openDetail(SearchDetailKind.tags),
+        ),
+      ],
+    );
+  }
+
+  Widget _tagsSection(CLPalette p) {
+    final tags = _overview?.tags.results ?? const <PopularTopic>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CLSectionHeader(
+          title: "Tags",
+          actionLabel: tags.isEmpty ? null : "See all",
+          onAction: tags.isEmpty ? null : () => _openDetail(SearchDetailKind.tags),
+        ),
+        if (_isLoading)
+          CLTopicList(
+            topics: const [],
+            loading: true,
+            skeletonRows: 2,
+            faceRingColor: p.bg,
+            onTopicTap: _openTopic,
+          )
+        else if (tags.isEmpty)
+          const CLSectionEmpty(
+            icon: Icons.tag,
+            title: "No tags found",
+            subtitle: "Hashtags people post with show up here.",
+          )
+        else
+          CLTopicList(
+            topics: tags,
+            highlight: _query,
+            faceRingColor: p.bg,
+            onTopicTap: _openTopic,
+          ),
+      ],
     );
   }
 
@@ -459,17 +584,6 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) {
     final p = cl(context);
     final hasQuery = _query.trim().isNotEmpty;
-    final showPeople =
-        _filter == _ExploreFilter.all || _filter == _ExploreFilter.people;
-    final showRealms =
-        _filter == _ExploreFilter.all || _filter == _ExploreFilter.realms;
-    final showPosts =
-        _filter == _ExploreFilter.all || _filter == _ExploreFilter.posts;
-    final showTopics =
-        _filter == _ExploreFilter.all || _filter == _ExploreFilter.topics;
-    // Under the Topics chip the screen is topics and nothing else - no empty
-    // state, no people/realm/post sections competing with it.
-    final topicsOnly = _filter == _ExploreFilter.topics;
 
     // Deliberately a bare Scaffold with NO SafeArea - this is a tab, and the
     // shell owns both insets: its header reserves the status bar and its bottom
@@ -486,44 +600,107 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
           children: [
             _searchField(p),
-            const SizedBox(height: 16),
-            CLChipsRail(
-              children: _filterDefs
-                  .map((def) => CLChip(
-                        label: def.$2,
-                        icon: def.$3,
-                        active: _filter == def.$1,
-                        onTap: () => setState(() => _filter = def.$1),
-                      ))
-                  .toList(),
-            ),
-            const SizedBox(height: 22),
-            // Popular topics sits in the IDLE state, under the chips - it is
-            // the answer to "what do I search for", so it belongs before a
-            // query exists rather than competing with results. Under the
-            // Topics chip it becomes the whole screen and shows the full list.
-            if (showTopics && (!hasQuery || topicsOnly)) ...[
-              CLPopularTopics(
-                // The full eight, matching the web rail. There is no "See
-                // all" because there is nothing further to see - the endpoint
-                // caps here, and the Topics chip shows the same list with the
-                // other sections out of the way.
-                limit: kPopularTopicMax,
-                onTopicTap: _onTopicTap,
+            // The chips scope RESULTS, so they exist only when there are
+            // results to scope - see the file header.
+            if (hasQuery) ...[
+              const SizedBox(height: 14),
+              CLChipsRail(
+                children: _filterDefs
+                    .map((def) => CLChip(
+                          label: def.$2,
+                          icon: def.$3,
+                          active: _filter == def.$1,
+                          onTap: () => setState(() => _filter = def.$1),
+                        ))
+                    .toList(),
               ),
-              const SizedBox(height: 22),
             ],
-            if (!hasQuery && !topicsOnly)
-              _initialState(p)
-            else if (hasQuery && !topicsOnly) ...[
-              if (showPeople) _peopleSection(presence),
-              if (showPeople && (showRealms || showPosts))
-                const SizedBox(height: 26),
-              if (showRealms) _realmsSection(),
-              if (showRealms && showPosts) const SizedBox(height: 26),
-              if (showPosts) _contentSection(),
-            ],
+            const SizedBox(height: 22),
+            if (!hasQuery)
+              _suggestions(p)
+            else
+              ..._resultSections(p, presence),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// The sections that are on, in render order, with the gaps between them.
+  ///
+  /// Built as a list rather than inline `if`s so no section has to know which
+  /// of its neighbours are showing - under a single-section filter this is a
+  /// list of one, and there is no leading or trailing gap to suppress.
+  List<Widget> _resultSections(CLPalette p, Map<String, PresenceInfo> presence) {
+    final sections = <Widget>[
+      if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.tags)
+        _tagsSection(p),
+      if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.people)
+        _peopleSection(presence),
+      if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.realms)
+        _realmsSection(),
+      if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.posts)
+        _contentSection(),
+    ];
+
+    return [
+      for (var i = 0; i < sections.length; i++) ...[
+        if (i > 0) const SizedBox(height: 26),
+        sections[i],
+      ],
+    ];
+  }
+}
+
+/// One remembered query. A history icon rather than a magnifier, so a recent
+/// row is distinguishable from the field above it at a glance, and an × that
+/// drops just this one.
+class _RecentRow extends StatelessWidget {
+  final String query;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _RecentRow({
+    required this.query,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              Icon(Icons.history, size: 19, color: p.text3),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  child: Text(
+                    query,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: p.text, fontSize: CLType.title),
+                  ),
+                ),
+              ),
+              CLIconBtn(
+                icon: Icons.close,
+                iconSize: 18,
+                size: 32,
+                tooltip: "Remove",
+                color: p.text3,
+                onPressed: onRemove,
+              ),
+            ],
+          ),
         ),
       ),
     );
