@@ -166,6 +166,9 @@ class CLNotificationRow extends StatelessWidget {
                   id: n.fromUser?.entityId ?? n.fromUserID,
                   name: senderName,
                   src: n.fromUser?.profile,
+                  // So a platform bot reads as the platform rather than as a
+                  // person with the initials "CM".
+                  kind: n.fromUser?.type,
                   size: avatarSize,
                 ),
                 if (detail)

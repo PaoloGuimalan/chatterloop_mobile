@@ -94,6 +94,12 @@ class Endpoints {
   /// `topic` object naming what is being listed. Takes ?page=&page_size=.
   String topicPosts = '/api/interests/topics/'; // :slug/posts/
 
+  /// Why a post or comment was removed. The only read path that returns
+  /// soft-deleted content, gated server-side to the owner and platform staff -
+  /// a 404 means "no record OR not yours" and the two are deliberately
+  /// indistinguishable.
+  String moderationDetail = '/api/entity/moderation/'; // :moderationID/
+
   String search = '/api/user/search/'; // :query
 
   /// Search v2 - unified entity search returning users AND realms/pages in

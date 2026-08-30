@@ -145,11 +145,21 @@ class CLAvatar extends StatelessWidget {
   /// tile reads as "a room", not "a person"); everything else leaves it null.
   final double? cornerRadius;
 
+  /// The entity's kind, when the caller knows it. Only "bot" changes anything:
+  /// a bot with no uploaded picture gets the bot glyph rather than initials,
+  /// because "CM" tells a reader nothing about who "Chatterloop Moderation"
+  /// is - and a notification saying their post was removed should visibly come
+  /// from the platform, not from something that looks like a person.
+  ///
+  /// An uploaded [src] still wins; this is the fallback, not an override.
+  final String? kind;
+
   const CLAvatar({
     super.key,
     this.id,
     this.name,
     this.src,
+    this.kind,
     this.size = 40,
     this.online = false,
     this.ring = false,
@@ -175,15 +185,17 @@ class CLAvatar extends StatelessWidget {
         ),
       ),
       alignment: Alignment.center,
-      child: Text(
-        _initials(name ?? ''),
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-          fontSize: size * 0.38,
-          letterSpacing: 0.4,
-        ),
-      ),
+      child: kind == 'bot'
+          ? Icon(Icons.smart_toy, color: Colors.white, size: size * 0.56)
+          : Text(
+              _initials(name ?? ''),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: size * 0.38,
+                letterSpacing: 0.4,
+              ),
+            ),
     );
 
     // Decode avatars at display resolution, not the source photo's native

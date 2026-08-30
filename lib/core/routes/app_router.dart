@@ -18,6 +18,7 @@ import 'package:chatterloop_app/views/calls/incoming_call_view.dart';
 import 'package:chatterloop_app/views/auth/signup_view.dart';
 import 'package:chatterloop_app/views/auth/verify_email_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_detail_view.dart';
+import 'package:chatterloop_app/views/moderation/moderation_detail_view.dart';
 import 'package:chatterloop_app/views/search/topic_detail_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
@@ -417,6 +418,15 @@ GoRouter buildAppRouter(AuthController authController) {
           // so a #hashtag tapped in a post and a Popular Topics row lead to
           // the same place. Declared BEFORE /search/:kind so "topics" is never
           // read as a search-detail kind.
+          // Opened from a moderation notification. Pushed like any other
+          // detail screen, so Back returns to the notification list.
+          GoRoute(
+            path: '/moderation/:moderationID',
+            pageBuilder: (c, s) => _clPage(
+                s,
+                ModerationDetailScreen(
+                    moderationId: s.pathParameters['moderationID']!)),
+          ),
           GoRoute(
             path: '/topics/:slug',
             pageBuilder: (c, s) => _clPage(
