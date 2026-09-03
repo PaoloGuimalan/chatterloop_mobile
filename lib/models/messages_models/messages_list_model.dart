@@ -152,6 +152,10 @@ class ConversationDisplayDetails {
 
   bool get isPage => realmType == 'page';
 
+  /// Reads the entity kind rather than a realm type: a bot is not a
+  /// realm, so realmType is null for one.
+  bool get isBot => entityType == 'bot';
+
   const ConversationDisplayDetails({
     required this.id,
     required this.entityId,

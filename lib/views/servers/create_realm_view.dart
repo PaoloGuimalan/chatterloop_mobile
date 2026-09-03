@@ -158,7 +158,10 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
       CreateRealmMemberSource.parentServerMembers =>
         await _serverMembers(query),
       CreateRealmMemberSource.globalEntities =>
-        await SearchApi().searchEntitiesRequest(query),
+        // Bots included - a realm can have one as a founding member, and the
+        // endpoint's default types are people and pages only.
+        await SearchApi()
+            .searchEntitiesRequest(query, types: "user,realm,bot"),
       // Unreachable while the picker is hidden, and harmless if it is not.
       CreateRealmMemberSource.none => const <SearchResultUser>[],
     };
@@ -199,6 +202,11 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
               middleName: '',
               lastName: '',
               profile: member.profile,
+              // Carried through, not defaulted: SearchResultUser.type falls
+              // back to "user", so every page and bot in a server's member
+              // list arrived claiming to be a person and no row could mark it.
+              type: member.entityType.isEmpty ? 'user' : member.entityType,
+              realmType: member.realmType,
               hasConnection: false,
               connectionAccomplished: false,
               isActionByEntity: false,
@@ -456,19 +464,42 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
                     id: entity.entityId,
                     name: name,
                     src: clCleanMediaSrc(entity.profile),
-                    size: 38),
+                    size: 38,
+                    kind: entity.type),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name.isEmpty ? entity.username : name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: CLType.body,
-                              fontWeight: FontWeight.w600,
-                              color: p.text)),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(name.isEmpty ? entity.username : name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: CLType.body,
+                                    fontWeight: FontWeight.w600,
+                                    color: p.text)),
+                          ),
+                          if (entity.isRealm) ...[
+                            const SizedBox(width: 4),
+                            Tooltip(
+                              message: 'Page',
+                              child: Icon(Icons.flag_outlined,
+                                  size: 13, color: p.text3),
+                            ),
+                          ],
+                          if (entity.type == 'bot') ...[
+                            const SizedBox(width: 4),
+                            Tooltip(
+                              message: 'Bot',
+                              child: Icon(Icons.smart_toy,
+                                  size: 13, color: p.text3),
+                            ),
+                          ],
+                        ],
+                      ),
                       Text('@${entity.username}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

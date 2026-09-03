@@ -206,6 +206,19 @@ class RealmPerson {
   final String? profile;
   final bool isVerified;
 
+  /// "user", "realm" or "bot" - the kind of entity this row is. Empty when
+  /// the payload didn't carry it, which reads as "person" and matches how
+  /// these rows behaved before bots could be members.
+  final String entityType;
+
+  /// A realm member's own type ("page", "server", ...). Null for a person or
+  /// a bot. Only a PAGE is flagged - the rest are not members of things.
+  final String? realmType;
+
+  bool get isPage => realmType == 'page' || (isRealmEntity && realmType == null);
+
+  bool get isRealmEntity => entityType == 'realm';
+
   /// Members only; null for a follower, who has no role. "admin" or "member".
   final String? role;
 
@@ -230,6 +243,8 @@ class RealmPerson {
     required this.handle,
     this.profile,
     this.isVerified = false,
+    this.entityType = '',
+    this.realmType,
     this.role,
     this.memberId = '',
     this.realmId = '',
@@ -238,13 +253,21 @@ class RealmPerson {
 
   bool get isRealmAdmin => role == 'admin';
 
+  bool get isBot => entityType == 'bot';
+
   /// Both shapes nest the person under `details` - a user contact preview
   /// (id/username/first_name/last_name/profile) for a follower, and the same
   /// under a flexible entity for a member. Everything below is defensive: a
   /// row whose person didn't resolve renders as an unnamed entry rather than
   /// taking the whole list down.
-  static ({String id, String name, String handle, String? profile, bool badged})
-      _person(dynamic raw) {
+  static ({
+    String id,
+    String name,
+    String handle,
+    String? profile,
+    bool badged,
+    String? realmType,
+  }) _person(dynamic raw) {
     final map =
         raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
     final details =
@@ -262,6 +285,7 @@ class RealmPerson {
           ].where((part) => part.isNotEmpty && part != "N/A").join(" ");
 
     final profile = details["profile"]?.toString();
+    final realmType = details["type"]?.toString();
     return (
       id: (details["id"] ?? "").toString(),
       name: name,
@@ -270,6 +294,7 @@ class RealmPerson {
           ? null
           : profile,
       badged: details["is_badged"] == true || details["is_verified"] == true,
+      realmType: (realmType == null || realmType.isEmpty) ? null : realmType,
     );
   }
 
@@ -284,6 +309,8 @@ class RealmPerson {
       handle: person.handle,
       profile: person.profile,
       isVerified: person.badged,
+      entityType: entity is Map ? (entity["type"] ?? "").toString() : "",
+      realmType: person.realmType,
       role: json["role"]?.toString(),
       memberId: (json["member_id"] ?? "").toString(),
       realmId: (json["realm"] ?? "").toString(),

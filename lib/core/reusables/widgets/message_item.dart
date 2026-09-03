@@ -219,6 +219,16 @@ class MessageItemView extends StatelessWidget {
                                     size: 13, color: p.text3),
                               ),
                             ],
+                            // Says "software", never the verified badge above
+                            // - that one means a verified human or page.
+                            if (message.details.isBot) ...[
+                              const SizedBox(width: 4),
+                              Tooltip(
+                                message: 'Bot',
+                                child: Icon(Icons.smart_toy,
+                                    size: 13, color: p.text3),
+                              ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 2),

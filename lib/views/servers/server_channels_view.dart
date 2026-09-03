@@ -1195,7 +1195,8 @@ class _MemberRow extends StatelessWidget {
               id: member.entityId,
               name: member.displayName,
               src: clCleanMediaSrc(member.profile),
-              size: 36),
+              size: 36,
+              kind: member.entityType),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -1218,6 +1219,22 @@ class _MemberRow extends StatelessWidget {
                     if (member.isVerified) ...[
                       const SizedBox(width: 4),
                       Icon(Icons.verified, size: 13, color: p.brand),
+                    ],
+                    if (member.isPage) ...[
+                      const SizedBox(width: 4),
+                      Tooltip(
+                        message: 'Page',
+                        child: Icon(Icons.flag_outlined,
+                            size: 12, color: p.text3),
+                      ),
+                    ],
+                    if (member.isBot) ...[
+                      const SizedBox(width: 4),
+                      Tooltip(
+                        message: 'Bot',
+                        child:
+                            Icon(Icons.smart_toy, size: 12, color: p.text3),
+                      ),
                     ],
                   ],
                 ),

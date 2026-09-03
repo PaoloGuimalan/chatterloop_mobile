@@ -9,8 +9,12 @@
 class NetworkEntityResult {
   final String entityId;
 
-  /// "user" or "realm" - a realm row gets the small flag marker and never
-  /// shows presence (a page is never "active now").
+  /// "user", "realm" or "bot".
+  ///
+  /// A realm row gets the small flag marker and never shows presence (a page
+  /// is never "active now"); a bot gets the software marker and no presence
+  /// either, and appears in FOLLOWING only - it cannot hold a connection and
+  /// cannot follow anything, so it reaches no other section.
   final String type;
   final String displayName;
   final String handle;
@@ -50,6 +54,11 @@ class NetworkEntityResult {
   });
 
   bool get isRealm => type == "realm";
+  bool get isBot => type == "bot";
+
+  /// Neither a page nor a bot is ever "active now", so presence is skipped for
+  /// both rather than only for realms.
+  bool get showsPresence => !isRealm && !isBot;
 
   /// Either flag answers "am I following them right now" - follower rows
   /// track is_followed_back, following rows are followed by definition.

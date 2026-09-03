@@ -18,11 +18,15 @@ class ContactsItemWidget extends StatelessWidget {
   /// name/slug onto them), only presence and the badge differ.
   final bool isRealm;
 
+  /// Marks the row as software. Mutually exclusive with [isRealm].
+  final bool isBot;
+
   const ContactsItemWidget(
       {super.key,
       required this.contact,
       required this.other,
       this.isRealm = false,
+      this.isBot = false,
       this.online = false});
 
   /// Pages live at /realm/:slug, people at /user/:username. Both screens
@@ -32,7 +36,11 @@ class ContactsItemWidget extends StatelessWidget {
   /// only thing distinguishing them is [isRealm].
   void _openProfile(BuildContext context) {
     context.push(
-        isRealm ? '/realm/${other.username}' : '/user/${other.username}');
+        isBot
+            ? '/bot/${other.username}'
+            : isRealm
+                ? '/realm/${other.username}'
+                : '/user/${other.username}');
   }
 
   void _openMessage(BuildContext context) {
@@ -97,6 +105,10 @@ class ContactsItemWidget extends StatelessWidget {
                               const SizedBox(width: 4),
                               Icon(Icons.flag_outlined,
                                   size: 14, color: p.text3),
+                            ],
+                            if (isBot) ...[
+                              const SizedBox(width: 4),
+                              Icon(Icons.smart_toy, size: 14, color: p.text3),
                             ],
                           ],
                         ),

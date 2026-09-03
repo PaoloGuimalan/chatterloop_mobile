@@ -28,6 +28,9 @@ class CLEntityRow extends StatelessWidget {
   /// not a person.
   final bool isRealm;
 
+  /// Marks the row as software.
+  final bool isBot;
+
   /// Users only; a page is never "active now".
   final bool online;
   final VoidCallback? onOpen;
@@ -41,6 +44,7 @@ class CLEntityRow extends StatelessWidget {
     this.profile,
     this.isVerified = false,
     this.isRealm = false,
+    this.isBot = false,
     this.online = false,
     this.onOpen,
     this.action,
@@ -89,6 +93,13 @@ class CLEntityRow extends StatelessWidget {
                       if (isRealm) ...[
                         const SizedBox(width: 4),
                         Icon(Icons.flag, size: 13, color: p.text3),
+                      ],
+                      // Not the verified check - that means a verified human
+                      // or page. This says "software", which is the fact a
+                      // reader actually needs about a bot.
+                      if (isBot) ...[
+                        const SizedBox(width: 4),
+                        Icon(Icons.smart_toy, size: 13, color: p.text3),
                       ],
                     ],
                   ),

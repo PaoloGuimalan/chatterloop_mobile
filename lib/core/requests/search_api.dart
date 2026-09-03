@@ -172,6 +172,30 @@ class SearchApi {
     }
   }
 
+  /// Bots "See all". The overview has always carried this section; this is the
+  /// paginated endpoint behind it.
+  Future<PagedResult<SearchBotResult>> searchBotsV2Request(
+    String query, {
+    int page = 1,
+    int pageSize = 12,
+  }) async {
+    if (query.trim().isEmpty) return PagedResult.empty();
+
+    try {
+      final response = await _dio.get(
+        '${_endpoints.searchBotsV2}${Uri.encodeComponent(query.trim())}/',
+        queryParameters: {"page": page, "page_size": pageSize},
+      );
+      return PagedResult.fromDrf(response.data, SearchBotResult.fromJson);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return PagedResult.empty();
+    }
+  }
+
   /// Content "See all" - ranked by PostScore.ranking_score.
   Future<PagedResult<SearchPostResult>> searchPostsV2Request(
     String query, {

@@ -914,7 +914,11 @@ class _CommentComposerState extends State<CommentComposer> {
 
     // People AND pages: the backend resolves a handle against both namespaces
     // (username / slug), so anything reachable by search is mentionable.
-    final found = await SearchApi().searchEntitiesRequest(trimmed);
+    // Bots included: @mentioning one in a comment is how you ASK it
+    // something, so leaving them out of the picker hid the one interaction
+    // comments have with a bot.
+    final found = await SearchApi()
+        .searchEntitiesRequest(trimmed, types: "user,realm,bot");
     if (!mounted || token != _searchToken) return;
 
     final seen = <String>{};

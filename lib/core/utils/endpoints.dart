@@ -126,6 +126,11 @@ class Endpoints {
   /// filtered out server side no matter what realm_types asks for.
   String searchRealmsV2 = '/api/entity/search/v2/realms/'; // :query
 
+  /// DRF-paginated. Takes :query then ?page=&page_size=. System bots are
+  /// excluded server-side - the moderator speaks as the platform, and offering
+  /// it as something to follow invites confusion about who is talking.
+  String searchBotsV2 = '/api/entity/search/v2/bots/'; // :query
+
   /// DRF-paginated, ranked by PostScore.ranking_score. Takes :query then
   /// ?page=&page_size=.
   String searchPostsV2 = '/api/newsfeed/search/v2/posts/'; // :query

@@ -51,9 +51,11 @@ List<InlineSpan> taggingSummarySpans(
       recognizer: TapGestureRecognizer()
         ..onTap = () {
           if (entity.handle.isEmpty) return;
-          context.push(entity.isRealm
-              ? '/realm/${entity.handle}'
-              : '/user/${entity.handle}');
+          context.push(switch (entity.type) {
+            'realm' => '/realm/${entity.handle}',
+            'bot' => '/bot/${entity.handle}',
+            _ => '/user/${entity.handle}',
+          });
         },
     ));
     if (entity.isVerified) {
@@ -65,6 +67,35 @@ List<InlineSpan> taggingSummarySpans(
           package: Icons.verified.fontPackage,
           fontSize: 13,
           color: linkColor,
+        ),
+      ));
+    }
+    // A tagged PAGE, marked the same way the member lists and inbox rows
+    // mark one. Muted, like the bot glyph below: it is a fact about the
+    // entity, not part of the link.
+    if (entity.isRealm) {
+      spans.add(const TextSpan(text: " ⁠"));
+      spans.add(TextSpan(
+        text: String.fromCharCode(Icons.flag_outlined.codePoint),
+        style: TextStyle(
+          fontFamily: Icons.flag_outlined.fontFamily,
+          package: Icons.flag_outlined.fontPackage,
+          fontSize: 13,
+          color: baseStyle.color,
+        ),
+      ));
+    }
+    // Says "software", never the verified glyph above - and in the muted
+    // colour, since it is a fact about the entity rather than a link.
+    if (entity.type == 'bot') {
+      spans.add(const TextSpan(text: "\u00A0\u2060"));
+      spans.add(TextSpan(
+        text: String.fromCharCode(Icons.smart_toy.codePoint),
+        style: TextStyle(
+          fontFamily: Icons.smart_toy.fontFamily,
+          package: Icons.smart_toy.fontPackage,
+          fontSize: 13,
+          color: baseStyle.color,
         ),
       ));
     }
@@ -117,10 +148,11 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
       return;
     }
     setState(() => _searching = true);
-    // The flat entity search - people AND pages in one list, which is exactly
-    // what can be tagged. realmTypes stays at its "page" default: a server or
-    // a group chat is not a taggable subject.
-    final found = await SearchApi().searchEntitiesRequest(query.trim());
+    // The flat entity search - people, pages AND bots in one list, which is
+    // exactly what can be tagged. realmTypes stays at its "page" default: a
+    // server or a group chat is not a taggable subject.
+    final found = await SearchApi()
+        .searchEntitiesRequest(query.trim(), types: "user,realm,bot");
     if (!mounted || _controller.text.trim() != query.trim()) return;
     setState(() {
       _results = found;
@@ -161,7 +193,7 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
                 const SizedBox(width: 6),
                 Text(
                   widget.selected.isEmpty
-                      ? "Tag people or pages"
+                      ? "Tag people, pages or bots"
                       : "Tagged ${widget.selected.length}",
                   style: TextStyle(
                     fontSize: CLType.label,
@@ -253,6 +285,7 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
                       name: entity.displayName,
                       src: entity.profile,
                       size: 30,
+                      kind: entity.type,
                     ),
                     title: Text(
                       entity.displayName.isEmpty
@@ -262,11 +295,33 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: CLType.bodySm, color: p.text),
                     ),
-                    subtitle: Text("@${entity.username}",
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: CLType.caption, color: p.text3)),
+                    subtitle: Row(
+                      children: [
+                        Flexible(
+                          child: Text("@${entity.username}",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: CLType.caption, color: p.text3)),
+                        ),
+                        if (entity.isRealm) ...[
+                          const SizedBox(width: 4),
+                          Tooltip(
+                            message: 'Page',
+                            child: Icon(Icons.flag_outlined,
+                                size: 12, color: p.text3),
+                          ),
+                        ],
+                        if (entity.type == 'bot') ...[
+                          const SizedBox(width: 4),
+                          Tooltip(
+                            message: 'Bot',
+                            child: Icon(Icons.smart_toy,
+                                size: 12, color: p.text3),
+                          ),
+                        ],
+                      ],
+                    ),
                     trailing: Icon(
                       picked ? Icons.check_circle : Icons.add_circle_outline,
                       size: 20,

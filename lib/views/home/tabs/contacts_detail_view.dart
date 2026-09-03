@@ -142,9 +142,12 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
     if (item.followsRightNow) {
       final confirmed = await confirmUnfollow(
         context,
-        name: item.isRealm ? item.displayName : '@${item.handle}',
-        isRealm: item.isRealm,
-        realmNoun: item.realmType ?? 'page',
+        // A bot and a page are NAMED; a person is mentioned. And a bot
+        // takes the noun-carrying wording so the copy can talk about the
+        // following list rather than a feed it never posts to.
+        name: item.isRealm || item.isBot ? item.displayName : '@${item.handle}',
+        isRealm: item.isRealm || item.isBot,
+        realmNoun: item.isBot ? 'bot' : (item.realmType ?? 'page'),
       );
       if (!confirmed || !mounted) return;
     }
@@ -182,12 +185,16 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
 
   void _openEntity(NetworkEntityResult item) {
     if (item.handle.isEmpty) return;
-    context.push(item.isRealm ? '/realm/${item.handle}' : '/user/${item.handle}');
+    context.push(item.isBot
+        ? '/bot/${item.handle}'
+        : item.isRealm
+            ? '/realm/${item.handle}'
+            : '/user/${item.handle}');
   }
 
   Widget _row(NetworkEntityResult item, Map<String, PresenceInfo> presence) {
     final section = widget.section.networkSection!;
-    final info = item.isRealm ? null : presence[item.entityId];
+    final info = item.showsPresence ? presence[item.entityId] : null;
     final online = info?.online ?? false;
     final label = info == null
         ? null
@@ -225,6 +232,7 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
       profile: item.profile,
       isVerified: item.isVerified,
       isRealm: item.isRealm,
+      isBot: item.isBot,
       online: online,
       onOpen: () => _openEntity(item),
       action: action,

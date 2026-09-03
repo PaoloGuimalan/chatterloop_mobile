@@ -99,6 +99,10 @@ class UsersContactPreview {
 
   bool get isPage => realmType == 'page';
 
+  /// Reads the entity kind rather than a realm type: a bot is not a
+  /// realm, so realmType is null for one.
+  bool get isBot => entityType == 'bot';
+
   const UsersContactPreview(
     this.userID,
     this.entityID,

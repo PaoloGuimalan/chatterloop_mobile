@@ -155,6 +155,72 @@ class SearchRealmResult {
   }
 }
 
+/// A bot in search results.
+///
+/// The fields are exactly what `entity/search_views.normalize_bot()` emits AND
+/// what `GET /api/bot/<handle>/` returns, so one card draws a search hit and a
+/// profile header alike.
+///
+/// Two of them are constants rather than server values, and both say something:
+/// `isVerified` is never true (the badge means a verified human or page), and
+/// there is no pending-follow state (a bot has no privacy gate, so a follow of
+/// one is never awaiting approval).
+class SearchBotResult {
+  final String entityId;
+  final String displayName;
+  final String handle;
+  final String? profile;
+
+  /// What the bot is for. People have a mutual count and realms a member
+  /// count; a bot has neither, and without this one line one bot is
+  /// indistinguishable from another - which defeats the point of finding it.
+  final String description;
+  final int followersCount;
+  final bool isFollowed;
+
+  /// Bot pk. Nullable for the same reason SearchPersonResult.id is: the row
+  /// is keyed on entityId, and this is only carried for parity.
+  final String? id;
+
+  const SearchBotResult({
+    required this.entityId,
+    required this.displayName,
+    required this.handle,
+    this.profile,
+    required this.description,
+    required this.followersCount,
+    required this.isFollowed,
+    this.id,
+  });
+
+  SearchBotResult copyWith({bool? isFollowed, int? followersCount}) =>
+      SearchBotResult(
+        entityId: entityId,
+        displayName: displayName,
+        handle: handle,
+        profile: profile,
+        description: description,
+        followersCount: followersCount ?? this.followersCount,
+        isFollowed: isFollowed ?? this.isFollowed,
+        id: id,
+      );
+
+  factory SearchBotResult.fromJson(Map<String, dynamic> json) {
+    return SearchBotResult(
+      entityId: (json["entity_id"] ?? "").toString(),
+      displayName: (json["display_name"] ?? "").toString(),
+      handle: (json["handle"] ?? "").toString(),
+      profile: json["profile"]?.toString(),
+      description: (json["description"] ?? "").toString(),
+      followersCount: json["followers_count"] is num
+          ? (json["followers_count"] as num).toInt()
+          : 0,
+      isFollowed: json["is_followed"] == true,
+      id: json["id"]?.toString(),
+    );
+  }
+}
+
 /// The author line on a content card - a post can be authored by a person
 /// OR a page, so this is the same normalized shape either way.
 class SearchPostAuthor {
@@ -271,23 +337,31 @@ class SearchOverview {
   final SearchOverviewSection<PopularTopic> topics;
   final SearchOverviewSection<SearchPersonResult> people;
   final SearchOverviewSection<SearchRealmResult> realms;
+
+  /// The endpoint has always returned this section; the client simply did not
+  /// read it, which is why bots were unfindable despite being fully
+  /// searchable server-side.
+  final SearchOverviewSection<SearchBotResult> bots;
   final SearchOverviewSection<SearchPostResult> posts;
 
   const SearchOverview({
     required this.topics,
     required this.people,
     required this.realms,
+    required this.bots,
     required this.posts,
   });
 
   SearchOverview copyWith({
     SearchOverviewSection<SearchPersonResult>? people,
     SearchOverviewSection<SearchRealmResult>? realms,
+    SearchOverviewSection<SearchBotResult>? bots,
   }) =>
       SearchOverview(
         topics: topics,
         people: people ?? this.people,
         realms: realms ?? this.realms,
+        bots: bots ?? this.bots,
         posts: posts,
       );
 
@@ -305,6 +379,8 @@ class SearchOverview {
           json["people"], SearchPersonResult.fromJson),
       realms: SearchOverviewSection.parse(
           json["realms"], SearchRealmResult.fromJson),
+      bots: SearchOverviewSection.parse(
+          json["bots"], SearchBotResult.fromJson),
       posts:
           SearchOverviewSection.parse(json["posts"], SearchPostResult.fromJson),
     );

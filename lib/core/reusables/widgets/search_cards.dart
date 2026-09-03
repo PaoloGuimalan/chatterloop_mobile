@@ -371,6 +371,166 @@ class SearchRealmCard extends StatelessWidget {
   }
 }
 
+/// A bot in search results.
+///
+/// Built on SearchRealmCard's frame so the sections read as one screen, but
+/// what a bot IS differs in three ways that the card has to reflect:
+///
+///  - ONE action, Follow. A bot cannot accept a contact request - no session
+///    to see one in, no accept endpoint to call - so an Add button could only
+///    ever be refused. The server says as much with can_connect: false.
+///  - NO verified badge. It means a verified human or page; a bot gets a
+///    "software" marker instead, which is the fact a reader actually needs.
+///  - The DESCRIPTION is the meta line. Realms show "type · reach" and people
+///    show mutuals; a bot has no equivalent, and without the line saying what
+///    it does one bot looks like any other.
+class SearchBotCard extends StatelessWidget {
+  final SearchBotResult bot;
+  final bool followBusy;
+  final ValueChanged<SearchBotResult> onToggleFollow;
+  final ValueChanged<SearchBotResult> onOpen;
+  final bool wide;
+
+  const SearchBotCard({
+    super.key,
+    required this.bot,
+    required this.followBusy,
+    required this.onToggleFollow,
+    required this.onOpen,
+    this.wide = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final gradient = clEntityGradient(bot.entityId);
+    final bannerHeight = wide ? 64.0 : 56.0;
+
+    final banner = InkWell(
+      onTap: () => onOpen(bot),
+      child: Container(
+        width: double.infinity,
+        height: bannerHeight,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradient,
+          ),
+        ),
+        child: bot.profile != null
+            ? CLAvatar(
+                id: bot.entityId,
+                name: bot.displayName,
+                src: bot.profile,
+                size: wide ? 44 : 38,
+                cornerRadius: CLRadii.md,
+              )
+            : Icon(Icons.smart_toy,
+                size: wide ? 28 : 24, color: Colors.white),
+      ),
+    );
+
+    final title = InkWell(
+      onTap: () => onOpen(bot),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              bot.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: wide ? 13.5 : 12.5,
+                fontWeight: FontWeight.w700,
+                color: p.text,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(Icons.smart_toy, size: 13, color: p.text3),
+        ],
+      ),
+    );
+
+    // Two lines then clip: a description is free text and a rail card cannot
+    // grow to fit one. Falls back to the handle so the line is never blank.
+    final meta = SizedBox(
+      height: wide ? null : 30,
+      child: Text(
+        bot.description.isNotEmpty ? bot.description : "@${bot.handle}",
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: wide ? 12 : 11.5, color: p.text3),
+      ),
+    );
+
+    final action = CLMiniBtn(
+      label: bot.isFollowed ? "Following" : "Follow",
+      block: !wide,
+      variant: bot.isFollowed ? CLBtnVariant.soft : CLBtnVariant.primary,
+      onPressed: followBusy ? null : () => onToggleFollow(bot),
+    );
+
+    final card = Container(
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border.all(color: p.border),
+        borderRadius: BorderRadius.circular(CLRadii.md),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 3,
+              offset: const Offset(0, 1)),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          banner,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+            child: wide
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            title,
+                            const SizedBox(height: 2),
+                            meta,
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      action,
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      title,
+                      const SizedBox(height: 2),
+                      meta,
+                      const SizedBox(height: 8),
+                      action,
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+
+    return wide ? card : SizedBox(width: kRealmCardWidth, child: card);
+  }
+}
+
 /// Author line, clamped caption, like/comment counters. Tapping opens the real
 /// post through the preview screen - this card is deliberately lightweight.
 class SearchContentCard extends StatelessWidget {

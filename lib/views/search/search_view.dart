@@ -53,13 +53,14 @@ import 'package:go_router/go_router.dart';
 
 /// Client-side section filter - no refetch, the overview already holds every
 /// section.
-enum _ExploreFilter { all, topics, people, realms, posts }
+enum _ExploreFilter { all, topics, people, realms, bots, posts }
 
 const _filterDefs = <(_ExploreFilter, String, IconData)>[
   (_ExploreFilter.all, "All", Icons.apps),
   (_ExploreFilter.topics, "Topics", Icons.tag),
   (_ExploreFilter.people, "People", Icons.group),
   (_ExploreFilter.realms, "Realms", Icons.public),
+  (_ExploreFilter.bots, "Bots", Icons.smart_toy),
   (_ExploreFilter.posts, "Posts", Icons.article),
 ];
 
@@ -269,6 +270,17 @@ class _SearchScreenState extends State<SearchScreen> {
                   : realm)
               .toList(),
         ),
+        // Bots carry `isFollowed` (the people field), not `isFollower` (the
+        // realm one) - the two sections genuinely disagree on the name, and
+        // this is the seam where that matters.
+        bots: SearchOverviewSection(
+          hasMore: overview.bots.hasMore,
+          results: overview.bots.results
+              .map((bot) => bot.entityId == entityId
+                  ? bot.copyWith(isFollowed: followed)
+                  : bot)
+              .toList(),
+        ),
       );
     });
   }
@@ -363,6 +375,13 @@ class _SearchScreenState extends State<SearchScreen> {
   /// while a non-member has no destination at all - Join is the only
   /// affordance.
   void _openRealm(SearchRealmResult realm) => openSearchRealm(context, realm);
+
+  /// Bots have their own screen: they cannot post and have no cover photo, so
+  /// the user and page layouts would both render empty sections around them.
+  void _openBot(SearchBotResult bot) {
+    if (bot.handle.isEmpty) return;
+    context.push('/bot/${bot.handle}');
+  }
 
   void _openPost(SearchPostResult post) => context.push('/post/${post.postId}');
 
@@ -580,6 +599,66 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  Widget _botsSection() {
+    final bots = _overview?.bots.results ?? const <SearchBotResult>[];
+    return CLRailSection(
+      title: "Bots",
+      actionLabel: bots.isEmpty ? null : "See all",
+      onAction: bots.isEmpty ? null : () => _openDetail(SearchDetailKind.bots),
+      empty: _isLoading
+          ? null
+          : const CLSectionEmpty(
+              icon: Icons.smart_toy,
+              title: "No bots found",
+              subtitle: "Bots you can follow and add to group chats.",
+            ),
+      children: _isLoading
+          ? List.generate(3, (_) => const SearchRealmCardSkeleton())
+          : bots
+              .map((bot) => SearchBotCard(
+                    bot: bot,
+                    followBusy: _followBusy.contains(bot.entityId),
+                    onToggleFollow: (target) => _toggleFollowBot(target),
+                    onOpen: _openBot,
+                  ))
+              .toList(),
+    );
+  }
+
+  /// No pending state - a bot is never private, so a follow always lands.
+  Future<void> _toggleFollowBot(SearchBotResult bot) async {
+    if (_followBusy.contains(bot.entityId)) return;
+    // Unfollowing asks first, the same as a person or a page. The button is
+    // its own opposite - "Following" becomes "Follow" - so a stray tap
+    // silently undoes what it was reporting. A bot is named rather than
+    // mentioned, and takes the noun-carrying wording so the copy can say
+    // "following list" instead of a feed it never posts to.
+    if (bot.isFollowed) {
+      final confirmed = await confirmUnfollow(
+        context,
+        name: bot.displayName,
+        isRealm: true,
+        realmNoun: 'bot',
+      );
+      if (!confirmed || !mounted) return;
+    }
+
+    setState(() => _followBusy.add(bot.entityId));
+
+    final wasFollowing = bot.isFollowed;
+    _applyFollow(bot.entityId, followed: !wasFollowing, pending: false);
+
+    final result = await ProfileApi().setEntityFollowRequest(
+      entityId: bot.entityId,
+      follow: !wasFollowing,
+    );
+    if (!mounted) return;
+    setState(() => _followBusy.remove(bot.entityId));
+    if (!result.ok) {
+      _applyFollow(bot.entityId, followed: wasFollowing, pending: false);
+    }
+  }
+
   Widget _contentSection() {
     final posts = _overview?.posts.results ?? const <SearchPostResult>[];
     final visible = posts.take(_kPostsPreview).toList();
@@ -675,6 +754,8 @@ class _SearchScreenState extends State<SearchScreen> {
         _peopleSection(presence),
       if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.realms)
         _realmsSection(),
+      if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.bots)
+        _botsSection(),
       if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.posts)
         _contentSection(),
     ];

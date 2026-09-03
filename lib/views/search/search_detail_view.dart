@@ -25,7 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
-enum SearchDetailKind { topics, people, realms, posts }
+enum SearchDetailKind { topics, people, realms, bots, posts }
 
 extension SearchDetailKindMeta on SearchDetailKind {
   /// Route segment. "posts" is the endpoint's name; the section is titled
@@ -34,6 +34,7 @@ extension SearchDetailKindMeta on SearchDetailKind {
         SearchDetailKind.topics => "topics",
         SearchDetailKind.people => "people",
         SearchDetailKind.realms => "realms",
+        SearchDetailKind.bots => "bots",
         SearchDetailKind.posts => "posts",
       };
 
@@ -51,6 +52,7 @@ extension SearchDetailKindMeta on SearchDetailKind {
         SearchDetailKind.topics => "Topics",
         SearchDetailKind.people => "People",
         SearchDetailKind.realms => "Realms",
+        SearchDetailKind.bots => "Bots",
         SearchDetailKind.posts => "Content",
       };
 
@@ -83,6 +85,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
   final List<PopularTopic> _topics = [];
   final List<SearchPersonResult> _people = [];
   final List<SearchRealmResult> _realms = [];
+  final List<SearchBotResult> _bots = [];
   final List<SearchPostResult> _posts = [];
 
   int _page = 0;
@@ -145,6 +148,15 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
         if (!mounted) return;
         if (page == 1) _realms.clear();
         _realms.addAll(result.results);
+        count = result.count;
+        hasNext = result.hasNext;
+        break;
+      case SearchDetailKind.bots:
+        final result = await api.searchBotsV2Request(widget.query,
+            page: page, pageSize: _kPageSize);
+        if (!mounted) return;
+        if (page == 1) _bots.clear();
+        _bots.addAll(result.results);
         count = result.count;
         hasNext = result.hasNext;
         break;
@@ -283,6 +295,11 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
             title: "No realms found",
             subtitle: "Servers, groups and pages show up here."
           ),
+        SearchDetailKind.bots => (
+            icon: Icons.smart_toy,
+            title: "No bots found",
+            subtitle: "Bots you can follow and add to group chats."
+          ),
         SearchDetailKind.posts => (
             icon: Icons.article,
             title: "No posts found",
@@ -294,8 +311,53 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
         SearchDetailKind.topics => _topics.length,
         SearchDetailKind.people => _people.length,
         SearchDetailKind.realms => _realms.length,
+        SearchDetailKind.bots => _bots.length,
         SearchDetailKind.posts => _posts.length,
       };
+
+  /// No pending state - a bot is never private, so a follow always lands.
+  Future<void> _toggleFollowBot(SearchBotResult bot) async {
+    if (_followBusy.contains(bot.entityId)) return;
+    // Unfollowing asks first, the same as a person or a page. The button is
+    // its own opposite - "Following" becomes "Follow" - so a stray tap
+    // silently undoes what it was reporting. A bot is named rather than
+    // mentioned, and takes the noun-carrying wording so the copy can say
+    // "following list" instead of a feed it never posts to.
+    if (bot.isFollowed) {
+      final confirmed = await confirmUnfollow(
+        context,
+        name: bot.displayName,
+        isRealm: true,
+        realmNoun: 'bot',
+      );
+      if (!confirmed || !mounted) return;
+    }
+
+    setState(() => _followBusy.add(bot.entityId));
+
+    final wasFollowing = bot.isFollowed;
+    setState(() {
+      final index = _bots.indexWhere((b) => b.entityId == bot.entityId);
+      if (index != -1) {
+        _bots[index] = _bots[index].copyWith(isFollowed: !wasFollowing);
+      }
+    });
+
+    final result = await ProfileApi().setEntityFollowRequest(
+      entityId: bot.entityId,
+      follow: !wasFollowing,
+    );
+    if (!mounted) return;
+    setState(() {
+      _followBusy.remove(bot.entityId);
+      if (!result.ok) {
+        final index = _bots.indexWhere((b) => b.entityId == bot.entityId);
+        if (index != -1) {
+          _bots[index] = _bots[index].copyWith(isFollowed: wasFollowing);
+        }
+      }
+    });
+  }
 
   Widget _item(int index, Map<String, PresenceInfo> presence) {
     switch (widget.kind) {
@@ -352,6 +414,17 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
           onJoinGroup: _joinGroup,
           onOpen: _openRealm,
         );
+      case SearchDetailKind.bots:
+        final bot = _bots[index];
+        return SearchBotCard(
+          bot: bot,
+          wide: true,
+          followBusy: _followBusy.contains(bot.entityId),
+          // No confirmation on unfollow: it costs nothing and re-following is
+          // one tap, unlike a person or a page where it can cost access.
+          onToggleFollow: (target) => _toggleFollowBot(target),
+          onOpen: (target) => context.push('/bot/${target.handle}'),
+        );
       case SearchDetailKind.posts:
         final post = _posts[index];
         return SearchContentCard(
@@ -365,6 +438,9 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
         SearchDetailKind.topics => const CLTopicRowSkeleton(),
         SearchDetailKind.people => const CLEntityRowSkeleton(),
         SearchDetailKind.realms => const SearchRealmCardSkeleton(wide: true),
+        // Same footprint as a realm card, so the realm skeleton is the right
+        // shimmer rather than a second one that has to be kept in step.
+        SearchDetailKind.bots => const SearchRealmCardSkeleton(wide: true),
         SearchDetailKind.posts => const SearchContentCardSkeleton(),
       };
 

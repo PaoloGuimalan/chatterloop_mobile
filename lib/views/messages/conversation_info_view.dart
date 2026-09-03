@@ -152,6 +152,13 @@ class ConversationInfoScreen extends StatelessWidget {
                             Icon(Icons.flag_outlined, size: 15, color: p.text3),
                       ),
                     ],
+                    if (_counterpart?.isBot == true) ...[
+                      const SizedBox(width: 5),
+                      Tooltip(
+                        message: 'Bot',
+                        child: Icon(Icons.smart_toy, size: 15, color: p.text3),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -260,6 +267,16 @@ class _PersonRow extends StatelessWidget {
                           message: 'Page',
                           child: Icon(Icons.flag_outlined,
                               size: 12, color: p.text3),
+                        ),
+                      ],
+                      // Members are entities, so a BOT can be in a group too -
+                      // which is the whole point of adding one.
+                      if (person.isBot) ...[
+                        const SizedBox(width: 4),
+                        Tooltip(
+                          message: 'Bot',
+                          child:
+                              Icon(Icons.smart_toy, size: 12, color: p.text3),
                         ),
                       ],
                     ],

@@ -900,6 +900,13 @@ class ConversationStateView extends State<ConversationView> {
     return details is Map && details['realm_type']?.toString() == 'page';
   }
 
+  /// A conversation whose counterpart is a BOT. Reads `type`, not
+  /// `realm_type`, which is null for a bot.
+  bool get _headerIsBot {
+    final details = conversationSetup?['details'];
+    return details is Map && details['type']?.toString() == 'bot';
+  }
+
   /// Every other participant's entityID to ring - mirrors webapp's
   /// ConversationV2.tsx initializeCall's own fallback chain exactly:
   /// conversationSetup.details.entity_id for a single conversation (the
@@ -1475,7 +1482,15 @@ class ConversationStateView extends State<ConversationView> {
                   name: mentionFullNameFor(member),
                   src: member.profile != "none" ? member.profile : null,
                   size: 28,
+                  kind: member.entityType,
                 ),
+                trailing: member.isBot
+                    ? Tooltip(
+                        message: 'Bot',
+                        child:
+                            Icon(Icons.smart_toy, size: 14, color: p.text3),
+                      )
+                    : null,
                 title: Text(mentionFullNameFor(member),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -2132,6 +2147,17 @@ class ConversationStateView extends State<ConversationView> {
                                                             child: Icon(
                                                                 Icons
                                                                     .flag_outlined,
+                                                                size: 13,
+                                                                color: p.text3),
+                                                          ),
+                                                        ],
+                                                        if (_headerIsBot) ...[
+                                                          const SizedBox(
+                                                              width: 4),
+                                                          Tooltip(
+                                                            message: 'Bot',
+                                                            child: Icon(
+                                                                Icons.smart_toy,
                                                                 size: 13,
                                                                 color: p.text3),
                                                           ),

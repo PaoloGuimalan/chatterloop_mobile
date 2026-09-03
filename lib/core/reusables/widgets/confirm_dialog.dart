@@ -72,14 +72,21 @@ Future<bool> confirmUnfollow(
       confirmLabel: 'Withdraw',
     );
   }
+  // A bot gets its own line because the usual one is false for it: bots
+  // cannot post, so "you'll stop seeing its posts" names a consequence that
+  // does not exist. What you actually lose is the bot in your following list.
+  final isBot = realmNoun == 'bot';
   return showCLConfirm(
     context,
     title: 'Unfollow $name?',
-    message: isRealm
-        ? "You'll stop seeing this $realmNoun's posts in your feed. You can "
-            "follow again anytime."
-        : "You'll stop seeing their posts in your feed. You can follow again "
-            "anytime.",
+    message: isBot
+        ? "It will be removed from your following list. You can follow again "
+            "anytime, and this doesn't affect any chats you share."
+        : isRealm
+            ? "You'll stop seeing this $realmNoun's posts in your feed. You "
+                "can follow again anytime."
+            : "You'll stop seeing their posts in your feed. You can follow "
+                "again anytime.",
     confirmLabel: 'Unfollow',
   );
 }

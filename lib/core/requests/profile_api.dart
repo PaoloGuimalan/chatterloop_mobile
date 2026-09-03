@@ -55,12 +55,16 @@ class ProfileApi {
   }
 
   /// Same endpoint as getPublicProfileRequest above (webapp reuses the
-  /// exact same `/api/user/auth/<slug>/` route for both - it branches on the
-  /// response's data.type: "user" -> Profile, "page" -> RealmProfile,
-  /// confirmed against ProfileContainer.tsx). Only ever called here when
-  /// the caller already knows (via UserAccount.activeEntity.type == "realm")
-  /// that the slug in question is a page, so no branching is needed on
-  /// this side - always parsed as a realm.
+  /// exact same `/api/user/auth/<slug>/` route for all three - it branches on
+  /// the response's data.type: "user" -> Profile, "bot" -> BotProfile,
+  /// "page" -> RealmProfile, confirmed against ProfileContainer.tsx).
+  ///
+  /// Called when the caller already knows the handle is NOT a person - a page
+  /// (via UserAccount.activeEntity.type == "realm") or a BOT, whose payload
+  /// the server deliberately maps onto this same realm shape. So no branching
+  /// is needed on this side; both parse as a realm and only the SCREEN
+  /// differs (bot_profile_view drops the cover photo and the post feed, which
+  /// a bot does not have).
   ///
   /// [handle] is a realm SLUG from a profile link, or a conversation's
   /// contactID when coming from a group chat - the route resolves both, which

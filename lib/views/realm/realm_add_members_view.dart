@@ -125,7 +125,11 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
         ? await _parentServerMembers(query)
         // Entities, not people - a page can be a member. realmTypes defaults to
         // "page", which is what can hold a membership.
-        : await SearchApi().searchEntitiesRequest(query);
+        // Bots included: adding one to a realm is the point of the
+        // picker for them, and the default types are people and pages only -
+        // so a bot was not merely unflagged here, it was unreachable.
+        : await SearchApi()
+            .searchEntitiesRequest(query, types: "user,realm,bot");
     if (!mounted) return;
     setState(() {
       _results
@@ -157,6 +161,11 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
               middleName: '',
               lastName: '',
               profile: member.profile,
+              // Carried through, not defaulted: SearchResultUser.type falls
+              // back to "user", so every page and bot in a server's member
+              // list arrived claiming to be a person and no row could mark it.
+              type: member.entityType.isEmpty ? 'user' : member.entityType,
+              realmType: member.realmType,
               hasConnection: false,
               connectionAccomplished: false,
               isActionByEntity: false,
@@ -351,19 +360,42 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
                       id: entity.entityId,
                       name: name,
                       src: entity.profile,
-                      size: 38),
+                      size: 38,
+                      kind: entity.type),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(name.isEmpty ? entity.username : name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: CLType.body,
-                                fontWeight: FontWeight.w600,
-                                color: p.text)),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(name.isEmpty ? entity.username : name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: CLType.body,
+                                      fontWeight: FontWeight.w600,
+                                      color: p.text)),
+                            ),
+                            if (entity.isRealm) ...[
+                              const SizedBox(width: 4),
+                              Tooltip(
+                                message: 'Page',
+                                child: Icon(Icons.flag_outlined,
+                                    size: 13, color: p.text3),
+                              ),
+                            ],
+                            if (entity.type == 'bot') ...[
+                              const SizedBox(width: 4),
+                              Tooltip(
+                                message: 'Bot',
+                                child: Icon(Icons.smart_toy,
+                                    size: 13, color: p.text3),
+                              ),
+                            ],
+                          ],
+                        ),
                         Text(
                           already ? 'Already a member' : '@${entity.username}',
                           maxLines: 1,
