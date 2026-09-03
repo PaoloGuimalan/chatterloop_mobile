@@ -222,6 +222,27 @@ class CLNotificationRow extends StatelessWidget {
                           child: Icon(Icons.verified, size: 13, color: p.brand),
                         ),
                       ),
+                    // Page and bot markers, same slot as the verified check
+                    // above and mutually exclusive with it and each other -
+                    // the sender's type is exactly one of the three.
+                    if (n.fromUser?.type == 'realm')
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.middle,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 3, right: 1),
+                          child: Icon(Icons.flag_outlined,
+                              size: 13, color: p.text3),
+                        ),
+                      ),
+                    if (n.fromUser?.type == 'bot')
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.middle,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 3, right: 1),
+                          child:
+                              Icon(Icons.smart_toy, size: 13, color: p.text3),
+                        ),
+                      ),
                     if (details.isNotEmpty)
                       TextSpan(
                         text: " $details",

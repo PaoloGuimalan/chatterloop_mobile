@@ -529,6 +529,7 @@ class CommentRow extends StatelessWidget {
             name: author.displayName,
             src: author.profile,
             size: avatarSize,
+            kind: author.type,
           ),
         ),
         const SizedBox(width: 8),
@@ -577,6 +578,22 @@ class CommentRow extends StatelessWidget {
                               if (author.isVerified) ...[
                                 const SizedBox(width: 4),
                                 Icon(Icons.verified, size: 12, color: p.brand),
+                              ],
+                              if (author.isRealm) ...[
+                                const SizedBox(width: 4),
+                                Tooltip(
+                                  message: 'Page',
+                                  child: Icon(Icons.flag_outlined,
+                                      size: 12, color: p.text3),
+                                ),
+                              ],
+                              if (author.type == 'bot') ...[
+                                const SizedBox(width: 4),
+                                Tooltip(
+                                  message: 'Bot',
+                                  child: Icon(Icons.smart_toy,
+                                      size: 12, color: p.text3),
+                                ),
                               ],
                             ],
                           ),
@@ -665,8 +682,15 @@ class CommentRow extends StatelessWidget {
 
 void _openAuthor(BuildContext context, PostPreviewAuthor author) {
   if (author.handle.isEmpty) return;
-  context.push(
-      author.isRealm ? '/realm/${author.handle}' : '/user/${author.handle}');
+  // Three kinds, three routes - a bot used to fall into the "not realm"
+  // branch and push '/user/<handle>', a profile that does not resolve, so
+  // tapping a bot's name in a comment silently went nowhere.
+  final route = switch (author.type) {
+    'realm' => '/realm/${author.handle}',
+    'bot' => '/bot/${author.handle}',
+    _ => '/user/${author.handle}',
+  };
+  context.push(route);
 }
 
 class _CommentAction extends StatelessWidget {

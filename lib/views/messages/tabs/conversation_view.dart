@@ -1053,20 +1053,26 @@ class ConversationStateView extends State<ConversationView> {
   }
 
   /// Tapping the header avatar/name opens the OTHER entity's profile. Only for
-  /// single conversations - the other party in a 1:1 can be a user OR a
-  /// realm/page (a page DM'ing a user). The server resolves details.type to
-  /// 'user' or 'realm', and details.username to COALESCE(user.username,
-  /// realm.slug) - i.e. exactly the identifier each profile route wants
-  /// (/user/:username vs /realm/:slug). No-ops for group/channel (no single
-  /// profile to open) or before setup has resolved.
+  /// single conversations - the other party in a 1:1 can be a user, a
+  /// realm/page, OR A BOT. The server resolves details.type to 'user',
+  /// 'realm' or 'bot', and details.username to COALESCE(user.username,
+  /// realm.slug, bot.handle) - i.e. exactly the identifier each profile route
+  /// wants. A bot used to fall through to the user branch, landing on
+  /// /user/`<handle>` - a profile that does not resolve, so the header looked
+  /// tappable and led nowhere. No-ops for group/channel (no single profile to
+  /// open) or before setup has resolved.
   void _openHeaderProfile() {
     if (_conversationType != "single") return;
     final details = conversationSetup?['details'];
     if (details is! Map) return;
     final username = (details['username'] ?? '').toString();
     if (username.isEmpty || username == 'unknown') return;
-    final isRealm = (details['type'] ?? '').toString() == 'realm';
-    context.push(isRealm ? '/realm/$username' : '/user/$username');
+    final route = switch ((details['type'] ?? '').toString()) {
+      'realm' => '/realm/$username',
+      'bot' => '/bot/$username',
+      _ => '/user/$username',
+    };
+    context.push(route);
   }
 
   /// "Active Now" while online, else "Active <time since> ago" once we

@@ -158,6 +158,15 @@ class ConversationsApi {
         "username": (other["userID"] ?? other["username"] ?? "").toString(),
         "display_name": displayName,
         "profile": cleanProfile(other["profile"]),
+        // The archives row carries these under the same camelCase keys the
+        // /m/conversations counterpart query does (entityType/realmType/
+        // isVerified) - ConversationDisplayDetails.fromJson reads the
+        // snake_case names /m/conversations sends, so without this remap a
+        // bot or page in the archived list showed no icon and no badge even
+        // though the server was already sending the values.
+        "type": other["entityType"],
+        "realm_type": other["realmType"],
+        "is_verified": other["isVerified"] == true,
       };
     }
 
