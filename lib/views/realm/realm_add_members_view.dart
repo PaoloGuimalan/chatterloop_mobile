@@ -169,6 +169,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
               hasConnection: false,
               connectionAccomplished: false,
               isActionByEntity: false,
+              isVerified: member.isVerified,
             ))
         .toList();
   }
@@ -378,6 +379,10 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
                                       fontWeight: FontWeight.w600,
                                       color: p.text)),
                             ),
+                            if (entity.isVerified) ...[
+                              const SizedBox(width: 4),
+                              Icon(Icons.verified, size: 13, color: p.brand),
+                            ],
                             if (entity.isRealm) ...[
                               const SizedBox(width: 4),
                               Tooltip(

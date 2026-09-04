@@ -161,15 +161,17 @@ class SearchRealmResult {
 /// what `GET /api/bot/<handle>/` returns, so one card draws a search hit and a
 /// profile header alike.
 ///
-/// Two of them are constants rather than server values, and both say something:
-/// `isVerified` is never true (the badge means a verified human or page), and
-/// there is no pending-follow state (a bot has no privacy gate, so a follow of
-/// one is never awaiting approval).
+/// `isFollowPending` is a constant rather than a server value: a bot has no
+/// privacy gate, so a follow of one is never awaiting approval.
 class SearchBotResult {
   final String entityId;
   final String displayName;
   final String handle;
   final String? profile;
+
+  /// The bot's own verification badge - distinct from an account's
+  /// email-confirmation gate and a realm's page-verification flow.
+  final bool isVerified;
 
   /// What the bot is for. People have a mutual count and realms a member
   /// count; a bot has neither, and without this one line one bot is
@@ -187,6 +189,7 @@ class SearchBotResult {
     required this.displayName,
     required this.handle,
     this.profile,
+    this.isVerified = false,
     required this.description,
     required this.followersCount,
     required this.isFollowed,
@@ -199,6 +202,7 @@ class SearchBotResult {
         displayName: displayName,
         handle: handle,
         profile: profile,
+        isVerified: isVerified,
         description: description,
         followersCount: followersCount ?? this.followersCount,
         isFollowed: isFollowed ?? this.isFollowed,
@@ -211,6 +215,7 @@ class SearchBotResult {
       displayName: (json["display_name"] ?? "").toString(),
       handle: (json["handle"] ?? "").toString(),
       profile: json["profile"]?.toString(),
+      isVerified: json["is_verified"] == true,
       description: (json["description"] ?? "").toString(),
       followersCount: json["followers_count"] is num
           ? (json["followers_count"] as num).toInt()

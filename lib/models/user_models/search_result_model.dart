@@ -26,6 +26,12 @@ class SearchResultUser {
   /// Realm.type ("page", "group", ...) for realm hits; null for people.
   final String? realmType;
 
+  /// The display badge - an account's is_badged, a realm's or a bot's
+  /// is_verified, normalised server-side to one field. False for the plain
+  /// v1 factory (that endpoint never carried it); real for fromEntityJson
+  /// and for a row built from a RealmPerson.
+  final bool isVerified;
+
   bool get isRealm => type == "realm";
 
   const SearchResultUser({
@@ -43,6 +49,7 @@ class SearchResultUser {
     required this.isActionByEntity,
     this.type = "user",
     this.realmType,
+    this.isVerified = false,
   });
 
   String get displayName => [
@@ -95,6 +102,7 @@ class SearchResultUser {
       isActionByEntity: json["is_action_by_entity"] == true,
       type: (json["type"] ?? "user").toString(),
       realmType: json["realm_type"]?.toString(),
+      isVerified: json["is_verified"] == true,
     );
   }
 }

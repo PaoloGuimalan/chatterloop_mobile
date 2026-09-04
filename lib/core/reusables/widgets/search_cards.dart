@@ -379,8 +379,8 @@ class SearchRealmCard extends StatelessWidget {
 ///  - ONE action, Follow. A bot cannot accept a contact request - no session
 ///    to see one in, no accept endpoint to call - so an Add button could only
 ///    ever be refused. The server says as much with can_connect: false.
-///  - NO verified badge. It means a verified human or page; a bot gets a
-///    "software" marker instead, which is the fact a reader actually needs.
+///  - A verified badge alongside the "software" marker when the bot itself is
+///    verified - the two say different things and are not mutually exclusive.
 ///  - The DESCRIPTION is the meta line. Realms show "type · reach" and people
 ///    show mutuals; a bot has no equivalent, and without the line saying what
 ///    it does one bot looks like any other.
@@ -448,6 +448,10 @@ class SearchBotCard extends StatelessWidget {
               ),
             ),
           ),
+          if (bot.isVerified) ...[
+            const SizedBox(width: 4),
+            Icon(Icons.verified, size: 14, color: p.brand),
+          ],
           const SizedBox(width: 4),
           Icon(Icons.smart_toy, size: 13, color: p.text3),
         ],

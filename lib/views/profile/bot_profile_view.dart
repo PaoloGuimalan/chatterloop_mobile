@@ -212,9 +212,13 @@ class _BotProfileScreenState extends State<BotProfileScreen> {
                           ),
                         ),
                       ),
+                      if (bot.isVerified) ...[
+                        const SizedBox(width: 5),
+                        Icon(Icons.verified, size: 15, color: p.brand),
+                      ],
                       const SizedBox(width: 5),
-                      // Says "software", never the verified check - that badge
-                      // means a verified human or page.
+                      // Says "software" - separate from, and not mutually
+                      // exclusive with, the verified check above.
                       Icon(Icons.smart_toy, size: 15, color: p.text3),
                     ],
                   ),
