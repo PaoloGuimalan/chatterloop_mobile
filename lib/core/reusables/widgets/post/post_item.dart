@@ -86,20 +86,102 @@ class PostItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(CLRadii.md),
         ),
         clipBehavior: Clip.antiAlias,
-        child: PostCard(
-          post: post,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Why this post is here at all, above the author row - the order
+            // the sentence reads in ("X commented on this post" THEN the post).
+            //
+            // Lives on the ROW rather than inside PostCard because it is a
+            // property of the feed, not of the post: the post's own screen
+            // shows the same PostCard and has no reason to caption it, and
+            // PostPreview.feedReason is null everywhere but the newsfeed
+            // anyway.
+            if (post.feedReason != null)
+              FeedReasonBanner(reason: post.feedReason!),
+            PostCard(
+              post: post,
           onChanged: onChanged,
           // onOpen marks this as a FEED row rather than the post's own screen -
           // that's what clamps the caption. It is no longer a body tap target:
           // onComment is the only way into the post from here, so tapping a
           // video in a row plays it instead of navigating off it.
-          onOpen: open,
-          // Without the engagement row there is no comment affordance to
-          // route, and it is the only way a row opens the post.
-          onComment: showEngagement ? open : null,
-          onDeleted: onDeleted,
-          showEngagement: showEngagement,
+              onOpen: open,
+              // Without the engagement row there is no comment affordance to
+              // route, and it is the only way a row opens the post.
+              onComment: showEngagement ? open : null,
+              onDeleted: onDeleted,
+              showEngagement: showEngagement,
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Paolo Guimalan commented on this post" above a feed card.
+///
+/// Deliberately quieter than the author row below it and separated from it by
+/// a rule: this says why the post reached you, not who wrote it, and it must
+/// not compete with the byline.
+///
+/// A reason `type` this build has no phrasing for renders NOTHING rather than
+/// raw text - a newer server may send reasons this one predates, and
+/// "sponsored on this post" is worse than silence.
+class FeedReasonBanner extends StatelessWidget {
+  final FeedReason reason;
+
+  const FeedReasonBanner({super.key, required this.reason});
+
+  static const Map<String, String> _phrases = {
+    "comment": "commented on this post",
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final phrase = _phrases[reason.type];
+    if (phrase == null) return const SizedBox.shrink();
+
+    final entity = reason.entity;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: p.border)),
+      ),
+      child: Row(
+        children: [
+          // No leading glyph. The avatar already says this line is about a
+          // PERSON, and a second icon beside it only competed with the author
+          // avatar directly below - two icons stacked a few pixels apart read
+          // as one control, not two pieces of information.
+          CLAvatar(
+            id: entity.entityId,
+            name: entity.displayName,
+            src: entity.profile,
+            size: 20,
+            kind: entity.type,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(
+                  text: entity.displayName,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, color: p.text),
+                ),
+                TextSpan(text: " $phrase"),
+              ]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: CLType.caption, color: p.text2),
+            ),
+          ),
+        ],
       ),
     );
   }

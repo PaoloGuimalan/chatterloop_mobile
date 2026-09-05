@@ -136,6 +136,44 @@ class PostPreviewAuthor {
   }
 }
 
+/// Why a post is in the viewer's feed - the caption above a feed card.
+///
+/// The newsfeed is fan-out-on-write, and MOST rows are there because you follow
+/// the author, which needs no explaining. The rows that do are the ones a third
+/// party caused: somebody you follow commented on a post by an author you may
+/// not follow at all, and without a line saying so the post reads as if it
+/// arrived from nowhere.
+///
+/// The server only sends this for the cases worth explaining (see
+/// SILENT_FEED_REASONS in newsfeed/helpers/query_functions.py), so its presence
+/// IS the decision to show something - clients do not filter on `type`
+/// themselves beyond knowing how to phrase it.
+class FeedReason {
+  /// "comment" today. A value this build has no phrasing for renders nothing
+  /// rather than raw text - a newer server may send reasons this one predates.
+  final String type;
+
+  /// WHO caused it, which is not the post's author on a comment bump.
+  final PostPreviewAuthor entity;
+
+  const FeedReason({required this.type, required this.entity});
+
+  static FeedReason? fromJson(dynamic raw) {
+    if (raw is! Map) return null;
+
+    final type = raw["type"]?.toString();
+    if (type == null || type.isEmpty) return null;
+
+    // Same entity shape as a post's author, so it parses with the same code -
+    // which is also what makes a page or a bot render properly here.
+    final entity = PostPreviewAuthor.fromEntityJson(raw["entity"]);
+    // Nobody to name means nothing to say.
+    if (entity.displayName.isEmpty) return null;
+
+    return FeedReason(type: type, entity: entity);
+  }
+}
+
 class PostPreview {
   final String postId;
   final String caption;
@@ -185,6 +223,12 @@ class PostPreview {
   /// rows carry a full EntitySerializer, same as the post's own entity.
   final List<PostPreviewAuthor> tagged;
 
+  /// Why this post is in the viewer's feed, or null when there is nothing
+  /// worth saying. Only the newsfeed endpoint sends it - a profile feed, a
+  /// search hit and the post screen all leave it null, because the reason
+  /// belongs to the feed ROW that delivered the post rather than to the post.
+  final FeedReason? feedReason;
+
   const PostPreview({
     required this.postId,
     required this.caption,
@@ -202,6 +246,7 @@ class PostPreview {
     this.privacyStatus = 'public',
     this.contentType = 'text',
     this.tagged = const [],
+    this.feedReason,
   });
 
   /// The post this one shares, when [isShared]. Stored as a reference row
@@ -247,6 +292,10 @@ class PostPreview {
         privacyStatus: privacyStatus ?? this.privacyStatus,
         contentType: contentType ?? this.contentType,
         tagged: tagged,
+        // Carried through like `tagged`: reacting to a post does not change
+        // why it reached you, and dropping it here would make the caption
+        // vanish the moment the row updated itself.
+        feedReason: feedReason,
       );
 
   factory PostPreview.fromJson(Map<String, dynamic> json) {
@@ -301,6 +350,7 @@ class PostPreview {
       linkPreview: linkPreview is Map
           ? LinkPreviewData.fromJson(Map<String, dynamic>.from(linkPreview))
           : null,
+      feedReason: FeedReason.fromJson(json["feed_reason"]),
     );
   }
 }
