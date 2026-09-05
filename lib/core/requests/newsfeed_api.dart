@@ -162,6 +162,31 @@ class NewsfeedApi {
     }
   }
 
+  /// Authoritative reaction tallies for a COMMENT - the post version above one
+  /// level down. Used to re-read a row after somebody ELSE reacted to it, which
+  /// arrives on the post's live stream (post_sse_connection.dart); the viewer's
+  /// own reaction is applied optimistically and never needs this.
+  Future<List<PostReactionCount>> getCommentReactionTotalsRequest(
+      String commentId) async {
+    try {
+      final response = await _dio
+          .get('${_endpoints.newsfeedCommentTotalReactions}$commentId/');
+      final data = response.data;
+      if (data is! List) return const [];
+      return data
+          .whereType<Map>()
+          .map((item) =>
+              PostReactionCount.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return const [];
+    }
+  }
+
   /// One page of comments. [parentId] null fetches TOP-LEVEL comments; passing
   /// a comment id fetches that comment's replies (the thread is two levels
   /// deep, never more).
@@ -196,6 +221,45 @@ class NewsfeedApi {
   /// Returns only success: the endpoint answers "OK", not the created row, so
   /// the caller refetches rather than trying to synthesise one locally (it
   /// wouldn't have the server's id, timestamp or resolved author).
+  /// "I am typing a comment on this post."
+  ///
+  /// The comment-section twin of the messenger's istypingbroadcast, and the
+  /// same fire-and-forget shape - nothing is stored and nothing is retried,
+  /// because a typing ping that arrives late is worse than one that never
+  /// arrives. It differs in who it reaches: that one names its recipients from
+  /// a conversation's member list, this publishes to the post's own channel
+  /// and reaches whoever has the post open.
+  ///
+  /// Node, not the user service: typing is transient, so the service that owns
+  /// comment rows has nothing to say about it.
+  ///
+  /// [parentId] says WHICH box - null for the post's main comment box, or a
+  /// top-level comment's id for that comment's reply box - so the indicator
+  /// lands where the reply will, rather than at the foot of the section where
+  /// it says nothing about which thread is being answered.
+  ///
+  /// Unsigned, unlike the messenger's: the server takes the post id from the
+  /// body and the typer from the auth token, so there is nothing for a signed
+  /// payload to protect.
+  Future<void> broadcastCommentTypingRequest({
+    required String postId,
+    String? parentId,
+  }) async {
+    try {
+      await _nodeDio.post(
+        _endpoints.commentTypingBroadcast,
+        data: {'post_id': postId, 'parent_id': parentId},
+      );
+    } catch (e) {
+      // A missed typing ping is three missing dots, never a reason to
+      // interrupt someone mid-comment.
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+    }
+  }
+
   Future<bool> addCommentRequest({
     required String postId,
     String? parentId,

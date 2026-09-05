@@ -7,6 +7,21 @@ class Endpoints {
   String userApiUrl = 'https://user.chatterloop.app';
   String sseRoute = '/u/sseNotifications/';
 
+  /// Live activity on ONE post - comments as they are written, and who is
+  /// typing (post_sse_connection.dart). Same envelope as [sseRoute], with a
+  /// `post_id` signed into it, and the token is appended to this path.
+  ///
+  /// A separate stream rather than more events on [sseRoute]: that one is
+  /// addressed to the signed-in entity, this one to the post, and only the
+  /// post screen opens it.
+  String ssePostActivityRoute = '/posts/ssePostActivity/';
+
+  /// POST {post_id} - "I am typing a comment on this post". Publishes and
+  /// stores nothing; the comment-section twin of the messenger's
+  /// istypingbroadcast. Throttled by the caller, and the indicator expires on
+  /// its own, so there is deliberately no "stopped typing" call.
+  String commentTypingBroadcast = '/posts/commenttypingbroadcast';
+
   String jwtChecker = '/auth/jwtchecker';
   String login = '/api/user/auth';
 
@@ -206,6 +221,11 @@ class Endpoints {
   /// parent_id lists TOP-LEVEL comments; passing one lists that comment's
   /// replies - threads are only ever two levels deep.
   String newsfeedComments = '/api/newsfeed/comments';
+
+  /// Authoritative [{emoji, count}] for a COMMENT - newsfeedTotalReactions one
+  /// level down. Append :commentID.
+  String newsfeedCommentTotalReactions =
+      '/api/newsfeed/comment_total_reactions/'; // :commentID
 
   /// POST/PUT/DELETE {comment_id, emoji_id} - a reaction on a comment.
   String newsfeedCommentReaction = '/api/newsfeed/comment_reaction';

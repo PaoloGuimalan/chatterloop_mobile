@@ -36,7 +36,28 @@ import 'package:flutter_client_sse/flutter_client_sse.dart' show SSEModel;
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
+/// INSTANCE-BASED, with the original static API kept on top of a shared
+/// instance.
+///
+/// It used to be static all the way down: one `_client`, one
+/// `_activeController`. That was fine while there was exactly one stream (the
+/// notification connection), and became a bug the moment a second one was
+/// needed - the post-activity stream (post_sse_connection.dart). Opening it
+/// would have overwritten `_client`, so the notification stream's own handle
+/// was lost and `unsubscribeFromSSE()` would have closed the WRONG connection:
+/// logging out or switching entity would have torn down the post stream and
+/// left the old identity's notification stream alive, which is the exact
+/// failure the vendored copy exists to prevent.
+///
+/// So the state moved onto instances, and the static methods now delegate to
+/// `_shared` - the notification stream keeps the API and the behaviour it had,
+/// and every other stream gets its own instance with its own client.
 class PatchedSSEClient {
+  /// Backs the static API, i.e. the notification stream. Every field below is
+  /// per-instance, so this one's client and controllers are untouched by any
+  /// other stream's.
+  static final PatchedSSEClient _shared = PatchedSSEClient();
+
   /// Built on a dart:io HttpClient with autoUncompress DISABLED, which is
   /// the single most important detail for SSE on mobile.
   ///
@@ -63,17 +84,17 @@ class PatchedSSEClient {
     return IOClient(io);
   }
 
-  static http.Client _client = _makeClient();
+  http.Client _client = _makeClient();
 
-  /// Whichever StreamController the most recent subscribeToSSE call
-  /// returned - what unsubscribeFromSSE() (called with no arguments,
-  /// matching the original API) marks as "don't retry" in [_disconnected].
-  static StreamController<SSEModel>? _activeController;
+  /// Whichever StreamController the most recent subscribe call returned -
+  /// what unsubscribe() (called with no arguments, matching the original API)
+  /// marks as "don't retry" in [_disconnected].
+  StreamController<SSEModel>? _activeController;
 
-  static final Set<StreamController<SSEModel>> _disconnected =
+  final Set<StreamController<SSEModel>> _disconnected =
       <StreamController<SSEModel>>{};
 
-  static void _retryConnection(
+  void _retryConnection(
       {required SSERequestType method,
       required String url,
       required Map<String, String> header,
@@ -82,7 +103,7 @@ class PatchedSSEClient {
     if (_disconnected.contains(streamController)) return;
     Future.delayed(const Duration(seconds: 5), () {
       if (_disconnected.contains(streamController)) return;
-      subscribeToSSE(
+      subscribe(
         method: method,
         url: url,
         header: header,
@@ -92,7 +113,7 @@ class PatchedSSEClient {
     });
   }
 
-  static Stream<SSEModel> subscribeToSSE(
+  Stream<SSEModel> subscribe(
       {required SSERequestType method,
       required String url,
       required Map<String, String> header,
@@ -203,10 +224,28 @@ class PatchedSSEClient {
   /// (see _retryConnection's guard above), so this actually stops the
   /// connection for good instead of it quietly coming back 5s later under
   /// the identity that was just abandoned.
-  static void unsubscribeFromSSE() {
+  void unsubscribe() {
     if (_activeController != null) {
       _disconnected.add(_activeController!);
     }
     _client.close();
   }
+
+  /// The original static API, unchanged for its one caller (the notification
+  /// stream in sse_connection.dart) - it just runs on [_shared] now.
+  static Stream<SSEModel> subscribeToSSE(
+          {required SSERequestType method,
+          required String url,
+          required Map<String, String> header,
+          StreamController<SSEModel>? oldStreamController,
+          Map<String, dynamic>? body}) =>
+      _shared.subscribe(
+        method: method,
+        url: url,
+        header: header,
+        oldStreamController: oldStreamController,
+        body: body,
+      );
+
+  static void unsubscribeFromSSE() => _shared.unsubscribe();
 }

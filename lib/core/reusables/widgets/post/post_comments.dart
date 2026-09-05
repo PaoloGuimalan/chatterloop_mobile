@@ -11,10 +11,14 @@
 // so whoever renders the post (this screen now, a feed row later) keeps its own
 // count right.
 
+import 'dart:async';
+
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/requests/network_api.dart';
+import 'package:chatterloop_app/core/requests/post_sse_connection.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
@@ -27,10 +31,51 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 const int _kCommentsPageSize = 20;
+
+/// How long a "typing" ping keeps the indicator up.
+///
+/// There is deliberately no "stopped typing" event to wait for - one that got
+/// lost would leave the dots on screen forever - so the indicator expires on
+/// its own and an active typist re-broadcasts to keep it alive. Matches the
+/// broadcast throttle, plus a beat of slack so a re-broadcast that is merely
+/// slow does not make the dots blink.
+const Duration _kTypingIndicatorTtl = Duration(seconds: 7);
+
+/// One broadcast per this long while typing - same cadence as the messenger.
+const Duration _kTypingBroadcastThrottle = Duration(seconds: 5);
+
+/// Someone typing on this post, as the indicator renders them.
+class CommentTyper {
+  final String entityId;
+  final String? handle;
+  final String? name;
+
+  /// WHICH box they are typing in: null for the post's main comment box, or a
+  /// top-level comment's id for that comment's reply box. The same axis a
+  /// comment event's `parent_id` names, so "which list is this about" is one
+  /// rule rather than two - and what lets the indicator say where the reply is
+  /// going to land, not just that somebody is writing.
+  final String? parentId;
+
+  const CommentTyper({
+    required this.entityId,
+    this.handle,
+    this.name,
+    this.parentId,
+  });
+
+  /// Names people rather than saying "someone": the handle is what identifies
+  /// an entity here, and a page writing as itself should read as the page. The
+  /// display name is the fallback, and only a typer whose identity did not
+  /// resolve at all falls through to "Someone".
+  String get label =>
+      handle != null && handle!.isNotEmpty ? "@$handle" : (name ?? "Someone");
+}
 
 /// The comment thread, as a section inside the post screen's scroll view.
 ///
@@ -44,6 +89,15 @@ class PostComments extends StatefulWidget {
   /// keep the post's own count in step without refetching the post.
   final ValueChanged<int>? onCountChanged;
 
+  /// Somebody ELSE reacted to the POST (not to a comment).
+  ///
+  /// Handed UP, because the post's reaction tallies live on whoever renders
+  /// the post - this widget owns comments. It is reported from here because
+  /// the stream is held here: the comment section is the one child mounted on
+  /// every surface that shows a post in full, which is exactly the set of
+  /// surfaces that open the stream.
+  final VoidCallback? onPostReaction;
+
   /// Who the composer is replying to, owned by the SCREEN.
   ///
   /// The composer is docked to the bottom of the viewport (like the
@@ -52,11 +106,38 @@ class PostComments extends StatefulWidget {
   /// notifier is what lets the two talk without either owning the other.
   final ValueNotifier<PostComment?>? replyTarget;
 
+  /// Open a live stream for this post - comments appearing as they are
+  /// written, and a "typing" indicator.
+  ///
+  /// OPT-IN, and off by default, because the connection is per post rather
+  /// than per session: a feed renders many post rows at once, and a comment
+  /// section that subscribed on mount would leave one live connection behind
+  /// per row scrolled past. Only the screen that shows a single post in full
+  /// sets this - which is also the only place a live comment could be seen.
+  final bool realtime;
+
+  /// Who is typing a TOP-LEVEL comment, owned by the SCREEN.
+  ///
+  /// Same arrangement as [replyTarget], and for the same reason: the composer
+  /// is docked to the bottom of the viewport rather than sitting at the end of
+  /// this list, so the indicator that belongs just above it is rendered by the
+  /// screen. A notifier is what lets the two talk without either owning the
+  /// other - and passing it IN, rather than reading it back off this widget's
+  /// state, means the screen can build the indicator on its very first frame.
+  ///
+  /// Only the top-level slice travels out here. Someone typing a REPLY is
+  /// shown inside that thread instead, which is inside this widget - see
+  /// [CommentTyper.parentId].
+  final ValueNotifier<List<CommentTyper>>? typers;
+
   const PostComments({
     super.key,
     required this.postId,
     this.onCountChanged,
+    this.onPostReaction,
     this.replyTarget,
+    this.realtime = false,
+    this.typers,
   });
 
   @override
@@ -84,10 +165,235 @@ class PostCommentsState extends State<PostComments> {
 
   PostComment? get _replyingTo => widget.replyTarget?.value;
 
+  // ── Realtime ────────────────────────────────────────────────────────────
+
+  PostActivityConnection? _activity;
+  StreamSubscription<PostActivityEvent>? _activitySub;
+
+  /// Everyone currently typing on this post, keyed by entity id - ONE entry
+  /// each, because a person types in one box at a time. Moving from the main
+  /// comment box into a thread therefore replaces their entry rather than
+  /// leaving them showing in both.
+  ///
+  /// Held here rather than only in the screen's notifier because the two
+  /// slices render in different places: the top-level slice above the docked
+  /// composer (which is the screen's), and a thread's slice inside that
+  /// thread's tile (which is this widget's).
+  final Map<String, CommentTyper> _typers = {};
+
+  /// One expiry timer per typer; bookkeeping, not something the build reads.
+  final Map<String, Timer> _typingTimers = {};
+
+  /// Throttles our own outgoing typing broadcasts.
+  DateTime? _lastTypingSent;
+
+  String get _myEntityId => appStore.state.userAuth.user.entityId;
+
   @override
   void initState() {
     super.initState();
     _fetch(1);
+    if (widget.realtime) _connectActivity();
+  }
+
+  @override
+  void dispose() {
+    _activitySub?.cancel();
+    _activity?.dispose();
+    for (final timer in _typingTimers.values) {
+      timer.cancel();
+    }
+    _typingTimers.clear();
+    _typers.clear();
+    // widget.typers is NOT disposed here - the screen owns it, exactly as it
+    // owns replyTarget.
+    super.dispose();
+  }
+
+  Future<void> _connectActivity() async {
+    final connection = PostActivityConnection();
+    _activity = connection;
+    _activitySub = connection.events.listen(_onActivity);
+    await connection.connect(widget.postId);
+  }
+
+  void _onActivity(PostActivityEvent event) {
+    if (!mounted) return;
+
+    switch (event.type) {
+      case PostActivityType.typing:
+        _onRemoteTyping(event);
+        return;
+      case PostActivityType.comment:
+        _onRemoteComment(event);
+        return;
+      case PostActivityType.reaction:
+        _onRemoteReaction(event);
+        return;
+      // Part of the server's contract but not published yet, and nothing here
+      // knows what to do with one - see PostActivityType.
+      case PostActivityType.share:
+      case PostActivityType.unknown:
+        return;
+    }
+  }
+
+  /// Somebody reacted to the post, or to one of its comments.
+  ///
+  /// Tallies are REFETCHED rather than nudged: the event deliberately carries
+  /// no counts, because a swap moves two emoji rows at once and another
+  /// reaction may have landed in between.
+  ///
+  /// The viewer's own `entityReaction` is never touched - somebody else
+  /// reacting cannot change what YOU reacted with, and overwriting it here
+  /// would fight an optimistic update still in flight.
+  Future<void> _onRemoteReaction(PostActivityEvent event) async {
+    // Our own reaction, already applied optimistically by _react.
+    if (event.actor?.entityId == _myEntityId) return;
+
+    if (event.target == PostActivityTarget.post) {
+      widget.onPostReaction?.call();
+      return;
+    }
+
+    final commentId = event.commentId;
+    if (event.target != PostActivityTarget.comment || commentId == null) return;
+
+    // The row may be a top-level comment or a reply inside an expanded thread.
+    // Nothing on screen means nothing to refresh - a thread that is closed
+    // fetches its rows fresh when it opens.
+    final isReply = !_comments.any((row) => row.commentId == commentId);
+    if (isReply &&
+        !_replies.values.any(
+          (thread) => thread.any((row) => row.commentId == commentId),
+        )) {
+      return;
+    }
+
+    final totals =
+        await NewsfeedApi().getCommentReactionTotalsRequest(commentId);
+    if (!mounted) return;
+
+    final current = _findComment(commentId, isReply: isReply);
+    if (current == null) return;
+
+    setState(() {
+      _replaceComment(current.copyWith(reactions: totals), isReply: isReply);
+    });
+  }
+
+  /// The row with this id, from the top-level list or from an expanded thread.
+  PostComment? _findComment(String commentId, {required bool isReply}) {
+    if (!isReply) {
+      for (final row in _comments) {
+        if (row.commentId == commentId) return row;
+      }
+      return null;
+    }
+    for (final thread in _replies.values) {
+      for (final row in thread) {
+        if (row.commentId == commentId) return row;
+      }
+    }
+    return null;
+  }
+
+  void _onRemoteTyping(PostActivityEvent event) {
+    final actor = event.actor;
+    // Your own keystrokes come back to you: the event goes to the post's
+    // channel, and you are on it. Nobody needs telling that they are typing.
+    if (actor == null || actor.entityId == _myEntityId) return;
+
+    _typers[actor.entityId] = CommentTyper(
+      entityId: actor.entityId,
+      handle: actor.handle,
+      name: actor.name,
+      // Which box - null is the post's main comment box, an id is that
+      // comment's reply box. A thread nobody has expanded simply renders
+      // nothing, which is right: the reply is not on screen either.
+      parentId: event.parentId,
+    );
+    _publishTypers();
+
+    // Rescheduled rather than stacked. Each broadcast used to be able to
+    // schedule its own removal, and an earlier one firing after a later one
+    // arrived would clear the indicator out from under someone still typing -
+    // the same trap sse_events.dart's messenger typing handler fell into.
+    _typingTimers[actor.entityId]?.cancel();
+    _typingTimers[actor.entityId] = Timer(_kTypingIndicatorTtl, () {
+      _typingTimers.remove(actor.entityId);
+      _typers.remove(actor.entityId);
+      if (mounted) _publishTypers();
+    });
+  }
+
+  /// Push the top-level slice out to the screen and rebuild for the thread
+  /// slices, which render inside this widget.
+  void _publishTypers() {
+    widget.typers?.value =
+        _typers.values.where((row) => row.parentId == null).toList();
+    setState(() {});
+  }
+
+  /// Everyone typing a reply under [commentId].
+  List<CommentTyper> _typersForThread(String commentId) =>
+      _typers.values.where((row) => row.parentId == commentId).toList();
+
+  Future<void> _onRemoteComment(PostActivityEvent event) async {
+    // Our own comment, already applied by submitComment. Acting on the echo
+    // would refetch for nothing and double the count.
+    if (event.actor?.entityId == _myEntityId) return;
+
+    // The post's total counts replies as well as top-level comments (the
+    // backend increments for both), so this fires for either.
+    widget.onCountChanged?.call(1);
+
+    final parentId = event.parentId;
+
+    if (parentId == null) {
+      await _fetch(1);
+      return;
+    }
+
+    // A reply. Only refetched into a thread that is actually expanded - a
+    // closed one has nothing on screen to keep in step, and will be fetched
+    // fresh when opened.
+    if (!_expanded.contains(parentId)) return;
+
+    final matches =
+        _comments.where((comment) => comment.commentId == parentId);
+    if (matches.isEmpty) return;
+
+    await _loadReplies(matches.first);
+  }
+
+  /// Tell the post that this person is writing.
+  ///
+  /// Throttled to one call per [_kTypingBroadcastThrottle], matching the
+  /// messenger: an indicator that says "still typing" does not get truer by
+  /// being said on every keystroke.
+  ///
+  /// Public because the composer is docked by the SCREEN and lives outside
+  /// this widget, the same reason [PostComments.typers] is exposed.
+  ///
+  /// The box is resolved from the reply target through [_threadParentFor],
+  /// which is the same function that decides where the comment itself will
+  /// land - so the indicator cannot point at a different thread from the one
+  /// the reply ends up in.
+  void broadcastTyping() {
+    if (!widget.realtime) return;
+
+    final now = DateTime.now();
+    final last = _lastTypingSent;
+    if (last != null && now.difference(last) < _kTypingBroadcastThrottle) {
+      return;
+    }
+
+    _lastTypingSent = now;
+    NewsfeedApi().broadcastCommentTypingRequest(
+      postId: widget.postId,
+      parentId: _threadParentFor(_replyingTo)?.commentId,
+    );
   }
 
   Future<void> _fetch(int page) async {
@@ -351,6 +657,11 @@ class PostCommentsState extends State<PostComments> {
                 expanded: _expanded.contains(comment.commentId),
                 repliesLoading: _repliesLoading.contains(comment.commentId),
                 replies: _replies[comment.commentId] ?? const [],
+                // Anyone writing a reply to THIS comment. Shown at the foot of
+                // its thread rather than above the docked composer, so the
+                // indicator says where the reply is going, not just that
+                // somebody is writing one.
+                typers: _typersForThread(comment.commentId),
                 replyBusy: _reactionBusy,
                 deleteBusy: _deleteBusy,
                 onReact: () => _react(comment, isReply: false),
@@ -388,6 +699,11 @@ class _CommentTile extends StatelessWidget {
   final bool expanded;
   final bool repliesLoading;
   final List<PostComment> replies;
+
+  /// Anyone typing a reply to this comment. Empty on every tile but the one
+  /// being answered.
+  final List<CommentTyper> typers;
+
   final Set<String> replyBusy;
   final Set<String> deleteBusy;
   final VoidCallback onReact;
@@ -409,6 +725,7 @@ class _CommentTile extends StatelessWidget {
     required this.expanded,
     required this.repliesLoading,
     required this.replies,
+    required this.typers,
     required this.replyBusy,
     required this.deleteBusy,
     required this.onReact,
@@ -479,6 +796,16 @@ class _CommentTile extends StatelessWidget {
                     ),
                   )),
           ],
+          // Deliberately OUTSIDE the `expanded` block: somebody starting a
+          // reply to a thread you have collapsed is exactly when you would
+          // want to know it is happening. Indented to the replies' own inset
+          // so it reads as part of the thread and not as a note on the parent
+          // comment.
+          if (typers.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 44, top: 6),
+              child: CommentTypingRow(typers: typers),
+            ),
         ],
       ),
     );
@@ -748,6 +1075,146 @@ String? replyMentionHandleFor(PostComment? target) {
   return handle.isEmpty ? null : handle;
 }
 
+/// "@handle is typing...", dots and a line of text.
+///
+/// Deliberately NOT the messenger's typing bubble: that one is shaped like a
+/// message because it stands where a message will appear. Here the dots sit
+/// beside a line of text instead, so the row reads as a note about the section
+/// rather than as a comment still loading.
+///
+/// Rendered in two places, which is why it is a plain widget over a plain
+/// list: above the docked composer for people writing a TOP-LEVEL comment
+/// (through [CommentTypingIndicator], since that notifier belongs to the
+/// screen), and at the foot of a thread for people writing a reply to it.
+class CommentTypingRow extends StatelessWidget {
+  final List<CommentTyper> typers;
+
+  const CommentTypingRow({super.key, required this.typers});
+
+  static String? labelFor(List<CommentTyper> rows) {
+    if (rows.isEmpty) return null;
+    if (rows.length == 1) return "${rows[0].label} is typing...";
+    if (rows.length == 2) {
+      return "${rows[0].label} and ${rows[1].label} are typing...";
+    }
+    return "${rows[0].label} and ${rows.length - 1} others are typing...";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final label = labelFor(typers);
+    if (label == null) return const SizedBox.shrink();
+
+    return Row(
+      children: [
+        const _TypingDots(),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: CLType.meta, color: p.text2),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// [CommentTypingRow] for the TOP-LEVEL box, above the docked composer.
+///
+/// Driven by the notifier the screen hands to [PostComments]: the composer is
+/// docked outside the comment list, so this is rendered by the screen rather
+/// than at the end of the list, where it would be off-screen exactly when it
+/// matters. Replies do not come through here - they are shown inside their own
+/// thread, which is on screen where the reply will land.
+class CommentTypingIndicator extends StatelessWidget {
+  final ValueListenable<List<CommentTyper>> typers;
+
+  const CommentTypingIndicator({super.key, required this.typers});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<CommentTyper>>(
+      valueListenable: typers,
+      builder: (context, rows, _) {
+        if (rows.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+          child: CommentTypingRow(typers: rows),
+        );
+      },
+    );
+  }
+}
+
+/// Three dots travelling up and down, staggered so they read as one wave
+/// rather than a pulse.
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+
+    return SizedBox(
+      // Reserves the full travel, so the label beside the dots does not shift
+      // as they move.
+      height: 10,
+      width: 26,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) => Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(3, (index) {
+            // Each dot runs the same curve a sixth of a cycle behind the last,
+            // wrapping with % 1 so the wave is continuous rather than resetting.
+            final phase = (_controller.value - index * 0.16) % 1.0;
+            // Up over the first third of its phase, back down over the rest.
+            final lift = phase < 0.3 ? (phase / 0.3) : (1 - (phase - 0.3) / 0.7);
+
+            return Padding(
+              padding: EdgeInsets.only(right: index == 2 ? 0 : 3),
+              child: Transform.translate(
+                offset: Offset(0, -4 * lift),
+                child: Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: p.text3.withValues(alpha: 0.45 + 0.55 * lift),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+}
+
 class CommentComposer extends StatefulWidget {
   final String? replyingToName;
 
@@ -757,12 +1224,21 @@ class CommentComposer extends StatefulWidget {
   final VoidCallback onCancelReply;
   final Future<void> Function(String text) onSubmit;
 
+  /// Fired as the user types, so the post can show a "typing" indicator to
+  /// whoever else has it open. Throttling belongs to the receiver
+  /// ([PostCommentsState.broadcastTyping]) rather than here - this fires per
+  /// keystroke and says nothing about how often it should be acted on.
+  ///
+  /// Optional: a composer with no live stream behind it simply omits it.
+  final VoidCallback? onTyping;
+
   const CommentComposer({
     super.key,
     this.replyingToName,
     this.mentionHandle,
     required this.onCancelReply,
     required this.onSubmit,
+    this.onTyping,
   });
 
   @override
@@ -846,6 +1322,12 @@ class _CommentComposerState extends State<CommentComposer> {
   }
 
   void _syncMentionQuery() {
+    // Piggy-backs on the listener the mention parser already needs, rather
+    // than adding a second one for the same keystrokes.
+    if (_controller.text.trim().isNotEmpty) {
+      widget.onTyping?.call();
+    }
+
     final selection = _controller.selection;
     // A ranged selection isn't a caret, so there's no "@..." being typed.
     if (!selection.isValid || !selection.isCollapsed) {

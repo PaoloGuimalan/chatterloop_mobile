@@ -18,6 +18,7 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
+import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_comments.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
@@ -43,6 +44,11 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
   final ValueNotifier<PostComment?> _replyTarget =
       ValueNotifier<PostComment?>(null);
 
+  /// Shared with [PostComments] the same way: it fills this from the post's
+  /// live stream, the indicator above the docked composer reads it.
+  final ValueNotifier<List<CommentTyper>> _typers =
+      ValueNotifier<List<CommentTyper>>(const []);
+
   PostPreview? _post;
   bool _isLoading = true;
 
@@ -58,6 +64,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _replyTarget.dispose();
+    _typers.dispose();
     super.dispose();
   }
 
@@ -78,6 +85,22 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
       _post = result;
       _isLoading = false;
     });
+  }
+
+  /// Re-read the post's reaction tallies after somebody ELSE reacted.
+  ///
+  /// Only `reactions` is replaced - `entityReaction` is the viewer's own
+  /// choice, which somebody else reacting cannot change. A full _load() would
+  /// also rebuild the media and caption for a change to one number.
+  Future<void> _refreshReactionTotals() async {
+    final post = _post;
+    if (post == null) return;
+
+    final totals =
+        await NewsfeedApi().getPostReactionTotalsRequest(post.postId);
+    if (!mounted) return;
+
+    setState(() => _post = _post?.copyWith(reactions: totals));
   }
 
   Future<void> _refresh() async {
@@ -165,6 +188,20 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                               key: _commentsKey,
                               postId: post.postId,
                               replyTarget: _replyTarget,
+                              // This screen IS the post-in-full surface: one
+                              // post the reader is sitting on, which is the
+                              // case a live comment section is for. A feed row
+                              // showing the same widget would leave this off,
+                              // so scrolling past posts does not leave a
+                              // connection behind for each one.
+                              realtime: true,
+                              typers: _typers,
+                              // The comment section holds the post's stream
+                              // (it is the one child mounted on every
+                              // full-post surface), so a reaction on the POST
+                              // is reported back up to here, where the post
+                              // state lives.
+                              onPostReaction: _refreshReactionTotals,
                               onCountChanged: (delta) => setState(() {
                                 _post = post.copyWith(
                                     commentsCount: post.commentsCount + delta);
@@ -177,6 +214,12 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                         ),
                       ),
                     ),
+                    // Sits directly above the composer rather than at the end
+                    // of the comment list: the composer is DOCKED to the
+                    // viewport, so an indicator at the end of the list would be
+                    // off-screen exactly when someone is typing into it.
+                    //
+                    CommentTypingIndicator(typers: _typers),
                     // Rebuilds only the composer when the reply target changes,
                     // rather than the whole screen.
                     ValueListenableBuilder<PostComment?>(
@@ -188,6 +231,8 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                         // replyMentionHandleFor.
                         mentionHandle: replyMentionHandleFor(replyingTo),
                         onCancelReply: () => _replyTarget.value = null,
+                        onTyping: () =>
+                            _commentsKey.currentState?.broadcastTyping(),
                         onSubmit: (text) async =>
                             _commentsKey.currentState?.submitComment(text),
                       ),
