@@ -41,13 +41,18 @@ const int _kSectionPreview = 3;
 const int _kGroupsPreview = 10;
 
 /// Subtitle line + online dot for a row, from the presence state (keyed on
-/// ENTITY id, contacts-scoped, kept live by the "active_users" SSE events).
-/// Pages are skipped entirely - a page is never "active now".
+/// ENTITY id, kept live by the "active_users" SSE events).
+///
+/// Every entity kind is looked up, pages and bots included - see
+/// NetworkEntityResult.showsPresence for why they used to be skipped and what
+/// changed. A row with no presence entry still resolves cleanly to "no dot,
+/// no label", so an entity the server does not report on simply renders as it
+/// always did.
 ({bool online, String? label}) _presenceFor(
   NetworkEntityResult item,
   Map<String, PresenceInfo> presence,
 ) {
-  if (item.isRealm) return (online: false, label: null);
+  if (!item.showsPresence) return (online: false, label: null);
   final info = presence[item.entityId];
   if (info == null) return (online: false, label: null);
   if (info.online) return (online: true, label: "Active now");

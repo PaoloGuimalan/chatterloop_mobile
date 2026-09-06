@@ -11,10 +11,10 @@ class NetworkEntityResult {
 
   /// "user", "realm" or "bot".
   ///
-  /// A realm row gets the small flag marker and never shows presence (a page
-  /// is never "active now"); a bot gets the software marker and no presence
-  /// either, and appears in FOLLOWING only - it cannot hold a connection and
-  /// cannot follow anything, so it reaches no other section.
+  /// A realm row gets the small flag marker and a bot the software marker.
+  /// Both now carry presence like a person does - see showsPresence. A bot
+  /// appears in FOLLOWING only: it cannot hold a connection and cannot follow
+  /// anything, so it reaches no other section.
   final String type;
   final String displayName;
   final String handle;
@@ -56,9 +56,21 @@ class NetworkEntityResult {
   bool get isRealm => type == "realm";
   bool get isBot => type == "bot";
 
-  /// Neither a page nor a bot is ever "active now", so presence is skipped for
-  /// both rather than only for realms.
-  bool get showsPresence => !isRealm && !isBot;
+  /// Every entity kind carries presence now, so this is true for all of them.
+  ///
+  /// It used to exclude realms and bots on the reasoning that neither is ever
+  /// "active now". That was describing a gap, not a rule: sessions are keyed
+  /// on an ENTITY, a page acting as itself has always written session rows,
+  /// and developer_service now writes one for a bot while its event stream is
+  /// open. What was actually missing was server-side SCOPE - the presence
+  /// query joined user_account on both sides, so a page or bot counterpart
+  /// was dropped before it could be reported (server getPresenceScope).
+  ///
+  /// Kept as a named getter rather than deleted at every call site: what a
+  /// page's dot MEANS ("someone is acting as this page right now") is a
+  /// product decision that could be revisited, and this is where that would
+  /// be expressed.
+  bool get showsPresence => true;
 
   /// Either flag answers "am I following them right now" - follower rows
   /// track is_followed_back, following rows are followed by definition.
