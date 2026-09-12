@@ -21,6 +21,7 @@ import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 
 /// Mirrors webapp's EmojiPickerHandler.tsx QUICK_REACTIONS exactly. The
@@ -52,11 +53,15 @@ const List<String> _quickReactions = ['👍', '❤️', '😆', '😮', '😢', 
 /// a "➕" glyph here reads as a mismatched, low-res emoji.
 List<MenuItem> _menuItemsFor({
   required bool isOwnMessage,
+  required bool isCopyable,
   required bool isDownloadable,
 }) =>
     [
       const MenuItem(label: 'Reply', icon: Icons.reply),
-      const MenuItem(label: 'Copy', icon: Icons.copy),
+      // Off for a system notice and for an empty message - see _isCopyable.
+      // An entry that cannot do anything is the state this one was already in
+      // for every message, and it is the thing being fixed.
+      if (isCopyable) const MenuItem(label: 'Copy', icon: Icons.copy),
       const MenuItem(label: 'React', icon: Icons.add_reaction_outlined),
       // Anything with a file behind it - a photo, a video, a voice message, a
       // document. The bubble itself only offers this for the types where a
@@ -462,6 +467,49 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     MediaDownloader.instance.download(content, mimeType: messageType);
   }
 
+  /// What "Copy" puts on the clipboard.
+  ///
+  /// A text message copies its words. Anything with a file behind it copies
+  /// the file's URL - that is the only thing about such a message that can BE
+  /// text, and a link is what someone reaching for Copy on a photo wants. It
+  /// goes through [chatMediaUrl] rather than the raw field so the copied link
+  /// is the one that actually resolves: the stored value can carry the legacy
+  /// "url%%%filename" suffix, and an unescaped "###" inside a storage key
+  /// turns everything after it into a fragment.
+  ///
+  /// A system notice ("notif") is excluded by [_isCopyable] rather than
+  /// handled here - it is the app talking, not a message anyone wrote.
+  String get _copyText => _messageContent.messageType == "text"
+      ? _messageContent.content
+      : chatMediaUrl(_messageContent.content);
+
+  /// Whether the menu offers Copy at all. There is nothing to put on a
+  /// clipboard for an empty message or a system notice.
+  bool get _isCopyable =>
+      _messageContent.messageType != "notif" &&
+      _messageContent.isDeleted != true &&
+      _copyText.trim().isNotEmpty;
+
+  /// Was never wired - the menu entry rendered and did nothing when tapped,
+  /// which is worse than not offering it.
+  ///
+  /// The dialog has already closed by the time this runs (see
+  /// CLMessageReactionsDialog's _handleMenuTap, which pops before calling
+  /// back), so the confirmation lands on the conversation rather than behind a
+  /// full-screen overlay. Confirmed at all because a clipboard write is
+  /// completely invisible otherwise: nothing on screen changes, and the only
+  /// way to find out whether it worked is to go and paste it somewhere.
+  Future<void> _copyMessage() async {
+    await Clipboard.setData(ClipboardData(text: _copyText));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(_messageContent.messageType == "text"
+          ? "Message copied"
+          : "Link copied"),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
   /// Opens one attachment full screen.
   ///
   /// A single-item viewer rather than a gallery of the thread's media: a
@@ -521,6 +569,13 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     // preview", not "this message is a reply"). The reply case was doubly
     // wrong, because these fields are the OUTER message's - so the snippet
     // showed the replying message's reactions attached to the quoted one.
+    //
+    // The inline delete/reply icons beside a bubble are dropped in BOTH for the
+    // same reason, plus one of its own: the long-press preview already offers
+    // Reply and Delete in the menu right below it, so the icons were a second
+    // copy of two actions - and the Expanded holding them took ~80px from a
+    // bubble that only has the dialog's width to work with. A file card, capped
+    // at 270, then overflowed a 360px phone by 40.
     final showReactions = !isReply &&
         !isHoverPreview &&
         (_messageContent.reactions?.isNotEmpty ?? false);
@@ -530,7 +585,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? !isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -698,7 +753,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           SizedBox(
             width: 5,
           ),
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -747,7 +802,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? !isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -934,7 +989,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           SizedBox(
             width: 5,
           ),
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -983,7 +1038,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? !isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -1138,7 +1193,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           SizedBox(
             width: 5,
           ),
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -1187,7 +1242,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? !isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -1332,7 +1387,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           SizedBox(
             width: 5,
           ),
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -1414,7 +1469,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         mainAxisAlignment:
             isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? !isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -1605,7 +1660,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           SizedBox(
             width: 5,
           ),
-          !isMarkingEnabled
+          !isMarkingEnabled && !isHoverPreview
               ? isParentSenderCurrentUser
                   ? SizedBox(
                       width: 0,
@@ -1838,6 +1893,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                   menuItems: _menuItemsFor(
                                     isOwnMessage: _messageContent.sender ==
                                         _currentUserID,
+                                    isCopyable: _isCopyable,
                                     isDownloadable: _isDownloadable,
                                   ),
                                   // Every message type (including audio) goes
@@ -1919,11 +1975,9 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                       _deleteMessage(_messageContent.messageID);
                                     } else if (menuItem.label == "Report") {
                                       _reportMessage(context);
+                                    } else if (menuItem.label == "Copy") {
+                                      _copyMessage();
                                     }
-                                    // NOTE: "Copy" is still unhandled - it has
-                                    // never been wired, and putting text on the
-                                    // clipboard is not something this widget
-                                    // does anywhere yet.
                                   },
                                 );
                               },
