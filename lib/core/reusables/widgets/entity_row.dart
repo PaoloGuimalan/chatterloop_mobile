@@ -86,21 +86,16 @@ class CLEntityRow extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (isVerified) ...[
-                        const SizedBox(width: 4),
-                        Icon(Icons.verified, size: 14, color: p.brand),
-                      ],
-                      if (isRealm) ...[
-                        const SizedBox(width: 4),
-                        Icon(Icons.flag, size: 13, color: p.text3),
-                      ],
-                      // Not the verified check - that means a verified human
-                      // or page. This says "software", which is the fact a
-                      // reader actually needs about a bot.
-                      if (isBot) ...[
-                        const SizedBox(width: 4),
-                        Icon(Icons.smart_toy, size: 13, color: p.text3),
-                      ],
+                      // The bot glyph is never the verified check - that
+                      // one means a verified human or page, while this says
+                      // "software". See clEntityMarkers, which owns that rule
+                      // for every list in the app.
+                      ...clEntityMarkers(
+                        context,
+                        isVerified: isVerified,
+                        isPage: isRealm,
+                        isBot: isBot,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 2),

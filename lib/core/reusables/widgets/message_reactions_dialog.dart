@@ -156,35 +156,63 @@ class _CLMessageReactionsDialogState extends State<CLMessageReactionsDialog> {
   Widget build(BuildContext context) {
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ReactionsRow(
-                reactions: widget.reactions,
-                alignment: widget.widgetAlignment,
-                onReactionTap: _handleReactionTap,
-                clickedIndex: _clickedReactionIndex,
-                reactionClicked: _reactionClicked,
-                selected: widget.myReaction,
-              ),
-              const SizedBox(height: 10),
-              MessageBubble(
-                id: widget.id,
-                messageWidget: widget.messageWidget,
-                alignment: widget.widgetAlignment,
-              ),
-              const SizedBox(height: 10),
-              _ContextMenu(
-                menuItems: widget.menuItems,
-                alignment: widget.widgetAlignment,
-                menuWidth: widget.menuItemsWidth,
-                clickedIndex: _clickedMenuIndex,
-                onMenuItemTap: _handleMenuTap,
-              ),
-            ],
+      // The dialog draws over the whole screen, system bars included, so
+      // without this the menu can sit under the navigation bar on a long
+      // message - which is the same overlap this Flexible exists to prevent,
+      // just against a different edge.
+      child: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ReactionsRow(
+                  reactions: widget.reactions,
+                  alignment: widget.widgetAlignment,
+                  onReactionTap: _handleReactionTap,
+                  clickedIndex: _clickedReactionIndex,
+                  reactionClicked: _reactionClicked,
+                  selected: widget.myReaction,
+                ),
+                const SizedBox(height: 10),
+                // The message takes whatever is LEFT, and scrolls past that.
+                //
+                // This column shrink-wraps its children, so a long text
+                // message (or a tall attachment) simply made it taller than
+                // the screen: the reaction row went off the top, the menu off
+                // the bottom, and the bubble overlapped both. Flexible caps it
+                // at exactly the space the row and the menu are not using -
+                // better than a fixed fraction of the screen, which has to
+                // guess at a menu whose height varies with how many entries
+                // the message qualifies for.
+                //
+                // The scroll view is OUTSIDE the Hero on purpose. Inside, it
+                // would bound the bubble's height, and the flight would then
+                // lay the OTHER side's copy out at that bound - which for a
+                // long message is a RenderFlex overflow for the length of the
+                // animation. Out here the hero still measures, flies and lands
+                // at its natural size, and only what is past the cap is
+                // clipped.
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: MessageBubble(
+                      id: widget.id,
+                      messageWidget: widget.messageWidget,
+                      alignment: widget.widgetAlignment,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _ContextMenu(
+                  menuItems: widget.menuItems,
+                  alignment: widget.widgetAlignment,
+                  menuWidth: widget.menuItemsWidth,
+                  clickedIndex: _clickedMenuIndex,
+                  onMenuItemTap: _handleMenuTap,
+                ),
+              ],
+            ),
           ),
         ),
       ),

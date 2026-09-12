@@ -212,14 +212,17 @@ class _BotProfileScreenState extends State<BotProfileScreen> {
                           ),
                         ),
                       ),
-                      if (bot.isVerified) ...[
-                        const SizedBox(width: 5),
-                        Icon(Icons.verified, size: 15, color: p.brand),
-                      ],
-                      const SizedBox(width: 5),
-                      // Says "software" - separate from, and not mutually
-                      // exclusive with, the verified check above.
-                      Icon(Icons.smart_toy, size: 15, color: p.text3),
+                      // isBot unconditionally - this screen IS a bot's
+                      // profile. The glyph says "software" and is separate
+                      // from, not exclusive with, the verified check.
+                      ...clEntityMarkers(
+                        context,
+                        isVerified: bot.isVerified,
+                        isBot: true,
+                        badgeSize: 15,
+                        kindSize: 15,
+                        gap: 5,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 2),

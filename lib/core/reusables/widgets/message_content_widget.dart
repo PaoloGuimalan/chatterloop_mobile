@@ -9,9 +9,11 @@ import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
+import 'package:chatterloop_app/core/reusables/widgets/media_viewer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/linkify_text.dart';
+import 'package:chatterloop_app/core/utils/media_downloader.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
@@ -48,10 +50,20 @@ const List<String> _quickReactions = ['👍', '❤️', '😆', '😮', '😢', 
 /// "React" is a real Icon(Icons.add_reaction_outlined) rather than an emoji
 /// character - the package renders every label's icon as an Icon widget, and
 /// a "➕" glyph here reads as a mismatched, low-res emoji.
-List<MenuItem> _menuItemsFor({required bool isOwnMessage}) => [
+List<MenuItem> _menuItemsFor({
+  required bool isOwnMessage,
+  required bool isDownloadable,
+}) =>
+    [
       const MenuItem(label: 'Reply', icon: Icons.reply),
       const MenuItem(label: 'Copy', icon: Icons.copy),
       const MenuItem(label: 'React', icon: Icons.add_reaction_outlined),
+      // Anything with a file behind it - a photo, a video, a voice message, a
+      // document. The bubble itself only offers this for the types where a
+      // button fits (the file card, and the viewer a photo/video opens into),
+      // so for a voice message this menu is the ONLY way to save it.
+      if (isDownloadable)
+        const MenuItem(label: 'Save', icon: Icons.download_rounded),
       if (isOwnMessage)
         const MenuItem(
           label: 'Delete',
@@ -432,6 +444,43 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   /// up and resolves its sender's entity, so the report lands on whoever sent
   /// it without this widget having to know who that is.
   ///
+  /// True when this message has a real file behind it, i.e. anything but a
+  /// plain text bubble and the centred system "notif" line. Deliberately NOT a
+  /// list of known media types: the server resolves the real mimetype on
+  /// upload, so a message can arrive as "application/pdf", "image/heic" or
+  /// anything else a user picked - and every one of those is downloadable.
+  bool get _isDownloadable =>
+      _messageContent.messageType != "text" &&
+      _messageContent.messageType != "notif" &&
+      _messageContent.isDeleted != true &&
+      _messageContent.content.trim().isNotEmpty;
+
+  /// Fetches an attachment and files it away on the device. Fire-and-forget:
+  /// it keeps running after this bubble (or the whole conversation) is gone,
+  /// and reports where the file landed through the app-wide messenger.
+  void _downloadAttachment(String content, String messageType) {
+    MediaDownloader.instance.download(content, mimeType: messageType);
+  }
+
+  /// Opens one attachment full screen.
+  ///
+  /// A single-item viewer rather than a gallery of the thread's media: a
+  /// conversation's attachments are spread across separate messages with no
+  /// ordering a carousel could honour, unlike a post's, which are one set.
+  void _openInViewer(String content, String messageType) {
+    openMediaViewer(
+      context,
+      [
+        MediaViewerItem(
+          source: content,
+          isVideo: messageType.contains("video"),
+          mimeType: messageType,
+        )
+      ],
+      0,
+    );
+  }
+
   /// Fires after the long-press dialog has already popped itself (see
   /// _handleMenuTap), so the sheet opens onto the thread rather than on top of
   /// a dialog that is mid-dismissal.
@@ -800,9 +849,27 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
               children: [
                 Center(
                   child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: double.infinity,
-                      ),
+                    constraints: BoxConstraints(
+                      maxWidth: double.infinity,
+                    ),
+                    child: GestureDetector(
+                      // The whole tile takes the tap, not just wherever the
+                      // picture happens to be painting. CLNetworkImage fades
+                      // itself in from zero opacity, and a zero-opacity
+                      // subtree ignores pointers - so with the default
+                      // deferToChild the photo was untappable until it had
+                      // finished loading, and permanently untappable if it
+                      // never did.
+                      behavior: HitTestBehavior.opaque,
+                      // Not on either preview copy of a message: the
+                      // long-press hero (isHoverPreview) is a modal whose
+                      // whole surface dismisses it, and the quoted snippet
+                      // above a reply (isReply) is a pointer to a message, not
+                      // the message - tapping it should do what tapping a
+                      // quote does, which is nothing.
+                      onTap: isReply || isHoverPreview
+                          ? null
+                          : () => _openInViewer(content, messageType),
                       child: Container(
                         decoration: BoxDecoration(
                             color: p.surface3,
@@ -813,11 +880,18 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                           child: Padding(
                             padding: EdgeInsets.all(0),
                             child: CLNetworkImage(
-                              src: content,
+                              // Normalised, like every other attachment: the
+                              // raw content of a legacy Google Cloud Storage
+                              // upload is "url%%%filename", which is not a url
+                              // and does not load. A no-op on the plain urls
+                              // every current upload produces.
+                              src: chatMediaUrl(content),
                             ),
                           ),
                         ),
-                      )),
+                      ),
+                    ),
+                  ),
                 ),
                 showReactions
                     ? Padding(
@@ -1014,9 +1088,13 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   child: Container(
                     color: Colors.black,
                     child: VideoPlayerScreen(
-                        videoUrl: content
-                            .split("%%%")[0]
-                            .replaceAll("###", "%23%23%23")),
+                      videoUrl: chatMediaUrl(content),
+                      // Expanding lands in the same viewer a photo opens into,
+                      // so the save action sits in one place for both kinds of
+                      // media - rather than in the bare full-screen player,
+                      // which has no actions at all.
+                      onFullscreen: () => _openInViewer(content, messageType),
+                    ),
                   ),
                 ),
                 showReactions
@@ -1444,7 +1522,22 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             borderRadius: BorderRadius.circular(10)),
                         padding: EdgeInsets.only(
                             top: 0, bottom: 0, left: 0, right: 0)),
-                    onPressed: () {},
+                    // Was an empty callback - the card rendered and tapping it
+                    // did nothing at all. Tapping a file now downloads it, and
+                    // this branch is every message type that is not text,
+                    // image, video, audio or notif, so that covers ANY file a
+                    // sender attached.
+                    //
+                    // Inert on a preview copy: the hero (isHoverPreview) sits
+                    // under a menu whose Save entry does exactly this, and the
+                    // quoted snippet above a reply (isReply) points at a
+                    // message rather than being one. INERT, not null - a null
+                    // onPressed renders the card in Material's disabled
+                    // colours, and a preview should look like the bubble it is
+                    // previewing.
+                    onPressed: isReply || isHoverPreview
+                        ? () {}
+                        : () => _downloadAttachment(content, messageType),
                     child: Container(
                       decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10)),
@@ -1455,11 +1548,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                           mainAxisAlignment: MainAxisAlignment.start,
                           mainAxisSize: MainAxisSize.max,
                           children: [
-                            Icon(
-                              Icons.file_copy_outlined,
-                              color: p.text,
-                              size: 35,
-                            ),
+                            _AttachmentDownloadIcon(content: content),
                             SizedBox(
                               width: 10,
                             ),
@@ -1621,6 +1710,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     return StoreConnector<AppState, bool>(
         distinct: true,
         builder: (context, isUsingReplyAssist) {
+          // Resolved HERE, where the thread's CLAccent is in scope - gold in a
+          // channel, brand blue in a conversation. Both the long-press route
+          // and the hero flight leave that scope behind, so each has to be
+          // handed the colour rather than looking it up for itself.
+          final accent = CLAccent.of(context);
           return Padding(
             padding: EdgeInsets.only(top: 2, bottom: 2, left: 0, right: 0),
             child: Column(
@@ -1742,8 +1836,10 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                       .messageID, // unique id for message
                                   reactions: _quickReactions,
                                   menuItems: _menuItemsFor(
-                                      isOwnMessage: _messageContent.sender ==
-                                          _currentUserID),
+                                    isOwnMessage: _messageContent.sender ==
+                                        _currentUserID,
+                                    isDownloadable: _isDownloadable,
+                                  ),
                                   // Every message type (including audio) goes
                                   // through the same messageTypeSwitch the
                                   // normal bubble uses - this used to
@@ -1763,19 +1859,36 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                   // throws "No Material widget found" the
                                   // moment the long-press preview renders an
                                   // audio message.
-                                  messageWidget: Material(
-                                    type: MaterialType.transparency,
-                                    child: messageTypeSwitch(
-                                        _messageContent.content,
-                                        _messageContent.messageType,
-                                        _messageContent.messageID,
-                                        _messageContent.sender ==
-                                            _currentUserID,
-                                        _messageContent.sender ==
-                                            _currentUserID,
-                                        false,
-                                        true,
-                                        false),
+                                  messageWidget: CLAccent(
+                                    color: accent,
+                                    // A route builds under the Navigator, not
+                                    // under the widget that pushed it, so the
+                                    // thread's CLAccent is not an ancestor of
+                                    // anything in here.
+                                    //
+                                    // messageTypeSwitch resolves its own
+                                    // colours against the STATE's context, so
+                                    // the bubble itself was already right - but
+                                    // a child widget that reads the accent from
+                                    // where it is MOUNTED (the voice message
+                                    // player) resolved it here, where there was
+                                    // none, and fell back to brand blue. Held
+                                    // your own voice message blue in a gold
+                                    // channel, but only while long-pressed.
+                                    child: Material(
+                                      type: MaterialType.transparency,
+                                      child: messageTypeSwitch(
+                                          _messageContent.content,
+                                          _messageContent.messageType,
+                                          _messageContent.messageID,
+                                          _messageContent.sender ==
+                                              _currentUserID,
+                                          _messageContent.sender ==
+                                              _currentUserID,
+                                          false,
+                                          true,
+                                          false),
+                                    ),
                                   ), // message widget
                                   onReactionTap: (reaction) {
                                     _submitReaction(reaction);
@@ -1786,6 +1899,16 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                           true, _messageContent.messageID);
                                     } else if (menuItem.label == "React") {
                                       _showFullEmojiPicker(context);
+                                    } else if (menuItem.label == "Save") {
+                                      // The dialog has already closed itself
+                                      // by the time this runs (see
+                                      // _handleMenuTap), so the download's
+                                      // snackbar lands on the conversation
+                                      // rather than behind a full-screen
+                                      // overlay.
+                                      _downloadAttachment(
+                                          _messageContent.content,
+                                          _messageContent.messageType);
                                     } else if (menuItem.label == "Delete") {
                                       // Was unhandled - the entry rendered and
                                       // did nothing when tapped. Same call the
@@ -1807,30 +1930,45 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             ),
                           );
                         },
-                        // The Material is INSIDE the Hero so it flies with it. A
-                        // hero's child is re-parented into the Navigator's overlay
-                        // for the flight, leaving the page's Material behind - and
-                        // without one, text falls back to DefaultTextStyle.fallback,
-                        // whose yellow double-underline decoration shows straight
-                        // through the bubble's own style. That's what marked the
-                        // message with yellow lines on the way back from the
-                        // long-press preview. transparency = no paint of its own.
+                        // The Material and the CLAccent are INSIDE the Hero so
+                        // they fly with it. A hero's child is re-parented into
+                        // the Navigator's overlay for the flight, which belongs
+                        // to NEITHER route - so everything the child inherits
+                        // from the page is gone for the duration.
+                        //
+                        // Material, because without one text falls back to
+                        // DefaultTextStyle.fallback, whose yellow
+                        // double-underline decoration shows straight through the
+                        // bubble's own style. That is what marked the message
+                        // with yellow lines on the way back from the long-press
+                        // preview. transparency = no paint of its own.
+                        //
+                        // CLAccent for the same reason, found the same way: the
+                        // default hero flight renders the DESTINATION hero's
+                        // child, which on a pop is this one - so a gold channel
+                        // bubble flashed brand blue for the length of the
+                        // animation back. Only on the way back, because the way
+                        // in flies the dialog's copy, which carries its own.
                         child: Hero(
                             tag: _messageContent.messageID,
-                            child: Material(
-                              type: MaterialType.transparency,
-                              child: messageTypeSwitch(
-                                  _messageContent.content,
-                                  _messageContent.messageType,
-                                  _messageContent.messageID,
-                                  _messageContent.sender == _currentUserID,
-                                  _messageContent.sender == _currentUserID,
-                                  false,
-                                  false,
-                                  // Reply assist v2 takes a single anchor message,
-                                  // so there is no per-message selection step and
-                                  // the marking checkboxes stay off.
-                                  false),
+                            child: CLAccent(
+                              color: accent,
+                              child: Material(
+                                type: MaterialType.transparency,
+                                child: messageTypeSwitch(
+                                    _messageContent.content,
+                                    _messageContent.messageType,
+                                    _messageContent.messageID,
+                                    _messageContent.sender == _currentUserID,
+                                    _messageContent.sender == _currentUserID,
+                                    false,
+                                    false,
+                                    // Reply assist v2 takes a single anchor
+                                    // message, so there is no per-message
+                                    // selection step and the marking checkboxes
+                                    // stay off.
+                                    false),
+                              ),
                             )),
                       )
               ],
@@ -1838,5 +1976,57 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           );
         },
         converter: (store) => store.state.isUsingReplyAssist);
+  }
+}
+
+
+/// The file card's leading glyph: the file icon normally, a progress ring
+/// while that file is being downloaded.
+///
+/// Reads the downloader's notifier rather than any local state, because the
+/// download outlives this widget. A bubble scrolled off screen and rebuilt -
+/// or a conversation left and reopened - picks the ring back up mid-download
+/// instead of offering to start a second copy of the same file.
+class _AttachmentDownloadIcon extends StatelessWidget {
+  final String content;
+
+  const _AttachmentDownloadIcon({required this.content});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return ValueListenableBuilder<Map<String, double>>(
+      valueListenable: MediaDownloader.instance.progress,
+      builder: (context, running, _) {
+        final value = running[chatMediaUrl(content)];
+        if (value == null) {
+          return Icon(
+            Icons.file_copy_outlined,
+            color: p.text,
+            size: 35,
+          );
+        }
+        return SizedBox(
+          // The icon's own box, so the card does not resize when a download
+          // starts and the row does not jump.
+          width: 35,
+          height: 35,
+          child: Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: p.text,
+                // 0 means the response carried no Content-Length, so there is
+                // no percentage to draw - spin rather than sit at an empty
+                // ring that reads as stuck.
+                value: value > 0 ? value : null,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

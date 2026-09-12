@@ -304,6 +304,78 @@ class CLAvatar extends StatelessWidget {
   }
 }
 
+// -------- Entity markers -----------------------------------------------------
+
+/// What follows an entity's display name: the verified badge, then a page
+/// flag, then a bot glyph - always in that order, always those glyphs, always
+/// those colours. Spread into the Row that holds the name:
+///
+/// ```dart
+/// Row(children: [
+///   Flexible(child: Text(displayName, ...)),
+///   ...clEntityMarkers(context, isVerified: e.isVerified, isPage: e.isRealm),
+/// ])
+/// ```
+///
+/// The ORDER and the CHOICE of glyph are the things worth having in one place.
+/// Verified means a verified human or page; the bot glyph says "software"
+/// instead, and a bot must never wear the check - a rule that only holds if
+/// every list draws these the same way. Nine copies of it drifted apart
+/// instead: one drew a filled flag where the rest drew an outlined one, half
+/// had tooltips, and the post-tagging list had put its glyphs on the @handle
+/// with no badge at all.
+///
+/// Returns WIDGETS rather than being a widget itself, because the name beside
+/// them is never the same twice - centred and unbounded in a conversation
+/// header, ellipsised inside a Flexible in a picker row. Wrapping all of that
+/// would have meant a parameter per difference; this way each caller keeps its
+/// own Row and only the markers are shared.
+///
+/// Sizes stay per-caller for the same reason: a 30px-avatar picker row and a
+/// screen title are not the same weight of text, and forcing one size on both
+/// would make this a restyle rather than an extraction.
+///
+/// The inline-span copies (a notification's sentence, a post's byline) are
+/// deliberately NOT built on this - they compose TextSpans inside a Text.rich,
+/// not children inside a Row.
+List<Widget> clEntityMarkers(
+  BuildContext context, {
+  bool isVerified = false,
+  bool isPage = false,
+  bool isBot = false,
+
+  /// The verified check.
+  double badgeSize = 14,
+
+  /// The page flag and the bot glyph.
+  double kindSize = 13,
+
+  /// Space between the name and the first marker, and between markers.
+  double gap = 4,
+}) {
+  final p = cl(context);
+  return [
+    if (isVerified) ...[
+      SizedBox(width: gap),
+      Icon(Icons.verified, size: badgeSize, color: p.brand),
+    ],
+    if (isPage) ...[
+      SizedBox(width: gap),
+      Tooltip(
+        message: 'Page',
+        child: Icon(Icons.flag_outlined, size: kindSize, color: p.text3),
+      ),
+    ],
+    if (isBot) ...[
+      SizedBox(width: gap),
+      Tooltip(
+        message: 'Bot',
+        child: Icon(Icons.smart_toy, size: kindSize, color: p.text3),
+      ),
+    ],
+  ];
+}
+
 // -------- Skeleton -------------------------------------------------------------
 
 /// A pulsing placeholder box - use in place of an avatar/text while its real
@@ -641,7 +713,39 @@ class CLMessageListSkeleton extends StatelessWidget {
 /// amber rather than the app's blue, and it is the one place that colour is the
 /// primary action rather than a highlight. A variant rather than a one-off
 /// style so the next gold button matches this one.
-enum CLBtnVariant { primary, soft, ghost, outline, danger, gold }
+enum CLBtnVariant {
+  primary,
+  soft,
+
+  /// `soft` with a deeper fill IN LIGHT MODE ONLY.
+  ///
+  /// Exists because the two tints are not equivalent. The dark palette's
+  /// brandSoft is a 16%-alpha blue over a dark surface, which reads as a
+  /// button; the light one is #E7F0FE, an ~8% tint on white, pale enough that
+  /// a soft button reads as a disabled one - the same thing the profile
+  /// Message button documents when it refuses `soft`.
+  ///
+  /// In DARK mode this resolves to exactly [soft], so moving a button onto it
+  /// cannot change anything there.
+  ///
+  /// Not simply a deeper `brandSoft`: that token is also the unread-
+  /// notification background, a reaction pill and a tag chip, and none of
+  /// those asked to get heavier.
+  softStrong,
+  ghost,
+  outline,
+  danger,
+  gold
+}
+
+/// The fill for [CLBtnVariant.softStrong] - see that variant's note.
+Color _softStrongFill(BuildContext context, CLPalette p) =>
+    Theme.of(context).brightness == Brightness.dark
+        // Byte for byte what `soft` gives, so dark mode cannot move.
+        ? p.brandSoft
+        // Roughly twice light's tint: unmistakably a filled button, and still
+        // unmistakably not the solid one.
+        : Color.alphaBlend(p.brand.withValues(alpha: 0.18), p.surface);
 
 enum CLBtnSize { sm, md, lg }
 
@@ -654,6 +758,17 @@ class CLBtn extends StatelessWidget {
   final CLBtnSize size;
   final bool block;
 
+  /// Label type step, when the size's own is not wanted.
+  ///
+  /// [size] normally settles height, padding and label together, which is
+  /// right nearly everywhere. The exception is a button that has to be TALL
+  /// for its role but quiet in its type - the Messages list's two compose
+  /// actions sit above rows whose names are CLType.title, and a button
+  /// matching that size reads as louder than the list it introduces.
+  ///
+  /// The icon follows it, so the two stay in proportion.
+  final double? labelSize;
+
   const CLBtn({
     super.key,
     required this.label,
@@ -663,6 +778,7 @@ class CLBtn extends StatelessWidget {
     this.variant = CLBtnVariant.primary,
     this.size = CLBtnSize.md,
     this.block = false,
+    this.labelSize,
   });
 
   @override
@@ -671,14 +787,16 @@ class CLBtn extends StatelessWidget {
     // Height, horizontal padding, label size. The label sizes are scale steps
     // like everywhere else - they were already 13/14/15, they just weren't
     // named.
-    final (h, padX, fs) = switch (size) {
+    final (h, padX, sizeFs) = switch (size) {
       CLBtnSize.sm => (32.0, 12.0, CLType.bodySm),
       CLBtnSize.md => (38.0, 16.0, CLType.title),
       CLBtnSize.lg => (46.0, 22.0, CLType.sectionTitle),
     };
+    final fs = labelSize ?? sizeFs;
     final (bg, fg, border) = switch (variant) {
       CLBtnVariant.primary => (p.brand, Colors.white, null),
       CLBtnVariant.soft => (p.brandSoft, p.brand, null),
+      CLBtnVariant.softStrong => (_softStrongFill(context, p), p.brand, null),
       CLBtnVariant.ghost => (Colors.transparent, p.text, null),
       CLBtnVariant.outline => (p.surface, p.text, p.border2),
       CLBtnVariant.danger => (p.pink, Colors.white, null),
@@ -715,12 +833,22 @@ class CLBtn extends StatelessWidget {
             Icon(iconL, size: fs + 4, color: fg),
             const SizedBox(width: 7),
           ],
-          Text(
-            label,
-            style: TextStyle(
-              color: fg,
-              fontSize: fs,
-              fontWeight: FontWeight.w600,
+          // Flexible so a label that cannot fit ELLIPSISES rather than
+          // overflowing the button. The row is mainAxisSize.min, so this
+          // changes nothing for a button with room - it only bites when the
+          // caller has constrained the width, e.g. two side-by-side actions
+          // sharing a phone's 360px.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              style: TextStyle(
+                color: fg,
+                fontSize: fs,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           if (iconR != null) ...[
@@ -768,6 +896,7 @@ class CLMiniBtn extends StatelessWidget {
     final (bg, fg, border) = switch (variant) {
       CLBtnVariant.primary => (p.brand, Colors.white, null),
       CLBtnVariant.soft => (p.brandSoft, p.brand, null),
+      CLBtnVariant.softStrong => (_softStrongFill(context, p), p.brand, null),
       CLBtnVariant.ghost => (Colors.transparent, p.text, null),
       CLBtnVariant.outline => (p.surface, p.text, p.border2),
       CLBtnVariant.danger => (p.pink, Colors.white, null),
@@ -1041,6 +1170,171 @@ class CLBadge extends StatelessWidget {
           color: fg,
           fontSize: CLType.caption,
           fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+// -------- Segmented choice ---------------------------------------------------
+
+/// One option in a [CLSegmentedChoice].
+///
+/// The icon is required, not optional: this control exists for choices where
+/// the glyph does most of the explaining - a padlock, a hash, a speaker - and
+/// an option without one would sit in the row looking unfinished.
+class CLSegmentedOption<T> {
+  final T value;
+  final String label;
+  final IconData icon;
+
+  const CLSegmentedOption(this.value, this.label, this.icon);
+}
+
+/// A two-or-three-way choice as one box split into equal segments.
+///
+/// What a small set of mutually exclusive options looks like on a phone, where
+/// web uses a toggle switch or a select. Replaces the loose row of pills the
+/// create forms used to carry, which had three problems the segmented form
+/// does not:
+///
+///   - pills are sized by their LABELS, so "Text Channel" and "Voice Channel"
+///     were two different widths and the pair overflowed a 360px screen;
+///   - a pill row does not look like one control, so nothing said the options
+///     were exclusive;
+///   - fully rounded reads as a filter you can toggle off, which these are
+///     not - one of them is always chosen.
+///
+/// Equal segments inside one bordered box, gently rounded rather than pill:
+/// the shape says "pick one of these", and the width no longer depends on how
+/// long the words are.
+///
+/// [accent] is the surface's colour, not the app's - gold on the Servers
+/// screens, brand blue for a group chat started from Messages. Defaults to
+/// whatever [CLAccent] is in scope, which is the brand blue when nothing wraps
+/// the tree.
+class CLSegmentedChoice<T> extends StatelessWidget {
+  final String? label;
+  final T value;
+  final List<CLSegmentedOption<T>> options;
+  final ValueChanged<T> onChanged;
+  final bool enabled;
+  final Color? accent;
+
+  const CLSegmentedChoice({
+    super.key,
+    this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.enabled = true,
+    this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final tint = accent ?? CLAccent.of(context);
+
+    final box = Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Container(
+        // The 3px inset is what makes the selected segment read as sitting
+        // INSIDE the control rather than as replacing its border.
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(CLRadii.sm),
+          border: Border.all(color: p.border2),
+        ),
+        child: Row(
+          children: [
+            for (final option in options)
+              // Expanded, so the segments are equal width whatever the labels
+              // say - the whole point of the shape.
+              Expanded(
+                child: _Segment(
+                  option: option,
+                  selected: option.value == value,
+                  tint: tint,
+                  onTap: enabled ? () => onChanged(option.value) : null,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    if (label == null) return box;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label!,
+            style: TextStyle(
+                fontSize: CLType.bodySm,
+                fontWeight: FontWeight.w600,
+                color: p.text)),
+        const SizedBox(height: 6),
+        box,
+      ],
+    );
+  }
+}
+
+class _Segment<T> extends StatelessWidget {
+  final CLSegmentedOption<T> option;
+  final bool selected;
+  final Color tint;
+  final VoidCallback? onTap;
+
+  const _Segment({
+    required this.option,
+    required this.selected,
+    required this.tint,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    // Rounded a touch less than the box that holds it, so the two curves are
+    // concentric rather than the inner one looking like a separate pill.
+    final radius = BorderRadius.circular(CLRadii.xs - 1);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: radius,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        height: 34,
+        decoration: BoxDecoration(
+          // A TINT, not the solid accent: the selected segment has to stay
+          // legible against a label that is also the accent colour.
+          color: selected
+              ? Color.alphaBlend(tint.withValues(alpha: 0.14), p.surface)
+              : Colors.transparent,
+          borderRadius: radius,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(option.icon, size: 15, color: selected ? tint : p.text3),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                option.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                style: TextStyle(
+                  fontSize: CLType.bodySm,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? tint : p.text2,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -571,9 +571,19 @@ class _RealmDetailsScreenState extends State<RealmDetailsScreen> {
                   label: 'Email',
                   placeholder: 'Email',
                   keyboardType: TextInputType.emailAddress),
-              'privacy' => _PrivacyField(
-                  isPrivate: _isPrivate,
+              // Webapp's Privacy select - two options, false = Public,
+              // true = Private - as the same segmented control the create
+              // forms use, so the field a realm is MADE with and the field it
+              // is EDITED with are one control rather than two that resemble
+              // each other.
+              'privacy' => CLSegmentedChoice<bool>(
+                  label: 'Privacy',
+                  value: _isPrivate,
                   enabled: !_saving,
+                  options: const [
+                    CLSegmentedOption(false, 'Public', Icons.public),
+                    CLSegmentedOption(true, 'Private', Icons.lock_outline),
+                  ],
                   onChanged: (value) => setState(() => _isPrivate = value),
                 ),
               _ => const SizedBox.shrink(),
@@ -589,52 +599,6 @@ class _RealmDetailsScreenState extends State<RealmDetailsScreen> {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Webapp's Privacy select - two options, false = Public, true = Private -
-/// as a segmented control, which is what a two-value choice looks like on a
-/// phone.
-class _PrivacyField extends StatelessWidget {
-  final bool isPrivate;
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
-
-  const _PrivacyField({
-    required this.isPrivate,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final p = cl(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Privacy',
-            style: TextStyle(
-                fontSize: CLType.bodySm,
-                fontWeight: FontWeight.w600,
-                color: p.text)),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            CLChip(
-              label: 'Public',
-              active: !isPrivate,
-              onTap: enabled ? () => onChanged(false) : null,
-            ),
-            const SizedBox(width: 8),
-            CLChip(
-              label: 'Private',
-              active: isPrivate,
-              onTap: enabled ? () => onChanged(true) : null,
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

@@ -79,6 +79,16 @@
          granted on Android 12 and below. Registration works without it -
          only display is gated. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Saving a downloaded attachment into the shared Downloads folder
+         (MediaSaver.kt). Capped at API 28 deliberately: from API 29 the save
+         goes through a MediaStore insert, which needs no permission at all,
+         and asking for this one there would be both useless and refused.
+         Only the pre-29 branch - a direct write into Environment's public
+         Downloads directory - requires it, and it is requested at runtime
+         from MainActivity. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.

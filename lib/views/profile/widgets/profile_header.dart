@@ -247,10 +247,8 @@ class ProfileHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (isBadged) ...[
-                const SizedBox(width: 5),
-                Icon(Icons.verified, size: 18, color: p.brand),
-              ],
+              ...clEntityMarkers(context, isVerified: isBadged,
+                  badgeSize: 18, gap: 5),
               if (isPrivate) ...[
                 const SizedBox(width: 5),
                 Icon(Icons.lock, size: 16, color: p.text2),

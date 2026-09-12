@@ -141,10 +141,8 @@ class SearchPersonCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (person.isVerified) ...[
-                    const SizedBox(width: 4),
-                    Icon(Icons.verified, size: 14, color: p.brand),
-                  ],
+                  ...clEntityMarkers(context,
+                      isVerified: person.isVerified),
                 ],
               ),
             ),
@@ -288,10 +286,8 @@ class SearchRealmCard extends StatelessWidget {
               ),
             ),
           ),
-          if (realm.isVerified) ...[
-            const SizedBox(width: 4),
-            Icon(Icons.verified, size: 14, color: p.brand),
-          ],
+          // No page flag: this card IS a page, and its meta line says so.
+          ...clEntityMarkers(context, isVerified: realm.isVerified),
         ],
       ),
     );
@@ -448,12 +444,7 @@ class SearchBotCard extends StatelessWidget {
               ),
             ),
           ),
-          if (bot.isVerified) ...[
-            const SizedBox(width: 4),
-            Icon(Icons.verified, size: 14, color: p.brand),
-          ],
-          const SizedBox(width: 4),
-          Icon(Icons.smart_toy, size: 13, color: p.text3),
+          ...clEntityMarkers(context, isVerified: bot.isVerified, isBot: true),
         ],
       ),
     );
@@ -592,10 +583,8 @@ class SearchContentCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (post.author.isVerified) ...[
-                            const SizedBox(width: 4),
-                            Icon(Icons.verified, size: 14, color: p.brand),
-                          ],
+                          ...clEntityMarkers(context,
+                              isVerified: post.author.isVerified),
                         ],
                       ),
                     ),

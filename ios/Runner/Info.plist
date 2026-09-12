@@ -45,6 +45,16 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Downloaded attachments are saved into the app's Documents directory
+	     (MediaDownloader._saveToDevice). iOS has no shared Downloads folder to
+	     put them in, and without these two keys that directory is invisible -
+	     the file would be "saved" somewhere the user can never reach. Together
+	     they publish it as "Chatterloop" under On My iPhone in the Files app,
+	     with the files editable in place rather than copy-only. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Chatterloop needs access to your photo library to attach images to messages and update your profile/cover photo.</string>
 	<key>NSMicrophoneUsageDescription</key>

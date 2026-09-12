@@ -358,6 +358,17 @@ class Endpoints {
   /// route serves other realm kinds. Webapp's GetTopRealmsRequest.
   String realmTop = '/api/realm/top';
 
+  /// NODE, JWT-signed. Creates a GROUP CHAT: {token: sign({groupName,
+  /// privacy, otherUsers})} - the same payload [createServer] takes, because
+  /// server-side a group chat IS a realm (type "group") with a conversation
+  /// behind it, created by the same code path.
+  ///
+  /// Note what it does NOT return: {status, message} only, with no
+  /// conversationID. The new conversation reaches the client over SSE
+  /// (sendMessageInitForGC), so a caller refreshes the list rather than
+  /// navigating straight into it.
+  String createGroupChat = '/u/createContactGroupChat';
+
   /// NODE, JWT-signed. Creates a SERVER: {token: sign({groupName, privacy,
   /// otherUsers})}, where otherUsers is a list of ENTITY ids.
   ///

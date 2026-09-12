@@ -371,10 +371,8 @@ class _SharedPostPreviewRecursiveState
                         ),
                       ),
                     ),
-                    if (post.author.isVerified) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.verified, size: 14, color: p.brand),
-                    ],
+                    ...clEntityMarkers(context,
+                        isVerified: post.author.isVerified),
                   ],
                 ),
               ),

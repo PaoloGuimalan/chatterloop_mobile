@@ -450,6 +450,42 @@ class ProfileApi {
     }
   }
 
+  /// Creates a GROUP CHAT - webapp's CreateGroupChatRequest.
+  ///
+  /// Same payload and same envelope as [createServerRequest]: server-side both
+  /// land in a community_realm row, differing only in `type` ("group" vs
+  /// "server"). [memberEntityIds] are ENTITY ids; the creator is not in the
+  /// list and is made owner by the server.
+  ///
+  /// Returns only whether it worked. The route replies {status, message} with
+  /// no conversationID - the conversation arrives over SSE - so the caller
+  /// refreshes the conversations list instead of navigating into it.
+  Future<bool> createGroupChatRequest({
+    required String name,
+    required bool isPrivate,
+    List<String> memberEntityIds = const [],
+  }) async {
+    try {
+      final response = await _mainDio.post(
+        _endpoints.createGroupChat,
+        data: {
+          'token': JwtCodec.sign({
+            'groupName': name,
+            'privacy': isPrivate,
+            'otherUsers': memberEntityIds,
+          })
+        },
+      );
+      return response.data?["status"] != false;
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return false;
+    }
+  }
+
   /// Creates a SERVER - webapp's CreateServerRequest.
   ///
   /// [memberEntityIds] are ENTITY ids. Web's picker stores `id: cnts.entityID`

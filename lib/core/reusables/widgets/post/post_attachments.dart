@@ -14,10 +14,11 @@
 // parent gesture (and hides everything after the first slide, so you can't
 // tell a 2-image post from a 9-image one at a glance). The carousel belongs
 // in the full-screen viewer, where swiping is the only gesture - that's what
-// [PostGalleryScreen] is. Same reasoning webapp's grid-then-lightbox uses.
+// [openPostGallery] opens. Same reasoning webapp's grid-then-lightbox uses.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/reusables/widgets/media_viewer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
@@ -246,106 +247,28 @@ class _AttachmentTile extends StatelessWidget {
 }
 
 /// Opens the full-screen viewer at [initialIndex].
+///
+/// A thin mapping onto the app-wide [openMediaViewer] - the gallery this used
+/// to own (a PageView of InteractiveViewers and players) was the same screen a
+/// conversation needed for its attachments, and keeping two copies of it meant
+/// only one of them ever got the download action. `canDownload` is false here
+/// because saving media is a messaging affordance; a post's media has no such
+/// action anywhere else in the app.
 void openPostGallery(
   BuildContext context,
   List<PostReference> media,
   int initialIndex,
 ) {
-  if (media.isEmpty) return;
-  Navigator.of(context).push(
-    // Opaque on purpose: this covers the screen, and a see-through route over
-    // a page triggers the router's parallax (see CLPageRoute.canTransitionTo).
-    MaterialPageRoute<void>(
-      fullscreenDialog: true,
-      builder: (_) =>
-          PostGalleryScreen(media: media, initialIndex: initialIndex),
-    ),
+  openMediaViewer(
+    context,
+    media
+        .map((reference) => MediaViewerItem(
+              source: reference.reference,
+              isVideo: reference.isVideo,
+              mimeType: reference.mediaType,
+            ))
+        .toList(),
+    initialIndex,
+    canDownload: false,
   );
-}
-
-/// Full-screen media viewer: swipe between attachments, pinch/double-tap to
-/// zoom an image, videos play in place.
-class PostGalleryScreen extends StatefulWidget {
-  final List<PostReference> media;
-  final int initialIndex;
-
-  const PostGalleryScreen({
-    super.key,
-    required this.media,
-    this.initialIndex = 0,
-  });
-
-  @override
-  State<PostGalleryScreen> createState() => _PostGalleryScreenState();
-}
-
-class _PostGalleryScreenState extends State<PostGalleryScreen> {
-  late final PageController _controller =
-      PageController(initialPage: widget.initialIndex);
-  late int _index = widget.initialIndex;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Black regardless of theme - it's a media viewer, and any surface colour
-    // here would tint the photo it's supposed to be showing.
-    return Scaffold(
-      backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        title: widget.media.length > 1
-            ? Text(
-                "${_index + 1} of ${widget.media.length}",
-                style: const TextStyle(
-                    color: Colors.white, fontSize: CLType.title),
-              )
-            : null,
-      ),
-      body: PageView.builder(
-        controller: _controller,
-        itemCount: widget.media.length,
-        onPageChanged: (index) => setState(() => _index = index),
-        itemBuilder: (context, index) {
-          final reference = widget.media[index];
-          if (reference.isVideo) {
-            // No Center wrapper: the player fills the page and anchors its own
-            // controls to the page's bottom edge. Centring it would hand it
-            // only the video's box back, which is the thing being fixed.
-            //
-            // SafeArea on the BOTTOM only: this Scaffold draws edge to edge, so
-            // "the bottom of the page" is behind the system navigation bar -
-            // the controls cleared the video's box and then landed under the
-            // nav buttons instead. Top stays unsafe because the transparent
-            // AppBar is meant to float over the media.
-            return SafeArea(
-              top: false,
-              child: VideoPlayerScreen(
-                videoUrl: reference.reference,
-                anchorControlsToBounds: true,
-              ),
-            );
-          }
-          return InteractiveViewer(
-            minScale: 1,
-            maxScale: 4,
-            child: Center(
-              child: CLNetworkImage(
-                src: reference.reference,
-                fit: BoxFit.contain,
-                width: double.infinity,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
 }

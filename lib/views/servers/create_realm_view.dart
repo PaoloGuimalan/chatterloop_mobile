@@ -9,6 +9,13 @@
 //   channel  a text/voice type field; members come from the PARENT SERVER, and
 //            are only asked for at all when the channel is private
 //
+// A GROUP CHAT is not one of these, though server-side it is the same
+// community_realm row with type "group", and its form looks almost identical.
+// It lives in views/messages/create_group_chat_view.dart because it belongs to
+// a different SURFACE: this screen is the gold Servers surface, and a group
+// chat is a conversation reached from the blue Messages one. Sharing the form
+// meant a screen opened from the inbox answering in the servers accent.
+//
 // A pushed screen rather than a bottom sheet. The picker needs a search field, a
 // scrolling result list and a pinned action - a sheet holding all three leaves
 // the list about four rows tall, and the keyboard then covers those.
@@ -103,13 +110,15 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
 
   bool get _isChannel => widget.parentServerId != null;
 
+  /// What this form makes, in the words it uses for it.
+  String get _noun => _isChannel ? 'Channel' : 'Server';
+
   /// Web seeds the name from the ACCOUNT's first name - "Paolo's Server" -
   /// even while acting as a page. Kept as is: it is a starting point in an
   /// editable field, not an identity claim.
   String get _defaultName {
     final first = appStore.state.userAuth.user.firstname.trim();
-    final noun = _isChannel ? 'Channel' : 'Server';
-    return first.isEmpty ? 'New $noun' : "$first's $noun";
+    return first.isEmpty ? 'New $_noun' : "$first's $_noun";
   }
 
   CreateRealmMemberSource get _memberSource => createRealmMemberSource(
@@ -206,6 +215,12 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
               // back to "user", so every page and bot in a server's member
               // list arrived claiming to be a person and no row could mark it.
               type: member.entityType.isEmpty ? 'user' : member.entityType,
+              // Same thing again, for the badge: isVerified defaults to false,
+              // so a verified member of the parent server came through this
+              // mapping unverified and the row had nothing to draw. Only the
+              // CHANNEL case goes through here - creating a SERVER searches
+              // entities, which carry it already.
+              isVerified: member.isVerified,
               realmType: member.realmType,
               hasConnection: false,
               connectionAccomplished: false,
@@ -218,9 +233,8 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
     if (_saving) return;
     final name = _name.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:
-              Text('A ${_isChannel ? 'channel' : 'server'} needs a name.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('A ${_noun.toLowerCase()} needs a name.')));
       return;
     }
 
@@ -249,8 +263,8 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
 
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not create the '
-              '${_isChannel ? 'channel' : 'server'}. Please try again.')));
+          content: Text(
+              'Could not create the ${_noun.toLowerCase()}. Please try again.')));
       return;
     }
     Navigator.of(context)
@@ -264,8 +278,7 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar:
-          AppBar(title: Text(_isChannel ? 'Create channel' : 'Create server')),
+      appBar: AppBar(title: Text('Create ${_noun.toLowerCase()}')),
       body: Column(
         children: [
           // The form. Fixed above the picker rather than scrolling with it:
@@ -279,29 +292,43 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
               children: [
                 CLField(
                   controller: _name,
-                  label: _isChannel ? 'Name of Channel' : 'Name of Server',
-                  placeholder: _isChannel ? 'Channel name' : 'Server name',
+                  label: 'Name of $_noun',
+                  placeholder: '$_noun name',
                 ),
                 const SizedBox(height: 12),
-                _ChoiceField(
+                CLSegmentedChoice<bool>(
                   label: 'Privacy',
                   value: _isPrivate,
                   enabled: !_saving,
-                  options: const [(false, 'Public'), (true, 'Private')],
+                  accent: p.gold,
+                  options: const [
+                    CLSegmentedOption(false, 'Public', Icons.public),
+                    CLSegmentedOption(true, 'Private', Icons.lock_outline),
+                  ],
                   onChanged: (value) => setState(() => _isPrivate = value),
                 ),
                 if (_isChannel) ...[
                   const SizedBox(height: 12),
-                  _ChoiceField<String>(
+                  CLSegmentedChoice<String>(
                     label: 'Type',
                     value: _channelType,
                     enabled: !_saving,
-                    // Web's two select options, same values and same order.
+                    accent: p.gold,
+                    // The channel list's own glyphs (see ChannelRow._icon):
+                    // a hash is a text channel everywhere in this app, and a
+                    // speaker is a voice room. A picker that invented its own
+                    // symbols would teach the wrong ones.
+                    // Web's two select options, same values, same order and
+                    // same words - the segments are equal width regardless, so
+                    // the longer label costs nothing here the way it did as a
+                    // pill.
                     options: const [
-                      ('channel', 'Text Channel'),
-                      ('voice', 'Voice Channel'),
+                      CLSegmentedOption('channel', 'Text Channel', Icons.tag),
+                      CLSegmentedOption(
+                          'voice', 'Voice Channel', Icons.volume_up),
                     ],
-                    onChanged: (value) => setState(() => _channelType = value),
+                    onChanged: (value) =>
+                        setState(() => _channelType = value),
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -311,7 +338,7 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
                     label: 'Add People',
                     placeholder: _isChannel
                         ? 'Search server members'
-                        : 'Search people and pages',
+                        : 'Search people, pages and bots',
                     icon: Icons.search,
                     onChanged: _onQueryChanged,
                   ),
@@ -358,11 +385,7 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
             padding: const EdgeInsets.fromLTRB(
                 CLSpacing.contentGutter, 8, CLSpacing.contentGutter, 12),
             child: CLBtn(
-              label: _saving
-                  ? 'Creating…'
-                  : _isChannel
-                      ? 'Create channel'
-                      : 'Create server',
+              label: _saving ? 'Creating…' : 'Create ${_noun.toLowerCase()}',
               iconL: Icons.add,
               // Gold: this is the servers surface, and every action on it uses
               // the servers accent rather than the app blue.
@@ -482,22 +505,13 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
                                     fontWeight: FontWeight.w600,
                                     color: p.text)),
                           ),
-                          if (entity.isRealm) ...[
-                            const SizedBox(width: 4),
-                            Tooltip(
-                              message: 'Page',
-                              child: Icon(Icons.flag_outlined,
-                                  size: 13, color: p.text3),
-                            ),
-                          ],
-                          if (entity.type == 'bot') ...[
-                            const SizedBox(width: 4),
-                            Tooltip(
-                              message: 'Bot',
-                              child: Icon(Icons.smart_toy,
-                                  size: 13, color: p.text3),
-                            ),
-                          ],
+                          ...clEntityMarkers(
+                            context,
+                            isVerified: entity.isVerified,
+                            isPage: entity.isRealm,
+                            isBot: entity.type == 'bot',
+                            badgeSize: 13,
+                          ),
                         ],
                       ),
                       Text('@${entity.username}',
@@ -520,76 +534,6 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
           ),
         );
       },
-    );
-  }
-}
-
-/// A labelled row of chips - what a two- or three-value choice looks like on a
-/// phone, where web uses a toggle switch and a select. Generic so privacy
-/// (bool) and channel type (String) share one control.
-///
-/// Its own rather than CLChip's `active` styling: an active CLChip fills with
-/// the app blue, and nothing on the servers surface is blue.
-class _ChoiceField<T> extends StatelessWidget {
-  final String label;
-  final T value;
-  final bool enabled;
-  final List<(T, String)> options;
-  final ValueChanged<T> onChanged;
-
-  const _ChoiceField({
-    required this.label,
-    required this.value,
-    required this.enabled,
-    required this.options,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final p = cl(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: TextStyle(
-                fontSize: CLType.bodySm,
-                fontWeight: FontWeight.w600,
-                color: p.text)),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            for (final (optionValue, optionLabel) in options)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(CLRadii.pill),
-                  onTap: enabled ? () => onChanged(optionValue) : null,
-                  child: Container(
-                    height: 32,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: optionValue == value ? p.goldSoft : p.surface,
-                      borderRadius: BorderRadius.circular(CLRadii.pill),
-                      border: Border.all(
-                          color: optionValue == value ? p.gold : p.border2),
-                    ),
-                    child: Center(
-                      child: Text(
-                        optionLabel,
-                        style: TextStyle(
-                          fontSize: CLType.bodySm,
-                          fontWeight: FontWeight.w600,
-                          color: optionValue == value ? p.gold : p.text2,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ],
     );
   }
 }

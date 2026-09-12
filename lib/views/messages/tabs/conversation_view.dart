@@ -1236,6 +1236,29 @@ class ConversationStateView extends State<ConversationView> {
   T _quotedStyle<T>({required T mine, required T others, required T none}) =>
       _quotedMessage == null ? none : (_isQuotingSelf ? mine : others);
 
+  /// The reply / AI-assist panel's surface, and the content that sits on it.
+  ///
+  /// Quoting YOUR message paints the panel in the thread accent, so its
+  /// content is white on colour. Quoting someone else's paints it like an
+  /// INCOMING BUBBLE - border2 with the normal text colour - which is what
+  /// makes the panel read as the message it is quoting.
+  ///
+  /// Both halves used to be hardcoded (#dedede behind Colors.black), i.e. a
+  /// light-mode palette written out by hand. In dark mode the panel stayed
+  /// near-white with black text while every surface around it went dark. The
+  /// tokens carry both themes, so there is nothing left to keep in sync.
+  Color _quotedSurface(CLPalette p) => _quotedStyle(
+        mine: _accentFor(p),
+        others: p.border2,
+        none: Colors.transparent,
+      );
+
+  Color _quotedForeground(CLPalette p) => _quotedStyle(
+        mine: Colors.white,
+        others: p.text,
+        none: Colors.transparent,
+      );
+
   String _seenersLabel(List<String> seeners) =>
       seeners.map(_resolveSenderName).join(", ");
 
@@ -2134,40 +2157,13 @@ class ConversationStateView extends State<ConversationView> {
                                                                     .ellipsis,
                                                           ),
                                                         ),
-                                                        // Badge, then page flag -
-                                                        // same order and glyphs the
-                                                        // inbox rows and Network
-                                                        // rows use.
-                                                        if (_headerIsVerified) ...[
-                                                          const SizedBox(
-                                                              width: 4),
-                                                          Icon(Icons.verified,
-                                                              size: 14,
-                                                              color: p.brand),
-                                                        ],
-                                                        if (_headerIsPage) ...[
-                                                          const SizedBox(
-                                                              width: 4),
-                                                          Tooltip(
-                                                            message: 'Page',
-                                                            child: Icon(
-                                                                Icons
-                                                                    .flag_outlined,
-                                                                size: 13,
-                                                                color: p.text3),
-                                                          ),
-                                                        ],
-                                                        if (_headerIsBot) ...[
-                                                          const SizedBox(
-                                                              width: 4),
-                                                          Tooltip(
-                                                            message: 'Bot',
-                                                            child: Icon(
-                                                                Icons.smart_toy,
-                                                                size: 13,
-                                                                color: p.text3),
-                                                          ),
-                                                        ],
+                                                        ...clEntityMarkers(
+                                                          context,
+                                                          isVerified:
+                                                              _headerIsVerified,
+                                                          isPage: _headerIsPage,
+                                                          isBot: _headerIsBot,
+                                                        ),
                                                       ],
                                                     ),
                                                   ),
@@ -2870,11 +2866,7 @@ class ConversationStateView extends State<ConversationView> {
                                       child: AnimatedContainer(
                                           duration: Duration(milliseconds: 500),
                                           decoration: BoxDecoration(
-                                              color: _quotedStyle(
-                                                mine: _accentFor(cl(context)),
-                                                others: Color(0xffdedede),
-                                                none: Colors.transparent,
-                                              ),
+                                              color: _quotedSurface(p),
                                               borderRadius:
                                                   BorderRadius.circular(7)),
                                           child: Padding(
@@ -2907,14 +2899,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                   _replyingToLabel,
                                                                   style: TextStyle(
                                                                       fontSize: CLType.caption,
-                                                                      color: _quotedStyle(
-                                                                        mine: Colors
-                                                                            .white,
-                                                                        others:
-                                                                            Colors.black,
-                                                                        none: Colors
-                                                                            .transparent,
-                                                                      ),
+                                                                      color:
+                                                                          _quotedForeground(p),
                                                                       fontWeight: FontWeight.bold),
                                                                   textAlign:
                                                                       TextAlign
@@ -2933,14 +2919,8 @@ class ConversationStateView extends State<ConversationView> {
                                                               fontSize: CLType
                                                                   .caption,
                                                               color:
-                                                                  _quotedStyle(
-                                                                mine: Colors
-                                                                    .white,
-                                                                others: Colors
-                                                                    .black,
-                                                                none: Colors
-                                                                    .transparent,
-                                                              ),
+                                                                  _quotedForeground(
+                                                                      p),
                                                               overflow:
                                                                   TextOverflow
                                                                       .ellipsis,
@@ -2972,8 +2952,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                 ElevatedButton(
                                                                     style: ElevatedButton.styleFrom(
                                                                         backgroundColor:
-                                                                            Color(
-                                                                                0xffdedede),
+                                                                            p.border2,
                                                                         elevation:
                                                                             0,
                                                                         padding: EdgeInsets.only(
@@ -3024,7 +3003,10 @@ class ConversationStateView extends State<ConversationView> {
                                                                             child:
                                                                                 Center(
                                                                               child: Icon(
-                                                                                color: Colors.white,
+                                                                                // On the p.border2 circle above, not on the panel - so it follows the
+                                                                                // text colour in both themes. White was invisible on the light-mode
+                                                                                // circle, which is the one case it was always wrong in.
+                                                                                color: p.text,
                                                                                 Icons.close,
                                                                                 size: 12,
                                                                               ),
@@ -3059,11 +3041,7 @@ class ConversationStateView extends State<ConversationView> {
                                       child: AnimatedContainer(
                                           duration: Duration(milliseconds: 500),
                                           decoration: BoxDecoration(
-                                              color: _quotedStyle(
-                                                mine: _accentFor(cl(context)),
-                                                others: Color(0xffdedede),
-                                                none: Colors.transparent,
-                                              ),
+                                              color: _quotedSurface(p),
                                               borderRadius:
                                                   BorderRadius.circular(7)),
                                           child: Padding(
@@ -3098,14 +3076,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                       : "Use AI Reply Assist?",
                                                                   style: TextStyle(
                                                                       fontSize: CLType.caption,
-                                                                      color: _quotedStyle(
-                                                                        mine: Colors
-                                                                            .white,
-                                                                        others:
-                                                                            Colors.black,
-                                                                        none: Colors
-                                                                            .transparent,
-                                                                      ),
+                                                                      color:
+                                                                          _quotedForeground(p),
                                                                       fontWeight: FontWeight.bold),
                                                                   textAlign:
                                                                       TextAlign
@@ -3124,7 +3096,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                   children: [
                                                                     ElevatedButton(
                                                                         style: ElevatedButton.styleFrom(
-                                                                            backgroundColor: Colors.white,
+                                                                            backgroundColor: p.surface,
                                                                             shape: RoundedRectangleBorder(
                                                                               borderRadius: BorderRadius.circular(10), // Rounded corners if needed
                                                                             )),
@@ -3136,14 +3108,14 @@ class ConversationStateView extends State<ConversationView> {
                                                                           "Generate",
                                                                           style: TextStyle(
                                                                               fontSize: 12,
-                                                                              color: Color(0xFF565656)),
+                                                                              color: p.text2),
                                                                         )),
                                                                     SizedBox(
                                                                       width: 5,
                                                                     ),
                                                                     ElevatedButton(
                                                                         style: ElevatedButton.styleFrom(
-                                                                            backgroundColor: Colors.white,
+                                                                            backgroundColor: p.surface,
                                                                             shape: RoundedRectangleBorder(
                                                                               borderRadius: BorderRadius.circular(10), // Rounded corners if needed
                                                                             )),
@@ -3155,15 +3127,15 @@ class ConversationStateView extends State<ConversationView> {
                                                                           "Cancel",
                                                                           style: TextStyle(
                                                                               fontSize: 12,
-                                                                              color: Color(0xFF565656)),
+                                                                              color: p.text2),
                                                                         ))
                                                                   ],
                                                                 )
                                                               : ElevatedButton(
                                                                   style: ElevatedButton
                                                                       .styleFrom(
-                                                                          backgroundColor: Colors
-                                                                              .white,
+                                                                          backgroundColor:
+                                                                              p.surface,
                                                                           shape:
                                                                               RoundedRectangleBorder(
                                                                             borderRadius:
@@ -3179,8 +3151,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                     style: TextStyle(
                                                                         fontSize:
                                                                             12,
-                                                                        color: Color(
-                                                                            0xFF565656)),
+                                                                        color: p
+                                                                            .text2),
                                                                   )),
                                                         ],
                                                       )),

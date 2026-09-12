@@ -1216,26 +1216,14 @@ class _MemberRow extends StatelessWidget {
                               fontWeight: FontWeight.w600,
                               color: p.text)),
                     ),
-                    if (member.isVerified) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.verified, size: 13, color: p.brand),
-                    ],
-                    if (member.isPage) ...[
-                      const SizedBox(width: 4),
-                      Tooltip(
-                        message: 'Page',
-                        child: Icon(Icons.flag_outlined,
-                            size: 12, color: p.text3),
-                      ),
-                    ],
-                    if (member.isBot) ...[
-                      const SizedBox(width: 4),
-                      Tooltip(
-                        message: 'Bot',
-                        child:
-                            Icon(Icons.smart_toy, size: 12, color: p.text3),
-                      ),
-                    ],
+                    ...clEntityMarkers(
+                      context,
+                      isVerified: member.isVerified,
+                      isPage: member.isPage,
+                      isBot: member.isBot,
+                      badgeSize: 13,
+                      kindSize: 12,
+                    ),
                   ],
                 ),
                 if (meta.isNotEmpty)

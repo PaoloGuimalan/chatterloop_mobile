@@ -21,7 +21,9 @@ import 'package:chatterloop_app/views/home/tabs/contacts_detail_view.dart';
 import 'package:chatterloop_app/views/moderation/moderation_detail_view.dart';
 import 'package:chatterloop_app/views/search/topic_detail_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
+import 'package:chatterloop_app/views/messages/create_group_chat_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
+import 'package:chatterloop_app/views/messages/new_message_view.dart';
 import 'package:chatterloop_app/views/newsfeed/newsfeed_view.dart';
 import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
@@ -339,6 +341,24 @@ GoRouter buildAppRouter(AuthController authController) {
               // implementations.
             ],
           ),
+          // The two ways to START a conversation. Real routes rather than
+          // imperative MaterialPageRoutes pushed from the list: those sit
+          // OUTSIDE go_router's stack, so a screen that then navigates to
+          // /conversation/<id> is asking a router that does not know it is
+          // there - and the picker is left underneath the thread it opened.
+          //
+          // NOT '/messages/new'. go_router walks a location segment by
+          // segment, so a sub-path of the '/messages' BRANCH resolves against
+          // that branch's children - and it has none, which is a "page not
+          // found" rather than a fallthrough to a same-named sibling. Same
+          // trap '/server-browser' below exists to avoid.
+          GoRoute(
+              path: '/new-message',
+              pageBuilder: (c, s) => _clPage(s, const NewMessageScreen())),
+          GoRoute(
+              path: '/new-group-chat',
+              pageBuilder: (c, s) =>
+                  _clPage(s, const CreateGroupChatScreen())),
           GoRoute(
             path: '/conversation/:conversationId',
             pageBuilder: (c, s) => _clPage(

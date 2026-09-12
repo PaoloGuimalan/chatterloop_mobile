@@ -197,38 +197,21 @@ class MessageItemView extends StatelessWidget {
                               const SizedBox(width: 4),
                               Icon(_typeIcon, size: 16, color: p.brand),
                             ],
-                            // The verified badge, same glyph and colour the
-                            // profile screens use. One field either way: the
-                            // server normalises an account's is_badged and a
-                            // realm's is_verified into details.is_verified.
-                            if (message.details.isVerified) ...[
-                              const SizedBox(width: 4),
-                              Icon(Icons.verified, size: 14, color: p.brand),
-                            ],
-                            // A single conversation whose counterpart is a
-                            // PAGE. Matches the flag the Contacts/Network rows
-                            // already put on a page connection, so a page reads
-                            // the same wherever it appears. Groups and channels
-                            // are excluded - _typeIcon above already says what
-                            // they are.
-                            if (message.details.isPage) ...[
-                              const SizedBox(width: 4),
-                              Tooltip(
-                                message: 'Page',
-                                child: Icon(Icons.flag_outlined,
-                                    size: 13, color: p.text3),
-                              ),
-                            ],
-                            // Says "software", never the verified badge above
-                            // - that one means a verified human or page.
-                            if (message.details.isBot) ...[
-                              const SizedBox(width: 4),
-                              Tooltip(
-                                message: 'Bot',
-                                child: Icon(Icons.smart_toy,
-                                    size: 13, color: p.text3),
-                              ),
-                            ],
+                            // One field either way for the badge: the server
+                            // normalises an account's is_badged and a realm's
+                            // is_verified into details.is_verified.
+                            //
+                            // isPage is a SINGLE conversation whose counterpart
+                            // is a page. Groups and channels are excluded -
+                            // _typeIcon above already says what they are, which
+                            // is why it sits ahead of these rather than among
+                            // them.
+                            ...clEntityMarkers(
+                              context,
+                              isVerified: message.details.isVerified,
+                              isPage: message.details.isPage,
+                              isBot: message.details.isBot,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 2),

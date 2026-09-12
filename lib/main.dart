@@ -4,6 +4,7 @@ import 'package:chatterloop_app/core/auth/auth_controller.dart';
 import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/utils/app_messenger.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/notifications/push_notification_service.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
@@ -167,6 +168,11 @@ class _MyAppState extends State<MyApp> {
               store: appStore,
               child: MaterialApp.router(
                 title: 'Chatterloop',
+                // A messenger reachable without a BuildContext, for work that
+                // outlives the widget that started it - a media download keeps
+                // running after you leave the conversation, and still has to be
+                // able to say where it put the file. See clSnack.
+                scaffoldMessengerKey: clMessengerKey,
                 theme: buildCLTheme(Brightness.light),
                 darkTheme: buildCLTheme(Brightness.dark),
                 themeMode: _themeController.mode,

@@ -11,6 +11,7 @@ import 'package:chatterloop_app/models/messages_models/messages_list_model.dart'
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:go_router/go_router.dart';
 
 class MessagesView extends StatefulWidget {
   const MessagesView({super.key});
@@ -85,6 +86,32 @@ class MessagesStateView extends State<MessagesView> {
     _loadingMore = false;
   }
 
+  /// Pick someone and land in the thread.
+  ///
+  /// Both of these are ROUTER routes, pushed by location rather than as
+  /// imperative MaterialPageRoutes - a screen pushed outside go_router's stack
+  /// cannot then navigate within it, which is exactly what picking somebody
+  /// has to do.
+  ///
+  /// Nothing to refresh on the way back: that screen pushes the conversation
+  /// on top of itself, so returning here means the user left without starting
+  /// one - and if they did start one, the conversation itself brings the list
+  /// up to date over SSE.
+  void _openNewMessage(BuildContext context) => context.push('/new-message');
+
+  /// The group-chat form.
+  ///
+  /// Refreshes on return, because /u/createContactGroupChat answers with
+  /// {status, message} and no conversationID. The new conversation does reach
+  /// the client on its own over SSE, but only while this screen is mounted and
+  /// listening - and it was not, it was under the create form - so waiting for
+  /// that leaves the list looking like nothing happened.
+  Future<void> _openCreateGroup(BuildContext context) async {
+    final created = await context.push<bool>('/new-group-chat');
+    if (!mounted || created != true) return;
+    if (context.mounted) await getConversationListProcess(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
@@ -120,21 +147,62 @@ class MessagesStateView extends State<MessagesView> {
         backgroundColor: p.bg,
         body: Column(
           children: [
-            // Create Group Chat is not functional yet (no group-creation
-            // flow/screen exists) - commented out rather than left visible
-            // and disabled, until that flow is built.
-            // Padding(
-            //   padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-            //   child: Row(
-            //     children: [
-            //       CLChip(
-            //           label: "Create Group Chat",
-            //           icon: Icons.people_alt_outlined,
-            //           onTap: null),
-            //     ],
-            //   ),
-            // ),
-            const SizedBox(height: 12),
+            // The two ways to start something, above the list rather than
+            // behind a floating button: web puts Create Group in the Messages
+            // header, and on a phone the header is already carrying the tab
+            // bar. Side by side and equal width because neither is the
+            // secondary one - a DM and a group chat are both just "a new
+            // conversation".
+            //
+            // md, not sm: these are the screen's primary actions sitting above
+            // a list of 60px rows, and at 32px they read as a filter chip
+            // rather than something to press. The labels ellipsise if a narrow
+            // device cannot fit them at this size (see CLBtn).
+            //
+            // softStrong, not soft and not primary. Two solid blue buttons
+            // out-shout the list they sit above - the inbox is the screen, and
+            // these only start something. But plain `soft` is #E7F0FE in LIGHT
+            // mode, near enough to white to read as disabled. softStrong is
+            // exactly `soft` in dark, where the tint already worked, and a
+            // deeper fill in light, where it did not.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: CLBtn(
+                      label: "Write message",
+                      iconL: Icons.edit_square,
+                      variant: CLBtnVariant.softStrong,
+                      size: CLBtnSize.md,
+                      // One step down from md's own CLType.title, which is
+                      // the size a conversation NAME is drawn at below - a
+                      // button louder than the list it introduces is the wrong
+                      // way round. Height stays at md.
+                      labelSize: CLType.bodySm,
+                      block: true,
+                      onPressed: () => _openNewMessage(context),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: CLBtn(
+                      label: "Create group",
+                      iconL: Icons.group_add,
+                      variant: CLBtnVariant.softStrong,
+                      size: CLBtnSize.md,
+                      // One step down from md's own CLType.title, which is
+                      // the size a conversation NAME is drawn at below - a
+                      // button louder than the list it introduces is the wrong
+                      // way round. Height stays at md.
+                      labelSize: CLType.bodySm,
+                      block: true,
+                      onPressed: () => _openCreateGroup(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),

@@ -598,25 +598,13 @@ class _RosterRow extends StatelessWidget {
                             color: p.text),
                       ),
                     ),
-                    if (person.isVerified) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.verified, size: 14, color: p.brand),
-                    ],
-                    if (person.isPage) ...[
-                      const SizedBox(width: 4),
-                      Tooltip(
-                        message: 'Page',
-                        child: Icon(Icons.flag_outlined,
-                            size: 14, color: p.text3),
-                      ),
-                    ],
-                    if (person.isBot) ...[
-                      const SizedBox(width: 4),
-                      Tooltip(
-                        message: 'Bot',
-                        child: Icon(Icons.smart_toy, size: 14, color: p.text3),
-                      ),
-                    ],
+                    ...clEntityMarkers(
+                      context,
+                      isVerified: person.isVerified,
+                      isPage: person.isPage,
+                      isBot: person.isBot,
+                      kindSize: 14,
+                    ),
                   ],
                 ),
                 if (meta.isNotEmpty)

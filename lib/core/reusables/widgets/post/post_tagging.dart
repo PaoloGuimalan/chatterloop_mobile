@@ -287,41 +287,41 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
                       size: 30,
                       kind: entity.type,
                     ),
-                    title: Text(
-                      entity.displayName.isEmpty
-                          ? entity.username
-                          : entity.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: CLType.bodySm, color: p.text),
-                    ),
-                    subtitle: Row(
+                    // Badge and kind sit on the NAME, not on the handle -
+                    // the order every other entity row in the app uses (see
+                    // entity_row.dart): name, verified, page, bot. On the
+                    // handle line they read as marking the @handle, and the
+                    // verified badge was missing outright, so a verified page
+                    // was indistinguishable from an unverified one in the only
+                    // list where you pick which one to tag.
+                    title: Row(
                       children: [
                         Flexible(
-                          child: Text("@${entity.username}",
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: CLType.caption, color: p.text3)),
+                          child: Text(
+                            entity.displayName.isEmpty
+                                ? entity.username
+                                : entity.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: CLType.bodySm, color: p.text),
+                          ),
                         ),
-                        if (entity.isRealm) ...[
-                          const SizedBox(width: 4),
-                          Tooltip(
-                            message: 'Page',
-                            child: Icon(Icons.flag_outlined,
-                                size: 12, color: p.text3),
-                          ),
-                        ],
-                        if (entity.type == 'bot') ...[
-                          const SizedBox(width: 4),
-                          Tooltip(
-                            message: 'Bot',
-                            child: Icon(Icons.smart_toy,
-                                size: 12, color: p.text3),
-                          ),
-                        ],
+                        ...clEntityMarkers(
+                          context,
+                          isVerified: entity.isVerified,
+                          isPage: entity.isRealm,
+                          isBot: entity.type == 'bot',
+                          badgeSize: 13,
+                          kindSize: 12,
+                        ),
                       ],
                     ),
+                    subtitle: Text("@${entity.username}",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: CLType.caption, color: p.text3)),
                     trailing: Icon(
                       picked ? Icons.check_circle : Icons.add_circle_outline,
                       size: 20,

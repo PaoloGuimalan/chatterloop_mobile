@@ -902,26 +902,14 @@ class CommentRow extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              if (author.isVerified) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.verified, size: 12, color: p.brand),
-                              ],
-                              if (author.isRealm) ...[
-                                const SizedBox(width: 4),
-                                Tooltip(
-                                  message: 'Page',
-                                  child: Icon(Icons.flag_outlined,
-                                      size: 12, color: p.text3),
-                                ),
-                              ],
-                              if (author.type == 'bot') ...[
-                                const SizedBox(width: 4),
-                                Tooltip(
-                                  message: 'Bot',
-                                  child: Icon(Icons.smart_toy,
-                                      size: 12, color: p.text3),
-                                ),
-                              ],
+                              ...clEntityMarkers(
+                                context,
+                                isVerified: author.isVerified,
+                                isPage: author.isRealm,
+                                isBot: author.type == 'bot',
+                                badgeSize: 12,
+                                kindSize: 12,
+                              ),
                             ],
                           ),
                         ),

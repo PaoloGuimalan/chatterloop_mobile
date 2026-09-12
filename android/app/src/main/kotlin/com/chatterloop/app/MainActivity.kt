@@ -6,6 +6,9 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterActivity() {
+    /** Saves downloaded attachments into the shared Downloads collection. */
+    private val mediaSaver = MediaSaver()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -40,5 +43,22 @@ class MainActivity : FlutterActivity() {
             applicationContext,
             flutterEngine.dartExecutor.binaryMessenger,
         )
+        // The Activity, not applicationContext: on API 28 and below saving a
+        // download needs WRITE_EXTERNAL_STORAGE, and a runtime permission can
+        // only be requested from an Activity.
+        mediaSaver.register(this, flutterEngine.dartExecutor.binaryMessenger)
+    }
+
+    /**
+     * MediaSaver's legacy (pre-29) path asks for WRITE_EXTERNAL_STORAGE, and
+     * this is the only place Android delivers the answer.
+     */
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        mediaSaver.onRequestPermissionsResult(requestCode, grantResults)
     }
 }

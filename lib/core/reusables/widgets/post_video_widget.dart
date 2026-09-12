@@ -219,6 +219,20 @@ class VideoPlayerScreen extends StatefulWidget {
   /// a second time would be absurd.
   final bool autoPlay;
 
+  /// Whether the controls offer the expand button at all.
+  ///
+  /// False inside [MediaViewerScreen], which IS the full-screen view - the
+  /// button there pushed a second full-screen page on top of the first.
+  final bool showFullscreenButton;
+
+  /// What the expand button does, when the default is not what is wanted.
+  ///
+  /// Null keeps the built-in behaviour (push the bare full-screen player). A
+  /// chat bubble overrides it so expanding a video lands in the same viewer a
+  /// photo opens into, download action and all, rather than in a second
+  /// player with no relationship to it.
+  final VoidCallback? onFullscreen;
+
   const VideoPlayerScreen({
     super.key,
     required this.videoUrl,
@@ -226,6 +240,8 @@ class VideoPlayerScreen extends StatefulWidget {
     this.fillWidth = false,
     this.anchorControlsToBounds = false,
     this.autoPlay = false,
+    this.showFullscreenButton = true,
+    this.onFullscreen,
   });
 
   @override
@@ -321,7 +337,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 fit: StackFit.expand,
                 children: [
                   videoSurface,
-                  VideoControlsOverlay(controller: _controller),
+                  VideoControlsOverlay(
+                    controller: _controller,
+                    showFullscreenButton: widget.showFullscreenButton,
+                    onFullscreen: widget.onFullscreen,
+                  ),
                 ],
               );
 
@@ -338,7 +358,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 Center(
                   child: AspectRatio(aspectRatio: aspectRatio, child: player),
                 ),
-                VideoControlsOverlay(controller: _controller),
+                VideoControlsOverlay(
+                  controller: _controller,
+                  showFullscreenButton: widget.showFullscreenButton,
+                  onFullscreen: widget.onFullscreen,
+                ),
               ],
             );
           }
@@ -440,11 +464,16 @@ class VideoControlsOverlay extends StatefulWidget {
   /// Shows a fullscreen button next to mute.
   final bool showFullscreenButton;
 
+  /// Overrides what the expand button does - see
+  /// [VideoPlayerScreen.onFullscreen], which is the only thing that sets it.
+  final VoidCallback? onFullscreen;
+
   const VideoControlsOverlay({
     super.key,
     required this.controller,
     this.hideAfter = const Duration(seconds: 3),
     this.showFullscreenButton = true,
+    this.onFullscreen,
   });
 
   @override
@@ -578,6 +607,11 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
 
   void _openFullscreen() {
     _hideTimer?.cancel();
+    final override = widget.onFullscreen;
+    if (override != null) {
+      override();
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,

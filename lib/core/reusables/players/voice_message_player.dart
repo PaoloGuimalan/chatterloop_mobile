@@ -13,6 +13,7 @@ import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:flutter/material.dart';
 
 const int _barCount = 40;
@@ -117,7 +118,13 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    final accent = p.brand;
+    // The INHERITED accent, not p.brand. Every other bubble takes its colour
+    // from CLAccent (conversation_view wraps the thread in one, gold for a
+    // channel and brand blue for a DM), so hardcoding the brand here left your
+    // own voice message the one blue bubble in an otherwise gold channel.
+    // Falls back to p.brand on its own wherever no CLAccent is in scope - the
+    // composer's pre-send preview, for one.
+    final accent = CLAccent.of(context);
     final bg = widget.isSender ? accent : p.surface;
     final border = widget.isSender ? accent : p.border;
     final textColor = widget.isSender ? Colors.white : p.text;

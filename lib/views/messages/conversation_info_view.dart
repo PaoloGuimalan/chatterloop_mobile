@@ -138,27 +138,18 @@ class ConversationInfoScreen extends StatelessWidget {
                             color: p.text),
                       ),
                     ),
-                    // Badge, then page flag - same glyphs and order the inbox
-                    // rows, the conversation header and the Network rows use.
-                    if (_counterpart?.isVerified == true) ...[
-                      const SizedBox(width: 5),
-                      Icon(Icons.verified, size: 17, color: p.brand),
-                    ],
-                    if (_counterpart?.isPage == true) ...[
-                      const SizedBox(width: 5),
-                      Tooltip(
-                        message: 'Page',
-                        child:
-                            Icon(Icons.flag_outlined, size: 15, color: p.text3),
-                      ),
-                    ],
-                    if (_counterpart?.isBot == true) ...[
-                      const SizedBox(width: 5),
-                      Tooltip(
-                        message: 'Bot',
-                        child: Icon(Icons.smart_toy, size: 15, color: p.text3),
-                      ),
-                    ],
+                    // Bigger, and a wider gap, than a list row's - this is
+                    // a screen title. The glyphs and their order are the
+                    // shared part.
+                    ...clEntityMarkers(
+                      context,
+                      isVerified: _counterpart?.isVerified == true,
+                      isPage: _counterpart?.isPage == true,
+                      isBot: _counterpart?.isBot == true,
+                      badgeSize: 17,
+                      kindSize: 15,
+                      gap: 5,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -256,29 +247,17 @@ class _PersonRow extends StatelessWidget {
                                 fontWeight: FontWeight.w600,
                                 color: p.text)),
                       ),
-                      if (person.isVerified == true) ...[
-                        const SizedBox(width: 4),
-                        Icon(Icons.verified, size: 13, color: p.brand),
-                      ],
-                      // Members are entities, so a PAGE can be in a group.
-                      if (person.isPage) ...[
-                        const SizedBox(width: 4),
-                        Tooltip(
-                          message: 'Page',
-                          child: Icon(Icons.flag_outlined,
-                              size: 12, color: p.text3),
-                        ),
-                      ],
-                      // Members are entities, so a BOT can be in a group too -
-                      // which is the whole point of adding one.
-                      if (person.isBot) ...[
-                        const SizedBox(width: 4),
-                        Tooltip(
-                          message: 'Bot',
-                          child:
-                              Icon(Icons.smart_toy, size: 12, color: p.text3),
-                        ),
-                      ],
+                      // Members are ENTITIES, so a page or a bot can be in
+                      // a group - which for a bot is the whole point of
+                      // adding one.
+                      ...clEntityMarkers(
+                        context,
+                        isVerified: person.isVerified == true,
+                        isPage: person.isPage,
+                        isBot: person.isBot,
+                        badgeSize: 13,
+                        kindSize: 12,
+                      ),
                     ],
                   ),
                   if (person.userID.isNotEmpty)

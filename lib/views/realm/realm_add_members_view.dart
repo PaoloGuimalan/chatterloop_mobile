@@ -379,26 +379,13 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
                                       fontWeight: FontWeight.w600,
                                       color: p.text)),
                             ),
-                            if (entity.isVerified) ...[
-                              const SizedBox(width: 4),
-                              Icon(Icons.verified, size: 13, color: p.brand),
-                            ],
-                            if (entity.isRealm) ...[
-                              const SizedBox(width: 4),
-                              Tooltip(
-                                message: 'Page',
-                                child: Icon(Icons.flag_outlined,
-                                    size: 13, color: p.text3),
-                              ),
-                            ],
-                            if (entity.type == 'bot') ...[
-                              const SizedBox(width: 4),
-                              Tooltip(
-                                message: 'Bot',
-                                child: Icon(Icons.smart_toy,
-                                    size: 13, color: p.text3),
-                              ),
-                            ],
+                            ...clEntityMarkers(
+                              context,
+                              isVerified: entity.isVerified,
+                              isPage: entity.isRealm,
+                              isBot: entity.type == 'bot',
+                              badgeSize: 13,
+                            ),
                           ],
                         ),
                         Text(

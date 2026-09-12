@@ -97,19 +97,14 @@ class ContactsItemWidget extends StatelessWidget {
                                       fontWeight: FontWeight.w700,
                                       fontSize: CLType.title)),
                             ),
-                            if (other.isBadged) ...[
-                              const SizedBox(width: 4),
-                              Icon(Icons.verified, size: 15, color: p.brand),
-                            ],
-                            if (isRealm) ...[
-                              const SizedBox(width: 4),
-                              Icon(Icons.flag_outlined,
-                                  size: 14, color: p.text3),
-                            ],
-                            if (isBot) ...[
-                              const SizedBox(width: 4),
-                              Icon(Icons.smart_toy, size: 14, color: p.text3),
-                            ],
+                            ...clEntityMarkers(
+                              context,
+                              isVerified: other.isBadged,
+                              isPage: isRealm,
+                              isBot: isBot,
+                              badgeSize: 15,
+                              kindSize: 14,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 2),
