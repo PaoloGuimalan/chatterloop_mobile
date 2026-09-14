@@ -109,7 +109,8 @@ class _ContactsDetailScreenState extends State<ContactsDetailScreen>
     bool hasNext = false;
 
     if (_isGroups) {
-      final result = await api.groupShortcutsRequest(page: page, range: _kPageSize);
+      final result =
+          await api.groupShortcutsRequest(page: page, range: _kPageSize);
       if (!mounted) return;
       if (page == 1) _groups.clear();
       _groups.addAll(result.items);

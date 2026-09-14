@@ -100,8 +100,7 @@ class _NotificationsViewState extends State<NotificationsView> {
 
   /// Rebuilds every section through [transform] - a read/handled flip can
   /// affect any of them, and a notification's section isn't known here.
-  void _mapSections(
-      NotificationV2 Function(NotificationV2 item) transform,
+  void _mapSections(NotificationV2 Function(NotificationV2 item) transform,
       {bool zeroUnread = false}) {
     final overview = _overview;
     if (overview == null) return;
@@ -214,9 +213,10 @@ class _NotificationsViewState extends State<NotificationsView> {
   /// The optimistic settle mirrors _respond: flip referenceStatus so the
   /// buttons drop away at once, then let `after` decide whether to re-read. A
   /// failure refetches, which puts them back if the action did not take.
-  Future<void> _runAction(NotificationV2 item, NotificationAction action) async {
-    final isCall = action.type == 'api-request' ||
-        action.type == 'external-api-request';
+  Future<void> _runAction(
+      NotificationV2 item, NotificationAction action) async {
+    final isCall =
+        action.type == 'api-request' || action.type == 'external-api-request';
     if (isCall) {
       if (_pendingActions.contains(item.referenceID)) return;
       setState(() => _pendingActions.add(item.referenceID));

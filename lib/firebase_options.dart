@@ -63,7 +63,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '242618599501',
     projectId: 'chatterloop',
     storageBucket: 'chatterloop.appspot.com',
-    androidClientId: '242618599501-di8d5il7kdreifnkg6l6r0tbuc88t9se.apps.googleusercontent.com',
+    androidClientId:
+        '242618599501-di8d5il7kdreifnkg6l6r0tbuc88t9se.apps.googleusercontent.com',
     iosBundleId: 'com.chatterloop.app',
   );
   static const FirebaseOptions macos = FirebaseOptions(
@@ -72,7 +73,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '242618599501',
     projectId: 'chatterloop',
     storageBucket: 'chatterloop.appspot.com',
-    androidClientId: '242618599501-di8d5il7kdreifnkg6l6r0tbuc88t9se.apps.googleusercontent.com',
+    androidClientId:
+        '242618599501-di8d5il7kdreifnkg6l6r0tbuc88t9se.apps.googleusercontent.com',
     iosBundleId: 'com.chatterloop.app',
   );
 

@@ -286,8 +286,7 @@ class _ContentCard extends StatelessWidget {
     final flagged = flaggedId == null
         ? const <PostReference>[]
         : showable.where((r) => r.referenceId == flaggedId).toList();
-    final rest =
-        showable.where((r) => !flagged.contains(r)).toList();
+    final rest = showable.where((r) => !flagged.contains(r)).toList();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -327,8 +326,8 @@ class _ContentCard extends StatelessWidget {
                       if (content.authorHandle != null)
                         Text(
                           "@${content.authorHandle}",
-                          style: TextStyle(
-                              color: p.text3, fontSize: CLType.meta),
+                          style:
+                              TextStyle(color: p.text3, fontSize: CLType.meta),
                         ),
                     ],
                   ),

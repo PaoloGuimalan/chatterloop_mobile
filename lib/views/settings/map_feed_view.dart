@@ -104,9 +104,13 @@ class _MapFeedSettingsScreenState extends State<MapFeedSettingsScreen> {
       children: [
         Text(title,
             style: TextStyle(
-                fontSize: CLType.title, fontWeight: FontWeight.w700, color: p.text)),
+                fontSize: CLType.title,
+                fontWeight: FontWeight.w700,
+                color: p.text)),
         const SizedBox(height: 4),
-        Text(desc, style: TextStyle(fontSize: CLType.bodySm, color: p.text2, height: 1.4)),
+        Text(desc,
+            style: TextStyle(
+                fontSize: CLType.bodySm, color: p.text2, height: 1.4)),
         const SizedBox(height: 8),
         Row(
           children: [

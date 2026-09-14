@@ -137,7 +137,8 @@ class AuthApi {
   /// PUT /api/user/me - fills in the missing profile fields (birthdate and/or
   /// gender) so Account.is_profile_complete() passes. Only sends the keys it
   /// was given. Mirrors webapp's CompleteProfileRequest.
-  Future<bool> completeProfileRequest({String? birthdate, String? gender}) async {
+  Future<bool> completeProfileRequest(
+      {String? birthdate, String? gender}) async {
     try {
       final payload = <String, dynamic>{};
       if (birthdate != null) payload['birthdate'] = birthdate;

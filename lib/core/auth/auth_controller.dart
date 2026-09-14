@@ -78,8 +78,8 @@ class AuthController extends ChangeNotifier {
       // /setup again before reaching the app.
       final storedPending = await ConsentPrefs.read();
       if (storedPending.isNotEmpty) {
-        account = account.copyWith(
-            pendingConsents: storedPending, isComplete: false);
+        account =
+            account.copyWith(pendingConsents: storedPending, isComplete: false);
       }
       _store.dispatch(DispatchModel(setUserAuthT, UserAuth(true, account)));
     } catch (_) {

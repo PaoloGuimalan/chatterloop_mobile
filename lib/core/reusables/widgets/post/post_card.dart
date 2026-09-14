@@ -308,6 +308,7 @@ class _PostCardState extends State<PostCard> {
                 borderRadius: BorderRadius.circular(CLRadii.pill),
                 child: CLAvatar(
                   id: post.author.entityId,
+                  entityId: post.author.entityId,
                   name: post.author.displayName,
                   src: post.author.profile,
                   size: 38,
@@ -351,8 +352,7 @@ class _PostCardState extends State<PostCard> {
                         // right after the name, before any tagging summary.
                         // These posts ARE the account update; the server writes
                         // the avatar and files the post in one go.
-                        if (post.isProfilePicturePost ||
-                            post.isCoverPhotoPost)
+                        if (post.isProfilePicturePost || post.isCoverPhotoPost)
                           TextSpan(
                             text: post.isProfilePicturePost
                                 ? " changed profile picture"
@@ -363,8 +363,8 @@ class _PostCardState extends State<PostCard> {
                         ...taggingSummarySpans(
                           context,
                           post.tagged,
-                          baseStyle: TextStyle(
-                              fontSize: CLType.title, color: p.text2),
+                          baseStyle:
+                              TextStyle(fontSize: CLType.title, color: p.text2),
                           linkColor: p.text,
                         ),
                       ]),
@@ -563,8 +563,7 @@ class _PostCardState extends State<PostCard> {
               ],
             ),
           ),
-        if (!widget.showEngagement)
-          const SizedBox(height: 12),
+        if (!widget.showEngagement) const SizedBox(height: 12),
       ],
     );
   }

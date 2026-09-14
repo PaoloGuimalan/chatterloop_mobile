@@ -139,7 +139,8 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
 
   /// Server-driven action - see notifications_view.dart's _runAction, which
   /// this mirrors against this screen's flat `_items` list.
-  Future<void> _runAction(NotificationV2 item, NotificationAction action) async {
+  Future<void> _runAction(
+      NotificationV2 item, NotificationAction action) async {
     final isCall =
         action.type == 'api-request' || action.type == 'external-api-request';
     if (isCall) {
@@ -184,7 +185,8 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
     context.push(route);
   }
 
-  ({IconData icon, String subtitle}) get _emptyState => switch (widget.section) {
+  ({IconData icon, String subtitle}) get _emptyState =>
+      switch (widget.section) {
         NotificationSection.activity => (
             icon: Icons.bolt,
             subtitle: "New reactions, comments and shares land here."

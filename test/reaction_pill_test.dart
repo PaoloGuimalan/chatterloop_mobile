@@ -11,8 +11,8 @@ Future<void> pump(WidgetTester tester, List<ReactionItem> reactions) async {
   await tester.pumpWidget(MaterialApp(
     theme: buildCLTheme(Brightness.light),
     home: Builder(
-      builder: (context) =>
-          Scaffold(body: Center(child: buildReactionPill(reactions, cl(context)))),
+      builder: (context) => Scaffold(
+          body: Center(child: buildReactionPill(reactions, cl(context)))),
     ),
   ));
 }

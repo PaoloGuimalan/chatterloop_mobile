@@ -574,6 +574,7 @@ class _RosterRow extends StatelessWidget {
         children: [
           CLAvatar(
               id: person.entityId,
+              entityId: person.entityId,
               name: person.displayName,
               src: person.profile,
               size: 40,

@@ -90,6 +90,7 @@ class Endpoints {
   /// Tag autocomplete, backed by the shared Interest table rather than
   /// anything diary-specific. Takes ?search=&page=&page_size=.
   String diaryTags = '/api/diary/tags/';
+
   /// Popular Topics - the interest ranking behind Explore's first section.
   /// Takes ?limit= (server caps at 8). Counts and participant faces are
   /// filtered per-viewer, so responses must not be shared between accounts.

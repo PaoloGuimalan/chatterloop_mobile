@@ -1,9 +1,14 @@
 // Shared widgets — Flutter counterparts of the webapp's design primitives
 // (Avatar, Btn, IconBtn, Card, Badge, Chip, Toggle, SegTabs, Field).
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_redux/flutter_redux.dart';
+
+import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 
 import 'tokens.dart';
 
@@ -138,6 +143,27 @@ class CLAvatar extends StatelessWidget {
   final String? name;
   final String? src;
   final double size;
+
+  /// The entity this avatar depicts, which is what the presence marker is
+  /// resolved from. An ENTITY id - not an account id, not a realm_id.
+  ///
+  /// PASS IT WHENEVER THE AVATAR IS SOMETHING THAT CAN BE ONLINE: a person, a
+  /// page, a realm, a bot. Leave it off for an avatar standing for something
+  /// with no presence to report - a group chat, a server, a channel - rather
+  /// than passing that thing's own id.
+  ///
+  /// Separate from [id], which is the gradient-hash key and is fed a username
+  /// or a slug at half the call sites: fine for picking a colour, useless for
+  /// presence.
+  ///
+  /// Resolving it HERE rather than at each call site is deliberate. It used to
+  /// be the caller's job - read `state.presence`, pass [online] - and only a
+  /// handful of the ~45 avatars in the app did it, so the same person showed a
+  /// dot in one list and not in the next.
+  final String? entityId;
+
+  /// Forces the dot on, for callers that have already resolved presence
+  /// themselves. Leave it false and pass [entityId] instead.
   final bool online;
   final bool ring;
 
@@ -160,6 +186,7 @@ class CLAvatar extends StatelessWidget {
     this.name,
     this.src,
     this.kind,
+    this.entityId,
     this.size = 40,
     this.online = false,
     this.ring = false,
@@ -278,28 +305,251 @@ class CLAvatar extends StatelessWidget {
       );
     }
 
+    final g = _PresenceGeometry(size: size, isCircle: cornerRadius == null);
+
     return SizedBox(
       width: size,
       height: size,
+      // Clip.none, NOT the Stack's hardEdge default. The marker sits ON the
+      // rim, so a few px of it fall outside this box by design - the same
+      // thing `overflow: hidden` did to it on the web, where it silently ate
+      // the dot on most of the app's rows.
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           content,
-          if (online)
+          if (entityId != null)
             Positioned(
-              right: -1,
-              bottom: -1,
-              child: Container(
-                width: (size * 0.28).clamp(9, 18),
-                height: (size * 0.28).clamp(9, 18),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: p.online,
-                  border: Border.all(color: p.surface, width: 2.5),
-                ),
-              ),
+              right: g.inset,
+              bottom: g.inset,
+              child: _PresenceMarker(entityId: entityId!, geometry: g),
+            )
+          else if (online)
+            Positioned(
+              right: g.inset,
+              bottom: g.inset,
+              child:
+                  _PresenceDot(geometry: g, color: p.online, ring: p.surface),
             ),
         ],
       ),
+    );
+  }
+}
+
+/// How big the presence marker is and where it sits, for one avatar size.
+///
+/// The dot GROWS WITH THE AVATAR, but far more slowly than the avatar does -
+/// about half the width of a 20px stacked face, down to a sixth of a 160px
+/// profile header. A flat percentage (this was `size * 0.28`) puts a blob on
+/// the header and a speck in a face row; a genuinely fixed size is either too
+/// heavy on the small avatars or too faint to notice on the large ones.
+class _PresenceGeometry {
+  final double size;
+  final bool isCircle;
+
+  const _PresenceGeometry({required this.size, required this.isCircle});
+
+  double get dot => (8 + size * 0.11).clamp(10.0, 26.0);
+
+  double get ring => (dot * 0.16).clamp(2.0, 3.5);
+
+  /// Pulled in so the marker sits ON the rim rather than off the corner of the
+  /// bounding box. For a circle the 4-o'clock rim point is at 0.8536 * size
+  /// from the left edge (r + r/sqrt2), so the inset is whatever puts the
+  /// marker's centre there: about zero at 40px - which is why a flat -1 looked
+  /// right on rows - and ~8px at 160px, where that same -1 left the dot
+  /// floating clear of the circle.
+  ///
+  /// Clamped so it never hangs more than 2px outside the box. A rounded-square
+  /// avatar has a real corner to sit in and keeps the small overhang.
+  double get inset => isCircle ? math.max(-2.0, size * 0.1464 - dot / 2) : -1.0;
+
+  /// The last-seen pill is taller than the dot because it has to hold a line
+  /// of text: the dot's diameter is chosen for a disc, and 9px type does not
+  /// fit inside 12px of it once the ring is taken off.
+  double get pillHeight => math.max(15.0, dot.roundToDouble() + 3);
+
+  double get pillFont => math.max(9.0, (pillHeight * 0.52).roundToDouble());
+
+  /// A pill is text, and text has a floor below which it is a smear rather
+  /// than a reading. Under 28px there is no room for one, so those avatars
+  /// show the dot when the entity is online and nothing when it is not -
+  /// which is what a stacked face row wants anyway.
+  ///
+  /// 28, not 32: the comment rows (28 compact / 34 full) and the tag and
+  /// mention pickers (28-30) all sat just under a 32 floor, so those lists
+  /// showed a dot and never a duration - which reads as the feature being
+  /// half-wired rather than as a size rule.
+  bool get canShowLastSeen => size >= 28;
+}
+
+class _PresenceDot extends StatelessWidget {
+  final _PresenceGeometry geometry;
+  final Color color;
+  final Color ring;
+
+  const _PresenceDot(
+      {required this.geometry, required this.color, required this.ring});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: geometry.dot,
+        height: geometry.dot,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          border: Border.all(color: ring, width: geometry.ring),
+        ),
+      );
+}
+
+/// What the store says about one entity, reduced to the two things the marker
+/// draws from.
+class _PresenceVM {
+  final bool online;
+  final DateTime? lastSeen;
+
+  const _PresenceVM({required this.online, this.lastSeen});
+
+  @override
+  bool operator ==(Object other) =>
+      other is _PresenceVM &&
+      other.online == online &&
+      other.lastSeen == lastSeen;
+
+  @override
+  int get hashCode => Object.hash(online, lastSeen);
+}
+
+/// The dot, or "how long ago", or nothing.
+///
+/// Three states rather than two: online is the green dot; offline but seen
+/// within the hour is a pale-green `Nm` pill in the dot's place; past the hour
+/// the marker goes away entirely rather than rolling over to hours, because
+/// past that "when" stops being the reason you were looking at the avatar.
+class _PresenceMarker extends StatefulWidget {
+  final String entityId;
+  final _PresenceGeometry geometry;
+
+  const _PresenceMarker({required this.entityId, required this.geometry});
+
+  @override
+  State<_PresenceMarker> createState() => _PresenceMarkerState();
+}
+
+class _PresenceMarkerState extends State<_PresenceMarker> {
+  Timer? _ticker;
+
+  /// The label counts up on its own. Presence pushes only arrive when someone
+  /// connects or disconnects, so without this a "3m" pill would still read 3m
+  /// half an hour later, and would never reach the sixty-minute cliff that is
+  /// supposed to retire it.
+  ///
+  /// Scheduled out of the build rather than inside it: this is called from
+  /// StoreConnector's builder, and creating or cancelling a timer that calls
+  /// setState is a side effect that must not run during a build pass.
+  void _syncTicker(bool needed) {
+    if (needed == (_ticker != null)) return;
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      if (needed && _ticker == null) {
+        _ticker =
+            Timer.periodic(const Duration(seconds: 30), (_) => setState(() {}));
+      } else if (!needed && _ticker != null) {
+        _ticker!.cancel();
+        _ticker = null;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final g = widget.geometry;
+
+    // The marker is chrome, not the avatar. Where there is no store to ask -
+    // a widget test pumping a row on its own, a thumbnail rendered outside the
+    // app shell - it draws nothing rather than throwing StoreProviderError and
+    // taking the whole avatar down with it. O(1): this reads the inherited
+    // element map rather than walking ancestors, and registers no dependency.
+    final hasStore = context.getElementForInheritedWidgetOfExactType<
+            StoreProvider<AppState>>() !=
+        null;
+    if (!hasStore) return const SizedBox.shrink();
+
+    return StoreConnector<AppState, _PresenceVM>(
+      distinct: true,
+      converter: (store) {
+        // You are online - you are the one holding the phone - but you will
+        // never be in the presence map: the server builds it from your
+        // CONTACTS and DM counterparts and excludes you from your own scope.
+        // Left to the map alone, your own avatar is the one face in the app
+        // that never lights up, which reads as a bug rather than as a rule.
+        final me = store.state.userAuth.user;
+        if (widget.entityId == me.entityId ||
+            widget.entityId == me.personalEntityId) {
+          return const _PresenceVM(online: true);
+        }
+        final PresenceInfo? info = store.state.presence[widget.entityId];
+        if (info == null) return const _PresenceVM(online: false);
+        return _PresenceVM(online: info.online, lastSeen: info.lastSeen);
+      },
+      builder: (context, vm) {
+        if (vm.online) {
+          _syncTicker(false);
+          return _PresenceDot(geometry: g, color: p.online, ring: p.surface);
+        }
+
+        final lastSeen = vm.lastSeen;
+        final minutes = lastSeen == null
+            ? null
+            // A clock skewed a little ahead of the server should read as
+            // "just now", not as a negative age.
+            : math.max(0, DateTime.now().difference(lastSeen).inMinutes);
+
+        final showPill = g.canShowLastSeen && minutes != null && minutes < 60;
+        _syncTicker(showPill);
+        if (!showPill) return const SizedBox.shrink();
+
+        return Container(
+          height: g.pillHeight,
+          padding: EdgeInsets.symmetric(horizontal: g.pillFont * 0.45),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            // Pale green rather than a neutral grey: the pill is the dot's
+            // other half, saying "active, just not this second", and sharing
+            // its colour family says that at a glance. greenPale is OPAQUE -
+            // greenSoft is translucent in dark, and this sits on the portrait
+            // rather than on a surface, so it would take its colour from
+            // whatever face was behind it.
+            color: p.greenPale,
+            border: Border.all(color: p.surface, width: g.ring),
+          ),
+          child: Text(
+            // Floored at 1m. The honest value for someone who dropped eight
+            // seconds ago is "0m", which reads as a rendering fault rather
+            // than a duration - and they are, in any case, about to be 1m.
+            "${math.max(1, minutes)}m",
+            style: TextStyle(
+              // A deliberate exception to CLType: this is a marker sized to
+              // the avatar it sits on, not text in the screen's hierarchy -
+              // the same reason the emoji glyphs keep their literals.
+              fontSize: g.pillFont,
+              height: 1,
+              fontWeight: FontWeight.w600,
+              color: p.greenStrong,
+            ),
+          ),
+        );
+      },
     );
   }
 }

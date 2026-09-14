@@ -180,7 +180,8 @@ class _IncomingCallViewState extends State<IncomingCallView> {
     return StoreConnector<AppState, bool>(
       distinct: true,
       converter: (store) =>
-          store.state.pendingIncomingCall?.conversationID == alert.conversationID,
+          store.state.pendingIncomingCall?.conversationID ==
+          alert.conversationID,
       builder: (context, isStillPending) {
         if (!isStillPending && !_resolving) {
           WidgetsBinding.instance

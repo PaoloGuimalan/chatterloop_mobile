@@ -187,6 +187,7 @@ class _BotProfileScreenState extends State<BotProfileScreen> {
           children: [
             CLAvatar(
               id: bot.entityId,
+              entityId: bot.entityId,
               name: bot.name,
               src: bot.profile,
               size: 68,

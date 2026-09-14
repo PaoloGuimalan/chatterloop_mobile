@@ -46,7 +46,8 @@ class _SwitchingScreenState extends State<SwitchingScreen> {
           children: [
             CircularProgressIndicator(color: p.brand),
             const SizedBox(height: 16),
-            Text("Switching…", style: TextStyle(fontSize: CLType.body, color: p.text2)),
+            Text("Switching…",
+                style: TextStyle(fontSize: CLType.body, color: p.text2)),
           ],
         ),
       ),

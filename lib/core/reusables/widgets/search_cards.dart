@@ -116,6 +116,7 @@ class SearchPersonCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(CLRadii.pill),
               child: CLAvatar(
                 id: person.entityId,
+                entityId: person.entityId,
                 name: person.displayName,
                 src: person.profile,
                 size: 42,
@@ -141,8 +142,7 @@ class SearchPersonCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  ...clEntityMarkers(context,
-                      isVerified: person.isVerified),
+                  ...clEntityMarkers(context, isVerified: person.isVerified),
                 ],
               ),
             ),
@@ -260,6 +260,10 @@ class SearchRealmCard extends StatelessWidget {
         child: realm.profile != null
             ? CLAvatar(
                 id: realm.entityId,
+                // A page is online whenever an admin is switched into it, and the
+                // server's presence scope is entity-generic, so this lights for the
+                // same reason a person's does.
+                entityId: realm.entityId,
                 name: realm.displayName,
                 src: realm.profile,
                 size: wide ? 44 : 38,
@@ -418,13 +422,13 @@ class SearchBotCard extends StatelessWidget {
         child: bot.profile != null
             ? CLAvatar(
                 id: bot.entityId,
+                entityId: bot.entityId,
                 name: bot.displayName,
                 src: bot.profile,
                 size: wide ? 44 : 38,
                 cornerRadius: CLRadii.md,
               )
-            : Icon(Icons.smart_toy,
-                size: wide ? 28 : 24, color: Colors.white),
+            : Icon(Icons.smart_toy, size: wide ? 28 : 24, color: Colors.white),
       ),
     );
 
@@ -563,6 +567,7 @@ class SearchContentCard extends StatelessWidget {
                   children: [
                     CLAvatar(
                       id: post.author.entityId,
+                      entityId: post.author.entityId,
                       name: post.author.displayName,
                       src: post.author.profile,
                       size: 28,

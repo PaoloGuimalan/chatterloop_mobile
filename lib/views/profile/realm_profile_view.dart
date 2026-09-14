@@ -341,6 +341,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                       children: [
                         ProfileHeader(
                           id: realm.id,
+                          entityId: realm.entityId,
                           displayName: realm.name,
                           username: realm.slug ?? realm.id,
                           avatarSrc: realm.profile,

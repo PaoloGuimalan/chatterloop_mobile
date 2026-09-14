@@ -143,7 +143,8 @@ void _nudge(ScrollController controller, int direction) {
   if (!controller.hasClients) return;
   final position = controller.position;
   controller.animateTo(
-    (position.pixels + direction * position.viewportDimension * _kRailScrollFraction)
+    (position.pixels +
+            direction * position.viewportDimension * _kRailScrollFraction)
         .clamp(position.minScrollExtent, position.maxScrollExtent),
     duration: const Duration(milliseconds: 260),
     curve: Curves.easeOutCubic,
@@ -442,7 +443,8 @@ class _CLChipsRailState extends State<CLChipsRail> {
                   padding: EdgeInsets.zero,
                   itemCount: widget.children.length,
                   separatorBuilder: (_, __) => SizedBox(width: widget.gap),
-                  itemBuilder: (_, index) => Center(child: widget.children[index]),
+                  itemBuilder: (_, index) =>
+                      Center(child: widget.children[index]),
                 ),
               ),
               if (hasArrows) ...[

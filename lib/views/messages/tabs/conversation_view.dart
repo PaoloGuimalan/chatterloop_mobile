@@ -7,6 +7,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
+import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
@@ -689,7 +690,8 @@ class ConversationStateView extends State<ConversationView> {
                       "$who joined the call",
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: p.text2, fontSize: CLType.caption),
+                      style:
+                          TextStyle(color: p.text2, fontSize: CLType.caption),
                     ),
                   ],
                 ),
@@ -1508,6 +1510,7 @@ class ConversationStateView extends State<ConversationView> {
                     const VisualDensity(horizontal: -2, vertical: -2),
                 leading: CLAvatar(
                   id: member.entityID,
+                  entityId: member.entityID,
                   name: mentionFullNameFor(member),
                   src: member.profile != "none" ? member.profile : null,
                   size: 28,
@@ -1516,8 +1519,7 @@ class ConversationStateView extends State<ConversationView> {
                 trailing: member.isBot
                     ? Tooltip(
                         message: 'Bot',
-                        child:
-                            Icon(Icons.smart_toy, size: 14, color: p.text3),
+                        child: Icon(Icons.smart_toy, size: 14, color: p.text3),
                       )
                     : null,
                 title: Text(mentionFullNameFor(member),
@@ -1618,7 +1620,10 @@ class ConversationStateView extends State<ConversationView> {
 
   String messageReplyIdentifier(String messageTypeProp, String contentProp) {
     if (messageTypeProp == "text") {
-      return contentProp;
+      // Stripped of block markup: the composer's quote is two clipped lines,
+      // where a heading's "###" or a code fence reads as debris. Same split
+      // webapp makes between MessageContent and messagePreviewText.
+      return messagePreviewText(contentProp);
     } else if (messageTypeProp == "image") {
       return "a photo";
     } else if (messageTypeProp.contains("video")) {
@@ -2087,6 +2092,11 @@ class ConversationStateView extends State<ConversationView> {
                                                     : CLAvatar(
                                                         id: widget
                                                             .conversationId,
+                                                        // The gradient seed above is the CONVERSATION id. Presence
+                                                        // needs the counterpart's entity - the same id this header's
+                                                        // own StoreConnector resolves `online` from just above.
+                                                        entityId:
+                                                            _headerEntityId,
                                                         name:
                                                             _headerDisplayName,
                                                         src: _headerAvatarSrc,
@@ -2898,10 +2908,15 @@ class ConversationStateView extends State<ConversationView> {
                                                                 Text(
                                                                   _replyingToLabel,
                                                                   style: TextStyle(
-                                                                      fontSize: CLType.caption,
+                                                                      fontSize:
+                                                                          CLType
+                                                                              .caption,
                                                                       color:
-                                                                          _quotedForeground(p),
-                                                                      fontWeight: FontWeight.bold),
+                                                                          _quotedForeground(
+                                                                              p),
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .bold),
                                                                   textAlign:
                                                                       TextAlign
                                                                           .justify,
@@ -2951,8 +2966,8 @@ class ConversationStateView extends State<ConversationView> {
                                                             child:
                                                                 ElevatedButton(
                                                                     style: ElevatedButton.styleFrom(
-                                                                        backgroundColor:
-                                                                            p.border2,
+                                                                        backgroundColor: p
+                                                                            .border2,
                                                                         elevation:
                                                                             0,
                                                                         padding: EdgeInsets.only(
@@ -3075,10 +3090,15 @@ class ConversationStateView extends State<ConversationView> {
                                                                       ? "Generate a reply from this message?"
                                                                       : "Use AI Reply Assist?",
                                                                   style: TextStyle(
-                                                                      fontSize: CLType.caption,
+                                                                      fontSize:
+                                                                          CLType
+                                                                              .caption,
                                                                       color:
-                                                                          _quotedForeground(p),
-                                                                      fontWeight: FontWeight.bold),
+                                                                          _quotedForeground(
+                                                                              p),
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .bold),
                                                                   textAlign:
                                                                       TextAlign
                                                                           .justify,
@@ -3134,8 +3154,8 @@ class ConversationStateView extends State<ConversationView> {
                                                               : ElevatedButton(
                                                                   style: ElevatedButton
                                                                       .styleFrom(
-                                                                          backgroundColor:
-                                                                              p.surface,
+                                                                          backgroundColor: p
+                                                                              .surface,
                                                                           shape:
                                                                               RoundedRectangleBorder(
                                                                             borderRadius:

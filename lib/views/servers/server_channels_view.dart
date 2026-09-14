@@ -1193,6 +1193,7 @@ class _MemberRow extends StatelessWidget {
         children: [
           CLAvatar(
               id: member.entityId,
+              entityId: member.entityId,
               name: member.displayName,
               src: clCleanMediaSrc(member.profile),
               size: 36,

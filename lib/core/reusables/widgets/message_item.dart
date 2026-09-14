@@ -1,5 +1,6 @@
 import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
@@ -57,7 +58,9 @@ class MessageItemView extends StatelessWidget {
     // deleted message still gets the "you: " prefix like every other type.
     if (message.isDeleted) return "$prefix[Deleted message]";
     if (message.messageType == "text" || message.messageType == "notif") {
-      return "$prefix${message.content}";
+      // Stripped, not raw: this is one clipped line, so "**ship it**" should
+      // read as "ship it" rather than showing its asterisks.
+      return "$prefix${messagePreviewText(message.content)}";
     }
     if (message.messageType == "image") return "${prefix}Sent a photo";
     if (message.messageType.contains("video")) return "${prefix}Sent a video";
@@ -169,6 +172,12 @@ class MessageItemView extends StatelessWidget {
                     id: message.details.id.isEmpty
                         ? message.conversationID
                         : message.details.id,
+                    // Only a DM counterpart is an entity. A group row's
+                    // `details` describes the GROUP, which has no presence of
+                    // its own - the header says "Members are Active" instead.
+                    entityId: message.conversationType == "single"
+                        ? message.details.entityId
+                        : null,
                     name: title,
                     src: message.details.profile != "none"
                         ? message.details.profile

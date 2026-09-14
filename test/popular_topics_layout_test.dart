@@ -119,8 +119,7 @@ void main() {
         // Three spans means a run was actually marked; one means it fell back
         // to the plain name.
         expect(
-          (tester.widget<Text>(find.byType(Text).at(1)).textSpan
-                  as TextSpan)
+          (tester.widget<Text>(find.byType(Text).at(1)).textSpan as TextSpan)
               .children!
               .length,
           3,

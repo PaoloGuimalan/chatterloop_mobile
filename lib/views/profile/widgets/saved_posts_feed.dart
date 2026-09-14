@@ -184,7 +184,8 @@ class _SavedPostRowSkeleton extends StatelessWidget {
           Container(
             width: 44,
             height: 44,
-            decoration: BoxDecoration(color: p.surface2, shape: BoxShape.circle),
+            decoration:
+                BoxDecoration(color: p.surface2, shape: BoxShape.circle),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -195,7 +196,11 @@ class _SavedPostRowSkeleton extends StatelessWidget {
                 const SizedBox(height: 6),
                 bar(140, 11),
                 const SizedBox(height: 12),
-                Row(children: [bar(64, 26), const SizedBox(width: 6), bar(76, 26)]),
+                Row(children: [
+                  bar(64, 26),
+                  const SizedBox(width: 6),
+                  bar(76, 26)
+                ]),
               ],
             ),
           ),
@@ -241,6 +246,7 @@ class _SavedPostRow extends StatelessWidget {
             id: item.author.handle.isNotEmpty
                 ? item.author.handle
                 : item.author.entityId,
+            entityId: item.author.entityId,
             name: item.author.displayName,
             src: item.author.profile,
             size: 44,

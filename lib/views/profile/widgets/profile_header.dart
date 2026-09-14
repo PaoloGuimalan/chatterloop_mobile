@@ -64,7 +64,12 @@ class ProfileHeaderSkeleton extends StatelessWidget {
 }
 
 class ProfileHeader extends StatelessWidget {
+  /// Gradient seed. NOT the presence key - see [entityId].
   final String id;
+
+  /// The profile's entity, for the avatar's presence marker. Null for a
+  /// subject that has none.
+  final String? entityId;
   final String displayName;
   final String username;
   final String? email;
@@ -94,6 +99,7 @@ class ProfileHeader extends StatelessWidget {
   const ProfileHeader({
     super.key,
     required this.id,
+    this.entityId,
     required this.displayName,
     required this.username,
     this.email,
@@ -202,6 +208,7 @@ class ProfileHeader extends StatelessWidget {
                       children: [
                         CLAvatar(
                             id: id,
+                            entityId: entityId,
                             name: displayName,
                             src: avatarSrc,
                             size: _avatarSize,
@@ -247,8 +254,8 @@ class ProfileHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              ...clEntityMarkers(context, isVerified: isBadged,
-                  badgeSize: 18, gap: 5),
+              ...clEntityMarkers(context,
+                  isVerified: isBadged, badgeSize: 18, gap: 5),
               if (isPrivate) ...[
                 const SizedBox(width: 5),
                 Icon(Icons.lock, size: 16, color: p.text2),

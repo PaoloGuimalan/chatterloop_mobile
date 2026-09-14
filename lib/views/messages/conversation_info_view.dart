@@ -16,10 +16,14 @@
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
+import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_redux/flutter_redux.dart';
 
 class ConversationInfoScreen extends StatelessWidget {
   final ConversationInfoModel info;
@@ -116,6 +120,10 @@ class ConversationInfoScreen extends StatelessWidget {
                 else
                   CLAvatar(
                     id: info.contactID,
+                    // Null for a group: a group is not an entity and has no
+                    // presence of its own, which is why the label below reads
+                    // "Members are Active" rather than naming anyone.
+                    entityId: _counterpart?.entityID,
                     name: title,
                     src: clCleanMediaSrc(profile),
                     size: 84,
@@ -153,8 +161,24 @@ class ConversationInfoScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 2),
-                Text(_kindLabel,
-                    style: TextStyle(fontSize: CLType.caption, color: p.text2)),
+                // For a DM this slot carries PRESENCE, not the kind label.
+                //
+                // Two reasons. It is the slot the conversation header itself
+                // uses for presence, so arriving here from that header finds
+                // the same fact in the same place rather than losing it; and
+                // "Direct message" is the one line on this screen that tells
+                // a reader nothing they cannot see - there is a single face
+                // above it and no member list below it.
+                //
+                // Every other kind keeps its label: a channel's private/public
+                // distinction and a group's "Group Chat" are not derivable
+                // from the rest of the screen.
+                if (_isSingle)
+                  _PresenceLine(entityId: _counterpart?.entityID)
+                else
+                  Text(_kindLabel,
+                      style:
+                          TextStyle(fontSize: CLType.caption, color: p.text2)),
               ],
             ),
           ),
@@ -230,7 +254,19 @@ class _PersonRow extends StatelessWidget {
         child: Row(
           children: [
             CLAvatar(
-                id: person.entityID, name: name, src: person.profile, size: 36),
+                id: person.entityID,
+                // The server sends usersWithInfo[].entityID as `p.id` - the
+                // real entity - so a member row keys on presence the same way
+                // the counterpart avatar above it does.
+                //
+                // Group co-members are outside the server's presence scope
+                // unless they are ALSO a contact or a DM counterpart, so a
+                // list of strangers stays unmarked. That is the server's rule,
+                // not a gap here.
+                entityId: person.entityID,
+                name: name,
+                src: person.profile,
+                size: 36),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -271,5 +307,55 @@ class _PersonRow extends StatelessWidget {
             ),
           ],
         ));
+  }
+}
+
+/// "Active Now" / "Active 5 minutes ago" for the DM counterpart, kept live.
+///
+/// Self-subscribed rather than threaded down from the screen: a presence frame
+/// for ANY contact replaces the whole presence map, so reading it higher up
+/// would rebuild this entire screen - avatars, member list and all - every
+/// time anybody at all connected. The conversation header this mirrors made
+/// the same call for the same reason.
+///
+/// The wording matches `_headerSubtitle` in conversation_view exactly. Two
+/// screens describing one person's availability in two different phrasings is
+/// the kind of difference a reader notices and cannot explain.
+class _PresenceLine extends StatelessWidget {
+  final String? entityId;
+
+  const _PresenceLine({required this.entityId});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+
+    return StoreConnector<AppState, PresenceInfo?>(
+      distinct: true,
+      converter: (store) =>
+          entityId == null ? null : store.state.presence[entityId],
+      builder: (context, info) {
+        final online = info?.online == true;
+        final label = info == null
+            ? "Recently Active"
+            : online
+                ? "Active Now"
+                : info.lastSeen != null
+                    ? "Active ${timeSince(info.lastSeen!)}"
+                    : "Recently Active";
+
+        return Text(
+          label,
+          style: TextStyle(
+            fontSize: CLType.caption,
+            // Online is the one state worth colouring. "Active 3 hours ago" in
+            // green would read as a status light for something that is not
+            // currently true.
+            color: online ? p.online : p.text2,
+            fontWeight: online ? FontWeight.w600 : FontWeight.w400,
+          ),
+        );
+      },
+    );
   }
 }

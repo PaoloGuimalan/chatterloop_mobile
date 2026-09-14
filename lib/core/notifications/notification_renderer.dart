@@ -169,10 +169,8 @@ class NotificationRenderer {
 
     // One fetch per distinct avatar, not per message - a busy group thread
     // would otherwise re-download the same handful of images every push.
-    final avatarUrls = thread
-        .map((e) => e.avatarUrl)
-        .whereType<String>()
-        .toSet();
+    final avatarUrls =
+        thread.map((e) => e.avatarUrl).whereType<String>().toSet();
     final avatars = <String, ByteArrayAndroidIcon>{};
     for (final url in avatarUrls) {
       final icon = await _avatarIcon(url);
@@ -272,9 +270,8 @@ class NotificationRenderer {
     final File? contentImage =
         payload.imageUrl != null ? await imageFile(payload.imageUrl!) : null;
 
-    final AndroidBitmap<Object>? avatarBitmap = actorAvatar == null
-        ? null
-        : FilePathAndroidBitmap(actorAvatar.path);
+    final AndroidBitmap<Object>? avatarBitmap =
+        actorAvatar == null ? null : FilePathAndroidBitmap(actorAvatar.path);
 
     await _plugin.show(
       // No stable per-thread identity here, so these get a rotating id and

@@ -156,10 +156,9 @@ class SettingsApi {
           .put(_endpoints.updateProfile, data: {'is_private': isPrivate});
       final data = response.data;
       final ok = data is Map ? data["status"] == true : false;
-      final restricted =
-          data is Map && data["posts_restricted"] is num
-              ? (data["posts_restricted"] as num).toInt()
-              : 0;
+      final restricted = data is Map && data["posts_restricted"] is num
+          ? (data["posts_restricted"] as num).toInt()
+          : 0;
       return (ok: ok, postsRestricted: restricted);
     } catch (e) {
       if (kDebugMode) {

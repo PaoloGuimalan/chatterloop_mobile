@@ -119,8 +119,9 @@ class _ContactsViewState extends State<ContactsView> {
       });
     });
 
-    final groups =
-        api.groupShortcutsRequest(page: 1, range: _kGroupsPreview).then((result) {
+    final groups = api
+        .groupShortcutsRequest(page: 1, range: _kGroupsPreview)
+        .then((result) {
       if (!mounted) return;
       setState(() {
         _groups = result;
@@ -304,8 +305,7 @@ class _ContactsViewState extends State<ContactsView> {
           )
         else
           ...results.map((item) => Padding(
-                padding:
-                    EdgeInsets.only(bottom: item == results.last ? 0 : 10),
+                padding: EdgeInsets.only(bottom: item == results.last ? 0 : 10),
                 child: _row(item, section, presence),
               )),
       ],

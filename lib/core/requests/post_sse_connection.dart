@@ -186,20 +186,18 @@ class PostActivityConnection {
     await AppVersion.ensureLoaded();
     final appVersion = AppVersion.header;
 
-    _subscription = _client.subscribe(
-        method: SSERequestType.GET,
-        url: url,
-        header: {
-          "Accept": "text/event-stream",
-          "origin": Endpoints.origin,
-          // See sse_connection.dart: gzip's decoder buffers isolated small
-          // events until enough later traffic completes a block, which on a
-          // quiet post would hold a lone comment event indefinitely.
-          "Accept-Encoding": "identity",
-          "Cache-Control": "no-cache",
-          if (appVersion != null) "X-App-Version": appVersion,
-          if (appVersion != null) "X-Platform": AppVersion.platform,
-        }).listen((event) {
+    _subscription =
+        _client.subscribe(method: SSERequestType.GET, url: url, header: {
+      "Accept": "text/event-stream",
+      "origin": Endpoints.origin,
+      // See sse_connection.dart: gzip's decoder buffers isolated small
+      // events until enough later traffic completes a block, which on a
+      // quiet post would hold a lone comment event indefinitely.
+      "Accept-Encoding": "identity",
+      "Cache-Control": "no-cache",
+      if (appVersion != null) "X-App-Version": appVersion,
+      if (appVersion != null) "X-Platform": AppVersion.platform,
+    }).listen((event) {
       if (event.event != 'post_activity') return;
 
       final data = event.data;

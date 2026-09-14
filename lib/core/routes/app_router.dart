@@ -357,8 +357,7 @@ GoRouter buildAppRouter(AuthController authController) {
               pageBuilder: (c, s) => _clPage(s, const NewMessageScreen())),
           GoRoute(
               path: '/new-group-chat',
-              pageBuilder: (c, s) =>
-                  _clPage(s, const CreateGroupChatScreen())),
+              pageBuilder: (c, s) => _clPage(s, const CreateGroupChatScreen())),
           GoRoute(
             path: '/conversation/:conversationId',
             pageBuilder: (c, s) => _clPage(
@@ -450,8 +449,8 @@ GoRouter buildAppRouter(AuthController authController) {
           ),
           GoRoute(
             path: '/topics/:slug',
-            pageBuilder: (c, s) => _clPage(
-                s, TopicDetailScreen(slug: s.pathParameters['slug']!)),
+            pageBuilder: (c, s) =>
+                _clPage(s, TopicDetailScreen(slug: s.pathParameters['slug']!)),
           ),
           // ?q= carries the query the section was opened for - the detail
           // screen pages the same search, it doesn't start a new one.

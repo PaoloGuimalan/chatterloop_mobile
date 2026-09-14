@@ -21,7 +21,8 @@ class DiaryApi {
   /// There is no variant of this for another account - DiaryListView filters
   /// on `account=request.user` unconditionally. Someone else's diary can only
   /// ever be summarised via [getDiaryTotal].
-  Future<DiaryPage<DiaryEntry>> getEntries({int page = 1, int range = 10}) async {
+  Future<DiaryPage<DiaryEntry>> getEntries(
+      {int page = 1, int range = 10}) async {
     try {
       final response = await _dio.get(
         _endpoints.diaryEntries,

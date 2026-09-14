@@ -215,7 +215,8 @@ class RealmPerson {
   /// a bot. Only a PAGE is flagged - the rest are not members of things.
   final String? realmType;
 
-  bool get isPage => realmType == 'page' || (isRealmEntity && realmType == null);
+  bool get isPage =>
+      realmType == 'page' || (isRealmEntity && realmType == null);
 
   bool get isRealmEntity => entityType == 'realm';
 

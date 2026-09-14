@@ -125,8 +125,8 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
       case SearchDetailKind.topics:
         // InterestsApi, not SearchApi: a topic is an interest, so its list lives
         // with the rest of the interests endpoints rather than under search.
-        final result = await InterestsApi()
-            .searchTopics(query: widget.query, page: page, pageSize: _kPageSize);
+        final result = await InterestsApi().searchTopics(
+            query: widget.query, page: page, pageSize: _kPageSize);
         if (!mounted) return;
         if (page == 1) _topics.clear();
         _topics.addAll(result.results);
@@ -232,8 +232,7 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
     setState(() => _followBusy.add(entityId));
 
     final isActive = currentlyFollowing || currentlyPending;
-    _applyFollow(entityId,
-        followed: !isActive, pending: false);
+    _applyFollow(entityId, followed: !isActive, pending: false);
 
     final result = await ProfileApi().setEntityFollowRequest(
       entityId: entityId,
@@ -456,7 +455,8 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 14),
-            child: Center(child: CLCountPill(count: _isLoading ? null : _total)),
+            child:
+                Center(child: CLCountPill(count: _isLoading ? null : _total)),
           ),
         ],
       ),

@@ -134,7 +134,8 @@ class _ProfileDiaryCardState extends State<ProfileDiaryCard> {
                           "Last written ${timeSince(total.latestEntry!)}",
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: p.text2, fontSize: CLType.label),
+                          style:
+                              TextStyle(color: p.text2, fontSize: CLType.label),
                         ),
                       ),
                     ],
@@ -143,7 +144,8 @@ class _ProfileDiaryCardState extends State<ProfileDiaryCard> {
                 if (total.topTags.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text("Writes most about",
-                      style: TextStyle(color: p.text3, fontSize: CLType.caption)),
+                      style:
+                          TextStyle(color: p.text3, fontSize: CLType.caption)),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 6,

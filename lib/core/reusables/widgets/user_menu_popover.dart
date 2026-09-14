@@ -294,6 +294,7 @@ class _MenuContent extends StatelessWidget {
                   children: [
                     CLAvatar(
                       id: user.activeAvatarSeed,
+                      entityId: user.entityId,
                       name: user.activeDisplayName,
                       src: user.activeAvatarSrc,
                       size: 40,

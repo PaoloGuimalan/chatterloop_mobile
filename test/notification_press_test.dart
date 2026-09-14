@@ -68,8 +68,8 @@ void main() {
     // Press and HOLD - the colour must change while the finger is down. This
     // is the property an InkWell alone could not give: its splash is an
     // animation that the navigation on tap tears down before it is visible.
-    final gesture = await tester.startGesture(
-        tester.getCenter(find.byType(InkWell).first));
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.byType(InkWell).first));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(rowColour(), isNot(resting),
@@ -81,7 +81,8 @@ void main() {
     expect(rowColour(), resting, reason: 'row should revert once released');
   });
 
-  testWidgets('a row with no destination has no InkWell at all', (tester) async {
+  testWidgets('a row with no destination has no InkWell at all',
+      (tester) async {
     await _pump(
       tester,
       CLNotificationRow(

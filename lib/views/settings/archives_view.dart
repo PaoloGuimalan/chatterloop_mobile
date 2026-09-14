@@ -78,7 +78,8 @@ class _ArchivesScreenState extends State<ArchivesScreen> {
                   onRefresh: _load,
                   child: ListView(
                     children: [
-                      SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+                      SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.3),
                       Center(
                         child: Text('No archived conversations.',
                             style: TextStyle(color: p.text2)),

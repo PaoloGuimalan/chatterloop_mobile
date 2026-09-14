@@ -76,12 +76,12 @@ class NotificationsApi {
     int range = 10,
   }) async {
     try {
-      final response = await _dio.get(
-          '${_endpoints.notificationsV2}${section.slug}',
-          options: Options(headers: {
-            'page': page.toString(),
-            'range': range.toString(),
-          }));
+      final response =
+          await _dio.get('${_endpoints.notificationsV2}${section.slug}',
+              options: Options(headers: {
+                'page': page.toString(),
+                'range': range.toString(),
+              }));
       if (response.data["status"] != true) return null;
       final decoded = JwtCodec.decode(response.data["result"]);
       if (decoded == null) return null;

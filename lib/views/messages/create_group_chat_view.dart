@@ -343,6 +343,7 @@ class _CreateGroupChatScreenState extends State<CreateGroupChatScreen> {
               children: [
                 CLAvatar(
                     id: entity.entityId,
+                    entityId: entity.entityId,
                     name: name,
                     src: clCleanMediaSrc(entity.profile),
                     size: 38,

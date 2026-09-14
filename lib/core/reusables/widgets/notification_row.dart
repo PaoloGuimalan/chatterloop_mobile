@@ -164,6 +164,19 @@ class CLNotificationRow extends StatelessWidget {
               children: [
                 CLAvatar(
                   id: n.fromUser?.entityId ?? n.fromUserID,
+                  // Presence only on the COMPACT row. The detail row puts the
+                  // notification's type badge at right:-3/bottom:-3 below,
+                  // which is exactly where the presence marker sits - two
+                  // things in one corner, the badge drawn over the dot. The
+                  // badge is the more useful of the two here: a notification
+                  // is about something that already happened, so what kind of
+                  // event it was beats whether the sender is online now.
+                  //
+                  // `fromUserID` is deliberately NOT a fallback: it is an
+                  // account id on older rows, and presence is keyed by entity
+                  // id, so passing it would not light the dot - it would only
+                  // look like it should.
+                  entityId: detail ? null : n.fromUser?.entityId,
                   name: senderName,
                   src: n.fromUser?.profile,
                   // So a platform bot reads as the platform rather than as a
@@ -388,8 +401,8 @@ class _PressableRowState extends State<_PressableRow> {
       // that the press itself still reads as immediate.
       animationDuration: const Duration(milliseconds: 120),
       color: colour,
-      shape:
-          RoundedRectangleBorder(borderRadius: widget.radius, side: widget.borderSide),
+      shape: RoundedRectangleBorder(
+          borderRadius: widget.radius, side: widget.borderSide),
       // Without this the splash paints past the rounded corners into the square
       // bounds of the box.
       clipBehavior: Clip.antiAlias,

@@ -572,8 +572,8 @@ class SseEvents {
               (participant["clientID"] ?? participant["clientId"] ?? '')
                   .toString(),
               username: participant["username"]?.toString(),
-              entityId:
-                  (participant["entityID"] ?? participant["entityId"])?.toString(),
+              entityId: (participant["entityID"] ?? participant["entityId"])
+                  ?.toString(),
               profile: participant["profile"]?.toString(),
             );
             if (kDebugMode) {

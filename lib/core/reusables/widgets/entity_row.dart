@@ -59,6 +59,7 @@ class CLEntityRow extends StatelessWidget {
         children: [
           CLAvatar(
             id: entityId,
+            entityId: entityId,
             name: displayName,
             src: profile,
             size: 42,
@@ -171,7 +172,9 @@ class CLEntityRowSkeleton extends StatelessWidget {
       child: Row(
         children: [
           const CLSkeleton(
-              width: 42, height: 42, borderRadius: BorderRadius.all(Radius.circular(21))),
+              width: 42,
+              height: 42,
+              borderRadius: BorderRadius.all(Radius.circular(21))),
           const SizedBox(width: 10),
           const Expanded(
             child: Column(

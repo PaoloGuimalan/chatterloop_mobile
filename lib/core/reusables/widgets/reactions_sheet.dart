@@ -119,6 +119,7 @@ Future<void> showMessageReactionsSheet(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                   leading: CLAvatar(
                     id: entityID,
+                    entityId: entityID,
                     name: name,
                     src: (info?.profile != null && info!.profile != "none")
                         ? info.profile

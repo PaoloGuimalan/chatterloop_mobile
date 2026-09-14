@@ -44,8 +44,7 @@ class RecentSearches {
     final current = prefs.getStringList(_key(entityId)) ?? const <String>[];
     final next = <String>[
       cleaned,
-      ...current
-          .where((entry) => entry.toLowerCase() != cleaned.toLowerCase()),
+      ...current.where((entry) => entry.toLowerCase() != cleaned.toLowerCase()),
     ].take(kRecentSearchMax).toList();
 
     await prefs.setStringList(_key(entityId), next);

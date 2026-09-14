@@ -233,6 +233,7 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
               children: [
                 CLAvatar(
                     id: entity.entityId,
+                    entityId: entity.entityId,
                     name: name,
                     src: entity.profile,
                     size: 38,

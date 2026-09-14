@@ -89,8 +89,8 @@ class VoiceRoomPresence {
 
   /// Compares occupancy AND the details rendered off it, so a participant
   /// whose name arrives later still wakes listeners.
-  bool _sameRoster(Map<String, VoiceParticipant> a,
-      Map<String, VoiceParticipant> b) {
+  bool _sameRoster(
+      Map<String, VoiceParticipant> a, Map<String, VoiceParticipant> b) {
     if (a.length != b.length) return false;
     for (final entry in a.entries) {
       final other = b[entry.key];

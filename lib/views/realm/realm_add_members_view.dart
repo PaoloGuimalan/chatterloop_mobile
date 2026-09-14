@@ -359,6 +359,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
                 children: [
                   CLAvatar(
                       id: entity.entityId,
+                      entityId: entity.entityId,
                       name: name,
                       src: entity.profile,
                       size: 38,

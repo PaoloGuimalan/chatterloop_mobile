@@ -46,8 +46,7 @@ List<InlineSpan> taggingSummarySpans(
     final entity = named[i];
     spans.add(TextSpan(
       text: entity.displayName,
-      style: baseStyle.copyWith(
-          fontWeight: FontWeight.w700, color: linkColor),
+      style: baseStyle.copyWith(fontWeight: FontWeight.w700, color: linkColor),
       recognizer: TapGestureRecognizer()
         ..onTap = () {
           if (entity.handle.isEmpty) return;
@@ -220,8 +219,8 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
                     onTap: () => _toggle(entity),
                     borderRadius: BorderRadius.circular(CLRadii.pill),
                     child: Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                         color: p.brandSoft,
                         borderRadius: BorderRadius.circular(CLRadii.pill),
@@ -275,13 +274,24 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
                 itemCount: _results.length,
                 itemBuilder: (context, index) {
                   final entity = _results[index];
-                  final picked = widget.selected
-                      .any((e) => e.entityId == entity.entityId);
+                  final picked =
+                      widget.selected.any((e) => e.entityId == entity.entityId);
                   return ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
+                    // A dense ListTile still reserves 48px of height for a
+                    // Material list row, which around a 30px avatar and two
+                    // short lines of text leaves a visible band of nothing
+                    // between every result. The sheet caps this list at 180px,
+                    // so that dead space was costing roughly one visible row
+                    // out of every four.
+                    visualDensity: const VisualDensity(
+                        horizontal: 0, vertical: VisualDensity.minimumDensity),
+                    minVerticalPadding: 0,
+                    horizontalTitleGap: 10,
                     leading: CLAvatar(
                       id: entity.entityId,
+                      entityId: entity.entityId,
                       name: entity.displayName,
                       src: entity.profile,
                       size: 30,

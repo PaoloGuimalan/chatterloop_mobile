@@ -647,6 +647,7 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
       isScreen: false,
       placeholder: CLAvatar(
           id: me.entityId,
+          entityId: me.entityId,
           name: 'You',
           src: clCleanMediaSrc(me.activeAvatarSrc),
           size: 64),

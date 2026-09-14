@@ -118,7 +118,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     alignment: WrapAlignment.center,
                     children: [
                       Text('We sent a 6-digit code to ',
-                          style: TextStyle(color: p.text2, fontSize: CLType.body)),
+                          style:
+                              TextStyle(color: p.text2, fontSize: CLType.body)),
                       Text(email,
                           style: TextStyle(
                               color: p.text,
@@ -139,7 +140,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 14),
                       child: Text(_error!,
-                          style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
+                          style: TextStyle(
+                              color: p.pink, fontSize: CLType.bodySm)),
                     ),
                   const SizedBox(height: 24),
                   CLBtn(
@@ -153,7 +155,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     alignment: WrapAlignment.center,
                     children: [
                       Text("Wrong account? ",
-                          style: TextStyle(color: p.text2, fontSize: CLType.body)),
+                          style:
+                              TextStyle(color: p.text2, fontSize: CLType.body)),
                       GestureDetector(
                         onTap: _logout,
                         child: Text('Logout',
@@ -188,8 +191,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
           FilteringTextInputFormatter.digitsOnly,
           LengthLimitingTextInputFormatter(1),
         ],
-        style:
-            TextStyle(fontSize: CLType.hero, fontWeight: FontWeight.w700, color: p.text),
+        style: TextStyle(
+            fontSize: CLType.hero, fontWeight: FontWeight.w700, color: p.text),
         decoration: InputDecoration(
           filled: true,
           fillColor: p.input,

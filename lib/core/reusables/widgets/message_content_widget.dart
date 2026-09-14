@@ -1,6 +1,5 @@
 import 'package:chatterloop_app/core/reusables/widgets/message_reactions_dialog.dart';
 import 'package:chatterloop_app/core/reusables/widgets/reactions_sheet.dart';
-import 'package:chatterloop_app/core/utils/chat_mentions.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -12,7 +11,7 @@ import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/media_viewer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
-import 'package:chatterloop_app/core/utils/linkify_text.dart';
+import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/core/utils/media_downloader.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
@@ -286,32 +285,6 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     return segments.isNotEmpty && segments.last.isNotEmpty
         ? segments.last
         : "File";
-  }
-
-  /// Mentions and links, composed rather than exclusive: split the text into
-  /// mention / non-mention runs first, then linkify only the non-mention runs.
-  /// Linkifying a mention would try to turn "@anna" into a link.
-  ///
-  /// On your own (brand-coloured) bubble the text is already white, so the
-  /// mention is distinguished by weight alone - a second colour there would be
-  /// invisible or clash.
-  List<InlineSpan> _mentionAwareSpans(
-      String content, TextStyle baseStyle, Color mentionColor) {
-    final spans = splitMentionSpans(content, widget.mentionMembers);
-    final out = <InlineSpan>[];
-
-    for (final span in spans) {
-      if (span.isMention) {
-        out.add(TextSpan(
-          text: span.text,
-          style: baseStyle.copyWith(
-              color: mentionColor, fontWeight: FontWeight.w700),
-        ));
-      } else {
-        out.addAll(linkifySpans(span.text, baseStyle));
-      }
-    }
-    return out;
   }
 
   /// Shared reply-assist checkbox handler - was copy-pasted near-identically
@@ -692,17 +665,29 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   child: Padding(
                     padding:
                         EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
-                    child: Text.rich(
-                      TextSpan(
-                        children: _mentionAwareSpans(
-                          content,
-                          TextStyle(
-                              fontSize: CLType.title,
-                              color: isCurrentUser ? Colors.white : p.text),
-                          isCurrentUser ? Colors.white : CLAccent.of(context),
-                        ),
-                      ),
-                    ),
+                    child: isReply
+                        ? Text(
+                            messagePreviewText(content),
+                            style: TextStyle(
+                                fontSize: CLType.title,
+                                color: isCurrentUser ? Colors.white : p.text),
+                          )
+                        : buildFormattedMessage(
+                            source: content,
+                            members: widget.mentionMembers,
+                            style: MessageFormatStyle(
+                              base: TextStyle(
+                                  fontSize: CLType.title,
+                                  color: isCurrentUser ? Colors.white : p.text),
+                              // On your own (brand-coloured) bubble the text is
+                              // already white, so a mention is distinguished by
+                              // weight alone - a second colour there would either
+                              // be invisible or clash.
+                              mentionColor: isCurrentUser
+                                  ? Colors.white
+                                  : CLAccent.of(context),
+                            ),
+                          ),
                   ),
                 ),
                 // Only on the full render, not the condensed reply-preview
@@ -2032,7 +2017,6 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
         converter: (store) => store.state.isUsingReplyAssist);
   }
 }
-
 
 /// The file card's leading glyph: the file icon normally, a progress ring
 /// while that file is being downloaded.

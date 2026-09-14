@@ -810,6 +810,9 @@ class ProfileComposerCard extends StatelessWidget {
             children: [
               CLAvatar(
                 id: avatarId,
+                // Already the signed-in entity at both call sites, so the composer's
+                // own avatar reads as active like every other face of yours.
+                entityId: avatarId,
                 name: avatarName,
                 src: avatarSrc,
                 size: 38,

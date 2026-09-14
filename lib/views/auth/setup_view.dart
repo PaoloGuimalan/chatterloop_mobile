@@ -129,8 +129,8 @@ class _SetupScreenState extends State<SetupScreen> {
       return;
     }
     if (_needPolicy && !_agreed) {
-      setState(() =>
-          _error = 'Please agree to the Terms and Conditions and Privacy Policy.');
+      setState(() => _error =
+          'Please agree to the Terms and Conditions and Privacy Policy.');
       return;
     }
 
@@ -191,10 +191,8 @@ class _SetupScreenState extends State<SetupScreen> {
               pendingConsents: const [],
               gender: _needGender ? _gender : null,
               birthdate: _needBirthdate && _birthdate != null
-                  ? UserBirthDate(
-                      _birthdate!.month.toString(),
-                      _birthdate!.day.toString(),
-                      _birthdate!.year.toString())
+                  ? UserBirthDate(_birthdate!.month.toString(),
+                      _birthdate!.day.toString(), _birthdate!.year.toString())
                   : null,
             ))));
 
@@ -299,7 +297,8 @@ class _SetupScreenState extends State<SetupScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(_error!,
-                          style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
+                          style: TextStyle(
+                              color: p.pink, fontSize: CLType.bodySm)),
                     ),
                   const SizedBox(height: 16),
                   CLBtn(
@@ -313,7 +312,8 @@ class _SetupScreenState extends State<SetupScreen> {
                     child: Wrap(
                       children: [
                         Text('Wrong account? ',
-                            style: TextStyle(color: p.text2, fontSize: CLType.body)),
+                            style: TextStyle(
+                                color: p.text2, fontSize: CLType.body)),
                         GestureDetector(
                           onTap: _busy ? null : _logout,
                           child: Text('Logout',
@@ -337,7 +337,9 @@ class _SetupScreenState extends State<SetupScreen> {
   Widget _label(String text, CLPalette p) => Text(
         text,
         style: TextStyle(
-            color: p.text2, fontSize: CLType.bodySm, fontWeight: FontWeight.w600),
+            color: p.text2,
+            fontSize: CLType.bodySm,
+            fontWeight: FontWeight.w600),
       );
 
   Widget _tappableField(CLPalette p,
@@ -381,8 +383,8 @@ class _SetupScreenState extends State<SetupScreen> {
           decoration: BoxDecoration(
             color: selected ? p.brandSoft : p.input,
             borderRadius: BorderRadius.circular(CLRadii.sm),
-            border: Border.all(
-                color: selected ? p.brand : p.border2, width: 1.5),
+            border:
+                Border.all(color: selected ? p.brand : p.border2, width: 1.5),
           ),
           child: Text(label,
               style: TextStyle(
@@ -406,8 +408,7 @@ class _SetupScreenState extends State<SetupScreen> {
             onChanged:
                 _busy ? null : (v) => setState(() => _agreed = v ?? false),
             activeColor: p.brand,
-            visualDensity:
-                const VisualDensity(horizontal: -2, vertical: -2),
+            visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
           ),
         ),
         const SizedBox(width: 6),
@@ -416,7 +417,8 @@ class _SetupScreenState extends State<SetupScreen> {
             padding: const EdgeInsets.only(top: 5),
             child: Text.rich(
               TextSpan(
-                style: TextStyle(color: p.text2, fontSize: CLType.body, height: 1.4),
+                style: TextStyle(
+                    color: p.text2, fontSize: CLType.body, height: 1.4),
                 children: [
                   const TextSpan(text: 'I agree to the '),
                   _linkSpan(

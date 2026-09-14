@@ -272,7 +272,8 @@ class _SignupScreenState extends State<SignupScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Text(_error!,
-                          style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
+                          style: TextStyle(
+                              color: p.pink, fontSize: CLType.bodySm)),
                     ),
                   const SizedBox(height: 6),
                   CLBtn(
@@ -285,7 +286,8 @@ class _SignupScreenState extends State<SignupScreen> {
                   Center(
                     child: Wrap(children: [
                       Text('Already have an account? ',
-                          style: TextStyle(color: p.text2, fontSize: CLType.body)),
+                          style:
+                              TextStyle(color: p.text2, fontSize: CLType.body)),
                       GestureDetector(
                         onTap: () => context.pop(),
                         child: Text('Log In',
@@ -326,7 +328,8 @@ class _SignupScreenState extends State<SignupScreen> {
             padding: const EdgeInsets.only(top: 5),
             child: Text.rich(
               TextSpan(
-                style: TextStyle(color: p.text2, fontSize: CLType.body, height: 1.4),
+                style: TextStyle(
+                    color: p.text2, fontSize: CLType.body, height: 1.4),
                 children: [
                   const TextSpan(text: 'I agree to the '),
                   _linkSpan(

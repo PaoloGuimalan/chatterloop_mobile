@@ -111,9 +111,8 @@ void main() {
         }),
       ));
 
-      final mention = spans
-          .whereType<TextSpan>()
-          .firstWhere((span) => span.text == '@ana');
+      final mention =
+          spans.whereType<TextSpan>().firstWhere((span) => span.text == '@ana');
       expect(mention.style?.color, const Color(0xFF1C7DEF));
       expect(mention.style?.fontWeight, FontWeight.w700);
 

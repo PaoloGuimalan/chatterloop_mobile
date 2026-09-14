@@ -384,8 +384,7 @@ class SearchOverview {
           json["people"], SearchPersonResult.fromJson),
       realms: SearchOverviewSection.parse(
           json["realms"], SearchRealmResult.fromJson),
-      bots: SearchOverviewSection.parse(
-          json["bots"], SearchBotResult.fromJson),
+      bots: SearchOverviewSection.parse(json["bots"], SearchBotResult.fromJson),
       posts:
           SearchOverviewSection.parse(json["posts"], SearchPostResult.fromJson),
     );

@@ -44,8 +44,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
     setState(() {
       _unblockingId = null;
       if (ok) {
-        _accounts =
-            _accounts.where((a) => a.entityID != acc.entityID).toList();
+        _accounts = _accounts.where((a) => a.entityID != acc.entityID).toList();
       }
     });
   }
@@ -162,7 +161,8 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
             borderRadius: BorderRadius.circular(CLRadii.sm)),
       ),
       child: Text(busy ? 'Unblocking…' : 'Unblock',
-          style: const TextStyle(fontSize: CLType.caption, fontWeight: FontWeight.w600)),
+          style: const TextStyle(
+              fontSize: CLType.caption, fontWeight: FontWeight.w600)),
     );
   }
 }

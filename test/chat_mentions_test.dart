@@ -3,7 +3,8 @@ import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-UsersContactPreview m(String userID, String first, String last, String entity) =>
+UsersContactPreview m(
+        String userID, String first, String last, String entity) =>
     UsersContactPreview(userID, entity, UserFullname(first, "", last), "none",
         null, true, true);
 
@@ -59,12 +60,14 @@ void main() {
   test('mentionableMembers drops self and caps single conversations', () {
     final all = [anna, annabelle];
     expect(
-        mentionableMembers(all, currentEntityId: "E1", conversationType: "group")
+        mentionableMembers(all,
+                currentEntityId: "E1", conversationType: "group")
             .single
             .userID,
         "annabelle");
     expect(
-        mentionableMembers(all, currentEntityId: "ZZ", conversationType: "single")
+        mentionableMembers(all,
+                currentEntityId: "ZZ", conversationType: "single")
             .length,
         1);
   });
@@ -91,8 +94,8 @@ void main() {
 
     test('your own handle highlights', () {
       // anna is the viewer here (currentEntityId E1).
-      final spans =
-          splitMentionSpans("hey @anna check this", mentionHighlightMembers([anna, annabelle]));
+      final spans = splitMentionSpans(
+          "hey @anna check this", mentionHighlightMembers([anna, annabelle]));
       expect(spans.where((s) => s.isMention).single.text, "@anna");
     });
 

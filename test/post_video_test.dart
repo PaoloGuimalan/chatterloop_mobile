@@ -1,4 +1,4 @@
-﻿// A post's inline video always spans the card's width.
+// A post's inline video always spans the card's width.
 //
 // The regression this pins: a video sized purely by AspectRatio takes the width
 // on offer, derives a height, finds that height over the card's cap, and then
@@ -300,7 +300,8 @@ void main() {
     expect(size.height, closeTo(maxInlineHeight, 0.5));
   });
 
-  testWidgets('a video narrower than the box covers it rather than leaving bars',
+  testWidgets(
+      'a video narrower than the box covers it rather than leaving bars',
       (tester) async {
     await pumpVideo(tester, const Size(720, 1280));
 
@@ -425,7 +426,8 @@ void main() {
 
       // Scrolled away, screen closed - whatever removed it, the decoder has to
       // go with it or a feed leaves one running per video ever shown.
-      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
+      await tester
+          .pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
       await tester.pump();
 
       // Still parked, deliberately: switching between a post's videos used to
@@ -452,7 +454,8 @@ void main() {
       addTearDown(tester.view.reset);
 
       const shown = MaterialApp(
-        home: Scaffold(body: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true)),
+        home: Scaffold(
+            body: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true)),
       );
       const hidden = MaterialApp(home: Scaffold(body: SizedBox()));
 
@@ -499,8 +502,7 @@ void main() {
       expect(find.byIcon(Icons.play_arrow), findsNothing);
     });
 
-    testWidgets('two widgets on one video agree on play state',
-        (tester) async {
+    testWidgets('two widgets on one video agree on play state', (tester) async {
       // The controller is shared, so the controls have to read from IT rather
       // than from their own state - otherwise pausing on the post screen would
       // leave the row behind it still showing a pause button.
@@ -559,7 +561,8 @@ void main() {
         final bar = tester.getRect(find.byType(LinearProgressIndicator).first);
 
         expect(bar.left - player.left, closeTo(12, 0.5), reason: '$videoSize');
-        expect(player.right - bar.right, closeTo(12, 0.5), reason: '$videoSize');
+        expect(player.right - bar.right, closeTo(12, 0.5),
+            reason: '$videoSize');
       }
     });
 
@@ -770,7 +773,8 @@ void main() {
           body: Center(
             child: SizedBox(
               width: 120,
-              child: VideoPlayerScreen(videoUrl: 'https://example.invalid/c.mp4'),
+              child:
+                  VideoPlayerScreen(videoUrl: 'https://example.invalid/c.mp4'),
             ),
           ),
         ),
@@ -822,7 +826,3 @@ void main() {
     expect(tester.getSize(find.byType(VideoPlayerScreen)).width, screen.width);
   });
 }
-
-
-
-

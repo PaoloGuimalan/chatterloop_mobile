@@ -958,8 +958,8 @@ void _rosterIdContracts() {
       expect(isRunnableAction(a('api-request', '//evil.tld/x')), isFalse);
       // External must be absolute, so it can never be mistaken for first-party
       // and pick up our credentials.
-      expect(
-          isRunnableAction(a('external-api-request', 'https://p.tld/h')), isTrue);
+      expect(isRunnableAction(a('external-api-request', 'https://p.tld/h')),
+          isTrue);
       expect(isRunnableAction(a('external-api-request', '/api/user/contacts')),
           isFalse);
       // An unknown kind renders nothing rather than a dead button.
@@ -1038,8 +1038,7 @@ void _rosterIdContracts() {
 
     test('anything without a realm_id is ignored', () {
       expect(serverChannelsChangeFromSseEvent({'status': true}), isNull);
-      expect(
-          serverChannelsChangeFromSseEvent({'result': 'not a map'}), isNull);
+      expect(serverChannelsChangeFromSseEvent({'result': 'not a map'}), isNull);
       expect(
           serverChannelsChangeFromSseEvent({
             'result': {'channel_id': 'chn-3'}

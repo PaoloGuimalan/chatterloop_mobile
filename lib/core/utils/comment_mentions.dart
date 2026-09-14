@@ -92,8 +92,8 @@ List<InlineSpan> commentTextSpans(
     if (span.isMention) {
       out.add(TextSpan(
         text: span.text,
-        style:
-            baseStyle.copyWith(color: mentionColor, fontWeight: FontWeight.w700),
+        style: baseStyle.copyWith(
+            color: mentionColor, fontWeight: FontWeight.w700),
       ));
     } else {
       out.addAll(hashtagifySpans(

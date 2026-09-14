@@ -77,12 +77,12 @@ class _PolicyViewerPageState extends State<PolicyViewerPage> {
       backgroundColor: bg,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor:
-            widget.isDark ? const Color(0xFF151A23) : Colors.white,
+        backgroundColor: widget.isDark ? const Color(0xFF151A23) : Colors.white,
         foregroundColor:
             widget.isDark ? const Color(0xFFE8EBF1) : const Color(0xFF14161A),
         title: Text(widget.title,
-            style: const TextStyle(fontSize: CLType.sectionTitle, fontWeight: FontWeight.w700)),
+            style: const TextStyle(
+                fontSize: CLType.sectionTitle, fontWeight: FontWeight.w700)),
       ),
       body: _controller != null
           ? WebViewWidget(controller: _controller!)

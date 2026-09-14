@@ -21,8 +21,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 /// keys.dart. Passed as serverClientId so the ID token's audience matches
 /// what the server verifies. Empty (build without env.json) -> the button
 /// reports it isn't configured rather than sending an unverifiable token.
-const String kGoogleServerClientId =
-    String.fromEnvironment('GOOGLE_CLIENT_ID');
+const String kGoogleServerClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
 
 /// Thrown for a real sign-in failure (not a user cancellation) so the UI can
 /// show a meaningful message.

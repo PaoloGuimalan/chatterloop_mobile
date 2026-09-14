@@ -506,8 +506,9 @@ class _SearchScreenState extends State<SearchScreen> {
         CLSectionHeader(
           title: "Topics",
           actionLabel: topics.isEmpty ? null : "See all",
-          onAction:
-              topics.isEmpty ? null : () => _openDetail(SearchDetailKind.topics),
+          onAction: topics.isEmpty
+              ? null
+              : () => _openDetail(SearchDetailKind.topics),
         ),
         if (_isLoading)
           CLTopicList(
@@ -746,7 +747,8 @@ class _SearchScreenState extends State<SearchScreen> {
   /// Built as a list rather than inline `if`s so no section has to know which
   /// of its neighbours are showing - under a single-section filter this is a
   /// list of one, and there is no leading or trailing gap to suppress.
-  List<Widget> _resultSections(CLPalette p, Map<String, PresenceInfo> presence) {
+  List<Widget> _resultSections(
+      CLPalette p, Map<String, PresenceInfo> presence) {
     final sections = <Widget>[
       if (_filter == _ExploreFilter.all || _filter == _ExploreFilter.topics)
         _topicsSection(p),

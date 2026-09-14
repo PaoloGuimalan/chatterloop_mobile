@@ -360,8 +360,7 @@ class PostCommentsState extends State<PostComments> {
     // fresh when opened.
     if (!_expanded.contains(parentId)) return;
 
-    final matches =
-        _comments.where((comment) => comment.commentId == parentId);
+    final matches = _comments.where((comment) => comment.commentId == parentId);
     if (matches.isEmpty) return;
 
     await _loadReplies(matches.first);
@@ -853,6 +852,7 @@ class CommentRow extends StatelessWidget {
           borderRadius: BorderRadius.circular(CLRadii.pill),
           child: CLAvatar(
             id: author.entityId,
+            entityId: author.entityId,
             name: author.displayName,
             src: author.profile,
             size: avatarSize,
@@ -1180,7 +1180,8 @@ class _TypingDotsState extends State<_TypingDots>
             // wrapping with % 1 so the wave is continuous rather than resetting.
             final phase = (_controller.value - index * 0.16) % 1.0;
             // Up over the first third of its phase, back down over the rest.
-            final lift = phase < 0.3 ? (phase / 0.3) : (1 - (phase - 0.3) / 0.7);
+            final lift =
+                phase < 0.3 ? (phase / 0.3) : (1 - (phase - 0.3) / 0.7);
 
             return Padding(
               padding: EdgeInsets.only(right: index == 2 ? 0 : 3),
@@ -1604,6 +1605,7 @@ class _MentionSuggestions extends StatelessWidget {
                 children: [
                   CLAvatar(
                     id: entity.entityId,
+                    entityId: entity.entityId,
                     name: entity.displayName,
                     src: entity.profile,
                     size: 28,

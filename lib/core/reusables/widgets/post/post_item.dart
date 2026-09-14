@@ -1,4 +1,4 @@
-﻿// One post AS A ROW IN A FEED - profile feeds today, the newsfeed next.
+// One post AS A ROW IN A FEED - profile feeds today, the newsfeed next.
 //
 // The distinction from the two neighbouring widgets is worth stating, because
 // all three render "a post":
@@ -102,11 +102,11 @@ class PostItem extends StatelessWidget {
               FeedReasonBanner(reason: post.feedReason!),
             PostCard(
               post: post,
-          onChanged: onChanged,
-          // onOpen marks this as a FEED row rather than the post's own screen -
-          // that's what clamps the caption. It is no longer a body tap target:
-          // onComment is the only way into the post from here, so tapping a
-          // video in a row plays it instead of navigating off it.
+              onChanged: onChanged,
+              // onOpen marks this as a FEED row rather than the post's own screen -
+              // that's what clamps the caption. It is no longer a body tap target:
+              // onComment is the only way into the post from here, so tapping a
+              // video in a row plays it instead of navigating off it.
               onOpen: open,
               // Without the engagement row there is no comment affordance to
               // route, and it is the only way a row opens the post.
@@ -160,6 +160,7 @@ class FeedReasonBanner extends StatelessWidget {
           // as one control, not two pieces of information.
           CLAvatar(
             id: entity.entityId,
+            entityId: entity.entityId,
             name: entity.displayName,
             src: entity.profile,
             size: 20,
@@ -171,8 +172,7 @@ class FeedReasonBanner extends StatelessWidget {
               TextSpan(children: [
                 TextSpan(
                   text: entity.displayName,
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600, color: p.text),
+                  style: TextStyle(fontWeight: FontWeight.w600, color: p.text),
                 ),
                 TextSpan(text: " $phrase"),
               ]),
@@ -407,4 +407,3 @@ class PostItemSkeleton extends StatelessWidget {
     );
   }
 }
-

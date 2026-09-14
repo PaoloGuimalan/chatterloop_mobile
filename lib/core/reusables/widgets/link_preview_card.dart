@@ -228,7 +228,8 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                           data.description!,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: CLType.caption, color: p.text2),
+                          style: TextStyle(
+                              fontSize: CLType.caption, color: p.text2),
                         ),
                       ),
                   ],

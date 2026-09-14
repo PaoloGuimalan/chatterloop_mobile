@@ -329,6 +329,7 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                               borderRadius: BorderRadius.circular(CLRadii.pill),
                               child: CLAvatar(
                                 id: state.userAuth.user.activeAvatarSeed,
+                                entityId: state.userAuth.user.entityId,
                                 name: state.userAuth.user.activeDisplayName,
                                 src: state.userAuth.user.activeAvatarSrc,
                                 size: 34,

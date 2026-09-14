@@ -59,11 +59,12 @@ class SavedPostAuthor {
           : personName,
       handle: (details["slug"] ?? details["username"] ?? "").toString(),
       // Both "none" and "N/A" are used as "no picture" across these payloads.
-      profile:
-          (profile == null || profile.isEmpty || profile == "N/A" ||
-                  profile == "none")
-              ? null
-              : profile,
+      profile: (profile == null ||
+              profile.isEmpty ||
+              profile == "N/A" ||
+              profile == "none")
+          ? null
+          : profile,
     );
   }
 }

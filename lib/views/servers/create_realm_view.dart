@@ -169,8 +169,7 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
       CreateRealmMemberSource.globalEntities =>
         // Bots included - a realm can have one as a founding member, and the
         // endpoint's default types are people and pages only.
-        await SearchApi()
-            .searchEntitiesRequest(query, types: "user,realm,bot"),
+        await SearchApi().searchEntitiesRequest(query, types: "user,realm,bot"),
       // Unreachable while the picker is hidden, and harmless if it is not.
       CreateRealmMemberSource.none => const <SearchResultUser>[],
     };
@@ -327,8 +326,7 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
                       CLSegmentedOption(
                           'voice', 'Voice Channel', Icons.volume_up),
                     ],
-                    onChanged: (value) =>
-                        setState(() => _channelType = value),
+                    onChanged: (value) => setState(() => _channelType = value),
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -485,6 +483,7 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
               children: [
                 CLAvatar(
                     id: entity.entityId,
+                    entityId: entity.entityId,
                     name: name,
                     src: clCleanMediaSrc(entity.profile),
                     size: 38,

@@ -15,6 +15,21 @@ class CLColors {
   // Accents
   static const green = Color(0xFF20BD7C);
   static const greenSoftLight = Color(0xFFE2F7EE);
+
+  // The avatar's "active N minutes ago" pill: an OPAQUE pale green ground and
+  // a text weight to sit on it.
+  //
+  // It cannot reuse greenSoft, which is translucent in dark (0x29) - the pill
+  // is drawn ON TOP of the portrait rather than on a surface, so a
+  // see-through fill would take its colour from whatever face is behind it.
+  //
+  // `green` is not the label either: it is only 2.2:1 on the light ground -
+  // fine as a shape or an icon, under AA as 9-11px type. Light darkens the
+  // label (5.3:1), dark brightens it against a dim ground (7.0:1).
+  static const greenPaleLight = Color(0xFFE2F7EE);
+  static const greenStrongLight = Color(0xFF12734A);
+  static const greenPaleDark = Color(0xFF17352C);
+  static const greenStrongDark = Color(0xFF35D494);
   static const gold = Color(0xFFE69500);
   static const goldSoftLight = Color(0xFFFFF2DB);
   static const pink = Color(0xFFFF5B6B);
@@ -180,6 +195,8 @@ class CLPalette extends ThemeExtension<CLPalette> {
   final Color brandSoft;
   final Color green;
   final Color greenSoft;
+  final Color greenPale;
+  final Color greenStrong;
   final Color gold;
   final Color goldSoft;
   final Color pink;
@@ -206,6 +223,8 @@ class CLPalette extends ThemeExtension<CLPalette> {
     required this.brandSoft,
     required this.green,
     required this.greenSoft,
+    required this.greenPale,
+    required this.greenStrong,
     required this.gold,
     required this.goldSoft,
     required this.pink,
@@ -233,6 +252,8 @@ class CLPalette extends ThemeExtension<CLPalette> {
     brandSoft: CLColors.brandSoftLight,
     green: CLColors.green,
     greenSoft: CLColors.greenSoftLight,
+    greenPale: CLColors.greenPaleLight,
+    greenStrong: CLColors.greenStrongLight,
     gold: CLColors.gold,
     goldSoft: CLColors.goldSoftLight,
     pink: CLColors.pink,
@@ -264,6 +285,8 @@ class CLPalette extends ThemeExtension<CLPalette> {
     brandSoft: Color(0x293C8BFF),
     green: CLColors.green,
     greenSoft: Color(0x2920BD7C),
+    greenPale: CLColors.greenPaleDark,
+    greenStrong: CLColors.greenStrongDark,
     gold: CLColors.gold,
     goldSoft: Color(0x29E69500),
     pink: CLColors.pink,

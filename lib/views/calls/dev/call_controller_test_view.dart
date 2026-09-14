@@ -45,9 +45,10 @@ class CallControllerTestView extends StatelessWidget {
                                   startMuted: false,
                                 )
                             : null,
-                        child: Text(controller.status == CallEngineStatus.joining
-                            ? "Joining…"
-                            : "Join call"),
+                        child: Text(
+                            controller.status == CallEngineStatus.joining
+                                ? "Joining…"
+                                : "Join call"),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -81,7 +82,8 @@ class CallControllerTestView extends StatelessWidget {
                   "participants: ${controller.joinedParticipants.length}\n"
                   "remote consumers: ${controller.consumers.length}\n"
                   "lastError: ${controller.lastError ?? '-'}",
-                  style: const TextStyle(fontSize: CLType.caption, fontFamily: 'monospace'),
+                  style: const TextStyle(
+                      fontSize: CLType.caption, fontFamily: 'monospace'),
                 ),
               ),
               const Divider(),
@@ -94,7 +96,8 @@ class CallControllerTestView extends StatelessWidget {
                             "muted=${controller.participantStatuses[p.clientId]?.muted ?? false} "
                             "cameraOff=${controller.participantStatuses[p.clientId]?.cameraOff ?? false}",
                             style: const TextStyle(
-                                fontSize: CLType.caption, fontFamily: 'monospace'),
+                                fontSize: CLType.caption,
+                                fontFamily: 'monospace'),
                           ))
                       .toList(),
                 ),

@@ -162,9 +162,7 @@ class PushPayload {
 
   /// True when this payload has everything the threaded renderer needs.
   bool get isMessage =>
-      type == 'message' &&
-      conversationId != null &&
-      conversationId!.isNotEmpty;
+      type == 'message' && conversationId != null && conversationId!.isNotEmpty;
 
   static PushPayload fromData(Map<String, dynamic> data) {
     String? str(String key) {

@@ -455,7 +455,8 @@ class _CallSpikeViewState extends State<CallSpikeView> {
               itemCount: _logLines.length,
               itemBuilder: (context, i) => Text(
                 _logLines[i],
-                style: const TextStyle(fontSize: CLType.meta, fontFamily: 'monospace'),
+                style: const TextStyle(
+                    fontSize: CLType.meta, fontFamily: 'monospace'),
               ),
             ),
           ),

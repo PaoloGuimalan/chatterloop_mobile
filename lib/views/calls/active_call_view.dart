@@ -250,8 +250,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
           // time - "00:00 · connecting" would be counting nothing.
           if (controller.isActive && _connectedAt == null) {
             _connectedAt = DateTime.now();
-            _durationTicker ??=
-                Timer.periodic(const Duration(seconds: 1), (_) {
+            _durationTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
               if (mounted) setState(() {});
             });
           }
@@ -309,9 +308,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     final title = controller.isGroup
         ? "Group call"
         : peers.isNotEmpty
-            ? (peers.first.username.isNotEmpty
-                ? peers.first.username
-                : "Call")
+            ? (peers.first.username.isNotEmpty ? peers.first.username : "Call")
             : "Call";
 
     final initial = title.isNotEmpty ? title[0].toUpperCase() : "?";
@@ -544,7 +541,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
       isScreen: isScreen,
       // Shared screens: pinch-to-zoom in place, plus a corner button to open
       // a fullscreen zoomable viewer for reading fine detail.
-      onExpand: isScreen ? () => _openScreenFullscreen(renderer, screenLabel) : null,
+      onExpand:
+          isScreen ? () => _openScreenFullscreen(renderer, screenLabel) : null,
       child: isScreen
           ? InteractiveViewer(
               panEnabled: true,
@@ -660,8 +658,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
             child: Align(
               alignment: Alignment.bottomLeft,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(6),
@@ -670,7 +667,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: CLType.meta),
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: CLType.meta),
                 ),
               ),
             ),
@@ -687,7 +685,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                   onTap: onExpand,
                   child: const Padding(
                     padding: EdgeInsets.all(6),
-                    child: Icon(Icons.fullscreen, color: Colors.white, size: 20),
+                    child:
+                        Icon(Icons.fullscreen, color: Colors.white, size: 20),
                   ),
                 ),
               ),
@@ -718,8 +717,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
                   // of three) stretches to the FULL width instead of leaving
                   // a 50% gap beside it.
                   for (var c = 0; c < cols; c++)
-                    if (r * cols + c < n)
-                      Expanded(child: tiles[r * cols + c]),
+                    if (r * cols + c < n) Expanded(child: tiles[r * cols + c]),
                 ],
               ),
             ),
@@ -749,7 +747,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
               const SizedBox(width: 8),
               const Expanded(
                 child: Text("Video couldn't connect",
-                    style: TextStyle(color: Colors.white, fontSize: CLType.caption)),
+                    style: TextStyle(
+                        color: Colors.white, fontSize: CLType.caption)),
               ),
               TextButton(
                 onPressed: () => controller.retryVideo(),
@@ -879,4 +878,3 @@ class _CallControlButton extends StatelessWidget {
     );
   }
 }
-

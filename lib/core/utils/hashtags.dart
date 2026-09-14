@@ -109,8 +109,8 @@ List<HashtagSpan> splitHashtagSpans(String text) {
     if (match.start > index) {
       spans.add(HashtagSpan(text.substring(index, match.start)));
     }
-    spans.add(HashtagSpan(text.substring(match.start, match.end),
-        isHashtag: true));
+    spans.add(
+        HashtagSpan(text.substring(match.start, match.end), isHashtag: true));
     index = match.end;
   }
 

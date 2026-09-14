@@ -178,7 +178,8 @@ class _SettingsRow extends StatelessWidget {
                             color: p.text)),
                     const SizedBox(height: 2),
                     Text(item.description,
-                        style: TextStyle(fontSize: CLType.caption, color: p.text2)),
+                        style: TextStyle(
+                            fontSize: CLType.caption, color: p.text2)),
                   ],
                 ),
               ),

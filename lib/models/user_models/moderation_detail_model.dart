@@ -92,13 +92,11 @@ class ModerationContent {
       authorName: full.isEmpty
           ? (details['name'] ?? details['username'])?.toString()
           : full,
-      authorHandle:
-          (details['username'] ?? details['slug'])?.toString(),
+      authorHandle: (details['username'] ?? details['slug'])?.toString(),
       // Both sentinels the platform uses mean "no picture".
-      authorPicture:
-          (picture.isEmpty || picture == 'none' || picture == 'N/A')
-              ? null
-              : picture,
+      authorPicture: (picture.isEmpty || picture == 'none' || picture == 'N/A')
+          ? null
+          : picture,
       postedAt: (json['date_posted'] ?? json['created_at'])?.toString(),
     );
   }
@@ -133,8 +131,8 @@ class ModerationVerdict {
       categories: categories is List
           ? categories
               .whereType<Map>()
-              .map((c) => ModerationCategory.fromJson(
-                  Map<String, dynamic>.from(c)))
+              .map((c) =>
+                  ModerationCategory.fromJson(Map<String, dynamic>.from(c)))
               .toList()
           : const [],
       unevaluated: unevaluated is List

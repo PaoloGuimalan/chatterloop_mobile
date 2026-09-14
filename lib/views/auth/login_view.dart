@@ -203,7 +203,8 @@ class LoginScreenState extends State<LoginScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: Text(_error!,
-                          style: TextStyle(color: p.pink, fontSize: CLType.bodySm)),
+                          style: TextStyle(
+                              color: p.pink, fontSize: CLType.bodySm)),
                     ),
                   const SizedBox(height: 4),
                   CLBtn(
@@ -229,8 +230,7 @@ class LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
                   CLBtn(
-                    label:
-                        _googleBusy ? 'Signing in…' : 'Continue with Google',
+                    label: _googleBusy ? 'Signing in…' : 'Continue with Google',
                     iconL: Icons.g_mobiledata,
                     onPressed: (_busy || _googleBusy) ? null : _googleSignIn,
                     variant: CLBtnVariant.outline,
@@ -242,7 +242,8 @@ class LoginScreenState extends State<LoginScreen> {
                     child: Wrap(
                       children: [
                         Text("Don't have an account yet? ",
-                            style: TextStyle(color: p.text2, fontSize: CLType.body)),
+                            style: TextStyle(
+                                color: p.text2, fontSize: CLType.body)),
                         GestureDetector(
                           onTap: () => context.push('/signup'),
                           child: Text('Sign Up',

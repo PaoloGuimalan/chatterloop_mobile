@@ -351,6 +351,7 @@ class _SharedPostPreviewRecursiveState
             children: [
               CLAvatar(
                 id: post.author.entityId,
+                entityId: post.author.entityId,
                 name: post.author.displayName,
                 src: post.author.profile,
                 size: 30,

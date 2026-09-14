@@ -671,6 +671,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               false,
                           builder: (context, online) => ProfileHeader(
                             id: profile!.id,
+                            entityId: profile!.entityId,
                             displayName: profile!.displayName,
                             username: profile!.username,
                             email: profile!.email,

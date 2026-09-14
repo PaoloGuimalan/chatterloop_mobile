@@ -35,12 +35,11 @@ class ContactsItemWidget extends StatelessWidget {
   /// realm's slug for a page (the backend maps slug onto that field), so the
   /// only thing distinguishing them is [isRealm].
   void _openProfile(BuildContext context) {
-    context.push(
-        isBot
-            ? '/bot/${other.username}'
-            : isRealm
-                ? '/realm/${other.username}'
-                : '/user/${other.username}');
+    context.push(isBot
+        ? '/bot/${other.username}'
+        : isRealm
+            ? '/realm/${other.username}'
+            : '/user/${other.username}');
   }
 
   void _openMessage(BuildContext context) {
@@ -111,7 +110,8 @@ class ContactsItemWidget extends StatelessWidget {
                         Text("@${other.username}",
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: p.text2, fontSize: CLType.label)),
+                            style: TextStyle(
+                                color: p.text2, fontSize: CLType.label)),
                       ],
                     ),
                   ),
