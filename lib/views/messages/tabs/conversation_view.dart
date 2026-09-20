@@ -1623,8 +1623,12 @@ class ConversationStateView extends State<ConversationView> {
               final command = suggestions[index];
               return ListTile(
                 dense: true,
+                // -4, not -2: the two menus are one component as far as
+                // anybody typing is concerned - you go from "@" to "/"
+                // without the list changing shape - and a command row is a
+                // single line of text that sat in a pool of its own padding.
                 visualDensity:
-                    const VisualDensity(horizontal: -2, vertical: -2),
+                    const VisualDensity(horizontal: -2, vertical: -4),
                 leading: Icon(
                   command.isSystem ? Icons.bolt : Icons.smart_toy,
                   size: 20,
@@ -1681,8 +1685,12 @@ class ConversationStateView extends State<ConversationView> {
               final member = suggestions[index];
               return ListTile(
                 dense: true,
+                // -4, not -2: the two menus are one component as far as
+                // anybody typing is concerned - you go from "@" to "/"
+                // without the list changing shape - and a command row is a
+                // single line of text that sat in a pool of its own padding.
                 visualDensity:
-                    const VisualDensity(horizontal: -2, vertical: -2),
+                    const VisualDensity(horizontal: -2, vertical: -4),
                 leading: CLAvatar(
                   id: member.entityID,
                   entityId: member.entityID,
@@ -1691,12 +1699,33 @@ class ConversationStateView extends State<ConversationView> {
                   size: 28,
                   kind: member.entityType,
                 ),
-                trailing: member.isBot
-                    ? Tooltip(
+                // The same three markers, in the same order, the web list
+                // uses: verified first because it qualifies the NAME, then
+                // what kind of entity this is. A page and a bot are both
+                // things you can @mention and neither is a person, which is
+                // exactly what somebody picking from this list needs to know.
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (member.isVerified == true)
+                      Tooltip(
+                        message: 'Verified',
+                        child: Icon(Icons.verified,
+                            size: 14, color: CLAccent.of(context)),
+                      ),
+                    if (member.isPage)
+                      Tooltip(
+                        message: 'Page',
+                        child: Icon(Icons.flag, size: 14, color: p.text3),
+                      ),
+                    if (member.isBot)
+                      Tooltip(
                         message: 'Bot',
-                        child: Icon(Icons.smart_toy, size: 14, color: p.text3),
-                      )
-                    : null,
+                        child:
+                            Icon(Icons.smart_toy, size: 14, color: p.text3),
+                      ),
+                  ],
+                ),
                 title: Text(mentionFullNameFor(member),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

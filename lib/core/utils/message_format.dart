@@ -246,13 +246,25 @@ List<InlineSpan> _mentions(String text, _Ctx ctx) {
     if (part.isCommand) {
       out.add(TextSpan(
         text: part.text,
-        // The same colour a mention takes, tinted from it - see the note in
-        // buildFormattedMessage. Only the typeface differs.
+        // Colour and weight, like a mention - and NOTHING ELSE.
+        //
+        // NO BACKGROUND. TextStyle.backgroundColor paints the full LINE-HEIGHT
+        // rectangle, not a chip: there is no radius and no horizontal padding,
+        // so a token came out as a box taller than its own text sitting in the
+        // middle of a sentence. The web gets a real chip because CSS can round
+        // and pad an inline box; the honest equivalent here is the treatment
+        // mentions already use, which is colour and weight.
+        //
+        // 0.9 FONT SIZE for the same reason the inline-code rule above trims:
+        // monospace sets optically larger than the surrounding proportional
+        // face, so at an equal point size a command reads bigger than the
+        // message around it.
         style: ctx.current.copyWith(
           color: ctx.style.mentionColor,
           fontWeight: FontWeight.w700,
           fontFamily: 'monospace',
-          backgroundColor: ctx.style.mentionColor.withValues(alpha: 0.18),
+          fontFamilyFallback: const ['Courier New', 'monospace'],
+          fontSize: (ctx.current.fontSize ?? 14) * 0.9,
         ),
       ));
       continue;
