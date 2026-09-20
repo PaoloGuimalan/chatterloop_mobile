@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/utils/chat_commands.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
@@ -323,6 +324,40 @@ class ConversationsApi {
         (level1 is Map && level1["data"] is Map) ? level1["data"] : level1;
     if (raw is! Map) return null;
     return ConversationInfoModel.fromJson(Map<String, dynamic>.from(raw));
+  }
+
+  /// The "/command" menu for one conversation.
+  ///
+  /// Plain JSON, not JWT-encoded: nothing here is a secret. The server sends
+  /// an allow-listed shape - name, description, responder, owning bot - and
+  /// never the webhook url or its headers, which carry credentials.
+  ///
+  /// An empty list on any failure. A composer with no menu is a composer
+  /// where commands must be typed in full, which is how it worked before -
+  /// not a reason to show an error over the message thread.
+  Future<List<ChatCommand>> getConversationCommandsRequest(
+      String conversationID) async {
+    if (conversationID.isEmpty) return const [];
+    try {
+      final response = await _dio
+          .get('${_endpoints.getConversationCommands}$conversationID/commands');
+      if (response.data is! Map || response.data["status"] == false) {
+        return const [];
+      }
+      final raw = response.data["commands"];
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map>()
+          .map((entry) =>
+              ChatCommand.fromJson(Map<String, dynamic>.from(entry)))
+          .where((command) => command.name.isNotEmpty)
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print("failed to load the command menu: $e");
+      }
+      return const [];
+    }
   }
 
   Future<EncodedResponse?> getConversationInfoRequest(

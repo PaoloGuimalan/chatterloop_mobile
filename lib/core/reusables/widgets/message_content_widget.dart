@@ -214,6 +214,10 @@ class MessageContentWidget extends StatefulWidget {
   /// correct fallback before the conversation info has loaded.
   final List<UsersContactPreview> mentionMembers;
 
+  /// Command names available in this conversation. Only these are highlighted
+  /// in message text - see chat_commands.splitLeadingCommand.
+  final Set<String> commandNames;
+
   const MessageContentWidget(
       {super.key,
       required this.messageContent,
@@ -223,7 +227,8 @@ class MessageContentWidget extends StatefulWidget {
       required this.resolveSenderName,
       required this.isSingleConversation,
       required this.conversationID,
-      this.mentionMembers = const []});
+      this.mentionMembers = const [],
+      this.commandNames = const {}});
 
   @override
   MessageContentWidgetState createState() => MessageContentWidgetState();
@@ -665,16 +670,37 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   child: Padding(
                     padding:
                         EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
+                    // THE FULL RENDERER for a quote too, not the flattened
+                    // preview. A quote used to take the plain-text form on the
+                    // reasoning that a heading or a code fence is debris at
+                    // this size - but the messages people quote most are bot
+                    // replies, which are model prose: headings, numbered
+                    // steps, bold and bullets. Flattened, that arrives as a
+                    // wall of run-together sentences, harder to read than the
+                    // formatting ever was.
+                    //
+                    // The COMPOSER's reply panel still flattens (see
+                    // _quotedPreview): it is a clamped two lines, where blocks
+                    // genuinely cannot render.
                     child: isReply
-                        ? Text(
-                            messagePreviewText(content),
-                            style: TextStyle(
-                                fontSize: CLType.title,
-                                color: isCurrentUser ? Colors.white : p.text),
+                        ? buildFormattedMessage(
+                            source: content,
+                            members: widget.mentionMembers,
+                            commands: widget.commandNames,
+                            style: MessageFormatStyle(
+                              base: TextStyle(
+                                  fontSize: CLType.title,
+                                  color:
+                                      isCurrentUser ? Colors.white : p.text),
+                              mentionColor: isCurrentUser
+                                  ? Colors.white
+                                  : CLAccent.textOf(context),
+                            ),
                           )
                         : buildFormattedMessage(
                             source: content,
                             members: widget.mentionMembers,
+                            commands: widget.commandNames,
                             style: MessageFormatStyle(
                               base: TextStyle(
                                   fontSize: CLType.title,
@@ -683,9 +709,14 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                               // already white, so a mention is distinguished by
                               // weight alone - a second colour there would either
                               // be invisible or clash.
+                              // textOf, not of: on somebody else's bubble the
+                              // mention is a LABEL on an ordinary surface, and
+                              // in a channel the fill colour is too light to
+                              // read there. On your own bubble it stays white -
+                              // the bubble IS the accent.
                               mentionColor: isCurrentUser
                                   ? Colors.white
-                                  : CLAccent.of(context),
+                                  : CLAccent.textOf(context),
                             ),
                           ),
                   ),
@@ -1755,6 +1786,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           // and the hero flight leave that scope behind, so each has to be
           // handed the colour rather than looking it up for itself.
           final accent = CLAccent.of(context);
+          // The LABEL form travels with it. Carrying only the fill left the
+          // long-press preview and the hero flight resolving textOf to the
+          // raw accent, so a mention in a channel went from the readable gold
+          // to the fill gold for the length of the animation.
+          final accentOnSurface = CLAccent.textOf(context);
           return Padding(
             padding: EdgeInsets.only(top: 2, bottom: 2, left: 0, right: 0),
             child: Column(
@@ -1902,6 +1938,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                   // audio message.
                                   messageWidget: CLAccent(
                                     color: accent,
+                                    onSurface: accentOnSurface,
                                     // A route builds under the Navigator, not
                                     // under the widget that pushed it, so the
                                     // thread's CLAccent is not an ancestor of
@@ -1992,6 +2029,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             tag: _messageContent.messageID,
                             child: CLAccent(
                               color: accent,
+                              onSurface: accentOnSurface,
                               child: Material(
                                 type: MaterialType.transparency,
                                 child: messageTypeSwitch(

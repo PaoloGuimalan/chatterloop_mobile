@@ -6,6 +6,8 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
+import 'package:chatterloop_app/core/utils/chat_commands.dart';
+import 'package:chatterloop_app/core/utils/system_entity.dart';
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
 import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
@@ -179,6 +181,7 @@ class ConversationStateView extends State<ConversationView> {
       _scrollController.addListener(_onScroll);
     });
     realmRemovals.addListener(_onRealmRemoval);
+    _loadCommandMenu();
     _startLoading();
   }
 
@@ -1100,6 +1103,13 @@ class ConversationStateView extends State<ConversationView> {
   String _resolveSenderName(String entityId) {
     if (entityId == _myAccountId) return "You";
 
+    // BEFORE the single-conversation branch, not after. System answers
+    // built-in commands in conversations it is not a member of, so it appears
+    // in a DM as a sender who is neither you nor the other person - and that
+    // branch would confidently label its message with the other person's
+    // name. In a group it would otherwise fall through to "Member 0002".
+    if (isSystemBot(entityId)) return systemBotDisplayName;
+
     // Single conversations only ever have two participants - if it isn't
     // "me", it's the other person, already named by _headerDisplayName
     // (same conversationSetup.details this pulls from). Reliable regardless
@@ -1223,6 +1233,43 @@ class ConversationStateView extends State<ConversationView> {
     // sentence reads about the message here, not about the person.
     if (_isQuotingSelf) return "Replying to your message";
     return "Replying to ${_resolveSenderName(quoted.sender)}";
+  }
+
+  /// The reply panel's summary, as a WIDGET.
+  ///
+  /// A quoted text message renders its tokens the same way the quoted bubble
+  /// does - a command is what the message was about, and the panel telling you
+  /// what you are replying to is exactly where that matters. Every other type
+  /// is a fixed label ("a photo"), so it stays a plain Text.
+  ///
+  /// The clipping, colour, size and alignment are the panel's own and are
+  /// passed straight through: this changes what is rendered, not the layout.
+  Widget _quotedPreview(CLPalette p) {
+    final quoted = _quotedMessage;
+    final style = TextStyle(
+      fontSize: CLType.caption,
+      color: _quotedForeground(p),
+      overflow: TextOverflow.ellipsis,
+    );
+
+    if (quoted == null || quoted.messageType != "text") {
+      return Text(
+        _quotedPreviewText,
+        style: style,
+        maxLines: 2,
+        textAlign: TextAlign.justify,
+      );
+    }
+
+    return buildQuotedMessage(
+      source: quoted.content,
+      members: _mentionHighlightMembers,
+      commands: _commandNames,
+      style: MessageFormatStyle(base: style, mentionColor: _quotedForeground(p)),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.justify,
+    );
   }
 
   /// One-line summary of the quoted message for the reply panel ("Photo",
@@ -1477,6 +1524,134 @@ class ConversationStateView extends State<ConversationView> {
     messageValue = result.text;
     _mentionStart = -1;
     _mentionSuggestions.value = const [];
+  }
+
+  /// The conversation's command menu, fetched once on open.
+  ///
+  /// Fetched rather than derived: unlike a mention, a command is a row the
+  /// client has never seen. Empty until it lands, and empty forever if the
+  /// request fails - which simply means commands must be typed in full, the
+  /// way they worked before this menu existed.
+  List<ChatCommand> _commandMenu = const [];
+
+  /// Just the names, kept as a Set: every message bubble asks whether its
+  /// leading token is one of these, and rebuilding the set per bubble would be
+  /// one allocation per message per rebuild.
+  Set<String> _commandNames = const {};
+
+  /// Active "/..." suggestions. A ValueNotifier for the same reason the
+  /// mention one is: a keystroke must not rebuild the conversation tree.
+  final ValueNotifier<List<ChatCommand>> _commandSuggestions =
+      ValueNotifier<List<ChatCommand>>(const []);
+
+  /// Where the in-progress "/query" starts, so insertCommand can replace it.
+  int _commandStart = -1;
+
+  /// Load the menu for this conversation.
+  ///
+  /// Once per open. The membership it is derived from can change while the
+  /// conversation is on screen, but a bot joining or leaving mid-conversation
+  /// is rare enough that re-fetching per keystroke would be a request per
+  /// keystroke to fix it - and a stale entry fails safely, because the server
+  /// resolves the command again when it is actually sent.
+  Future<void> _loadCommandMenu() async {
+    final menu =
+        await ConversationsApi().getConversationCommandsRequest(widget.conversationId);
+    if (!mounted) return;
+    _commandMenu = menu;
+    _commandNames = menu.map((command) => command.name.toLowerCase()).toSet();
+    // Only now do existing messages gain their highlight, so a rebuild is
+    // needed - the menu arrives after the thread has already been drawn.
+    if (_commandNames.isNotEmpty) setState(() {});
+  }
+
+  /// Recompute suggestions from the text before the cursor. Does no work
+  /// beyond a regex when the message does not start with a slash.
+  void _refreshCommandSuggestions(String value) {
+    if (_commandMenu.isEmpty) return;
+
+    final cursor = _controller.selection.baseOffset;
+    final active = activeCommandQuery(value, cursor < 0 ? value.length : cursor);
+
+    if (active == null) {
+      _commandStart = -1;
+      if (_commandSuggestions.value.isNotEmpty) {
+        _commandSuggestions.value = const [];
+      }
+      return;
+    }
+
+    _commandStart = active.start;
+    _commandSuggestions.value = commandSuggestions(_commandMenu, active.query);
+  }
+
+  /// Replace the "/query" with the picked command and close the list.
+  void _applyCommand(ChatCommand command) {
+    if (_commandStart < 0) return;
+    final cursor = _controller.selection.baseOffset;
+    final result = insertCommand(_controller.text, _commandStart,
+        cursor < 0 ? _controller.text.length : cursor, command);
+
+    _controller.value = TextEditingValue(
+      text: result.text,
+      selection: TextSelection.collapsed(offset: result.cursor),
+    );
+    messageValue = result.text;
+    _commandStart = -1;
+    _commandSuggestions.value = const [];
+  }
+
+  /// Suggestion list shown above the composer while a "/..." is in progress.
+  Widget _commandSuggestionList(CLPalette p) {
+    return ValueListenableBuilder<List<ChatCommand>>(
+      valueListenable: _commandSuggestions,
+      builder: (context, suggestions, _) {
+        if (suggestions.isEmpty) return const SizedBox.shrink();
+        return Container(
+          margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+          constraints: const BoxConstraints(maxHeight: 190),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: p.border),
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: suggestions.length,
+            itemBuilder: (context, index) {
+              final command = suggestions[index];
+              return ListTile(
+                dense: true,
+                visualDensity:
+                    const VisualDensity(horizontal: -2, vertical: -2),
+                leading: Icon(
+                  command.isSystem ? Icons.bolt : Icons.smart_toy,
+                  size: 20,
+                  color: p.text3,
+                ),
+                title: Text(command.insert,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: p.text, fontSize: CLType.bodySm)),
+                subtitle: Text(
+                    command.description.isNotEmpty
+                        ? command.description
+                        : command.ownerLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: p.text3, fontSize: CLType.caption)),
+                // Who owns it, so two bots sharing a name are told apart at a
+                // glance rather than only by the ":handle" in the title.
+                trailing: Text(command.ownerLabel,
+                    style: TextStyle(color: p.text3, fontSize: CLType.caption)),
+                onTap: () => _applyCommand(command),
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 
   /// Suggestion list shown above the composer while an "@..." is in progress.
@@ -1919,6 +2094,10 @@ class ConversationStateView extends State<ConversationView> {
         final accent = _accentFor(p);
         return CLAccent(
           color: accent,
+          // The label form of the same accent. A channel's gold fills bubbles
+          // well and reads poorly as text, so a mention on somebody else's
+          // message uses this instead - see CLAccent.onSurface.
+          onSurface: _isChannelType ? p.goldText : null,
           // Theme too, not just CLAccent. The reply bar and the AI-assist row
           // are ElevatedButtons with no explicit background, so they take
           // colorScheme.primary - which is the brand blue no matter what
@@ -2472,6 +2651,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                       .width,
                                                                   child:
                                                                       MessageContentWidget(
+                                                                    commandNames:
+                                                                        _commandNames,
                                                                     key: ValueKey((combinedPendingAndMessagesList[combinedPendingAndMessagesList.length -
                                                                             1 -
                                                                             index] as MessageContent)
@@ -2680,6 +2861,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                       .width,
                                                               child:
                                                                   MessageContentWidget(
+                                                                    commandNames: _commandNames,
                                                                       key: ValueKey(
                                                                           contentItem
                                                                               .messageID),
@@ -2928,22 +3110,7 @@ class ConversationStateView extends State<ConversationView> {
                                                           Expanded(
                                                             child: SizedBox(),
                                                           ),
-                                                          Text(
-                                                            _quotedPreviewText,
-                                                            style: TextStyle(
-                                                              fontSize: CLType
-                                                                  .caption,
-                                                              color:
-                                                                  _quotedForeground(
-                                                                      p),
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                            ),
-                                                            maxLines: 2,
-                                                            textAlign: TextAlign
-                                                                .justify,
-                                                          ),
+                                                          _quotedPreview(p),
                                                           Expanded(
                                                             child: SizedBox(),
                                                           ),
@@ -3210,6 +3377,7 @@ class ConversationStateView extends State<ConversationView> {
                               // list nested within it overflows instead of
                               // growing. Rendering nothing when there are no
                               // suggestions keeps the bar flush with the messages.
+                              _commandSuggestionList(p),
                               _mentionSuggestionList(p),
                               Container(
                                 decoration: BoxDecoration(
@@ -3409,6 +3577,8 @@ class ConversationStateView extends State<ConversationView> {
                                                       // ValueNotifier, so only the
                                                       // suggestion overlay rebuilds.
                                                       _refreshMentionSuggestions(
+                                                          value);
+                                                      _refreshCommandSuggestions(
                                                           value);
                                                       if (value.trim() != "" &&
                                                           conversationInfo !=

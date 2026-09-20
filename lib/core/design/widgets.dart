@@ -79,14 +79,35 @@ String? clCleanMediaSrc(String? src) {
 class CLAccent extends InheritedWidget {
   final Color color;
 
-  const CLAccent({super.key, required this.color, required super.child});
+  /// The accent in the form that is legible as TEXT on an ordinary surface.
+  ///
+  /// A FILL and a LABEL are not the same colour. The gold a channel paints its
+  /// bubbles with measures about 2.8:1 as text on a light surface, so a
+  /// mention drawn in it is technically the right colour and still hard to
+  /// read. Null means the accent doubles as its own label, which is true of
+  /// the brand blue.
+  final Color? onSurface;
+
+  const CLAccent({
+    super.key,
+    required this.color,
+    this.onSurface,
+    required super.child,
+  });
 
   static Color of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CLAccent>()?.color ??
       cl(context).brand;
 
+  /// The accent to draw TEXT in - see [onSurface].
+  static Color textOf(BuildContext context) {
+    final accent = context.dependOnInheritedWidgetOfExactType<CLAccent>();
+    return accent?.onSurface ?? accent?.color ?? cl(context).brand;
+  }
+
   @override
-  bool updateShouldNotify(CLAccent oldWidget) => oldWidget.color != color;
+  bool updateShouldNotify(CLAccent oldWidget) =>
+      oldWidget.color != color || oldWidget.onSurface != onSurface;
 }
 
 // -------- Avatar -------------------------------------------------------------

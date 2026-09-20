@@ -33,6 +33,8 @@ library;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
+import 'package:chatterloop_app/core/utils/chat_commands.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
@@ -80,13 +82,19 @@ class _InlineRule {
 class _Ctx {
   final MessageFormatStyle style;
   final List<UsersContactPreview> members;
+
+  /// Command names available in this conversation - see splitCommandSpans.
+  final Set<String> commands;
   final TextStyle current;
 
   const _Ctx(
-      {required this.style, required this.members, required this.current});
+      {required this.style,
+      required this.members,
+      this.commands = const {},
+      required this.current});
 
-  _Ctx withStyle(TextStyle next) =>
-      _Ctx(style: style, members: members, current: next);
+  _Ctx withStyle(TextStyle next) => _Ctx(
+      style: style, members: members, commands: commands, current: next);
 }
 
 /// Order matters. Inline code comes first so backticks win over the emphasis
@@ -229,11 +237,37 @@ List<InlineSpan> _inline(String text, _Ctx ctx) {
 /// span light up as a mention.
 List<InlineSpan> _mentions(String text, _Ctx ctx) {
   if (text.isEmpty) return const [];
+
+  // Commands first, then mentions over what is left. Both are tokens rather
+  // than formatting, and a command can carry a `:handle` target that a mention
+  // pass would otherwise be free to chew on.
+  final out = <InlineSpan>[];
+  for (final part in splitCommandSpans(text, ctx.commands)) {
+    if (part.isCommand) {
+      out.add(TextSpan(
+        text: part.text,
+        // The same colour a mention takes, tinted from it - see the note in
+        // buildFormattedMessage. Only the typeface differs.
+        style: ctx.current.copyWith(
+          color: ctx.style.mentionColor,
+          fontWeight: FontWeight.w700,
+          fontFamily: 'monospace',
+          backgroundColor: ctx.style.mentionColor.withValues(alpha: 0.18),
+        ),
+      ));
+      continue;
+    }
+    out.addAll(_mentionSpansFor(part.text, ctx));
+  }
+  return out;
+}
+
+List<InlineSpan> _mentionSpansFor(String text, _Ctx ctx) {
+  if (text.isEmpty) return const [];
   if (ctx.members.isEmpty) return [TextSpan(text: text, style: ctx.current)];
 
-  final spans = splitMentionSpans(text, ctx.members);
   return [
-    for (final span in spans)
+    for (final span in splitMentionSpans(text, ctx.members))
       TextSpan(
         text: span.text,
         style: span.isMention
@@ -284,9 +318,16 @@ Widget buildFormattedMessage({
   required String source,
   required MessageFormatStyle style,
   required List<UsersContactPreview> members,
+  /// Command names available in this conversation - see splitCommandSpans.
+  Set<String> commands = const {},
   TextAlign align = TextAlign.start,
 }) {
-  final ctx = _Ctx(style: style, members: members, current: style.base);
+  final ctx = _Ctx(
+      style: style,
+      members: members,
+      commands: commands,
+      current: style.base);
+
   final blocks = _blocks(source, ctx, align);
 
   if (blocks.length == 1) return blocks.first;
@@ -575,6 +616,55 @@ class _TableBlock extends StatelessWidget {
 
 /// A message stripped to one readable line.
 ///
+/// A QUOTE, with its tokens still shown.
+///
+/// The text goes through [messagePreviewText] first, which is what keeps a
+/// quote to a clipped line or two - a heading or a code fence reads as debris
+/// at this size, and that judgement has not changed.
+///
+/// What survives it are the TOKENS. A mention and a command are not
+/// formatting, they are what the message was ABOUT: a quote of "/summarize the
+/// thread" rendered as bare text loses the one word that says what was asked.
+///
+/// Mentions only, no links or emphasis - emphasis is already gone from the
+/// flattened text, and a tappable link inside a quote competes with the quote
+/// itself, which is a jump-to-message target.
+///
+/// The web counterpart is MessageContent's `preview` mode.
+Widget buildQuotedMessage({
+  required String source,
+  required MessageFormatStyle style,
+  required List<UsersContactPreview> members,
+  Set<String> commands = const {},
+  // Null by default, so the quoted BUBBLE keeps growing to its natural height
+  // exactly as the Text this replaced did. The composer's reply panel passes
+  // real values, because that one has always been a clipped two lines.
+  int? maxLines,
+  TextOverflow? overflow,
+  TextAlign? textAlign,
+}) {
+  final flat = messagePreviewText(source);
+  if (flat.isEmpty) return const SizedBox.shrink();
+
+  final ctx = _Ctx(
+      style: style,
+      members: members,
+      commands: commands,
+      current: style.base);
+
+  return Text.rich(
+    // _mentions, not _inline: the full inline pass would re-apply link and
+    // emphasis rules to text that has already been flattened. It carries both
+    // token kinds.
+    TextSpan(children: _mentions(flat, ctx)),
+    // Whatever the caller had. Clipping is the caller's business - imposing it
+    // here would change a layout that has nothing to do with rendering tokens.
+    maxLines: maxLines,
+    overflow: overflow,
+    textAlign: textAlign,
+  );
+}
+
 /// For the places a message is QUOTED rather than shown - the strip above the
 /// composer, the quoted bubble on a reply, the conversation list's last-message
 /// line - where the box is a clipped line or two and a heading or a code fence

@@ -32,6 +32,12 @@ class CLColors {
   static const greenStrongDark = Color(0xFF35D494);
   static const gold = Color(0xFFE69500);
   static const goldSoftLight = Color(0xFFFFF2DB);
+  // The accent as a LABEL. #E69500 as text measures about 2.2:1 on goldSoft
+  // and about 2.8:1 on a light surface, so the accent itself cannot be the
+  // label - these are the readable forms, dark on a light surface and light
+  // on a dark one. Same two steps --gold-700/--gold-300 carry on the web.
+  static const goldTextLight = Color(0xFF8A5A00);
+  static const goldTextDark = Color(0xFFFFD489);
   static const pink = Color(0xFFFF5B6B);
   static const pinkSoftLight = Color(0xFFFFE6E9);
   static const online = Color(0xFF2ECC71);
@@ -199,6 +205,9 @@ class CLPalette extends ThemeExtension<CLPalette> {
   final Color greenStrong;
   final Color gold;
   final Color goldSoft;
+
+  /// The accent in the form that is legible as TEXT on an ordinary surface.
+  final Color goldText;
   final Color pink;
   final Color pinkSoft;
   final Color online;
@@ -227,6 +236,7 @@ class CLPalette extends ThemeExtension<CLPalette> {
     required this.greenStrong,
     required this.gold,
     required this.goldSoft,
+    required this.goldText,
     required this.pink,
     required this.pinkSoft,
     required this.online,
@@ -256,6 +266,7 @@ class CLPalette extends ThemeExtension<CLPalette> {
     greenStrong: CLColors.greenStrongLight,
     gold: CLColors.gold,
     goldSoft: CLColors.goldSoftLight,
+    goldText: CLColors.goldTextLight,
     pink: CLColors.pink,
     pinkSoft: CLColors.pinkSoftLight,
     online: CLColors.online,
@@ -289,6 +300,7 @@ class CLPalette extends ThemeExtension<CLPalette> {
     greenStrong: CLColors.greenStrongDark,
     gold: CLColors.gold,
     goldSoft: Color(0x29E69500),
+    goldText: CLColors.goldTextDark,
     pink: CLColors.pink,
     pinkSoft: Color(0x29FF5B6B),
     online: CLColors.online,
