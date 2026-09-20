@@ -1623,17 +1623,21 @@ class ConversationStateView extends State<ConversationView> {
               final command = suggestions[index];
               return ListTile(
                 dense: true,
-                // -4, not -2: the two menus are one component as far as
-                // anybody typing is concerned - you go from "@" to "/"
-                // without the list changing shape - and a command row is a
-                // single line of text that sat in a pool of its own padding.
-                visualDensity:
-                    const VisualDensity(horizontal: -2, vertical: -4),
-                leading: Icon(
-                  command.isSystem ? Icons.bolt : Icons.smart_toy,
-                  size: 20,
-                  color: p.text3,
-                ),
+                // VERTICAL only. The two menus are one component as far as
+                // anybody typing is concerned - you go from "@" to "/" without
+                // the list changing shape - and a command row is a single line
+                // of text that sat in a pool of its own padding.
+                //
+                // Horizontal density is left alone and the inset is set
+                // explicitly below: squeezing it here pulled the TRAILING
+                // badges hard against the panel's border, because a negative
+                // horizontal density eats the ListTile's own side padding.
+                visualDensity: const VisualDensity(vertical: -4),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                // No leading icon. The web list has none either, and the
+                // owner already sits on the right of every row - a glyph that
+                // only repeats "System" or "a bot" is one more thing to read
+                // in a menu you are skimming.
                 title: Text(command.insert,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1685,12 +1689,17 @@ class ConversationStateView extends State<ConversationView> {
               final member = suggestions[index];
               return ListTile(
                 dense: true,
-                // -4, not -2: the two menus are one component as far as
-                // anybody typing is concerned - you go from "@" to "/"
-                // without the list changing shape - and a command row is a
-                // single line of text that sat in a pool of its own padding.
-                visualDensity:
-                    const VisualDensity(horizontal: -2, vertical: -4),
+                // VERTICAL only. The two menus are one component as far as
+                // anybody typing is concerned - you go from "@" to "/" without
+                // the list changing shape - and a command row is a single line
+                // of text that sat in a pool of its own padding.
+                //
+                // Horizontal density is left alone and the inset is set
+                // explicitly below: squeezing it here pulled the TRAILING
+                // badges hard against the panel's border, because a negative
+                // horizontal density eats the ListTile's own side padding.
+                visualDensity: const VisualDensity(vertical: -4),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                 leading: CLAvatar(
                   id: member.entityID,
                   entityId: member.entityID,
@@ -1699,37 +1708,61 @@ class ConversationStateView extends State<ConversationView> {
                   size: 28,
                   kind: member.entityType,
                 ),
-                // The same three markers, in the same order, the web list
-                // uses: verified first because it qualifies the NAME, then
-                // what kind of entity this is. A page and a bot are both
-                // things you can @mention and neither is a person, which is
-                // exactly what somebody picking from this list needs to know.
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+                // BESIDE THE NAME, not in `trailing`.
+                //
+                // Trailing pins a widget to the far right of the row, which
+                // left the badges floating against the panel edge with a gap
+                // of whitespace between them and the name they qualify. They
+                // describe the NAME - this is verified, this one is a page -
+                // so they belong next to it, which is where the web list puts
+                // them.
+                //
+                // Order matches the web: verified first because it qualifies
+                // the name, then what kind of entity this is. A page and a bot
+                // are both things you can @mention and neither is a person,
+                // which is exactly what somebody picking from this list needs
+                // to know.
+                title: Row(
                   children: [
+                    // Flexible, so a long name ellipsises rather than pushing
+                    // the badges out of the row.
+                    Flexible(
+                      child: Text(mentionFullNameFor(member),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: p.text, fontSize: CLType.bodySm)),
+                    ),
                     if (member.isVerified == true)
-                      Tooltip(
-                        message: 'Verified',
-                        child: Icon(Icons.verified,
-                            size: 14, color: CLAccent.of(context)),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Tooltip(
+                          message: 'Verified',
+                          child: Icon(Icons.verified,
+                              size: 14, color: CLAccent.of(context)),
+                        ),
                       ),
                     if (member.isPage)
-                      Tooltip(
-                        message: 'Page',
-                        child: Icon(Icons.flag, size: 14, color: p.text3),
+                      Padding(
+                        // Spaced, not stacked: two badges touching read as one
+                        // smudged glyph at 14px.
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Tooltip(
+                          message: 'Page',
+                          child: Icon(Icons.flag, size: 14, color: p.text3),
+                        ),
                       ),
                     if (member.isBot)
-                      Tooltip(
-                        message: 'Bot',
-                        child:
-                            Icon(Icons.smart_toy, size: 14, color: p.text3),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Tooltip(
+                          message: 'Bot',
+                          child:
+                              Icon(Icons.smart_toy, size: 14, color: p.text3),
+                        ),
                       ),
                   ],
                 ),
-                title: Text(mentionFullNameFor(member),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: p.text, fontSize: CLType.bodySm)),
                 subtitle: Text("@${mentionLabelFor(member)}",
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
