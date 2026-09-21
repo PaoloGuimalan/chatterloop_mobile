@@ -26,6 +26,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
 import 'package:chatterloop_app/core/utils/comment_mentions.dart';
+import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/core/utils/hashtags.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
@@ -915,20 +916,28 @@ class CommentRow extends StatelessWidget {
                         ),
                         if (comment.text.isNotEmpty) ...[
                           const SizedBox(height: 2),
-                          Text.rich(
-                            TextSpan(
-                              children: commentTextSpans(
-                                comment.text,
-                                TextStyle(
-                                    fontSize: CLType.bodySm,
-                                    height: 1.35,
-                                    color: p.text),
-                                mentionColor: p.brand,
-                                hashtagColor: p.brand,
-                                onHashtagTap: (name) =>
-                                    openHashtagTopic(context, name),
-                              ),
+                          // The SAME renderer chat uses. A bot answers a
+                          // comment with model prose, so "**bold**" and
+                          // "- bullets" arrived as literal punctuation here
+                          // long after messages stopped showing them that way.
+                          //
+                          // `anyMention` and the hashtag pair are what make it
+                          // a comment rather than a message: a comment can
+                          // mention anyone, and its "#topic" is a place to go.
+                          buildFormattedMessage(
+                            source: comment.text,
+                            style: MessageFormatStyle(
+                              base: TextStyle(
+                                  fontSize: CLType.bodySm,
+                                  height: 1.35,
+                                  color: p.text),
+                              mentionColor: p.brand,
                             ),
+                            members: const [],
+                            anyMention: true,
+                            hashtagColor: p.brand,
+                            onHashtagTap: (name) =>
+                                openHashtagTopic(context, name),
                           ),
                         ],
                       ],

@@ -38,6 +38,8 @@ import 'package:chatterloop_app/core/utils/chat_commands.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
+import 'package:chatterloop_app/core/utils/comment_mentions.dart';
+import 'package:chatterloop_app/core/utils/hashtags.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 
 /// Protocols we will turn into a real link.
@@ -85,16 +87,40 @@ class _Ctx {
 
   /// Command names available in this conversation - see splitCommandSpans.
   final Set<String> commands;
+
+  /// COMMENTS: every well-formed "@handle", not just the member list.
+  ///
+  /// A conversation HAS a member list, so chat can check a handle against it
+  /// and leave a stranger's name as plain text. A comment can mention anyone,
+  /// so every token is highlighted and one matching nobody is styled but inert
+  /// - the same deal the server gives it. See comment_mentions.dart.
+  final bool anyMention;
+
+  /// COMMENTS: hashtags are topics people can open. Chat has none, so the rule
+  /// is absent there rather than present and inert - a "#" in a message is
+  /// punctuation and must stay punctuation.
+  final Color? hashtagColor;
+  final void Function(String name)? onHashtagTap;
+
   final TextStyle current;
 
   const _Ctx(
       {required this.style,
       required this.members,
       this.commands = const {},
+      this.anyMention = false,
+      this.hashtagColor,
+      this.onHashtagTap,
       required this.current});
 
   _Ctx withStyle(TextStyle next) => _Ctx(
-      style: style, members: members, commands: commands, current: next);
+      style: style,
+      members: members,
+      commands: commands,
+      anyMention: anyMention,
+      hashtagColor: hashtagColor,
+      onHashtagTap: onHashtagTap,
+      current: next);
 }
 
 /// Order matters. Inline code comes first so backticks win over the emphasis
@@ -276,18 +302,46 @@ List<InlineSpan> _mentions(String text, _Ctx ctx) {
 
 List<InlineSpan> _mentionSpansFor(String text, _Ctx ctx) {
   if (text.isEmpty) return const [];
-  if (ctx.members.isEmpty) return [TextSpan(text: text, style: ctx.current)];
 
-  return [
-    for (final span in splitMentionSpans(text, ctx.members))
-      TextSpan(
+  // Which rule decides what counts as a mention - the ONLY difference between
+  // a comment and a message here. Everything either side of it is shared, so
+  // the two cannot drift about what bold or a bullet looks like.
+  final spans = ctx.anyMention
+      ? splitCommentMentionSpans(text)
+      : (ctx.members.isEmpty ? null : splitMentionSpans(text, ctx.members));
+
+  if (spans == null) return _hashtagged(text, ctx);
+
+  final out = <InlineSpan>[];
+  for (final span in spans) {
+    if (span.isMention) {
+      out.add(TextSpan(
         text: span.text,
-        style: span.isMention
-            ? ctx.current.copyWith(
-                color: ctx.style.mentionColor, fontWeight: FontWeight.w700)
-            : ctx.current,
-      )
-  ];
+        style: ctx.current.copyWith(
+            color: ctx.style.mentionColor, fontWeight: FontWeight.w700),
+      ));
+      continue;
+    }
+    // Hashtags are split out of what is left AFTER mentions, so "@ana" is
+    // never re-read as a tag - the same order commentTextSpans used.
+    out.addAll(_hashtagged(span.text, ctx));
+  }
+  return out;
+}
+
+/// Tappable topics, when the caller asked for them. Plain text when not.
+List<InlineSpan> _hashtagged(String text, _Ctx ctx) {
+  final color = ctx.hashtagColor;
+  final onTap = ctx.onHashtagTap;
+  if (color == null || onTap == null) {
+    return [TextSpan(text: text, style: ctx.current)];
+  }
+  return hashtagifySpans(
+    text,
+    ctx.current,
+    hashtagColor: color,
+    onHashtagTap: onTap,
+  );
 }
 
 // ------------------------------------------------------------------ block --
@@ -333,11 +387,23 @@ Widget buildFormattedMessage({
   /// Command names available in this conversation - see splitCommandSpans.
   Set<String> commands = const {},
   TextAlign align = TextAlign.start,
+
+  /// COMMENTS: highlight every well-formed "@handle" instead of checking the
+  /// member list. A comment can mention anyone; a conversation cannot.
+  bool anyMention = false,
+
+  /// COMMENTS: make "#topic" tappable. Both are required together - a colour
+  /// with no handler is a link that does nothing, which is worse than text.
+  Color? hashtagColor,
+  void Function(String name)? onHashtagTap,
 }) {
   final ctx = _Ctx(
       style: style,
       members: members,
       commands: commands,
+      anyMention: anyMention,
+      hashtagColor: onHashtagTap == null ? null : hashtagColor,
+      onHashtagTap: hashtagColor == null ? null : onHashtagTap,
       current: style.base);
 
   final blocks = _blocks(source, ctx, align);
