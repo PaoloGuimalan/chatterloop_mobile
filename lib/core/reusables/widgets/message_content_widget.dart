@@ -10,12 +10,14 @@ import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/media_viewer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
+import 'package:chatterloop_app/core/reusables/widgets/reply_target_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/core/utils/media_downloader.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
+import 'package:chatterloop_app/models/messages_models/reply_target_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
@@ -251,6 +253,113 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   MessageContent? get _repliedTo {
     final list = _messageContent.replyedmessage;
     return (list != null && list.isNotEmpty) ? list[0] : null;
+  }
+
+  /// What this message replies to when that is NOT a message - a post sent
+  /// into the chat, or a reply to a moment or a thought. Message replies stay
+  /// on [_repliedTo] and the quote they have always had.
+  ReplyTarget? get _nonMessageTarget {
+    final target = _messageContent.replyedtarget;
+    return (_messageContent.isReply && target != null && !target.isMessage)
+        ? target
+        : null;
+  }
+
+  /// The quoted message's text - or, when it had none because it was only a
+  /// sent post / a moment or thought reply, the server's label for it
+  /// ("Sent a post"), so the quote is not an empty bubble.
+  String get _quotedContent {
+    final content = (_repliedTo?.content ?? "").toString();
+    final target = _messageContent.replyedtarget;
+    if (content.trim().isEmpty &&
+        _repliedTo?.messageType == "text" &&
+        target != null &&
+        target.isMessage &&
+        (target.text ?? "").isNotEmpty) {
+      return target.text!;
+    }
+    return content;
+  }
+
+  /// A sent post / moment reply / thought reply with no text of its own:
+  /// the card IS the message, so no empty bubble is drawn under it (it
+  /// showed as a thin blue pill), and long-press acts on the card.
+  bool get _isCardOnly => _ownCard != null;
+
+  /// A post message that arrived without its card (an older server): a text
+  /// bubble saying what it was, never the raw post id as a "file".
+  bool get _isBarePostMessage =>
+      _messageContent.messageType == "post" && _messageContent.postcard == null;
+  String get _bubbleContent =>
+      _isBarePostMessage ? "Sent a post" : _messageContent.content;
+  String get _bubbleType =>
+      _isBarePostMessage ? "text" : _messageContent.messageType;
+
+  /// The card that IS this message: a post message's (messageType "post", a
+  /// post sent with no note), or - for sends stored the older way, an empty
+  /// text reply - the post / moment / thought it replied to.
+  ReplyTarget? get _ownCard {
+    if (_messageContent.isDeleted == true) return null;
+    if (_messageContent.messageType == "post") return _messageContent.postcard;
+    final legacy = _nonMessageTarget;
+    if (legacy != null &&
+        _messageContent.messageType == "text" &&
+        _messageContent.content.toString().trim().isEmpty) {
+      return legacy;
+    }
+    return null;
+  }
+
+  /// [asMessage]: the card IS this message (a post sent with no note) - drawn
+  /// at full strength, with the message's reactions pill on its lower edge
+  /// the way a bubble carries it.
+  Widget _replyTargetBlock(ReplyTarget target, {bool asMessage = false}) {
+    final isOwnReply = _messageContent.sender == _currentUserID;
+    final reactions = _messageContent.reactions;
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment:
+              isOwnReply ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            Flexible(
+              child: Padding(
+                padding: EdgeInsets.only(left: 7, right: 7, bottom: 7),
+                child: Text(
+                  replyTargetLabel(target, currentEntityId: _currentUserID),
+                  style: TextStyle(
+                      fontSize: CLType.caption,
+                      color: Color(0xFF565656),
+                      fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ],
+        ),
+        ReplyTargetCard(
+            target: target, alignEnd: isOwnReply, asMessage: asMessage),
+        if (asMessage && reactions != null && reactions.isNotEmpty)
+          Row(
+            mainAxisAlignment:
+                isOwnReply ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              Transform.translate(
+                offset: const Offset(0, -10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: GestureDetector(
+                    onTap: _openReactionsSheet,
+                    child: buildReactionPill(reactions, cl(context)),
+                  ),
+                ),
+              ),
+            ],
+          )
+        else
+          const SizedBox(height: 4),
+      ],
+    );
   }
 
   @override
@@ -690,8 +799,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             style: MessageFormatStyle(
                               base: TextStyle(
                                   fontSize: CLType.title,
-                                  color:
-                                      isCurrentUser ? Colors.white : p.text),
+                                  color: isCurrentUser ? Colors.white : p.text),
                               mentionColor: isCurrentUser
                                   ? Colors.white
                                   : CLAccent.textOf(context),
@@ -1866,29 +1974,41 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                               )
                             ],
                           ),
-                          Opacity(
-                            opacity: 0.6,
-                            child: _repliedTo!.isDeleted == true
-                                ? messageDeletedItem(
-                                    _repliedTo!.messageType,
-                                    _messageContent.sender == _currentUserID,
-                                    _repliedTo!.sender == _currentUserID,
-                                    true)
-                                : messageTypeSwitch(
-                                    _repliedTo!.content,
-                                    _repliedTo!.messageType,
-                                    _repliedTo!.messageID,
-                                    _messageContent.sender == _currentUserID,
-                                    _repliedTo!.sender == _currentUserID,
-                                    true,
-                                    false,
-                                    false),
-                          )
+                          if (_messageContent.replyedtarget?.attached != null)
+                            // Quoting a post sent with no note (or a moment /
+                            // thought reply without text): the quote is the
+                            // card that message carried.
+                            ReplyTargetCard(
+                                target:
+                                    _messageContent.replyedtarget!.attached!,
+                                alignEnd:
+                                    _messageContent.sender == _currentUserID)
+                          else
+                            Opacity(
+                              opacity: 0.6,
+                              child: _repliedTo!.isDeleted == true
+                                  ? messageDeletedItem(
+                                      _repliedTo!.messageType,
+                                      _messageContent.sender == _currentUserID,
+                                      _repliedTo!.sender == _currentUserID,
+                                      true)
+                                  : messageTypeSwitch(
+                                      _quotedContent,
+                                      _repliedTo!.messageType,
+                                      _repliedTo!.messageID,
+                                      _messageContent.sender == _currentUserID,
+                                      _repliedTo!.sender == _currentUserID,
+                                      true,
+                                      false,
+                                      false),
+                            )
                         ],
                       )
-                    : SizedBox(
-                        height: 0,
-                      ),
+                    : _nonMessageTarget != null && !_isCardOnly
+                        ? _replyTargetBlock(_nonMessageTarget!)
+                        : SizedBox(
+                            height: 0,
+                          ),
                 _messageContent.isDeleted as bool
                     ? messageDeletedItem(
                         _messageContent.messageType,
@@ -1955,17 +2075,24 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     // channel, but only while long-pressed.
                                     child: Material(
                                       type: MaterialType.transparency,
-                                      child: messageTypeSwitch(
-                                          _messageContent.content,
-                                          _messageContent.messageType,
-                                          _messageContent.messageID,
-                                          _messageContent.sender ==
-                                              _currentUserID,
-                                          _messageContent.sender ==
-                                              _currentUserID,
-                                          false,
-                                          true,
-                                          false),
+                                      child: _isCardOnly
+                                          ? ReplyTargetCard(
+                                              asMessage: true,
+                                              target: _ownCard!,
+                                              alignEnd:
+                                                  _messageContent.sender ==
+                                                      _currentUserID)
+                                          : messageTypeSwitch(
+                                              _bubbleContent,
+                                              _bubbleType,
+                                              _messageContent.messageID,
+                                              _messageContent.sender ==
+                                                  _currentUserID,
+                                              _messageContent.sender ==
+                                                  _currentUserID,
+                                              false,
+                                              true,
+                                              false),
                                     ),
                                   ), // message widget
                                   onReactionTap: (reaction) {
@@ -2032,19 +2159,24 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                               onSurface: accentOnSurface,
                               child: Material(
                                 type: MaterialType.transparency,
-                                child: messageTypeSwitch(
-                                    _messageContent.content,
-                                    _messageContent.messageType,
-                                    _messageContent.messageID,
-                                    _messageContent.sender == _currentUserID,
-                                    _messageContent.sender == _currentUserID,
-                                    false,
-                                    false,
-                                    // Reply assist v2 takes a single anchor
-                                    // message, so there is no per-message
-                                    // selection step and the marking checkboxes
-                                    // stay off.
-                                    false),
+                                child: _isCardOnly
+                                    ? _replyTargetBlock(_ownCard!,
+                                        asMessage: true)
+                                    : messageTypeSwitch(
+                                        _bubbleContent,
+                                        _bubbleType,
+                                        _messageContent.messageID,
+                                        _messageContent.sender ==
+                                            _currentUserID,
+                                        _messageContent.sender ==
+                                            _currentUserID,
+                                        false,
+                                        false,
+                                        // Reply assist v2 takes a single anchor
+                                        // message, so there is no per-message
+                                        // selection step and the marking checkboxes
+                                        // stay off.
+                                        false),
                               ),
                             )),
                       )

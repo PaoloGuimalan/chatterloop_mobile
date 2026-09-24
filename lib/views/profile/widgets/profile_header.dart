@@ -8,6 +8,7 @@
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/views/moments/profile_ephemeral.dart';
 import 'package:flutter/material.dart';
 
 const double _coverHeight = 170;
@@ -206,13 +207,25 @@ class ProfileHeader extends StatelessWidget {
                         BoxDecoration(shape: BoxShape.circle, color: p.bg),
                     child: Stack(
                       children: [
-                        CLAvatar(
-                            id: id,
-                            entityId: entityId,
-                            name: displayName,
-                            src: avatarSrc,
-                            size: _avatarSize,
-                            online: online),
+                        entityId == null || entityId!.isEmpty
+                            ? CLAvatar(
+                                id: id,
+                                entityId: entityId,
+                                name: displayName,
+                                src: avatarSrc,
+                                size: _avatarSize,
+                                online: online)
+                            : ProfileMomentAvatar(
+                                entityId: entityId!,
+                                size: _avatarSize,
+                                child: CLAvatar(
+                                    id: id,
+                                    entityId: entityId,
+                                    name: displayName,
+                                    src: avatarSrc,
+                                    size: _avatarSize,
+                                    online: online),
+                              ),
                         if (onChangeAvatar != null)
                           // INSIDE the avatar's own box, not hanging off its
                           // corner - same hit-testing rule as above.
@@ -230,6 +243,36 @@ class ProfileHeader extends StatelessWidget {
                   ),
                 ),
               ),
+              // The live thought, above-right of the avatar (design 2h).
+              // Drawn after the avatar so it sits on top; inside the Stack's
+              // bounds (over the cover) so it stays tappable.
+              if (entityId != null && entityId!.isNotEmpty)
+                // Anchored by its BOTTOM-LEFT, just above-right of the
+                // avatar's head: a short thought used to be centred in a
+                // wide slot and drifted away from the picture it belongs to.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  // Stack height minus (avatar top + 14): the tail dots
+                  // land on the avatar's upper edge.
+                  bottom: _avatarSize - 10,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Expanded(child: SizedBox.shrink()),
+                      Expanded(
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.only(left: _avatarSize * 0.22),
+                          child: Align(
+                            alignment: Alignment.bottomLeft,
+                            child: ProfileThoughtBubble(entityId: entityId!),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),

@@ -95,3 +95,73 @@ class ProfileFeedSwitcher extends StatelessWidget {
     );
   }
 }
+
+/// The same segmented control as [ProfileFeedSwitcher] - track, height,
+/// rounding, active fill - for any other set of choices on a profile, so a
+/// second switcher (Archived > Feed / Moments) reads as the same control.
+class ProfileSegmentSwitcher extends StatelessWidget {
+  final List<({String label, IconData icon})> segments;
+  final int active;
+  final ValueChanged<int> onChanged;
+
+  const ProfileSegmentSwitcher({
+    super.key,
+    required this.segments,
+    required this.active,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: p.surface2,
+        borderRadius: BorderRadius.circular(CLRadii.md),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < segments.length; i++)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: i == active ? null : () => onChanged(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  curve: Curves.easeOut,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: i == active ? p.brand : Colors.transparent,
+                    borderRadius: BorderRadius.circular(CLRadii.sm),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(segments[i].icon,
+                          size: 16,
+                          color: i == active ? Colors.white : p.text2),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          segments[i].label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: i == active ? Colors.white : p.text2,
+                            fontSize: CLType.bodySm,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

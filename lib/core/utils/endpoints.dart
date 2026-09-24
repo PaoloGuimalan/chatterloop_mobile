@@ -281,6 +281,13 @@ class Endpoints {
   String seenNewMessages = '/u/seenNewMessages';
   String postIsTyping = '/m/istypingbroadcast';
   String sendNewMessage = '/u/sendMessage';
+
+  /// "Send in message": a post into up to 10 conversations, each as a message
+  /// replying to {type: "post", id}. JWT-signed {token}, like sendNewMessage.
+  String sendPost = '/u/sendPost';
+
+  /// Who a post can be sent to: people & pages, groups, server channels.
+  String sendPostTargets = '/u/sendPostTargets';
   String replyAssist = '/prompt/reply-assist';
 
   /// Combined upload+send endpoint for image/file/voice message attachments

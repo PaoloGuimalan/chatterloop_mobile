@@ -57,6 +57,10 @@ class MessageItemView extends StatelessWidget {
     // Matches webapp's lastMessagePreview() exactly, including that a
     // deleted message still gets the "you: " prefix like every other type.
     if (message.isDeleted) return "$prefix[Deleted message]";
+    // "post": a post sent with no note - its list text is "Sent a post".
+    if (message.messageType == "post") {
+      return "${prefix}Sent a post";
+    }
     if (message.messageType == "text" || message.messageType == "notif") {
       // Stripped, not raw: this is one clipped line, so "**ship it**" should
       // read as "ship it" rather than showing its asterisks.

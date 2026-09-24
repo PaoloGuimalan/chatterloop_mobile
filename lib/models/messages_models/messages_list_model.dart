@@ -1,5 +1,6 @@
 import 'package:chatterloop_app/models/call_models/voice_participant_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
+import 'package:chatterloop_app/models/messages_models/reply_target_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 
 /// Matches webapp's IConversation shape (interfaces.ts) as returned by the
@@ -83,7 +84,7 @@ class MessageItem {
       content: (json["content"] ?? "").toString(),
       messageDate: _parseDate(json["messageDate"]),
       isReply: json["isReply"] == true,
-      replyingTo: (json["replyingTo"] ?? "").toString(),
+      replyingTo: replyingToMessageId(json["replyingTo"]),
       reactions: json["reactions"] != null
           ? (json["reactions"] as List)
               .map((r) => ReactionItem.fromJson(r))

@@ -1,5 +1,6 @@
 import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
+import 'package:chatterloop_app/models/messages_models/reply_target_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 
 class MessageContent {
@@ -21,6 +22,15 @@ class MessageContent {
   List<UsersContactPreview>? reactionsWithInfo;
   LinkPreviewData? linkPreview;
 
+  /// What this message replies to, whatever it is - see ReplyTarget. For a
+  /// message reply the quote still comes from [replyedmessage]; this is what
+  /// draws a reply to (or a send of) a post, a moment or a thought.
+  ReplyTarget? replyedtarget;
+
+  /// messageType "post" (a post sent with no note): the post's card, which
+  /// IS the message. Its content is the post id.
+  ReplyTarget? postcard;
+
   MessageContent(
       this.messageID,
       this.conversationID,
@@ -38,7 +48,9 @@ class MessageContent {
       this.conversationType,
       this.replyedmessage,
       this.reactionsWithInfo,
-      this.linkPreview);
+      this.linkPreview,
+      {this.replyedtarget,
+      this.postcard});
 
   /// Every field is defensive - a real persisted message threw here (Null
   /// is not a subtype of String) despite matching the Mongoose schema on
@@ -64,7 +76,7 @@ class MessageContent {
         (json["content"] ?? "").toString(),
         ActionDate.fromJson(json["messageDate"]),
         json["isReply"] == true,
-        json["replyingTo"]?.toString() ?? "",
+        replyingToMessageId(json["replyingTo"]),
         json["reactions"] is List
             ? (json["reactions"] as List)
                 .whereType<Map>()
@@ -92,6 +104,8 @@ class MessageContent {
         json["linkPreview"] is Map
             ? LinkPreviewData.fromJson(
                 Map<String, dynamic>.from(json["linkPreview"]))
-            : null);
+            : null,
+        replyedtarget: ReplyTarget.tryParse(json["replyedtarget"]),
+        postcard: ReplyTarget.tryParse(json["postcard"]));
   }
 }

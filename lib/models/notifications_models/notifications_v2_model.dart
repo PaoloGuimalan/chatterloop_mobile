@@ -94,12 +94,30 @@ class NotificationRedirect {
 
   bool get isExternal => type == 'external';
 
-  factory NotificationRedirect.fromJson(Map<String, dynamic> json) =>
-      NotificationRedirect(
-        platform: (json['platform'] ?? '').toString(),
-        type: (json['type'] ?? '').toString(),
-        route: (json['route'] ?? '').toString(),
-      );
+  factory NotificationRedirect.fromJson(Map<String, dynamic> json) {
+    final type = (json['type'] ?? '').toString();
+    return NotificationRedirect(
+      platform: (json['platform'] ?? '').toString(),
+      type: type,
+      route: momentAwareRoute(type, (json['route'] ?? '').toString()),
+    );
+  }
+
+  /// A moment notification opens the Moments viewer, not the post page.
+  ///
+  /// The server sends the app `/post/<id>` for these, because app versions
+  /// without a Moments viewer can only open that. A reaction to a moment
+  /// always notifies the moment's OWNER, so here it is "my moments, starting
+  /// at this one" - `/moments/self` (the router resolves `self` to the acting
+  /// entity; the viewer falls back to the archive once it has expired).
+  static String momentAwareRoute(String type, String route) {
+    if (type != 'moment' || !route.startsWith('/post/')) return route;
+    final postId =
+        route.substring('/post/'.length).split(RegExp(r'[?#/]')).first;
+    if (postId.isEmpty) return route;
+    return Uri(path: '/moments/self', queryParameters: {'post': postId})
+        .toString();
+  }
 }
 
 /// One button on the notification, for one platform.

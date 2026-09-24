@@ -20,6 +20,7 @@ import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_item.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/views/moments/moments_strip.dart';
 import 'package:flutter/foundation.dart';
 import 'package:chatterloop_app/core/reusables/widgets/popular_topics.dart';
 import 'package:go_router/go_router.dart';
@@ -185,7 +186,11 @@ class _NewsfeedViewState extends State<NewsfeedView>
     }
   }
 
-  Future<void> _refresh() => _fetch(1);
+  Future<void> _refresh() {
+    // The Moments board reloads with the feed.
+    EphemeralEvents.moments.value++;
+    return _fetch(1);
+  }
 
   /// The acting entity this feed's contents belong to.
   ///
@@ -259,9 +264,16 @@ class _NewsfeedViewState extends State<NewsfeedView>
               // own feed, not someone's profile, so there is nobody to tag by
               // default.
               sliver: SliverToBoxAdapter(
-                child: ProfileComposerCard.forActingEntity(
-                  placeholder: "Share your thoughts…",
-                  onPosted: _refresh,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const MomentsStrip(),
+                    ProfileComposerCard.forActingEntity(
+                      placeholder: "Share your thoughts…",
+                      onPosted: _refresh,
+                      showMoment: true,
+                    ),
+                  ],
                 ),
               ),
             ),

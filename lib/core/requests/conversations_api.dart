@@ -14,6 +14,7 @@ import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
+import 'package:chatterloop_app/models/messages_models/send_post_targets_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -433,6 +434,71 @@ class ConversationsApi {
           data: {"token": JwtCodec.sign(payload.toJson())});
       if (response.data["status"] == false) return null;
       return EncodedResponse(response.data["message"]);
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
+  /// How many destinations one "Send in message" may reach - the server's
+  /// SEND_POST_MAX_CONVERSATIONS, which rejects more.
+  static const sendPostMaxConversations = 10;
+
+  /// Who "Send in message" can reach, filtered by [query]: people and pages
+  /// (ANYONE matching, not only existing chats), your group chats, and the
+  /// server channels you are in (server: GET /u/sendPostTargets).
+  Future<SendPostTargets?> getSendPostTargetsRequest(String query) async {
+    ContentValidator()
+        .printer('${_endpoints.apiUrl}${_endpoints.sendPostTargets}');
+    try {
+      final response = await _dio.get(_endpoints.sendPostTargets,
+          queryParameters: {'q': query});
+      final result = response.data["result"];
+      if (response.data["status"] == false || result is! Map) return null;
+      return SendPostTargets.fromJson(Map<String, dynamic>.from(result));
+    } catch (e) {
+      if (kDebugMode) {
+        print("ERROR");
+        print(e);
+      }
+      return null;
+    }
+  }
+
+  /// "Send in message" (webapp SendPostRequest): the post to each of
+  /// [targets] as a message replying to it, with [note] as its text. A person
+  /// or page is reached even with no chat yet - the server opens one the way
+  /// /m/crtc does.
+  ///
+  /// Null when the request itself fails; otherwise how many went through and
+  /// how many did not. It counts as ONE share of the post however many chats
+  /// it reaches.
+  Future<({int sent, int failed})?> sendPostRequest({
+    required String postId,
+    required List<SendPostTarget> targets,
+    String note = "",
+  }) async {
+    ContentValidator().printer('${_endpoints.apiUrl}${_endpoints.sendPost}');
+    try {
+      final response = await _dio.post(_endpoints.sendPost, data: {
+        "token": JwtCodec.sign({
+          "postID": postId,
+          "targets": targets.map((target) => target.toJson()).toList(),
+          "content": note,
+        }),
+      });
+      final result = response.data["result"];
+      if (result is! Map) return null;
+      final results = result["results"] is List
+          ? (result["results"] as List).whereType<Map>()
+          : const <Map>[];
+      return (
+        sent: result["sent"] is int ? result["sent"] as int : 0,
+        failed: results.where((entry) => entry["status"] != true).length,
+      );
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

@@ -22,6 +22,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dar
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_send.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_share.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
@@ -187,7 +188,22 @@ class _PostCardState extends State<PostCard> {
     widget.onChanged?.call(optimistic.copyWith(reactions: totals));
   }
 
+  /// Share offers both ways to share - to your feed, or into your chats - as
+  /// webapp's SharePostButton does. "Send in message" reports its own outcome
+  /// (post_send.dart); the feed repost is confirmed here as it always was.
   Future<void> _share() async {
+    final choice = await showShareOptionsSheet(context);
+    if (!mounted || choice == null) return;
+
+    if (choice == ShareChoice.inMessage) {
+      await showSendPostSheet(context, post: _post);
+      return;
+    }
+    if (choice == ShareChoice.toMoment) {
+      context.push('/moments/new', extra: _post);
+      return;
+    }
+
     final shared = await showSharePostSheet(context, post: _post);
     if (!mounted || !shared) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

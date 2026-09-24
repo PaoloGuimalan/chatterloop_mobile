@@ -23,6 +23,7 @@ import 'package:chatterloop_app/views/profile/widgets/profile_feed_switcher.dart
 import 'package:chatterloop_app/views/profile/widgets/saved_posts_feed.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
+import 'package:chatterloop_app/views/moments/moment_archive.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -428,14 +429,19 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                             ),
                           ProfileFeedMode.saves =>
                             SavedPostsFeed(key: _savesKey),
-                          ProfileFeedMode.archives => ProfileFeed(
-                              key: _archiveKey,
-                              handle: realm.slug ?? realm.id,
-                              archive: true,
-                              title: "",
-                              emptyMessage:
-                                  "Posts this page archives are hidden from its "
-                                  "profile and kept here.",
+                          // Archived feed posts, or the page's expired
+                          // Moments (the archive endpoint is the ACTING
+                          // entity's - here, this page).
+                          ProfileFeedMode.archives => ProfileArchiveTabs(
+                              feed: ProfileFeed(
+                                key: _archiveKey,
+                                handle: realm.slug ?? realm.id,
+                                archive: true,
+                                title: "",
+                                emptyMessage:
+                                    "Posts this page archives are hidden from its "
+                                    "profile and kept here.",
+                              ),
                             ),
                         },
                         const SizedBox(height: 24),

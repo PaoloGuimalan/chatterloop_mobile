@@ -31,6 +31,7 @@ import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 /// Same three values web's composer sends as `privacy.status`. "custom" is
 /// deliberately absent on both clients: the backend supports it but it needs an
@@ -711,6 +712,11 @@ class ProfileComposerCard extends StatelessWidget {
   /// Fired after a post is created, so the feed below reloads.
   final VoidCallback onPosted;
 
+  /// Adds a "Moment" shortcut beside Photo, opening Create Moment. Only the
+  /// newsfeed turns it on: on someone else's profile it would read as
+  /// posting a moment TO them.
+  final bool showMoment;
+
   const ProfileComposerCard({
     super.key,
     this.avatarId,
@@ -719,6 +725,7 @@ class ProfileComposerCard extends StatelessWidget {
     required this.placeholder,
     this.autoTag,
     required this.onPosted,
+    this.showMoment = false,
   });
 
   /// The composer with NO profile context - the newsfeed.
@@ -729,6 +736,7 @@ class ProfileComposerCard extends StatelessWidget {
     Key? key,
     required String placeholder,
     required VoidCallback onPosted,
+    bool showMoment = false,
   }) {
     final user = appStore.state.userAuth.user;
     final acting = user.activeEntity;
@@ -739,6 +747,7 @@ class ProfileComposerCard extends StatelessWidget {
       avatarSrc: acting?.profile ?? user.profile,
       placeholder: placeholder,
       onPosted: onPosted,
+      showMoment: showMoment,
     );
   }
 
@@ -859,32 +868,27 @@ class ProfileComposerCard extends StatelessWidget {
               // Left, like web's composer: an option you scan past on the way
               // to the field above, not a call to action competing with Post.
               Flexible(
-                child: InkWell(
-                  onTap: () => _open(context, withMedia: true),
-                  borderRadius: BorderRadius.circular(CLRadii.sm),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.image_outlined, size: 18, color: p.green),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            "Photo",
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: CLType.label,
-                              fontWeight: FontWeight.w600,
-                              color: p.text2,
-                            ),
-                          ),
-                        ),
-                      ],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: _ComposerAction(
+                        icon: Icons.image_outlined,
+                        color: p.green,
+                        label: "Photo",
+                        onTap: () => _open(context, withMedia: true),
+                      ),
                     ),
-                  ),
+                    if (showMoment)
+                      Flexible(
+                        child: _ComposerAction(
+                          icon: Icons.timelapse_rounded,
+                          color: p.brand,
+                          label: "Moment",
+                          onTap: () => context.push('/moments/new'),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               CLBtn(
@@ -895,6 +899,52 @@ class ProfileComposerCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One of the composer card's quiet shortcuts (Photo, Moment).
+class _ComposerAction extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+
+  const _ComposerAction({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(CLRadii.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: CLType.label,
+                  fontWeight: FontWeight.w600,
+                  color: p.text2,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

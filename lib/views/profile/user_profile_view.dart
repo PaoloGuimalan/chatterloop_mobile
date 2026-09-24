@@ -18,6 +18,7 @@ import 'package:chatterloop_app/views/profile/widgets/profile_feed_switcher.dart
 import 'package:chatterloop_app/views/profile/widgets/saved_posts_feed.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
+import 'package:chatterloop_app/views/moments/moment_archive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -775,14 +776,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               ),
                             ProfileFeedMode.saves =>
                               SavedPostsFeed(key: _savesKey),
-                            ProfileFeedMode.archives => ProfileFeed(
-                                key: _archiveKey,
-                                handle: profile!.username,
-                                archive: true,
-                                title: "",
-                                emptyMessage:
-                                    "Posts you archive are hidden from your "
-                                    "profile and kept here.",
+                            // Archived feed posts, or expired Moments.
+                            ProfileFeedMode.archives => ProfileArchiveTabs(
+                                feed: ProfileFeed(
+                                  key: _archiveKey,
+                                  handle: profile!.username,
+                                  archive: true,
+                                  title: "",
+                                  emptyMessage:
+                                      "Posts you archive are hidden from your "
+                                      "profile and kept here.",
+                                ),
                               ),
                           },
                         ],

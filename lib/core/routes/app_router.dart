@@ -35,6 +35,9 @@ import 'package:chatterloop_app/views/profile/bot_profile_view.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/post_preview_view.dart';
+import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/views/moments/create_moment_screen.dart';
+import 'package:chatterloop_app/views/moments/moment_viewer_screen.dart';
 import 'package:chatterloop_app/views/search/search_detail_view.dart';
 import 'package:chatterloop_app/views/search/search_view.dart';
 import 'package:chatterloop_app/views/servers/server_channels_view.dart';
@@ -467,6 +470,40 @@ GoRouter buildAppRouter(AuthController authController) {
                       SearchDetailKindMeta.fromSlug(s.pathParameters['kind']!)!,
                   query: s.uri.queryParameters['q'] ?? '',
                 )),
+          ),
+          // '/moments/new' before '/moments/:entityId' - go_router takes the
+          // first match. `extra` is the post being added, from Share.
+          GoRoute(
+            path: '/moments/new',
+            pageBuilder: (c, s) => _clPage(
+                s,
+                CreateMomentScreen(
+                    sharedPost: s.extra is PostPreview
+                        ? s.extra as PostPreview
+                        : null)),
+          ),
+          // Your archived moments, played in the viewer. Also before
+          // '/moments/:entityId'.
+          GoRoute(
+            path: '/moments/archive',
+            pageBuilder: (c, s) => _clPage(
+                s,
+                MomentViewerScreen(
+                    entityId: appStore.state.userAuth.user.entityId,
+                    startPostId: s.uri.queryParameters['post'],
+                    archive: true)),
+          ),
+          GoRoute(
+            path: '/moments/:entityId',
+            pageBuilder: (c, s) => _clPage(
+                s,
+                MomentViewerScreen(
+                    // "self": your own moments - where a notification
+                    // about one of them points.
+                    entityId: s.pathParameters['entityId'] == 'self'
+                        ? appStore.state.userAuth.user.entityId
+                        : s.pathParameters['entityId']!,
+                    startPostId: s.uri.queryParameters['post'])),
           ),
           GoRoute(
             path: '/post/:postId',

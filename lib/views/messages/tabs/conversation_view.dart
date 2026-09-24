@@ -44,6 +44,7 @@ import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:chatterloop_app/core/reusables/widgets/reply_target_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:flutter_redux/flutter_redux.dart';
@@ -1295,7 +1296,9 @@ class ConversationStateView extends State<ConversationView> {
       overflow: TextOverflow.ellipsis,
     );
 
-    if (quoted == null || quoted.messageType != "text") {
+    if (quoted == null ||
+        quoted.messageType != "text" ||
+        quoted.content.toString().trim().isEmpty) {
       return Text(
         _quotedPreviewText,
         style: style,
@@ -1321,6 +1324,20 @@ class ConversationStateView extends State<ConversationView> {
   String get _quotedPreviewText {
     final quoted = _quotedMessage;
     if (quoted == null) return "";
+    // A post message (a post sent with no note): which post.
+    if (quoted.messageType == "post") {
+      final card = quoted.postcard;
+      return card == null ? "Sent a post" : replyTargetSummary(card);
+    }
+    // A sent post / moment or thought reply with no note: say what it was
+    // (the panel was otherwise blank).
+    final target = quoted.replyedtarget;
+    if (quoted.messageType == "text" &&
+        quoted.content.toString().trim().isEmpty &&
+        target != null &&
+        !target.isMessage) {
+      return replyTargetSummary(target);
+    }
     return messageReplyIdentifier(quoted.messageType, quoted.content);
   }
 

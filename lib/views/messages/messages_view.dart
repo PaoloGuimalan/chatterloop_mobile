@@ -9,6 +9,7 @@ import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/message_item.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/views/moments/thoughts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -202,6 +203,14 @@ class MessagesStateView extends State<MessagesView> {
                       ),
                     ],
                   ),
+                ),
+                // Thoughts, under the screen's actions and just above the
+                // conversations - where web puts it (below search and the
+                // list filters). No divider under it.
+                const Padding(
+                  // A little air between the thoughts and the conversations.
+                  padding: EdgeInsets.only(top: 4, bottom: 10),
+                  child: ThoughtsRailView(),
                 ),
                 Expanded(
                   child: AnimatedSwitcher(
