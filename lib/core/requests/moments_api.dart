@@ -158,11 +158,19 @@ class MomentsApi {
   /// ONE uploaded photo/video ([mediaUrl] + [mediaType] from
   /// ProfileApi.uploadMediaRequest) OR one shared post ([sharedPostId]).
   /// Returns null on success, else the reason.
+  ///
+  /// A moment made in the editor (an MP4 rendered on the device) also sends
+  /// its [poster] (an uploaded JPEG), what it was made from ([source]:
+  /// "photo" | "video") and whether it has sound ([hasAudio]). The server
+  /// then checks the file is a streamable H.264/AAC MP4 of at most 2 minutes.
   Future<String?> createMomentRequest({
     String? mediaUrl,
     String? mediaType,
     String? fileName,
     String? sharedPostId,
+    ({String url, int width, int height})? poster,
+    String? source,
+    bool? hasAudio,
     required String caption,
     required String privacy,
     required bool allowReplies,
@@ -180,6 +188,10 @@ class MomentsApi {
       },
       'privacy': {'status': privacy},
       'allowReplies': allowReplies,
+      if (poster != null)
+        'poster': {'url': poster.url, 'w': poster.width, 'h': poster.height},
+      if (source != null) 'source': source,
+      if (hasAudio != null) 'hasAudio': hasAudio,
     };
     try {
       final response = await _nodeDio.post('/posts/moments/create',

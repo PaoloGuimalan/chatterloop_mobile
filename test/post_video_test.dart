@@ -64,9 +64,16 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
     await _events.remove(playerId)?.close();
   }
 
+  /// Fails this many creations, then works - a transient failure.
+  int failNextCreates = 0;
+
   @override
   Future<int?> createWithOptions(VideoCreationOptions options) async {
     if (failToCreate) throw PlatformException(code: 'VideoError');
+    if (failNextCreates > 0) {
+      failNextCreates--;
+      throw PlatformException(code: 'VideoError');
+    }
     created++;
     final id = _nextId++;
     _events[id] = StreamController<VideoEvent>();
@@ -248,15 +255,94 @@ void main() {
       expect(fake.created, 1);
       expect(find.byType(VideoPlayerScreen), findsOneWidget);
 
-      // Play the second: the first hands the baton over and folds back to a
-      // still, so there is still only ONE live player - pausing the other
-      // would not have been enough, since a paused player keeps its decoder.
+      // Play the second: each video is its own player, as in a browser - the
+      // first keeps playing rather than being paused or folded away.
       await tester.tap(find.byType(InlinePostVideo).last);
       await tester.pump();
       await tester.pump();
-      expect(find.byType(VideoPlayerScreen), findsOneWidget,
-          reason: 'one live player at a time, app-wide');
-      expect(SharedVideoControllers.activeCount, 1);
+      expect(find.byType(VideoPlayerScreen), findsNWidgets(2));
+      expect(SharedVideoControllers.activeCount, 2);
+      expect(find.byIcon(Icons.pause), findsNWidgets(2),
+          reason: 'both playing at once');
+    });
+  });
+
+  group('the player pool', () {
+    tearDown(() => SharedVideoControllers.maxLive = 6);
+
+    const shown = MaterialApp(
+      home: Scaffold(
+          body: VideoPlayerScreen(videoUrl: _videoUrl, fillWidth: true)),
+    );
+    const hidden = MaterialApp(home: Scaffold(body: SizedBox()));
+
+    testWidgets('a player that fails to start is retried on a fresh one',
+        (tester) async {
+      // A decoder that was momentarily unavailable, a request that blipped:
+      // the first attempt fails, the second works - and the viewer never sees
+      // "couldn't be played".
+      final fake = _FakeVideoPlayerPlatform(const Size(1280, 720))
+        ..failNextCreates = 1;
+      VideoPlayerPlatform.instance = fake;
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(shown);
+      await tester.pump();
+      await tester.pump();
+
+      expect(fake.created, 1, reason: 'the retry got a player');
+      expect(find.textContaining('unavailable'), findsNothing);
+      expect(find.textContaining("couldn't"), findsNothing);
+      expect(find.byType(VideoPlayer), findsOneWidget);
+    });
+
+    testWidgets('idle players past the budget go, stalest first',
+        (tester) async {
+      SharedVideoControllers.idleGrace = const Duration(seconds: 8);
+      SharedVideoControllers.maxLive = 2;
+      final fake = _FakeVideoPlayerPlatform(const Size(1280, 720));
+      VideoPlayerPlatform.instance = fake;
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      Widget playing(String url) => MaterialApp(
+            home: Scaffold(
+                body: VideoPlayerScreen(videoUrl: url, fillWidth: true)),
+          );
+
+      // Three videos in a row, each left before the next - two parked idle.
+      for (final url in [
+        _videoUrl,
+        _otherUrl,
+        'https://example.invalid/third.mp4'
+      ]) {
+        await tester.pumpWidget(playing(url));
+        // The pool waits for a released player's dispose() before starting
+        // the next, and part of video_player's dispose settles on the real
+        // event loop, outside the test's fake clock - so let it run.
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+        await tester.pump();
+        await tester.pumpWidget(hidden);
+        await tester.pump();
+      }
+      expect(fake.created, 3);
+      // The budget holds: the stalest idle one went to make room.
+      expect(SharedVideoControllers.activeCount, 2);
+
+      // The newest idle one was kept - coming back to it is instant.
+      await tester.pumpWidget(playing(_otherUrl));
+      await tester.pump();
+      await tester.pump();
+      expect(fake.created, 3, reason: 'reused, not rebuilt');
+
+      await tester.pumpWidget(hidden);
+      await tester.pump(const Duration(seconds: 9));
+      expect(SharedVideoControllers.activeCount, 0);
     });
   });
 
@@ -637,10 +723,10 @@ void main() {
       expect(find.byType(VideoProgressIndicator), findsNothing);
     });
 
-    testWidgets('playing one video pauses the other', (tester) async {
-      // Two soundtracks at once is never what was asked for - and on Android
-      // the two decoders fight over audio focus, so which one survives is a
-      // race rather than a choice.
+    testWidgets('playing one video leaves the other playing', (tester) async {
+      // Each video is its own player, as in a browser: starting a second one
+      // doesn't stop the first. (Their sound mixes rather than fighting over
+      // audio focus - see SharedVideoControllers.)
       VideoPlayerPlatform.instance =
           _FakeVideoPlayerPlatform(const Size(1280, 720));
       tester.view.physicalSize = screen;
@@ -666,12 +752,11 @@ void main() {
       await tester.pump();
       expect(find.byIcon(Icons.pause), findsOneWidget);
 
-      // Starting the second stops the first: exactly one pause button, and one
-      // play button left behind.
+      // Starting the second: both playing, no play button left.
       await tester.tap(find.byIcon(Icons.play_arrow).first);
       await tester.pump();
-      expect(find.byIcon(Icons.pause), findsOneWidget);
-      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+      expect(find.byIcon(Icons.pause), findsNWidgets(2));
+      expect(find.byIcon(Icons.play_arrow), findsNothing);
     });
 
     testWidgets('a stuck buffering flag does not strand the spinner',

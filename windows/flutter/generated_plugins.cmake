@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
   emoji_picker_flutter
+  ffmpeg_kit_flutter_new_full
   file_selector_windows
   firebase_core
   flutter_secure_storage_windows

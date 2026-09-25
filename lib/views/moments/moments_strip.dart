@@ -5,7 +5,6 @@ import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/models/post_models/ephemeral_models.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:video_player/video_player.dart';
 
 /// Bumped whenever a moment / thought is created, edited or deleted, so every
 /// surface showing them (the board, rails, profile rings) reloads - webapp's
@@ -548,66 +547,18 @@ class _BoardSkeleton extends StatelessWidget {
 }
 
 /// A video's first frame as a still - Moment tiles (board, archive), where
-/// a video used to be only a play icon. Borrows the shared controller the
-/// viewer and post videos use, so opening the moment reuses it, and never
-/// plays it.
-class MomentVideoFrame extends StatefulWidget {
+/// a video used to be only a play icon.
+///
+/// An extracted bitmap ([VideoFirstFrame]), NOT a player: this first held a
+/// live player per tile just to show one frame, so an archive of video
+/// moments pinned a decoder per tile before anything even played - and the
+/// video you then opened was the one that failed.
+class MomentVideoFrame extends StatelessWidget {
   final String src;
 
   const MomentVideoFrame({super.key, required this.src});
 
   @override
-  State<MomentVideoFrame> createState() => _MomentVideoFrameState();
-}
-
-class _MomentVideoFrameState extends State<MomentVideoFrame> {
-  late SharedVideoEntry _entry =
-      SharedVideoControllers.acquire(widget.src, isLocalFile: false);
-  bool _ready = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _await();
-  }
-
-  void _await() {
-    _entry.ready.then((_) {
-      if (mounted) setState(() => _ready = true);
-    }).catchError((_) {});
-  }
-
-  @override
-  void didUpdateWidget(MomentVideoFrame old) {
-    super.didUpdateWidget(old);
-    if (old.src != widget.src) {
-      SharedVideoControllers.release(old.src, isLocalFile: false);
-      _entry = SharedVideoControllers.acquire(widget.src, isLocalFile: false);
-      _ready = false;
-      _await();
-    }
-  }
-
-  @override
-  void dispose() {
-    SharedVideoControllers.release(widget.src, isLocalFile: false);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = _entry.controller;
-    if (!_ready || !controller.value.isInitialized) {
-      return const SizedBox.shrink();
-    }
-    return FittedBox(
-      fit: BoxFit.cover,
-      clipBehavior: Clip.hardEdge,
-      child: SizedBox(
-        width: controller.value.size.width,
-        height: controller.value.size.height,
-        child: VideoPlayer(controller),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      VideoFirstFrame(source: src, showPlayBadge: false);
 }

@@ -76,6 +76,35 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
     }
   }
 
+  /// The NEXT moment's video, loading while this one plays - so moving on
+  /// starts it at once, like any stories viewer.
+  String? _preloadSource;
+
+  void _preloadNext() {
+    final moments = _moments ?? const <Moment>[];
+    final next = _index + 1 < moments.length ? moments[_index + 1] : null;
+    final source = next != null && !next.isShared && next.media?.isVideo == true
+        ? next.media!.reference
+        : null;
+    if (source == _preloadSource) return;
+    final old = _preloadSource;
+    _preloadSource = source;
+    // Take the new one before letting the old go: when the old one is the
+    // video now showing, it must never drop to zero viewers in between.
+    if (source != null) {
+      SharedVideoControllers.acquire(source, isLocalFile: false);
+    }
+    if (old != null) SharedVideoControllers.release(old, isLocalFile: false);
+  }
+
+  void _releasePreload() {
+    final source = _preloadSource;
+    _preloadSource = null;
+    if (source != null) {
+      SharedVideoControllers.release(source, isLocalFile: false);
+    }
+  }
+
   PostPreview? _shared;
 
   /// The shared post could not be loaded (deleted, or not yours to see).
@@ -124,6 +153,7 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
   void dispose() {
     _progress.dispose();
     _releaseVideo();
+    _releasePreload();
     _reply.dispose();
     _replyFocus.dispose();
     super.dispose();
@@ -171,10 +201,15 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
     if (moments.isNotEmpty) _show();
   }
 
+  /// Counts [_show] calls, so a video that finishes loading after the viewer
+  /// has moved on knows it is no longer wanted.
+  int _showCount = 0;
+
   /// Starts the current moment: media, timer, and "seen".
   Future<void> _show() async {
     final moment = _current;
     if (moment == null) return;
+    final shown = ++_showCount;
     _progress
       ..stop()
       ..reset();
@@ -208,16 +243,22 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
         });
       }
       _progress.duration = _photoDuration;
+      _preloadNext();
     } else if (moment.media?.isVideo == true) {
       final source = moment.media!.reference;
       final entry = SharedVideoControllers.acquire(source, isLocalFile: false);
-      final controller = entry.controller;
-      _video = controller;
       _videoSource = source;
+      // Already loading (or loaded) when it was the preloaded next one.
+      _preloadNext();
       try {
         await entry.ready;
       } catch (_) {}
-      if (!mounted || _video != controller) return;
+      // Moved on while it loaded.
+      if (!mounted || shown != _showCount) return;
+      // Read only now: a first attempt that failed is replaced by a fresh
+      // controller before `ready` settles.
+      final controller = entry.controller;
+      _video = controller;
       await controller.seekTo(Duration.zero);
       final length = controller.value.duration;
       _progress.duration = length > Duration.zero ? length : _photoDuration;
@@ -225,6 +266,7 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
       controller.play();
     } else {
       _progress.duration = _photoDuration;
+      _preloadNext();
     }
     if (!mounted) return;
     setState(() {});

@@ -124,6 +124,7 @@ dependencies:
   # under share_plus above. 9.x reads the same manifest fields, so nothing
   # this app uses is missing.
   package_info_plus: ^9.0.1
+  ffmpeg_kit_flutter_new_full: ^2.5.2
 
 dependency_overrides:
   # PINNED, not merely constrained, because nothing in the tree constrains it
@@ -178,6 +179,34 @@ dependency_overrides:
   # other machine.
   flutter_webrtc:
     path: patched/flutter_webrtc
+
+  # VENDORED (2.12.0, the version pub resolved), patched so the app's videos
+  # behave like a browser's: several can play at once and switching between
+  # them never fails. Published ExoPlayer defaults were the "video couldn't be
+  # played" bug:
+  #
+  #   - no decoder fallback: a phone has a few hardware decoders, and the
+  #     player that asked when they were all taken failed outright. Now it falls
+  #     back to a software decoder, as browsers do.
+  #   - 2.5s of media buffered before "ready" (which initialize() waits for).
+  #     Now 0.5s - a video starts as soon as there is something to show.
+  #   - no disk cache: every replay downloaded the video again. Now one shared
+  #     256MB cache.
+  #
+  # All three live in ONE new file, ChatterloopPlayback.java, called from the
+  # two player builders and HttpVideoAsset (each marked CHATTERLOOP PATCH) -
+  # re-apply those three call sites when moving to a newer plugin version.
+  #
+  # And a fourth, its own file: texture/CroppedVideoOutput.java. On Android
+  # 10+ Flutter draws a video texture's WHOLE buffer, padding included
+  # (flutter/flutter#144407) - the green strip down the right of most videos.
+  # Frames now go through one small GL pass that hands Flutter only the
+  # picture, cropped and upright. Wired in TextureVideoPlayer (marked
+  # CHATTERLOOP PATCH); drop it once the engine honours the crop itself
+  # (SurfaceProducer.handlesCropAndRotation() returning true).
+  # Trimmed of example/.
+  video_player_android:
+    path: patched/video_player_android
 
 dev_dependencies:
   flutter_test:

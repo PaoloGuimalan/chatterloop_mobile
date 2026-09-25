@@ -27,6 +27,19 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 /// (it sits behind the route) but not always - it can be scrolled out and
 /// disposed while the screen holds the same video. Whoever leaves last turns
 /// the decoder off.
+///
+/// Every VIDEO gets its own player, as in a browser: any number can be open
+/// and several can play at once (they mix their sound rather than pausing
+/// each other). What keeps that reliable:
+///  - the Android plugin is patched (patched/video_player_android) to fall
+///    back to a software decoder when the hardware ones are all taken - the
+///    failure behind "this video couldn't be played" whenever several videos
+///    were open - and to start after 0.5s of buffer, from a disk cache;
+///  - players nobody is showing are let go oldest-first once more than
+///    [maxLive] exist, and a new player waits for that to FINISH before it
+///    starts, so it never races a decoder that is still being released;
+///  - a player that still fails to start frees every idle one and tries once
+///    more on a fresh player, so a transient failure heals by itself.
 class SharedVideoControllers {
   SharedVideoControllers._();
 
@@ -34,6 +47,24 @@ class SharedVideoControllers {
 
   static String _keyFor(String source, bool isLocalFile) =>
       '${isLocalFile ? 'file' : 'net'}:$source';
+
+  /// Live players (shown or idle) kept before idle ones are let go early.
+  /// Shown players are never let go - this only trims the idle ones.
+  @visibleForTesting
+  static int maxLive = 6;
+
+  /// Order of last use, for letting the stalest idle player go first.
+  static int _useClock = 0;
+
+  static VideoPlayerController _newController(String source, bool isLocalFile) {
+    // Mixing, not taking the audio focus: with it, starting one video paused
+    // every other one, and "play several at once" could never happen.
+    final options = VideoPlayerOptions(mixWithOthers: true);
+    return isLocalFile
+        ? VideoPlayerController.file(File(source), videoPlayerOptions: options)
+        : VideoPlayerController.networkUrl(Uri.parse(source),
+            videoPlayerOptions: options);
+  }
 
   /// Disposal is DEFERRED, not immediate - see [release].
   static final Map<String, Timer> _pendingDisposal = {};
@@ -61,18 +92,75 @@ class SharedVideoControllers {
     final key = _keyFor(source, isLocalFile);
     // Coming back to something that was on its way out: keep it.
     _pendingDisposal.remove(key)?.cancel();
-    final entry = _entries.putIfAbsent(key, () {
-      final controller = isLocalFile
-          ? VideoPlayerController.file(File(source))
-          : VideoPlayerController.networkUrl(Uri.parse(source));
-      // initialize() is called ONCE per source. A second acquirer awaits the
-      // same future - already complete if the first one got there first, so it
+    var entry = _entries[key];
+    if (entry == null) {
+      // Room first: idle players past the budget go, and the new one starts
+      // only once they are really gone.
+      final freeing = _trimIdle(roomFor: 1);
+      entry = SharedVideoEntry(_newController(source, isLocalFile));
+      _entries[key] = entry;
+      // initialize() runs ONCE per source. A second acquirer awaits the same
+      // future - already complete if the first one got there first, so it
       // renders on its first frame with no second round trip.
-      return SharedVideoEntry(controller, controller.initialize());
-    });
+      entry.ready = _start(entry, source, isLocalFile, freeing);
+    }
     entry.refs++;
+    entry.lastUsed = ++_useClock;
     return entry;
   }
+
+  static Future<void> _start(SharedVideoEntry entry, String source,
+      bool isLocalFile, List<Future<void>> freeing) async {
+    // Only waits when something is being freed - otherwise initialize() is
+    // called right here, in the same turn as acquire().
+    if (freeing.isNotEmpty) await _settle(freeing);
+    try {
+      await entry.controller.initialize();
+    } catch (_) {
+      // Most often a decoder or a request that was momentarily unavailable.
+      // Give back everything idle, then one more try on a fresh player - a
+      // failed controller can't be initialised again.
+      await _settle(_trimIdle(roomFor: maxLive));
+      final failed = entry.controller;
+      entry.controller = _newController(source, isLocalFile);
+      // NOT awaited: when creation itself threw, video_player's dispose()
+      // waits on that creation forever.
+      unawaited(failed.dispose());
+      await entry.controller.initialize();
+    }
+  }
+
+  /// Waits for [disposals] - but never more than a second, and never by
+  /// failing: a platform that hangs or errors while releasing one video must
+  /// not stop the next from starting.
+  static Future<void> _settle(List<Future<void>> disposals) async {
+    if (disposals.isEmpty) return;
+    try {
+      await Future.wait(disposals).timeout(const Duration(seconds: 1));
+    } catch (_) {
+      // Timed out or failed: start anyway, as before this waited at all.
+    }
+  }
+
+  /// Lets idle players go, stalest first, until [roomFor] more fit within
+  /// [maxLive] (roomFor: maxLive = every idle one). Returns the disposals,
+  /// to be awaited before a new player starts.
+  static List<Future<void>> _trimIdle({required int roomFor}) {
+    final idle = _entries.entries.where((e) => e.value.refs <= 0).toList()
+      ..sort((a, b) => a.value.lastUsed.compareTo(b.value.lastUsed));
+    final disposals = <Future<void>>[];
+    for (final e in idle) {
+      if (_entries.length + roomFor <= maxLive) break;
+      _pendingDisposal.remove(e.key)?.cancel();
+      _entries.remove(e.key);
+      disposals.add(e.value.controller.dispose());
+    }
+    return disposals;
+  }
+
+  /// Lets every idle player go now - for a screen about to start its own
+  /// player outside this pool (the Moment editor's preview).
+  static Future<void> releaseIdle() => _settle(_trimIdle(roomFor: maxLive));
 
   static void release(String source, {required bool isLocalFile}) {
     final key = _keyFor(source, isLocalFile);
@@ -133,35 +221,6 @@ class SharedVideoControllers {
     });
   }
 
-  /// Which inline video is currently ACTIVE - i.e. has a live player rather
-  /// than a still frame. Null means none.
-  ///
-  /// One at a time, app-wide, because a decoder is a scarce platform resource
-  /// and a feed is an unbounded list of videos. Pausing the others is not
-  /// enough: a paused player still holds its decoder, so scrolling past ten
-  /// video posts and tapping each one left ten alive and the eleventh failed
-  /// to initialise - which is what "video cannot be played" was, and why
-  /// retrying never helped.
-  static final ValueNotifier<String?> activeInlineVideo =
-      ValueNotifier<String?>(null);
-
-  /// Pause every other video before [keep] starts.
-  ///
-  /// One at a time, app-wide. Two videos playing together is never what was
-  /// asked for - you tap a second one while the first is still going and get
-  /// both soundtracks at once, with no way to reach the one that scrolled off.
-  /// Android's audio focus makes it worse: the two decoders fight over it, and
-  /// which one survives is a race.
-  ///
-  /// Pausing rather than stopping, so the one you left keeps its position for
-  /// when you come back to it.
-  static void pauseOthers(VideoPlayerController keep) {
-    for (final entry in _entries.values) {
-      if (identical(entry.controller, keep)) continue;
-      if (entry.controller.value.isPlaying) entry.controller.pause();
-    }
-  }
-
   /// How many sources are live. Test-only - a leak here is a decoder that
   /// never got turned off, which no assertion in a widget test would catch.
   @visibleForTesting
@@ -170,12 +229,16 @@ class SharedVideoControllers {
 
 /// One shared controller and the single [ready] future every viewer of it
 /// awaits. Public only because [SharedVideoControllers.acquire] returns it.
+///
+/// Read [controller] AFTER [ready] completes: a first attempt that fails is
+/// replaced by a fresh controller before [ready] settles.
 class SharedVideoEntry {
-  SharedVideoEntry(this.controller, this.ready);
+  SharedVideoEntry(this.controller);
 
-  final VideoPlayerController controller;
-  final Future<void> ready;
+  VideoPlayerController controller;
+  late Future<void> ready;
   int refs = 0;
+  int lastUsed = 0;
 }
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -269,7 +332,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return;
     }
     if (!mounted || !_controller.value.isInitialized) return;
-    SharedVideoControllers.pauseOthers(_controller);
     await _controller.play();
   }
 
@@ -593,8 +655,7 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
     if (value.duration > Duration.zero && value.position >= value.duration) {
       widget.controller.seekTo(Duration.zero);
     }
-    // Nothing else keeps playing underneath this one.
-    SharedVideoControllers.pauseOthers(widget.controller);
+    // Others keep playing - each video is its own player, as in a browser.
     widget.controller.play();
     _scheduleHide();
   }
@@ -1102,18 +1163,13 @@ class _VideoFirstFrameState extends State<VideoFirstFrame> {
 }
 
 /// A post's inline video: a still frame until you press play, a real player
-/// after that, and only ONE of them alive at a time.
+/// after that.
 ///
-/// Every player is a platform decoder and a feed is an unbounded list of
-/// videos. Mounting a player per row meant ten video posts held ten decoders,
-/// after which initialise simply failed - the "video cannot be played" that
-/// survived every retry, because retrying cannot conjure a decoder that
-/// something else is holding.
-///
-/// So the default state costs nothing (the frame is an extracted bitmap, see
-/// [VideoFirstFrame]) and the player is built on demand. Starting one hands
-/// the baton over: whoever was active drops back to its still frame and
-/// releases its controller.
+/// A feed is an unbounded list of videos, so the default state costs nothing
+/// (the frame is an extracted bitmap, see [VideoFirstFrame]) and the player
+/// is built on demand. Once started, each is its own player: starting another
+/// leaves this one playing, and it keeps its player until it scrolls away
+/// (see SharedVideoControllers for why that is safe now).
 class InlinePostVideo extends StatefulWidget {
   final String source;
   final double maxHeight;
@@ -1131,33 +1187,7 @@ class InlinePostVideo extends StatefulWidget {
 class _InlinePostVideoState extends State<InlinePostVideo> {
   bool _active = false;
 
-  @override
-  void initState() {
-    super.initState();
-    SharedVideoControllers.activeInlineVideo.addListener(_onActiveChanged);
-  }
-
-  @override
-  void dispose() {
-    SharedVideoControllers.activeInlineVideo.removeListener(_onActiveChanged);
-    if (SharedVideoControllers.activeInlineVideo.value == widget.source) {
-      SharedVideoControllers.activeInlineVideo.value = null;
-    }
-    super.dispose();
-  }
-
-  /// Someone else took over - fold back to a still and let the decoder go.
-  void _onActiveChanged() {
-    final active = SharedVideoControllers.activeInlineVideo.value;
-    if (_active && active != widget.source && mounted) {
-      setState(() => _active = false);
-    }
-  }
-
-  void _activate() {
-    SharedVideoControllers.activeInlineVideo.value = widget.source;
-    setState(() => _active = true);
-  }
+  void _activate() => setState(() => _active = true);
 
   @override
   Widget build(BuildContext context) {
