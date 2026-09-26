@@ -20,6 +20,42 @@ class QpCeiling {
         assert(other >= 0 && other <= 51);
 }
 
+/// A logo stamped into the bottom-left corner of every frame of an output.
+///
+/// This is how it LOOKS, set per kind of output ([EncodingProfile.watermark]).
+/// Whether one edit carries it is the edit's own [Composition.watermark] - an
+/// option to post without it only has to turn that off.
+@immutable
+class Watermark {
+  /// A Flutter asset: a PNG with transparency, its shadow baked in
+  /// (tool/make_watermark.py builds the Chatterloop one).
+  final String asset;
+
+  /// Its width, as a fraction of the output's width.
+  final double width;
+
+  /// Its gap from the left edge, as a fraction of the output's width.
+  final double left;
+
+  /// Its gap from the bottom edge, as a fraction of the output's height.
+  final double bottom;
+
+  const Watermark({
+    required this.asset,
+    this.width = 0.20,
+    this.left = 0.12,
+    this.bottom = 0.17,
+  })  : assert(width > 0 && width < 1),
+        assert(left >= 0 && left + width < 1),
+        assert(bottom >= 0 && bottom < 1);
+
+  /// The Chatterloop logo, 20% of the width, on the left above the viewer's
+  /// reply bar. 12% in from the left: the app's viewer fills a tall phone's
+  /// screen with a 9:16 Moment, trimming up to 10% off each side
+  /// (momentMediaFit), and the logo stays whole.
+  static const chatterloop = Watermark(asset: 'assets/images/watermark.png');
+}
+
 /// What an encode produces - resolution, frame rate, bitrates, length cap.
 ///
 /// One place to change output quality. A feature picks a profile (Moments use
@@ -71,6 +107,10 @@ class EncodingProfile {
   /// Poster JPEG quality on ffmpeg's -q:v scale: 2 (best) .. 31 (worst).
   final int posterQuality;
 
+  /// The logo this kind of output is stamped with, or null for none. An
+  /// edit can still go without it ([Composition.watermark]).
+  final Watermark? watermark;
+
   const EncodingProfile({
     required this.width,
     required this.height,
@@ -86,6 +126,7 @@ class EncodingProfile {
     this.audioChannels = 2,
     required this.maxDuration,
     this.posterQuality = 3,
+    this.watermark,
   })  : assert(width > 0 && width % 2 == 0),
         assert(height > 0 && height % 2 == 0);
 
@@ -109,6 +150,7 @@ class EncodingProfile {
     stillQp: QpCeiling(keyframe: 20, other: 24),
     stillKeyframeInterval: 300,
     maxDuration: Duration(minutes: 2),
+    watermark: Watermark.chatterloop,
   );
 
   /// The share of [maxBytes] a bitrate is chosen to fill - encoders
@@ -145,6 +187,8 @@ class EncodingProfile {
     int? audioChannels,
     Duration? maxDuration,
     int? posterQuality,
+    Watermark? watermark,
+    bool clearWatermark = false,
   }) =>
       EncodingProfile(
         width: width ?? this.width,
@@ -162,5 +206,6 @@ class EncodingProfile {
         audioChannels: audioChannels ?? this.audioChannels,
         maxDuration: maxDuration ?? this.maxDuration,
         posterQuality: posterQuality ?? this.posterQuality,
+        watermark: clearWatermark ? null : (watermark ?? this.watermark),
       );
 }

@@ -20,6 +20,7 @@ import 'package:ffmpeg_kit_flutter_new_full/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_full/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_full/statistics.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// A render or probe that failed. [message] is safe to show; [logs] (the tail
@@ -137,6 +138,9 @@ class MediaEngine {
   Future<Directory>? _root;
   var _workspaceCount = 0;
 
+  /// App assets written out for ffmpeg (the watermark), by asset path.
+  final _assetFiles = <String, String>{};
+
   /// What [path] is - size, length, rotation, streams.
   ///
   /// Throws a [MediaEngineException] when ffprobe can't read it (not a media
@@ -182,6 +186,10 @@ class MediaEngine {
       workspace = await _newWorkspace();
       final videoPath = '${workspace.path}/moment.mp4';
       final posterPath = '${workspace.path}/poster.jpg';
+      final watermark =
+          job.composition.watermark ? job.profile.watermark : null;
+      final watermarkPath =
+          watermark == null ? null : await _assetFile(watermark.asset);
 
       RenderCommand? rendered;
       String? failureLogs;
@@ -192,6 +200,7 @@ class MediaEngine {
               encoder: encoder,
               outputPath: videoPath,
               qpCeilings: qpCeilings,
+              watermarkPath: watermarkPath,
             );
         var command = build(qpCeilings: true);
         var outcome = await _encode(job, command);
@@ -312,6 +321,21 @@ class MediaEngine {
     }
     if (ReturnCode.isSuccess(code)) return const _Outcome.ok();
     return _Outcome.failed(_tail(await finished.getAllLogsAsString()));
+  }
+
+  /// [asset] as a file ffmpeg can read - written once per app run, next to
+  /// the renders (again if the OS has cleared the temp folder since).
+  Future<String> _assetFile(String asset) async {
+    final written = _assetFiles[asset];
+    if (written != null && await File(written).exists()) return written;
+    final root = await (_root ??= _prepareRoot());
+    final data = await rootBundle.load(asset);
+    final file = File('${root.path}/asset-${asset.split('/').last}');
+    await file.writeAsBytes(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      flush: true,
+    );
+    return _assetFiles[asset] = file.path;
   }
 
   /// A fresh temp folder for an editor's own files (a prepared photo, say).

@@ -290,12 +290,18 @@ class Composition {
   /// track). Ignored for videos and for photos with an audio track.
   final Duration stillDuration;
 
+  /// Whether the output is stamped with the profile's watermark (when the
+  /// profile has one - EncodingProfile.watermark, which sets its look). On
+  /// unless the edit opts out - the switch for posting without it.
+  final bool watermark;
+
   const Composition({
     this.version = currentVersion,
     this.background = CompositionBackground.blur,
     required this.layer,
     this.audio,
     this.stillDuration = const Duration(seconds: 30),
+    this.watermark = true,
   });
 
   /// The edit's length before any profile cap: the video's (trimmed) length,
@@ -318,6 +324,7 @@ class Composition {
     AudioTrack? audio,
     bool clearAudio = false,
     Duration? stillDuration,
+    bool? watermark,
   }) =>
       Composition(
         version: version,
@@ -325,6 +332,7 @@ class Composition {
         layer: layer ?? this.layer,
         audio: clearAudio ? null : (audio ?? this.audio),
         stillDuration: stillDuration ?? this.stillDuration,
+        watermark: watermark ?? this.watermark,
       );
 
   Map<String, dynamic> toJson() => {
@@ -333,6 +341,7 @@ class Composition {
         'layers': [layer.toJson()],
         if (audio != null) 'audio': audio!.toJson(),
         'still_ms': stillDuration.inMilliseconds,
+        'watermark': watermark,
       };
 
   factory Composition.fromJson(Map<String, dynamic> json) {
@@ -347,6 +356,8 @@ class Composition {
           : AudioTrack.fromJson(Map<String, dynamic>.from(json['audio'])),
       stillDuration:
           Duration(milliseconds: (json['still_ms'] as num?)?.toInt() ?? 30000),
+      // Edits from before the switch were all stamped.
+      watermark: json['watermark'] != false,
     );
   }
 }

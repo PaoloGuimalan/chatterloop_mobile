@@ -4,7 +4,7 @@ import 'package:chatterloop_app/core/media/encoding_profile.dart';
 import 'package:chatterloop_app/core/media/ffmpeg_command.dart';
 import 'package:chatterloop_app/core/media/media_info.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _photo = MediaSource(
@@ -39,6 +39,9 @@ const _p720 = EncodingProfile(
   maxDuration: Duration(minutes: 2),
 );
 
+/// Where the engine would have written the watermark asset.
+const _watermarkFile = '/tmp/asset-watermark.png';
+
 RenderCommand _build(
   Composition composition, {
   EncodingProfile profile = _p720,
@@ -49,11 +52,18 @@ RenderCommand _build(
       profile: profile,
       encoder: encoder,
       outputPath: '/out/moment.mp4',
+      watermarkPath: _watermarkFile,
     );
 
 /// The value following [flag] - the first occurrence after [from].
 String _after(List<String> args, String flag, {int from = 0}) =>
     args[args.indexOf(flag, from) + 1];
+
+/// Every input file, in input order.
+List<String> _inputs(List<String> args) => [
+      for (var i = 0; i < args.length - 1; i++)
+        if (args[i] == '-i') args[i + 1]
+    ];
 
 /// The options given to the input [path]: everything between the previous
 /// input (or the leading `-hide_banner -y`) and its `-i`.
@@ -80,6 +90,7 @@ void main() {
         ),
         audio: _song,
         stillDuration: Duration(seconds: 12),
+        watermark: false,
       );
       final back = Composition.fromJson(edit.toJson());
 
@@ -94,6 +105,7 @@ void main() {
       expect(back.audio!.volume, 0.8);
       expect(back.audio!.fadeOut, const Duration(seconds: 2));
       expect(back.stillDuration, const Duration(seconds: 12));
+      expect(back.watermark, isFalse);
     });
 
     test('an edit saved with on/off video sound reads as a volume', () {
@@ -119,6 +131,12 @@ void main() {
       expect(back.layer.trim, isNull);
       expect(back.layer.transform.scale, 1);
       expect(back.stillDuration, const Duration(seconds: 30));
+      expect(back.watermark, isTrue);
+      // Saved before the switch: stamped, as they all were.
+      final older = const Composition(layer: MediaLayer(source: _photo))
+          .toJson()
+        ..remove('watermark');
+      expect(Composition.fromJson(older).watermark, isTrue);
     });
 
     test('natural length: trimmed video, else the audio track, else the still',
@@ -487,9 +505,17 @@ void main() {
           layer: MediaLayer(source: _photo, transform: LayerTransform(cx: 3)),
         ),
       ];
+      const stamped = EncodingProfile(
+        width: 720,
+        height: 1280,
+        maxDuration: Duration(minutes: 2),
+        watermark: Watermark.chatterloop,
+      );
       for (final edit in edits) {
-        final used = filtersOf(_build(edit).filterGraph);
-        expect(used.difference(bundled), isEmpty, reason: '$used');
+        for (final profile in [_p720, stamped]) {
+          final used = filtersOf(_build(edit, profile: profile).filterGraph);
+          expect(used.difference(bundled), isEmpty, reason: '$used');
+        }
       }
     });
 
@@ -802,6 +828,7 @@ void main() {
             encoder: encoder,
             outputPath: '/out/moment.mp4',
             qpCeilings: qpCeilings,
+            watermarkPath: _watermarkFile,
           );
 
       final video = build(_landscapeVideo);
@@ -868,6 +895,115 @@ void main() {
         )),
         throwsArgumentError,
       );
+    });
+
+    group('watermark', () {
+      test('Moments are stamped with the Chatterloop logo, bottom-left', () {
+        expect(EncodingProfile.moment.watermark, Watermark.chatterloop);
+        final cmd = _build(
+          const Composition(layer: MediaLayer(source: _photo)),
+          profile: EncodingProfile.moment,
+        );
+        // Input 1, after the photo.
+        expect(_inputs(cmd.arguments), ['/in/photo.jpg', _watermarkFile]);
+        // 20% of 1080 wide, its height kept to the logo's shape; 12% of the
+        // width (130px) in from the left, 17% of the height (326px) up.
+        expect(cmd.filterGraph,
+            contains('[1:v:0]scale=216:-2:flags=lanczos[wm]'));
+        expect(
+            cmd.filterGraph,
+            contains('[bg][fg]overlay=x=540.00-w/2:y=960.00-h/2:shortest=1'
+                '[frame];'));
+        // Over the composed frame, before a still is brought up to 30fps.
+        expect(
+            cmd.filterGraph,
+            contains('[frame][wm]overlay=x=130:y=H-h-326:eof_action=repeat,'
+                'fps=30,format=nv12[v]'));
+      });
+
+      test('it comes after the audio track, and stamps videos too', () {
+        final cmd = _build(
+          const Composition(
+            layer: MediaLayer(source: _landscapeVideo),
+            audio: _song,
+          ),
+          profile: EncodingProfile.moment,
+        );
+        expect(_inputs(cmd.arguments),
+            ['/in/clip.mp4', '/in/song.mp3', _watermarkFile]);
+        expect(cmd.filterGraph, contains('[2:v:0]scale=216:-2'));
+        expect(
+            cmd.filterGraph,
+            contains('[frame][wm]overlay=x=130:y=H-h-326:eof_action=repeat,'
+                'format=nv12[v]'));
+        // The audio inputs are unmoved.
+        expect(cmd.filterGraph, contains('[1:a:0]aformat='));
+        expect(cmd.filterGraph, isNot(contains('[2:a')));
+      });
+
+      test('an edit can go without it - the switch for posting unbranded',
+          () {
+        const edit = Composition(layer: MediaLayer(source: _photo));
+        final plain = _build(edit.copyWith(watermark: false),
+            profile: EncodingProfile.moment);
+        expect(plain.arguments, isNot(contains(_watermarkFile)));
+        expect(plain.filterGraph, isNot(contains('[wm]')));
+        // Exactly the render of a profile that has no watermark at all.
+        final unbranded = _build(edit,
+            profile: EncodingProfile.moment.copyWith(clearWatermark: true));
+        expect(plain.arguments, unbranded.arguments);
+        // And it needs no file.
+        expect(
+          () => buildRenderCommand(
+            composition: edit.copyWith(watermark: false),
+            profile: EncodingProfile.moment,
+            encoder: H264Encoder.mediaCodec,
+            outputPath: '/out/moment.mp4',
+          ),
+          returnsNormally,
+        );
+      });
+
+      test('a profile without one renders as before', () {
+        final cmd =
+            _build(const Composition(layer: MediaLayer(source: _photo)));
+        expect(_p720.watermark, isNull);
+        expect(cmd.arguments, isNot(contains(_watermarkFile)));
+        expect(cmd.filterGraph, isNot(contains('[frame]')));
+      });
+
+      test('media dragged off the canvas: the background is stamped', () {
+        final cmd = _build(
+          const Composition(
+            layer: MediaLayer(source: _photo, transform: LayerTransform(cx: 3)),
+          ),
+          profile: EncodingProfile.moment,
+        );
+        expect(cmd.filterGraph,
+            contains('[bg][wm]overlay=x=130:y=H-h-326:eof_action=repeat,'));
+      });
+
+      test('a stamped render without the logo file is refused', () {
+        expect(
+          () => buildRenderCommand(
+            composition: const Composition(layer: MediaLayer(source: _photo)),
+            profile: EncodingProfile.moment,
+            encoder: H264Encoder.mediaCodec,
+            outputPath: '/out/moment.mp4',
+          ),
+          throwsArgumentError,
+        );
+      });
+
+      test('the logo ships: a PNG with transparency', () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        final png = await rootBundle.load(Watermark.chatterloop.asset);
+        // The PNG signature, then IHDR's colour type 6: RGBA.
+        expect(png.getUint32(0), 0x89504E47);
+        expect(png.getUint8(25), 6);
+        // Big enough for a sharp 1080-wide stamp (twice its 216px).
+        expect(png.getUint32(16), greaterThanOrEqualTo(2 * 216));
+      });
     });
 
     test('encoders are tried hardware-first per platform', () {

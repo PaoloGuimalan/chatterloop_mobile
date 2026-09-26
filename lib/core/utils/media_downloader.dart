@@ -19,6 +19,7 @@
 import 'dart:io';
 
 import 'package:chatterloop_app/core/utils/app_messenger.dart';
+import 'package:chatterloop_app/core/utils/gallery_saver.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -187,15 +188,24 @@ class MediaDownloader {
   /// [mimeType] is the server's `messageType` when the caller has one; it
   /// beats guessing from the extension, because a storage key does not always
   /// carry one.
-  Future<void> download(String content, {String? mimeType}) async {
+  ///
+  /// [toGallery] saves a photo or video into the phone's gallery instead of
+  /// Downloads (a saved Moment - see [GallerySaver]), as [fileName] when
+  /// given rather than the storage key's name.
+  Future<void> download(
+    String content, {
+    String? mimeType,
+    String? fileName,
+    bool toGallery = false,
+  }) async {
     final url = chatMediaUrl(content);
     if (url.isEmpty) return;
     if (progress.value.containsKey(url)) {
-      clSnack("Already downloading");
+      clSnack(toGallery ? "Already saving" : "Already downloading");
       return;
     }
 
-    final fileName = chatMediaFileName(content);
+    fileName ??= chatMediaFileName(content);
     final type = (mimeType != null && mimeType.contains("/"))
         ? mimeType
         : mimeTypeForFileName(fileName);
@@ -223,16 +233,29 @@ class MediaDownloader {
       );
       staged = File(stagedPath);
 
+      if (toGallery) {
+        final saved = await GallerySaver.save(staged.path,
+            fileName: fileName, mimeType: type);
+        if (saved) clSnack("Saved to your gallery");
+        return;
+      }
       final location = await _saveToDevice(staged, fileName, type);
       clSnack("Saved $fileName to $location");
-    } on DioException catch (_) {
-      clSnack("Couldn't download $fileName. Check your connection.");
+    } on DioException catch (e) {
+      debugPrint('MediaDownloader: $url failed: $e');
+      clSnack(toGallery
+          ? "Couldn't download it. Check your connection."
+          : "Couldn't download $fileName. Check your connection.");
     } on PlatformException catch (e) {
-      clSnack(e.code == "permission_denied"
-          ? "Storage permission is needed to save files."
+      clSnack(toGallery
+          ? GallerySaver.failureMessage(e)
+          : e.code == "permission_denied"
+              ? "Storage permission is needed to save files."
+              : "Couldn't save $fileName to this device.");
+    } catch (e) {
+      clSnack(toGallery
+          ? GallerySaver.failureMessage(e)
           : "Couldn't save $fileName to this device.");
-    } catch (_) {
-      clSnack("Couldn't save $fileName to this device.");
     } finally {
       // The staged copy has been handed over, or the attempt failed - either
       // way this process is done with it. Best-effort: the cache directory is

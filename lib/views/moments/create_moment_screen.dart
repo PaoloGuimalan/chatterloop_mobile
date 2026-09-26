@@ -16,6 +16,7 @@ import 'package:chatterloop_app/core/requests/moments_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
+import 'package:chatterloop_app/core/utils/gallery_saver.dart';
 import 'package:chatterloop_app/models/post_models/ephemeral_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/views/moments/moment_shared_post_card.dart';
@@ -48,8 +49,8 @@ class CreateMomentScreen extends StatefulWidget {
   State<CreateMomentScreen> createState() => _CreateMomentScreenState();
 }
 
-/// Where Share is up to.
-enum _Phase { editing, rendering, uploading, posting }
+/// Where Share (or Save to device) is up to.
+enum _Phase { editing, rendering, uploading, posting, saving }
 
 typedef _Upload = ({
   String url,
@@ -119,6 +120,9 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
   _Upload? _uploadedVideo;
   String? _uploadedPoster;
   bool _failed = false;
+
+  /// The render running is for Save to device, not Share.
+  bool _savingToDevice = false;
 
   @override
   void initState() {
@@ -712,6 +716,48 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
     }
   }
 
+  // ------------------------------------------------------- save to device
+
+  bool get _canSave => !_busy && _edit != null;
+
+  /// Renders the edit - or takes the render already made of it - and saves
+  /// it to the gallery, without sharing. Share afterwards reuses that render.
+  Future<void> _saveToDevice() async {
+    if (!_canSave) return;
+    FocusScope.of(context).unfocus();
+    final edit = _edit!;
+    await _pausePreviews();
+    _savingToDevice = true;
+    MediaEngineException? renderFailure;
+    try {
+      final rendered = await _renderFor(edit);
+      if (rendered != null && mounted) {
+        setState(() => _phase = _Phase.saving);
+        // A photo with no sound is saved as the photo (the poster: the
+        // frame the video holds); anything else as the video.
+        final still = !edit.layer.source.isVideo && !rendered.hasSound;
+        final saved = await GallerySaver.save(
+          still ? rendered.posterPath : rendered.videoPath,
+          fileName:
+              GallerySaver.fileNameFor(DateTime.now(), still ? 'jpg' : 'mp4'),
+          mimeType: still ? 'image/jpeg' : 'video/mp4',
+        );
+        if (saved && mounted) _toast("Saved to your gallery");
+      }
+    } on MediaEngineException catch (e) {
+      debugPrint('CreateMoment: render failed: ${e.message}\n${e.logs}');
+      renderFailure = e;
+    } catch (e) {
+      if (mounted) _toast(GallerySaver.failureMessage(e));
+    }
+    _savingToDevice = false;
+    // Share's Retry, if a share had failed, stays.
+    _backToEditing(failed: _failed);
+    if (renderFailure != null && mounted) {
+      await _showRenderFailure(renderFailure);
+    }
+  }
+
   /// A render failure, with ffmpeg's own words for whoever has to fix it.
   Future<void> _showRenderFailure(MediaEngineException e) {
     final details = (e.logs ?? '').trim();
@@ -871,8 +917,9 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
 
     return PopScope(
       // A render can be abandoned (leaving cancels it); an upload or post
-      // in flight can't be taken back, so it is waited out.
-      canPop: !uploading,
+      // in flight can't be taken back, so it is waited out - and a save to
+      // the gallery, which is copying the render leaving would delete.
+      canPop: !uploading && _phase != _Phase.saving,
       child: Scaffold(
         backgroundColor: Colors.black,
         resizeToAvoidBottomInset: true,
@@ -884,7 +931,9 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      onPressed: uploading ? null : () => context.pop(),
+                      onPressed: uploading || _phase == _Phase.saving
+                          ? null
+                          : () => context.pop(),
                       icon:
                           const Icon(Icons.close_rounded, color: Colors.white),
                     ),
@@ -899,8 +948,18 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                           fontWeight: FontWeight.w800),
                     ),
                     const Spacer(),
+                    if (widget.sharedPost == null && _edit != null) ...[
+                      IconButton(
+                        tooltip: "Save to device",
+                        onPressed: _canSave ? _saveToDevice : null,
+                        color: Colors.white,
+                        disabledColor: Colors.white38,
+                        icon: const Icon(Icons.download_rounded),
+                      ),
+                      const SizedBox(width: 4),
+                    ],
                     CLBtn(
-                      label: _phase != _Phase.editing
+                      label: _phase != _Phase.editing && !_savingToDevice
                           ? "Sharing…"
                           : _failed
                               ? "Retry"
@@ -1138,6 +1197,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
       _Phase.rendering =>
         "Preparing your moment… ${(_renderProgress * 100).round()}%",
       _Phase.uploading => "Uploading…",
+      _Phase.saving => "Saving to your gallery…",
       _ => "Sharing…",
     };
     return Positioned.fill(

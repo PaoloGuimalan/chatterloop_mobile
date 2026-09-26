@@ -218,6 +218,13 @@ class Moment {
   final String? sharedThumbnail;
   final String? sharedMediaType;
 
+  /// A moment the app encoded says what it was made from ("photo" or
+  /// "video"), whether it has sound, and its poster - its first frame, as a
+  /// JPEG. All null on other moments.
+  final String? madeFrom;
+  final bool? hasAudio;
+  final String? posterUrl;
+
   const Moment({
     required this.post,
     required this.expiresAt,
@@ -226,6 +233,9 @@ class Moment {
     required this.isShared,
     this.sharedThumbnail,
     this.sharedMediaType,
+    this.madeFrom,
+    this.hasAudio,
+    this.posterUrl,
   });
 
   /// What a small tile shows: the photo, or the shared post's photo. Videos
@@ -271,10 +281,28 @@ class Moment {
 
   String? get sharedPostId => isShared ? media?.reference : null;
 
+  /// What saving this moment to the phone saves (the viewer offers it on your
+  /// own only). A photo made into a moment without sound is saved as that
+  /// photo - its poster, framed as posted, since the video only holds that
+  /// one frame; anything else as it was posted. Null for a shared post: it
+  /// is someone's post, not a file of yours.
+  ({String url, bool isVideo, String mediaType})? get saveable {
+    if (isShared) return null;
+    final m = media;
+    if (m == null || m.reference.isEmpty) return null;
+    final poster = posterUrl;
+    if (m.isVideo && madeFrom == "photo" && hasAudio == false && poster != null) {
+      return (url: poster, isVideo: false, mediaType: "image/jpeg");
+    }
+    return (url: m.reference, isVideo: m.isVideo, mediaType: m.mediaType);
+  }
+
   factory Moment.fromJson(Map<String, dynamic> json) {
     final details = _map(json["details"]);
     final shared = _map(json["shared_preview"]);
     final sharedThumb = shared["thumbnail"]?.toString();
+    final poster = _map(details["poster"])["url"]?.toString();
+    final hasAudio = details["has_audio"];
     return Moment(
       post: PostPreview.fromJson(json),
       expiresAt: _date(json["expires_at"]),
@@ -285,6 +313,9 @@ class Moment {
       sharedThumbnail:
           (sharedThumb == null || sharedThumb.isEmpty) ? null : sharedThumb,
       sharedMediaType: shared["media_type"]?.toString(),
+      madeFrom: details["source"]?.toString(),
+      hasAudio: hasAudio is bool ? hasAudio : null,
+      posterUrl: (poster == null || poster.isEmpty) ? null : poster,
     );
   }
 }

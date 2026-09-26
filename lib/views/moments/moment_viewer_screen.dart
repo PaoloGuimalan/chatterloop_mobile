@@ -9,6 +9,8 @@ import 'package:chatterloop_app/core/requests/moments_api.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
+import 'package:chatterloop_app/core/utils/gallery_saver.dart';
+import 'package:chatterloop_app/core/utils/media_downloader.dart';
 import 'package:chatterloop_app/models/post_models/ephemeral_models.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
@@ -1210,6 +1212,10 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
               ),
             ),
             const SizedBox(width: 8),
+            if (moment.saveable != null) ...[
+              _saveButton(moment),
+              const SizedBox(width: 8),
+            ],
             _GlassCircle(
               icon: Icons.more_horiz_rounded,
               tooltip: "Moment settings",
@@ -1222,6 +1228,69 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
           ],
         ),
       ],
+    );
+  }
+
+  /// Save to the phone's gallery - a ring of progress while it downloads.
+  Widget _saveButton(Moment moment) {
+    const fill = Color(0x1FFFFFFF);
+    const edge = Color(0x33FFFFFF);
+    final url = moment.saveable!.url;
+    return ValueListenableBuilder<Map<String, double>>(
+      valueListenable: MediaDownloader.instance.progress,
+      builder: (context, _, __) {
+        final progress = MediaDownloader.instance.progressOf(url);
+        if (progress == null) {
+          return _GlassCircle(
+            icon: Icons.download_rounded,
+            tooltip: "Save to device",
+            size: 52,
+            iconSize: 22,
+            color: fill,
+            border: edge,
+            onTap: () => _save(moment),
+          );
+        }
+        return Semantics(
+          label: "Saving to device",
+          child: _Glass(
+            width: 52,
+            height: 52,
+            radius: 26,
+            color: fill,
+            border: edge,
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  // 0 until the size is known: spin instead.
+                  value: progress > 0 ? progress : null,
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                  backgroundColor: Colors.white24,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Saves your moment to the gallery. In the background: it carries on,
+  /// and says when it's done, if you move on or close the viewer.
+  void _save(Moment moment) {
+    final save = moment.saveable;
+    if (save == null) return;
+    final type = GallerySaver.typeOf(save.url,
+        isVideo: save.isVideo, mediaType: save.mediaType);
+    MediaDownloader.instance.download(
+      save.url,
+      mimeType: type.mimeType,
+      fileName: GallerySaver.fileNameFor(
+          moment.post.datePosted ?? DateTime.now(), type.extension),
+      toGallery: true,
     );
   }
 

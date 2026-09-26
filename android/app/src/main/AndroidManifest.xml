@@ -97,8 +97,9 @@
          granted on Android 12 and below. Registration works without it -
          only display is gated. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <!-- Saving a downloaded attachment into the shared Downloads folder
-         (MediaSaver.kt). Capped at API 28 deliberately: from API 29 the save
+    <!-- Saving a downloaded attachment into the shared Downloads folder, or a
+         saved Moment into the gallery (MediaSaver.kt). Capped at API 28
+         deliberately: from API 29 the save
          goes through a MediaStore insert, which needs no permission at all,
          and asking for this one there would be both useless and refused.
          Only the pre-29 branch - a direct write into Environment's public

@@ -149,14 +149,19 @@ const _scaleFlags = 'lanczos';
 /// when an encoder refuses them, or when they pushed the file past
 /// [EncodingProfile.maxBytes].
 ///
+/// [watermarkPath] is the profile's [EncodingProfile.watermark] image as a
+/// file - needed when the profile has one and the edit keeps it
+/// ([Composition.watermark]).
+///
 /// Throws an [ArgumentError] for an edit that cannot be rendered (no length,
-/// no media size).
+/// no media size), or a watermark without its file.
 RenderCommand buildRenderCommand({
   required Composition composition,
   required EncodingProfile profile,
   required H264Encoder encoder,
   required String outputPath,
   bool qpCeilings = true,
+  String? watermarkPath,
 }) {
   final layer = composition.layer;
   final source = layer.source;
@@ -176,7 +181,8 @@ RenderCommand buildRenderCommand({
   final fps = profile.fps;
   final seconds = _seconds(duration);
 
-  // ---- Inputs: 0 = the media, 1 = the audio track (when there is one).
+  // ---- Inputs: 0 = the media, then the audio track and the watermark
+  // (each when there is one).
   final args = <String>['-hide_banner', '-y'];
   if (source.isVideo) {
     final start = layer.trim?.start ?? Duration.zero;
@@ -198,6 +204,14 @@ RenderCommand buildRenderCommand({
     }
     args.addAll(['-t', _seconds(trackLength), '-i', track.path]);
   }
+
+  final watermark = composition.watermark ? profile.watermark : null;
+  if (watermark != null && watermarkPath == null) {
+    throw ArgumentError.value(
+        watermarkPath, 'watermarkPath', 'the profile stamps a watermark');
+  }
+  final watermarkInput = track == null ? 1 : 2;
+  if (watermark != null) args.addAll(['-i', watermarkPath!]);
 
   // ---- Video.
   final graph = <String>[];
@@ -255,10 +269,11 @@ RenderCommand buildRenderCommand({
     }
   }
 
-  if (part == null || foregroundIn == null) {
-    // Nothing of the media reaches the canvas: the background is the frame.
-    graph.add(_chain('[bg]', finish, '[v]'));
-  } else {
+  // The composed frame: its input(s), and the filters that make it. When
+  // nothing of the media reaches the canvas, the background is the frame.
+  var frameIn = '[bg]';
+  final frame = <String>[];
+  if (part != null && foregroundIn != null) {
     final placed = part.placement;
     if (!part.isWhole) {
       // As fractions of the decoded frame, so a probe that was a pixel off
@@ -277,9 +292,30 @@ RenderCommand buildRenderCommand({
     // it whatever the rotation made its bounding box.
     final x = placed.centerX.toStringAsFixed(2);
     final y = placed.centerY.toStringAsFixed(2);
+    frameIn = '[bg][fg]';
+    frame.add('overlay=x=$x-w/2:y=$y-h/2:shortest=1');
+  }
+
+  if (watermark == null) {
+    graph.add(_chain(frameIn, [...frame, ...finish], '[v]'));
+  } else {
+    // Stamped last, over the composed frame - and before a still is brought
+    // up to the output rate, so once a second rather than on every frame.
+    // The logo is a single image: overlay holds it for every frame.
+    if (frame.isNotEmpty) {
+      graph.add(_chain(frameIn, frame, '[frame]'));
+      frameIn = '[frame]';
+    }
     graph.add(_chain(
-      '[bg][fg]',
-      ['overlay=x=$x-w/2:y=$y-h/2:shortest=1', ...finish],
+      '[$watermarkInput:v:0]',
+      ['scale=${evenPixels(w * watermark.width)}:-2:flags=$_scaleFlags'],
+      '[wm]',
+    ));
+    final left = (w * watermark.left).round();
+    final bottom = (h * watermark.bottom).round();
+    graph.add(_chain(
+      '$frameIn[wm]',
+      ['overlay=x=$left:y=H-h-$bottom:eof_action=repeat', ...finish],
       '[v]',
     ));
   }

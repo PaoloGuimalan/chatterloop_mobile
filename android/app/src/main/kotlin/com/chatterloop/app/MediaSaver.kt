@@ -6,6 +6,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.Handler
@@ -22,6 +23,10 @@ import java.util.concurrent.Executors
  * Puts a file the app has already downloaded into the device's SHARED
  * Downloads collection, so it shows up in Files / Downloads like any other
  * download rather than being buried in app-private storage.
+ *
+ * Or, for a photo or video meant for the gallery (a saved Moment), into the
+ * shared media collections instead: Pictures/Chatterloop, one album for both,
+ * where Gallery and Google Photos look ("saveToGallery").
  *
  * This has to be native. From API 29 (scoped storage) an app cannot write a
  * path under the public Downloads directory at all - dart:io sees it as
@@ -49,6 +54,9 @@ class MediaSaver {
     companion object {
         private const val CHANNEL = "chatterloop/media_saver"
         private const val PERMISSION_REQUEST = 0x1D10
+
+        /** The gallery album, under Pictures - videos may live there too. */
+        private const val ALBUM = "Chatterloop"
     }
 
     private val io = Executors.newSingleThreadExecutor()
@@ -61,7 +69,8 @@ class MediaSaver {
     fun register(activity: Activity, messenger: BinaryMessenger) {
         MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                "saveToDownloads" -> {
+                "saveToDownloads", "saveToGallery" -> {
+                    val gallery = call.method == "saveToGallery"
                     val path = call.argument<String>("path")
                     val fileName = call.argument<String>("fileName")
                     val mimeType = call.argument<String>("mimeType")
@@ -72,7 +81,9 @@ class MediaSaver {
                     }
                     withStoragePermission(
                         activity,
-                        onGranted = { save(activity, path, fileName, mimeType, result) },
+                        onGranted = {
+                            save(activity, path, fileName, mimeType, gallery, result)
+                        },
                         onDenied = {
                             result.error(
                                 "permission_denied",
@@ -141,6 +152,7 @@ class MediaSaver {
         path: String,
         fileName: String,
         mimeType: String,
+        gallery: Boolean,
         result: MethodChannel.Result,
     ) {
         io.execute {
@@ -149,9 +161,47 @@ class MediaSaver {
                 if (!source.exists()) throw IllegalStateException("staged file is gone")
                 val saved =
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        saveViaMediaStore(context, source, fileName, mimeType)
+                        if (gallery) {
+                            val collection =
+                                if (mimeType.startsWith("video/")) {
+                                    MediaStore.Video.Media.getContentUri(
+                                        MediaStore.VOLUME_EXTERNAL_PRIMARY,
+                                    )
+                                } else {
+                                    MediaStore.Images.Media.getContentUri(
+                                        MediaStore.VOLUME_EXTERNAL_PRIMARY,
+                                    )
+                                }
+                            saveViaMediaStore(
+                                context, source, fileName, mimeType,
+                                collection,
+                                "${Environment.DIRECTORY_PICTURES}/$ALBUM",
+                                // Taken now: it sorts to the top of the
+                                // gallery, not by the file's own dates.
+                                takenAt = System.currentTimeMillis(),
+                            )
+                        } else {
+                            saveViaMediaStore(
+                                context, source, fileName, mimeType,
+                                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                Environment.DIRECTORY_DOWNLOADS,
+                            )
+                        }
                     } else {
-                        saveViaPublicDirectory(context, source, fileName)
+                        val directory =
+                            if (gallery) {
+                                File(
+                                    Environment.getExternalStoragePublicDirectory(
+                                        Environment.DIRECTORY_PICTURES,
+                                    ),
+                                    ALBUM,
+                                )
+                            } else {
+                                Environment.getExternalStoragePublicDirectory(
+                                    Environment.DIRECTORY_DOWNLOADS,
+                                )
+                            }
+                        saveViaPublicDirectory(context, source, directory, fileName, mimeType)
                     }
                 main.post { result.success(saved) }
             } catch (e: Exception) {
@@ -162,22 +212,30 @@ class MediaSaver {
         }
     }
 
+    /**
+     * Inserts [source] into the MediaStore [collection], at [relativePath]
+     * (a path under shared storage, e.g. "Download").
+     */
     private fun saveViaMediaStore(
         context: Context,
         source: File,
         fileName: String,
         mimeType: String,
+        collection: Uri,
+        relativePath: String,
+        takenAt: Long? = null,
     ): String {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-            put(MediaStore.Downloads.MIME_TYPE, mimeType)
-            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            if (takenAt != null) put(MediaStore.MediaColumns.DATE_TAKEN, takenAt)
             // Hidden from other apps until the bytes are all there, so nothing
             // can open a half-copied file.
-            put(MediaStore.Downloads.IS_PENDING, 1)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        val uri = resolver.insert(collection, values)
             ?: throw IllegalStateException("MediaStore refused the insert")
         try {
             resolver.openOutputStream(uri).use { out ->
@@ -185,7 +243,7 @@ class MediaSaver {
                 source.inputStream().use { it.copyTo(out) }
             }
             values.clear()
-            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
         } catch (e: Exception) {
             // A pending row nothing ever finished writing is invisible AND
@@ -199,12 +257,12 @@ class MediaSaver {
     private fun saveViaPublicDirectory(
         context: Context,
         source: File,
+        directory: File,
         fileName: String,
+        mimeType: String,
     ): String {
-        val downloads =
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (!downloads.exists()) downloads.mkdirs()
-        val destination = uniqueFile(downloads, fileName)
+        if (!directory.exists()) directory.mkdirs()
+        val destination = uniqueFile(directory, fileName)
         source.inputStream().use { input ->
             destination.outputStream().use { output -> input.copyTo(output) }
         }
@@ -214,7 +272,7 @@ class MediaSaver {
         MediaScannerConnection.scanFile(
             context,
             arrayOf(destination.absolutePath),
-            null,
+            arrayOf(mimeType),
             null,
         )
         return destination.absolutePath
