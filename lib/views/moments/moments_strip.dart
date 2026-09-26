@@ -174,28 +174,28 @@ class _MomentsStripState extends State<MomentsStrip> {
             height: 150,
             child: tray == null
                 ? const _BoardSkeleton()
-                : ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      if (featured != null)
-                        _FeaturedTile(
-                            entry: featured, onTap: () => _open(featured!)),
-                      _AddTile(onTap: _create),
-                      for (final entry in rest)
-                        _MomentTile(entry: entry, onTap: () => _open(entry)),
-                      if (entries.isEmpty)
-                        Container(
-                          width: 220,
-                          alignment: Alignment.centerLeft,
-                          padding: const EdgeInsets.only(left: 6),
-                          child: Text(
-                            "No Moments from your circle yet. Moments disappear after 24 hours.",
-                            style: TextStyle(
-                                fontSize: CLType.caption, color: p.text3),
-                          ),
-                        ),
-                    ],
-                  ),
+                : entries.isEmpty
+                    // Nothing to watch: Add Moment, and a card filling the
+                    // rest of the row rather than a line of small text
+                    // floating in the space the tiles would take.
+                    ? Row(
+                        children: [
+                          _AddTile(onTap: _create),
+                          const Expanded(child: _EmptyBoard()),
+                        ],
+                      )
+                    : ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          if (featured != null)
+                            _FeaturedTile(
+                                entry: featured, onTap: () => _open(featured!)),
+                          _AddTile(onTap: _create),
+                          for (final entry in rest)
+                            _MomentTile(
+                                entry: entry, onTap: () => _open(entry)),
+                        ],
+                      ),
           ),
         ],
       ),
@@ -437,6 +437,24 @@ class _MomentTile extends StatelessWidget {
   }
 }
 
+/// The tiles' own ground: white in light, so they stand off the feed's grey
+/// rather than blending into it; the raised surface in dark.
+Color _tileSurface(BuildContext context) {
+  final p = cl(context);
+  return Theme.of(context).brightness == Brightness.light
+      ? p.surface
+      : p.surface2;
+}
+
+/// A lift under a tile in light mode - on white-on-grey it is the edge.
+List<BoxShadow>? _tileShadow(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.light
+        ? const [
+            BoxShadow(
+                color: Color(0x14141E37), blurRadius: 3, offset: Offset(0, 1)),
+          ]
+        : null;
+
 /// "Add Moment": a dashed tile, like web's.
 class _AddTile extends StatelessWidget {
   final VoidCallback onTap;
@@ -455,8 +473,9 @@ class _AddTile extends StatelessWidget {
           painter: _DashedBorder(color: p.border2, radius: CLRadii.md),
           child: Container(
             decoration: BoxDecoration(
-              color: p.surface2,
+              color: _tileSurface(context),
               borderRadius: BorderRadius.circular(CLRadii.md),
+              boxShadow: _tileShadow(context),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -479,6 +498,50 @@ class _AddTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// No Moments to watch: a card the height of the tiles, filling the row.
+class _EmptyBoard extends StatelessWidget {
+  const _EmptyBoard();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: _tileSurface(context),
+        borderRadius: BorderRadius.circular(CLRadii.md),
+        border: Border.all(color: p.border),
+        boxShadow: _tileShadow(context),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration:
+                BoxDecoration(color: p.brandSoft, shape: BoxShape.circle),
+            child: Icon(Icons.auto_awesome_outlined, size: 20, color: p.brand),
+          ),
+          const SizedBox(height: 8),
+          Text("No moments to view",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: CLType.title,
+                  fontWeight: FontWeight.w700,
+                  color: p.text)),
+          const SizedBox(height: 2),
+          Text("Moments from your circle show up here for 24 hours.",
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: CLType.caption, color: p.text3)),
+        ],
       ),
     );
   }

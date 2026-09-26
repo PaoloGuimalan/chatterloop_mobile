@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- allowBackup MUST stay false, and push is the reason.
          Auto Backup saves the app's plain files and shared prefs, which include
          Firebase Installations' PersistedInstallation json - the record the FCM
@@ -63,6 +64,23 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_stat_chatterloop" />
+        <!-- Photo picker on Android 11 and 12: asks Google Play services to
+             install the backported picker, so choosing photos and videos
+             opens the gallery there too (main.dart turns the picker on).
+             13+ has it built in. Straight from image_picker_android's README;
+             the class is Play services', hence MissingClass. -->
+        <service
+            android:name="com.google.android.gms.metadata.ModuleDependencies"
+            android:enabled="false"
+            android:exported="false"
+            tools:ignore="MissingClass">
+            <intent-filter>
+                <action android:name="com.google.android.gms.metadata.MODULE_DEPENDENCIES" />
+            </intent-filter>
+            <meta-data
+                android:name="photopicker_activity:0:required"
+                android:value="" />
+        </service>
     </application>
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- record's AudioRecorder needs this to capture voice messages. -->

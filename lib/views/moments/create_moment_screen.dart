@@ -160,15 +160,25 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
     await _open(file.path, looksLikeVideo: video);
   }
 
+  /// The phone's gallery (Android's photo picker) - one photo or video - not
+  /// the file manager it used to open.
   Future<void> _fromGallery() async {
-    final result = await FilePicker.pickFiles(type: FileType.media);
-    final file = result?.files.firstOrNull;
-    if (file == null || file.path == null) return;
+    final XFile? file;
+    try {
+      file = await ImagePicker().pickMedia();
+    } catch (_) {
+      if (mounted) _toast("Couldn't open your gallery");
+      return;
+    }
+    if (file == null) return;
     await _open(
-      file.path!,
-      looksLikeVideo:
-          PendingMedia(path: file.path!, name: file.name, size: file.size)
-              .isVideo,
+      file.path,
+      looksLikeVideo: PendingMedia(
+              path: file.path,
+              name: file.name,
+              size: 0,
+              mimeType: file.mimeType)
+          .isVideo,
     );
   }
 

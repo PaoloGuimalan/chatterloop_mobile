@@ -807,7 +807,8 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
       override();
       return;
     }
-    Navigator.of(context).push(
+    // Over the whole app - see openMediaViewer, same reason.
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) =>

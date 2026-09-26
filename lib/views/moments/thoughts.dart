@@ -8,6 +8,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart'
 import 'package:chatterloop_app/models/post_models/ephemeral_models.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/views/moments/moments_strip.dart';
+import 'package:chatterloop_app/views/moments/reaction_burst.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -322,7 +323,8 @@ Widget _grabber(CLPalette p) => Center(
       ),
     );
 
-/// Someone else's thought (design 2f): react, or reply into your chat.
+/// Someone else's thought (Moments polish 1c): the bubble over its author,
+/// then react, or reply into your chat.
 Future<void> showThoughtDetailSheet(BuildContext context,
         {required Thought thought}) =>
     _sheet(context, _ThoughtDetail(thought: thought));
@@ -342,6 +344,9 @@ class _ThoughtDetailState extends State<_ThoughtDetail> {
   late String? _mine = widget.thought.myReaction;
   bool _sending = false;
 
+  /// Reactions made here, counted to play the burst again.
+  int _burst = 0;
+
   @override
   void initState() {
     super.initState();
@@ -349,6 +354,8 @@ class _ThoughtDetailState extends State<_ThoughtDetail> {
     ReactionPalette.load().then((emojis) {
       if (mounted) setState(() => _palette = emojis);
     });
+    // The send button lights up once there is something to send.
+    _reply.addListener(() => setState(() {}));
   }
 
   @override
@@ -360,14 +367,29 @@ class _ThoughtDetailState extends State<_ThoughtDetail> {
   String get _first =>
       (widget.thought.author?.displayName ?? "them").split(" ").first;
 
+  String? get _mineGlyph {
+    final id = _mine;
+    if (id == null) return null;
+    for (final emoji in _palette) {
+      if (emoji.emojiId == id) return emoji.content;
+    }
+    return ReactionPalette.glyphFor(id);
+  }
+
+  /// One reaction per thought: the first tap sends it; tapping it again only
+  /// plays the burst again; the others are locked once one is chosen.
   Future<void> _react(Emoji emoji) async {
     final before = _mine;
-    final method =
-        reactionMethodFor(currentEmojiId: before, tappedEmojiId: emoji.emojiId);
-    setState(
-        () => _mine = method == ReactionMethod.remove ? null : emoji.emojiId);
+    if (before != null && before != emoji.emojiId) return;
+    setState(() {
+      _mine = emoji.emojiId;
+      _burst++;
+    });
+    if (before != null) return;
     final ok = await NewsfeedApi().setPostReactionRequest(
-        postId: widget.thought.postId, emojiId: emoji.emojiId, method: method);
+        postId: widget.thought.postId,
+        emojiId: emoji.emojiId,
+        method: ReactionMethod.add);
     if (!ok && mounted) setState(() => _mine = before);
   }
 
@@ -401,149 +423,242 @@ class _ThoughtDetailState extends State<_ThoughtDetail> {
     final thought = widget.thought;
     final author = thought.author;
     final mood = thoughtMoodOf(thought.mood);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final mine = _mineGlyph;
+    final ready = _reply.text.trim().isNotEmpty && !_sending;
+
+    Widget dot(double size, double shift, double gap) => Transform.translate(
+          offset: Offset(shift, 0),
+          child: Container(
+            width: size,
+            height: size,
+            margin: EdgeInsets.only(top: gap),
+            decoration: BoxDecoration(
+              color: p.surface,
+              shape: BoxShape.circle,
+              border: Border.all(color: p.border),
+            ),
+          ),
+        );
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _grabber(p),
-        Row(
-          children: [
-            CLAvatar(
-                id: author?.entityId ?? thought.entityId,
-                name: author?.displayName,
-                src: author?.profile,
-                size: 44),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(author?.displayName ?? "",
-                      style: TextStyle(
-                          fontSize: CLType.title,
-                          fontWeight: FontWeight.w700,
-                          color: p.text)),
-                  Text(
-                      "${ephemeralTimeAgo(thought.datePosted)} · ${ephemeralTimeLeft(thought.expiresAt)}",
-                      style: TextStyle(fontSize: CLType.meta, color: p.text3)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
+        // The thought as the rail shows it - a bubble over its author - so
+        // opening one reads as the same thing, larger.
         Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 18),
           decoration: BoxDecoration(
             color: p.surface2,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: p.border),
+            borderRadius: BorderRadius.circular(CLRadii.lg),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(thought.text,
-                  style: TextStyle(
-                      fontSize: CLType.sectionTitle + 2,
-                      fontWeight: FontWeight.w600,
-                      color: p.text,
-                      height: 1.35)),
-              if (mood != null) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: mood.color.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(CLRadii.pill),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(mood.icon, size: 13, color: mood.color),
-                      const SizedBox(width: 4),
-                      Text(mood.label,
-                          style: TextStyle(
-                              fontSize: CLType.meta,
-                              fontWeight: FontWeight.w700,
-                              color: mood.color)),
-                    ],
-                  ),
+              Container(
+                constraints: const BoxConstraints(maxWidth: 270),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
+                decoration: BoxDecoration(
+                  color: p.surface,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: p.border),
+                  boxShadow: [
+                    BoxShadow(
+                        color: dark
+                            ? const Color(0x59000000)
+                            : const Color(0x14000000),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2)),
+                  ],
                 ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(thought.text,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: CLType.screenTitle,
+                            fontWeight: FontWeight.w600,
+                            color: p.text,
+                            height: 1.35)),
+                    if (mood != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(7, 3, 9, 3),
+                        decoration: BoxDecoration(
+                          color: mood.color.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(CLRadii.pill),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(mood.icon, size: 13, color: mood.color),
+                            const SizedBox(width: 4),
+                            Text(mood.label,
+                                style: TextStyle(
+                                    fontSize: CLType.meta,
+                                    fontWeight: FontWeight.w700,
+                                    color: mood.color)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              dot(9, -12, 3),
+              dot(5, -18, 2),
+              const SizedBox(height: 4),
+              CLAvatar(
+                id: author?.entityId ?? thought.entityId,
+                entityId: author?.entityId ?? thought.entityId,
+                name: author?.displayName,
+                src: author?.profile,
+                size: 64,
+              ),
+              const SizedBox(height: 10),
+              Text(author?.displayName ?? "",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: CLType.sectionTitle,
+                      fontWeight: FontWeight.w700,
+                      color: p.text)),
+              const SizedBox(height: 2),
+              Text(
+                  "${ephemeralTimeAgo(thought.datePosted)} · ${ephemeralTimeLeft(thought.expiresAt)}",
+                  style: TextStyle(fontSize: CLType.meta, color: p.text3)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (_palette.isNotEmpty)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (final (i, emoji) in _palette.take(6).indexed) ...[
+                if (i > 0) const SizedBox(width: 10),
+                _reaction(p, emoji),
               ],
             ],
           ),
-        ),
         const SizedBox(height: 14),
-        if (_palette.isNotEmpty)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              for (final emoji in _palette.take(6))
-                GestureDetector(
-                  onTap: () => _react(emoji),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _mine == emoji.emojiId ? p.brandSoft : p.surface2,
-                      border: Border.all(
-                          color: _mine == emoji.emojiId ? p.brand : p.border),
-                    ),
-                    child: Text(emoji.content,
-                        style: const TextStyle(fontSize: 20)),
-                  ),
-                ),
-            ],
+        // The field, with send inside it.
+        Container(
+          height: 46,
+          padding: const EdgeInsets.fromLTRB(16, 0, 5, 0),
+          decoration: BoxDecoration(
+            color: p.input,
+            borderRadius: BorderRadius.circular(CLRadii.pill),
+            border: Border.all(color: p.border),
           ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _reply,
-                enabled: !_sending,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _send(),
-                style: TextStyle(color: p.text, fontSize: CLType.body),
-                decoration: InputDecoration(
-                  hintText: "Reply to $_first…",
-                  hintStyle: TextStyle(color: p.text3),
-                  isDense: true,
-                  filled: true,
-                  fillColor: p.input,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(CLRadii.pill),
-                    borderSide: BorderSide(color: p.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(CLRadii.pill),
-                    borderSide: BorderSide(color: p.border),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _reply,
+                  enabled: !_sending,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _send(),
+                  style: TextStyle(color: p.text, fontSize: CLType.title),
+                  decoration: InputDecoration.collapsed(
+                    hintText: "Reply to $_first…",
+                    hintStyle:
+                        TextStyle(color: p.text3, fontSize: CLType.title),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            CLIconBtn(
-                icon: Icons.send_rounded,
-                color: p.brand,
-                onPressed: _sending ? null : _send),
-          ],
+              const SizedBox(width: 8),
+              Semantics(
+                button: true,
+                label: "Send reply",
+                child: GestureDetector(
+                  onTap: ready ? _send : null,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: ready ? p.brand : p.surface3,
+                    ),
+                    child: _sending
+                        ? const Padding(
+                            padding: EdgeInsets.all(10),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : Icon(Icons.send_rounded,
+                            size: 18, color: ready ? Colors.white : p.text3),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.lock_outline_rounded, size: 14, color: p.text3),
+            Icon(
+                mine != null
+                    ? Icons.check_circle_rounded
+                    : Icons.lock_outline_rounded,
+                size: 14,
+                color: mine != null ? p.brand : p.text3),
             const SizedBox(width: 5),
-            Text("Replies go to your chat with $_first.",
-                style: TextStyle(fontSize: CLType.caption, color: p.text3)),
+            Flexible(
+              child: Text(
+                  mine != null
+                      ? "You reacted $mine · $_first will see it"
+                      : "Replies go to your chat with $_first.",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: CLType.caption,
+                      fontWeight:
+                          mine != null ? FontWeight.w600 : FontWeight.w400,
+                      color: mine != null ? p.brand : p.text3)),
+            ),
           ],
         ),
       ],
+    );
+  }
+
+  Widget _reaction(CLPalette p, Emoji emoji) {
+    final chosen = _mine == emoji.emojiId;
+    final locked = _mine != null && !chosen;
+    return Semantics(
+      button: true,
+      label: "React ${emoji.content}",
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: locked ? null : () => _react(emoji),
+        child: AnimatedOpacity(
+          opacity: locked ? 0.35 : 1,
+          duration: const Duration(milliseconds: 250),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: chosen ? p.brandSoft : p.surface2,
+              border: Border.all(color: chosen ? p.brand : Colors.transparent),
+            ),
+            child: chosen
+                ? ReactionBurst(
+                    emoji: emoji.content,
+                    size: 20,
+                    ringColor: p.brand,
+                    burst: _burst)
+                : Text(emoji.content,
+                    style: const TextStyle(fontSize: 20, height: 1)),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -652,16 +652,17 @@ void main() {
     });
 
     testWidgets('mute toggles', (tester) async {
-      // A post's video starts muted - it played by itself.
+      // A post's video plays by itself with its sound on (the first-autoplay
+      // mute in SharedVideoControllers._reconcile is switched off).
       await pumpVideo(tester, const Size(1280, 720));
-
-      await tester.tap(find.byIcon(Icons.volume_off));
-      await tester.pump();
-      expect(find.byIcon(Icons.volume_up), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.volume_up));
       await tester.pump();
       expect(find.byIcon(Icons.volume_off), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.volume_off));
+      await tester.pump();
+      expect(find.byIcon(Icons.volume_up), findsOneWidget);
     });
 
     testWidgets('the scrubber runs the width of the video, inset at both edges',
@@ -696,8 +697,7 @@ void main() {
 
       final player = tester.getRect(find.byType(VideoPlayerScreen));
       final clock = tester.getRect(find.text('0:00 / 0:10'));
-      // Off: a post's video starts muted.
-      final mute = tester.getRect(find.byIcon(Icons.volume_off));
+      final mute = tester.getRect(find.byIcon(Icons.volume_up));
 
       // Both on the same inset as the scrubber above them.
       expect(clock.left - player.left, closeTo(12, 0.5));
@@ -1087,13 +1087,12 @@ void main() {
     // The box is 360 x 202.5 (16:9 at full width); the screen 900 tall.
     const boxHeight = 360 * 9 / 16;
 
-    testWidgets('in view, it plays - muted, since it started unasked',
-        (tester) async {
+    testWidgets('in view, it plays - with its sound on', (tester) async {
       await pumpFeed(tester);
 
       expect(player(tester).value.isPlaying, isTrue);
-      expect(player(tester).value.volume, 0);
-      expect(find.byIcon(Icons.volume_off), findsOneWidget);
+      expect(player(tester).value.volume, 1);
+      expect(find.byIcon(Icons.volume_up), findsOneWidget);
     });
 
     testWidgets('less than half in view, it waits', (tester) async {

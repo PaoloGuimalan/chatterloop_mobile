@@ -160,6 +160,17 @@ class CLType {
   static const double display = 40;
 }
 
+/// "Chatterloop" as the brand sets it - webapp's wordmark (login, splash,
+/// legal pages): Inter ExtraBold, tracked in by 2% of its size.
+TextStyle clWordmark({required double fontSize, required Color color}) =>
+    TextStyle(
+      fontFamily: 'Inter',
+      fontSize: fontSize,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -0.02 * fontSize,
+      color: color,
+    );
+
 class CLRadii {
   static const xs = 8.0;
   static const sm = 10.0;
@@ -390,11 +401,15 @@ ThemeData buildCLTheme(Brightness brightness) {
       surface: p.surface,
       error: p.pink,
     ),
+    // Inter is bundled (pubspec.yaml fonts). The primary text theme too - the
+    // few Material widgets that read it would otherwise fall back to the
+    // platform font.
     textTheme: base.textTheme.apply(
       fontFamily: 'Inter',
       bodyColor: p.text,
       displayColor: p.text,
     ),
+    primaryTextTheme: base.primaryTextTheme.apply(fontFamily: 'Inter'),
     iconTheme: IconThemeData(color: p.text2),
     dividerColor: p.border,
     appBarTheme: AppBarTheme(

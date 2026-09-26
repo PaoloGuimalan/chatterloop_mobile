@@ -55,6 +55,26 @@ const List<String> _tabTitles = [
   "Explore"
 ];
 
+/// The shell header's title: a tab's name, or on the home tab the wordmark.
+class _HeaderTitle extends StatelessWidget {
+  final String text;
+  final bool wordmark;
+
+  const _HeaderTitle({required this.text, required this.wordmark});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Text(text,
+        style: wordmark
+            ? clWordmark(fontSize: CLType.screenTitle, color: p.text)
+            : TextStyle(
+                color: p.text,
+                fontSize: CLType.screenTitle,
+                fontWeight: FontWeight.w700));
+  }
+}
+
 class HomeTabScaffold extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
   const HomeTabScaffold({super.key, required this.navigationShell});
@@ -278,12 +298,13 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                       children: [
                         // Same size AND weight as appBarTheme.titleTextStyle -
                         // this header and a pushed screen's AppBar have to read
-                        // as one thing.
-                        Text(_tabTitles[widget.navigationShell.currentIndex],
-                            style: TextStyle(
-                                color: p.text,
-                                fontSize: CLType.screenTitle,
-                                fontWeight: FontWeight.w700)),
+                        // as one thing. Except the home tab's WORDMARK, set
+                        // the way webapp sets "Chatterloop" everywhere: Inter
+                        // ExtraBold, tracked in by 2% of its size.
+                        _HeaderTitle(
+                            text:
+                                _tabTitles[widget.navigationShell.currentIndex],
+                            wordmark: widget.navigationShell.currentIndex == 0),
                         Row(
                           children: [
                             // Explore left the bottom bar to make room for the

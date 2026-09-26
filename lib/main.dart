@@ -5,12 +5,14 @@ import 'package:chatterloop_app/core/design/theme_provider.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/utils/app_messenger.dart';
+import 'package:chatterloop_app/core/utils/gallery_picker.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/notifications/push_notification_service.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'dart:ui' show DartPluginRegistrant;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:flutter/services.dart';
@@ -74,6 +76,16 @@ void main() async {
 
   // 4. Set the background handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Picking photos and videos opens the gallery, not the file browser.
+  useGalleryPicker();
+
+  // The bundled Inter font's licence (SIL OFL 1.1), listed with every
+  // package's - the licence asks to travel with the font.
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks(const ['Inter'],
+        await rootBundle.loadString('assets/fonts/Inter-OFL.txt'));
+  });
 
   // 5. Decode the logo BEFORE the first frame.
   //

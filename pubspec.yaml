@@ -53,6 +53,11 @@ dependencies:
   flutter_client_sse: ^2.0.3
   go_router: ^17.3.0
   image_picker: ^1.2.0
+  # Direct only to turn on Android's photo picker at startup (main.dart):
+  # left to itself, image_picker opens the system FILE browser for "gallery".
+  # Both were already in the build, through image_picker.
+  image_picker_android: ^0.8.13+19
+  image_picker_platform_interface: ^2.11.1
   event_bus: ^2.0.1
   audioplayers: ^6.1.0
   emoji_picker_flutter: ^4.3.0
@@ -236,6 +241,35 @@ flutter:
   assets:
     - assets/images/
     - assets/sounds/
+    # Inter's licence (SIL OFL 1.1), shown on the licences page - see main.dart.
+    - assets/fonts/Inter-OFL.txt
+
+  # Inter, the family the design uses everywhere (tokens.dart asks for it by
+  # name). Without the files the theme's 'Inter' silently fell back to the
+  # platform font - Roboto on Android - and nothing in the app was Inter.
+  # Static weights from the official release (rsms/inter v4.1), only the ones
+  # the app draws: 400, 500, 600, 700, 800 and regular italic.
+  #
+  # MODIFIED: tool/inter_drop_emoji.py took the emoji-capable characters (❤ ♥
+  # ☀ ⚠ ▶ ⬆ ...) out of their character maps. Inter has plain glyphs for them,
+  # drawn in the TEXT colour - a white ❤ on a dark screen - and as the first
+  # font it beat the phone's colour emoji. Without them the system draws those
+  # emoji, as before Inter was bundled. Rerun it on any new Inter files;
+  # test/fonts_test.dart fails until you do.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Inter-ExtraBold.ttf
+          weight: 800
 
   # To add assets to your application, add an assets section, like this:
   # assets:

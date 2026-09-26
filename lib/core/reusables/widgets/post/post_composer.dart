@@ -29,8 +29,8 @@ import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
 
 /// Same three values web's composer sends as `privacy.status`. "custom" is
@@ -173,13 +173,22 @@ Future<bool> showCreatePostSheet(
 
 /// A file chosen but not yet uploaded.
 class PendingMedia {
-  PendingMedia({required this.path, required this.name, required this.size});
+  PendingMedia(
+      {required this.path,
+      required this.name,
+      required this.size,
+      this.mimeType});
   final String path;
   final String name;
   final int size;
 
+  /// What the gallery said it is, when it said - its copies are not always
+  /// named with the original extension.
+  final String? mimeType;
+
   bool get isVideo =>
-      RegExp(r'\.(mp4|mov|avi|mkv|webm|m4v)$').hasMatch(name.toLowerCase());
+      (mimeType?.startsWith('video/') ?? false) ||
+      RegExp(r'\.(mp4|mov|avi|mkv|webm|m4v|3gp)$').hasMatch(name.toLowerCase());
 
   /// What /posts/upload wants in `referenceMediaTypes`, and what comes back as
   /// the reference's media type.
@@ -234,19 +243,30 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
 
   Future<void> _pickMedia() async {
     final mode = widget.mode;
-    final result = await FilePicker.pickFiles(
-      // An avatar or cover is ONE image - a video can't be either, and a
-      // second file has nowhere to go.
-      type: mode.isMedia ? FileType.image : FileType.media,
-      allowMultiple: !mode.isMedia,
-    );
-    if (result == null || !mounted) return;
+    // The phone's gallery (Android's photo picker), not the file manager - a
+    // post is photos and videos, browsed the way the camera roll shows them.
+    final picker = ImagePicker();
+    final List<XFile> picked;
+    try {
+      if (mode.isMedia) {
+        // An avatar or cover is ONE image - a video can't be either, and a
+        // second file has nowhere to go.
+        final image = await picker.pickImage(source: ImageSource.gallery);
+        picked = [if (image != null) image];
+      } else {
+        picked = await picker.pickMultipleMedia();
+      }
+    } catch (_) {
+      if (mounted) _toast("Couldn't open your gallery");
+      return;
+    }
+    if (picked.isEmpty || !mounted) return;
 
     final rejected = <String>[];
-    for (final file in result.files) {
+    for (final file in picked) {
       final path = file.path;
-      if (path == null) continue;
-      if (file.size > kMaxUploadBytes) {
+      final size = await File(path).length();
+      if (size > kMaxUploadBytes) {
         rejected.add(file.name);
         continue;
       }
@@ -254,9 +274,11 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
       // Picking again in a media mode REPLACES rather than appends: there is
       // only ever one avatar.
       if (widget.mode.isMedia) _media.clear();
-      _media.add(PendingMedia(path: path, name: file.name, size: file.size));
+      _media.add(PendingMedia(
+          path: path, name: file.name, size: size, mimeType: file.mimeType));
       if (widget.mode.isMedia) break;
     }
+    if (!mounted) return;
 
     setState(() {});
     if (rejected.isNotEmpty) {

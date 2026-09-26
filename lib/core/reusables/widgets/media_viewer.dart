@@ -49,7 +49,10 @@ void openMediaViewer(
   bool canDownload = true,
 }) {
   if (items.isEmpty) return;
-  Navigator.of(context).push(
+  // The ROOT navigator: over the whole app. From a tab (a post in the
+  // newsfeed) the nearest navigator is that tab's own, and the viewer opened
+  // inside it - under the header and the tab bar.
+  Navigator.of(context, rootNavigator: true).push(
     // Opaque on purpose: this covers the screen, and a see-through route over
     // a page triggers the router's parallax (see CLPageRoute.canTransitionTo).
     MaterialPageRoute<void>(
