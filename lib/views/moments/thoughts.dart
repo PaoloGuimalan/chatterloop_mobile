@@ -112,11 +112,18 @@ class ThoughtsRailView extends StatefulWidget {
   const ThoughtsRailView({super.key});
 
   @override
-  State<ThoughtsRailView> createState() => _ThoughtsRailViewState();
+  State<ThoughtsRailView> createState() => ThoughtsRailViewState();
 }
 
-class _ThoughtsRailViewState extends State<ThoughtsRailView> {
+/// Public so the Messages screen can hold a key to it and fold the rail into
+/// its pull-to-refresh - see [refresh].
+class ThoughtsRailViewState extends State<ThoughtsRailView> {
   ThoughtsRail? _rail;
+
+  /// Reloads the rail, for a pull-to-refresh to wait on. The rail otherwise
+  /// only reloads when your own thought changes (EphemeralEvents.thoughts),
+  /// so the latest from everyone else waits for this.
+  Future<void> refresh() => _load();
 
   @override
   void initState() {
@@ -168,31 +175,51 @@ class _ThoughtsRailViewState extends State<ThoughtsRailView> {
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
           width: 78,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
+          child: Stack(
+            clipBehavior: Clip.none,
             children: [
-              // 72 inside a 78 slot: 6px between neighbouring bubbles, so
-              // two thoughts side by side never run into each other.
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: _railBubbleRoom),
+                  avatar,
+                  const SizedBox(height: 4),
+                  Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: CLType.meta, color: p.text2)),
+                ],
+              ),
+              // Pinned to the top and painted over the avatar, so a thought
+              // never makes the rail taller - a longer one reaches further
+              // down instead.
               if (bubble != null)
-                ThoughtBubble(
-                    text: bubble, small: true, muted: muted, maxWidth: 72),
-              avatar,
-              const SizedBox(height: 4),
-              Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: CLType.meta, color: p.text2)),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    // 72 inside a 78 slot: 6px between neighbouring bubbles,
+                    // so two thoughts side by side never run into each other.
+                    child: ThoughtBubble(
+                        text: bubble, small: true, muted: muted, maxWidth: 72),
+                  ),
+                ),
             ],
           ),
         ),
       );
     }
 
-    return SizedBox(
-      height: 132,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+    // A fixed room above every avatar, the same whatever the thoughts say:
+    // it used to be a band sized by the tallest bubble, which grew with the
+    // longest thought and sat empty over everyone without one.
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           item(
             bubble: rail.mine?.text ?? "Share a thought",
@@ -804,36 +831,56 @@ Future<void> _openChat(BuildContext context, String entityId) async {
   context.push('/conversation/$conversationId');
 }
 
-/// The rail while it loads: bubble, avatar, name per person.
+/// The room every rail item keeps above its avatar, with the thought pinned
+/// to the top of it. Sized so a two-line thought ("Share a thought") ends
+/// just above the avatar's middle; a longer one grows DOWN over the avatar
+/// rather than making the rail taller.
+const double _railBubbleRoom = 28;
+
+/// The rail while it loads: bubble, avatar, name per person - shaped like the
+/// loaded rail, a thought pinned over each avatar's top.
 class _ThoughtsRailSkeleton extends StatelessWidget {
   const _ThoughtsRailSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 132,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           for (var i = 0; i < 5; i++)
             const SizedBox(
               width: 78,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  CLSkeleton(
-                      width: 60,
-                      height: 28,
-                      borderRadius: BorderRadius.all(Radius.circular(14))),
-                  SizedBox(height: 10),
-                  CLSkeleton(
-                      width: 52,
-                      height: 52,
-                      borderRadius: BorderRadius.all(Radius.circular(26))),
-                  SizedBox(height: 6),
-                  CLSkeleton(width: 44, height: 10),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(height: _railBubbleRoom),
+                      CLSkeleton(
+                          width: 52,
+                          height: 52,
+                          borderRadius: BorderRadius.all(Radius.circular(26))),
+                      SizedBox(height: 6),
+                      CLSkeleton(width: 44, height: 10),
+                    ],
+                  ),
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: CLSkeleton(
+                          width: 60,
+                          height: 28,
+                          borderRadius: BorderRadius.all(Radius.circular(14))),
+                    ),
+                  ),
                 ],
               ),
             ),

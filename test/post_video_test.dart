@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 /// Reports one fixed video size. Everything else is a no-op - nothing here
 /// plays anything.
@@ -155,6 +156,11 @@ const PostReference _video = PostReference(
 );
 
 void main() {
+  // A post's video plays and pauses by how much of it is in view, which
+  // VisibilityDetector reports - by default on a 500ms timer that would still
+  // be pending when each test ends. Zero reports within the frame.
+  VisibilityDetectorController.instance.updateInterval = Duration.zero;
+
   // Controllers now outlive their widgets by a grace period (see
   // SharedVideoControllers.release), and the registry is static - so without
   // this, one test's controller is handed to the next, which then measures the
@@ -196,12 +202,9 @@ void main() {
         ),
       ),
     ));
+    // The first frame reports it in view, the next makes its player, the next
+    // takes the initialized event.
     await tester.pump();
-    // A post's video is a STILL until you press play - mounting a player per
-    // row is what exhausted the platform's decoders. So every geometry test
-    // starts by activating it, exactly as a viewer would.
-    await tester.tap(find.byType(InlinePostVideo));
-    // One frame to create the controller, one for the initialized event.
     await tester.pump();
     await tester.pump();
 
@@ -213,13 +216,62 @@ void main() {
   // Every controller is a platform decoder. A feed row mounting one meant ten
   // video posts held ten decoders, after which initialise simply failed and
   // every video said "cannot be played" - and retrying could not help, because
-  // the decoders were still held by the rows above. So a post's video is a
-  // still frame (an extracted bitmap, no decoder) until someone presses play.
-  group('a feed of videos holds no decoders', () {
-    testWidgets('several video posts create nothing until played',
+  // the decoders were still held by the rows above. A post's video is a player
+  // from the moment it is SEEN, not the moment its row is built: a feed builds
+  // rows ahead of the screen, and those hold nothing.
+  group('a feed of videos holds decoders only for what is seen', () {
+    const second = PostReference(
+      referenceId: 'r2',
+      reference: _otherUrl,
+      mediaType: 'video/mp4',
+    );
+
+    testWidgets('a video below the screen has no player until scrolled to',
         (tester) async {
       final fake = _FakeVideoPlayerPlatform(const Size(1280, 720));
       VideoPlayerPlatform.instance = fake;
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            controller: scroll,
+            child: const Column(children: [
+              PostAttachments(references: [_video]),
+              // Built - it is in the tree - but a screen below the first.
+              SizedBox(height: 1200),
+              PostAttachments(references: [second]),
+            ]),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(InlinePostVideo), findsNWidgets(2));
+      expect(fake.created, 1, reason: 'only the one on screen');
+      expect(find.byType(VideoPlayerScreen), findsOneWidget);
+
+      scroll.jumpTo(scroll.position.maxScrollExtent);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(fake.created, 2);
+      // Each keeps its own player once made - as in a browser.
+      expect(find.byType(VideoPlayerScreen), findsNWidgets(2));
+      expect(SharedVideoControllers.activeCount, 2);
+    });
+
+    testWidgets('two videos on screen at once both play', (tester) async {
+      VideoPlayerPlatform.instance =
+          _FakeVideoPlayerPlatform(const Size(1280, 720));
       tester.view.physicalSize = screen;
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -230,40 +282,18 @@ void main() {
           body: SingleChildScrollView(
             child: Column(children: [
               PostAttachments(references: [_video]),
-              PostAttachments(references: [
-                PostReference(
-                  referenceId: 'r2',
-                  reference: _otherUrl,
-                  mediaType: 'video/mp4',
-                ),
-              ]),
+              PostAttachments(references: [second]),
             ]),
           ),
         ),
       ));
-      await tester.pump();
-      await tester.pump();
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
 
-      expect(find.byType(InlinePostVideo), findsNWidgets(2));
-      expect(fake.created, 0, reason: 'no decoder until someone presses play');
-      expect(SharedVideoControllers.activeCount, 0);
-
-      // Play the first: exactly one decoder now exists.
-      await tester.tap(find.byType(InlinePostVideo).first);
-      await tester.pump();
-      await tester.pump();
-      expect(fake.created, 1);
-      expect(find.byType(VideoPlayerScreen), findsOneWidget);
-
-      // Play the second: each video is its own player, as in a browser - the
-      // first keeps playing rather than being paused or folded away.
-      await tester.tap(find.byType(InlinePostVideo).last);
-      await tester.pump();
-      await tester.pump();
       expect(find.byType(VideoPlayerScreen), findsNWidgets(2));
-      expect(SharedVideoControllers.activeCount, 2);
       expect(find.byIcon(Icons.pause), findsNWidgets(2),
-          reason: 'both playing at once');
+          reason: 'both in view, both playing - neither pauses the other');
     });
   });
 
@@ -348,9 +378,9 @@ void main() {
 
   /// A player mounted directly, so it starts PAUSED.
   ///
-  /// The card path can't be used for control tests any more: activating a
-  /// post's video is a deliberate "play" gesture, so it autoplays, and every
-  /// assertion about the resting state would be measuring a playing video.
+  /// The card path can't be used for control tests any more: a post's video
+  /// plays by itself once it is in view, and every assertion about the
+  /// resting state would be measuring a playing video.
   Future<void> pumpPlayer(WidgetTester tester, Size videoSize) async {
     VideoPlayerPlatform.instance = _FakeVideoPlayerPlatform(videoSize);
     tester.view.physicalSize = screen;
@@ -622,7 +652,12 @@ void main() {
     });
 
     testWidgets('mute toggles', (tester) async {
+      // A post's video starts muted - it played by itself.
       await pumpVideo(tester, const Size(1280, 720));
+
+      await tester.tap(find.byIcon(Icons.volume_off));
+      await tester.pump();
+      expect(find.byIcon(Icons.volume_up), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.volume_up));
       await tester.pump();
@@ -661,7 +696,8 @@ void main() {
 
       final player = tester.getRect(find.byType(VideoPlayerScreen));
       final clock = tester.getRect(find.text('0:00 / 0:10'));
-      final mute = tester.getRect(find.byIcon(Icons.volume_up));
+      // Off: a post's video starts muted.
+      final mute = tester.getRect(find.byIcon(Icons.volume_off));
 
       // Both on the same inset as the scrubber above them.
       expect(clock.left - player.left, closeTo(12, 0.5));
@@ -910,4 +946,261 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(tester.getSize(find.byType(VideoPlayerScreen)).width, screen.width);
   });
+
+  // A post's video has the video's shape from the start - full width, as tall
+  // as its proportions make it up to the cap, cropped to cover past that - the
+  // way webapp's lone-video post does. It used to be a fixed 220px still that
+  // jumped to a 200px spinner on play, then to the video's shape.
+  //
+  // The shape comes from the first frame, which stands in while the player
+  // loads; there is no platform to extract one here, so the tests seed what it
+  // would say - and use a player that never finishes loading, so what is
+  // measured is the frame's shape and not the player's correction of it.
+  group('the video takes its own shape', () {
+    Future<Size> pumpPost(
+      WidgetTester tester, {
+      double? frameRatio,
+      bool playInline = true,
+      _FakeVideoPlayerPlatform? platform,
+    }) async {
+      VideoPlayerPlatform.instance = platform ??
+          _FakeVideoPlayerPlatform(const Size(1280, 720),
+              emitInitialized: false);
+      VideoFirstFrame.debugSetAspectRatio(_videoUrl, frameRatio);
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: PostAttachments(
+                references: const [_video], playInline: playInline),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      return tester.getSize(find.byType(InlinePostVideo));
+    }
+
+    testWidgets('a landscape video is its own shape, full width',
+        (tester) async {
+      final size = await pumpPost(tester, frameRatio: 4 / 3);
+
+      expect(size.width, screen.width);
+      expect(size.height, closeTo(screen.width * 3 / 4, 0.5));
+    });
+
+    testWidgets('a portrait video is capped, and covers rather than bars',
+        (tester) async {
+      final size = await pumpPost(tester, frameRatio: 9 / 16);
+
+      expect(size.width, screen.width);
+      expect(size.height, closeTo(maxInlineHeight, 0.5));
+    });
+
+    testWidgets('an unknown shape falls back to 16:9', (tester) async {
+      final size = await pumpPost(tester);
+
+      expect(size.width, screen.width);
+      expect(size.height, closeTo(screen.width * 9 / 16, 0.5));
+    });
+
+    testWidgets('the player loads over the frame, in the same box',
+        (tester) async {
+      final size = await pumpPost(tester, frameRatio: 4 / 3);
+
+      // A player straight away - no play badge to press first.
+      expect(find.byType(VideoPlayerScreen), findsOneWidget);
+      expect(find.byIcon(Icons.play_circle_fill), findsNothing);
+      // Still loading, and filling the box rather than collapsing it.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(tester.getSize(find.byType(VideoPlayerScreen)), size);
+    });
+
+    testWidgets('the player corrects a shape the frame got wrong',
+        (tester) async {
+      // A square video whose frame could not be read: 16:9 until it loads.
+      await pumpPost(tester,
+          platform: _FakeVideoPlayerPlatform(const Size(720, 720)));
+      await tester.pump();
+
+      final size = tester.getSize(find.byType(InlinePostVideo));
+      expect(size.width, screen.width);
+      expect(size.height, closeTo(screen.width, 0.5));
+    });
+
+    testWidgets(
+        'a preview (share, moderation) is a still: same shape, no player',
+        (tester) async {
+      final size = await pumpPost(tester, frameRatio: 4 / 3, playInline: false);
+
+      expect(size.width, screen.width);
+      expect(size.height, closeTo(screen.width * 3 / 4, 0.5));
+      expect(find.byType(VideoPlayerScreen), findsNothing);
+      expect(find.byIcon(Icons.play_circle_fill), findsOneWidget);
+    });
+  });
+
+  // A post's video plays by itself once more than half of it is in view, and
+  // pauses once none of it is - scrolled away, under another screen. Muted the
+  // first time: it started unasked.
+  group('plays while in view', () {
+    /// The video at [top] px down a scrolling page 3 screens tall.
+    Future<(_FakeVideoPlayerPlatform, ScrollController)> pumpFeed(
+        WidgetTester tester,
+        {double top = 0}) async {
+      final fake = _FakeVideoPlayerPlatform(const Size(1280, 720));
+      VideoPlayerPlatform.instance = fake;
+      VideoFirstFrame.debugSetAspectRatio(_videoUrl, 16 / 9);
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            controller: scroll,
+            child: Column(children: [
+              SizedBox(height: top),
+              const PostAttachments(references: [_video]),
+              SizedBox(height: screen.height * 3),
+            ]),
+          ),
+        ),
+      ));
+      await settle(tester);
+      return (fake, scroll);
+    }
+
+    /// The one video player in the tree, on screen or not.
+    VideoPlayerController player(WidgetTester tester) => tester
+        .widget<VideoPlayer>(find.byType(VideoPlayer, skipOffstage: false))
+        .controller;
+
+    // The box is 360 x 202.5 (16:9 at full width); the screen 900 tall.
+    const boxHeight = 360 * 9 / 16;
+
+    testWidgets('in view, it plays - muted, since it started unasked',
+        (tester) async {
+      await pumpFeed(tester);
+
+      expect(player(tester).value.isPlaying, isTrue);
+      expect(player(tester).value.volume, 0);
+      expect(find.byIcon(Icons.volume_off), findsOneWidget);
+    });
+
+    testWidgets('less than half in view, it waits', (tester) async {
+      // 60px of it showing at the bottom of the screen: a third.
+      await pumpFeed(tester, top: screen.height - 60);
+
+      expect(find.byType(VideoPlayerScreen), findsOneWidget,
+          reason: 'on screen, so it has its player and controls');
+      expect(player(tester).value.isPlaying, isFalse);
+    });
+
+    testWidgets('scrolled out of view it pauses, and plays on the way back',
+        (tester) async {
+      final (_, scroll) = await pumpFeed(tester);
+      expect(player(tester).value.isPlaying, isTrue);
+
+      // Two thirds out: still partly in view, so it carries on.
+      scroll.jumpTo(boxHeight * 2 / 3);
+      await settle(tester);
+      expect(player(tester).value.isPlaying, isTrue);
+
+      // All the way out.
+      scroll.jumpTo(boxHeight + 50);
+      await settle(tester);
+      expect(player(tester).value.isPlaying, isFalse);
+
+      scroll.jumpTo(0);
+      await settle(tester);
+      expect(player(tester).value.isPlaying, isTrue);
+    });
+
+    testWidgets('a video you paused in view stays paused', (tester) async {
+      await pumpFeed(tester);
+      await player(tester).pause();
+      await settle(tester);
+
+      expect(player(tester).value.isPlaying, isFalse,
+          reason: 'playing by itself is for coming INTO view, not staying');
+    });
+
+    testWidgets('your unmute sticks when it plays by itself again',
+        (tester) async {
+      final (_, scroll) = await pumpFeed(tester);
+      await player(tester).setVolume(1);
+
+      scroll.jumpTo(boxHeight + 50);
+      await settle(tester);
+      scroll.jumpTo(0);
+      await settle(tester);
+
+      expect(player(tester).value.isPlaying, isTrue);
+      expect(player(tester).value.volume, 1);
+    });
+
+    testWidgets('another screen over it pauses it', (tester) async {
+      await pumpFeed(tester);
+      expect(player(tester).value.isPlaying, isTrue);
+
+      Navigator.of(tester.element(find.byType(InlinePostVideo))).push(
+          MaterialPageRoute(builder: (_) => const Scaffold(body: SizedBox())));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await settle(tester);
+
+      expect(player(tester).value.isPlaying, isFalse);
+    });
+
+    testWidgets('opening the post over its row keeps it playing',
+        (tester) async {
+      final (fake, _) = await pumpFeed(tester);
+
+      // The post screen shows the same video - the same player.
+      Navigator.of(tester.element(find.byType(InlinePostVideo))).push(
+          MaterialPageRoute(
+              builder: (_) => const Scaffold(
+                  body: SingleChildScrollView(
+                      child: PostAttachments(references: [_video])))));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await settle(tester);
+
+      expect(fake.created, 1, reason: 'one player for both');
+      final controller = tester
+          .widget<VideoPlayer>(
+              find.byType(VideoPlayer, skipOffstage: false).first)
+          .controller;
+      expect(controller.value.isPlaying, isTrue);
+    });
+
+    testWidgets('full screen keeps it playing', (tester) async {
+      await pumpFeed(tester);
+      final controller = player(tester);
+
+      await tester.tap(find.byIcon(Icons.fullscreen));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await settle(tester);
+
+      expect(controller.value.isPlaying, isTrue);
+    });
+  });
+}
+
+/// Enough frames for a visibility report to land, the player it asks for to
+/// be made and loaded, and play or pause to follow.
+Future<void> settle(WidgetTester tester) async {
+  for (var i = 0; i < 5; i++) {
+    await tester.pump();
+  }
 }

@@ -35,6 +35,9 @@ class MessagesStateView extends State<MessagesView> {
   /// under us - see the reset in build().
   int _lastCount = 0;
 
+  /// The Thoughts rail, so pull-to-refresh can reload it with the list.
+  final _railKey = GlobalKey<ThoughtsRailViewState>();
+
   /// Loads page 1 and REPLACES the list. Also what pull-to-refresh runs, hence
   /// resetting the paging cursor - continuing from an old `_page` after the
   /// list was replaced would skip or duplicate a page.
@@ -59,6 +62,13 @@ class MessagesStateView extends State<MessagesView> {
       setState(() => isInitialized = true);
     }
   }
+
+  /// Pull-to-refresh: the conversations and the thoughts above them together,
+  /// so the spinner stays up until both are current.
+  Future<void> _refresh(BuildContext context) => Future.wait([
+        getConversationListProcess(context),
+        _railKey.currentState?.refresh() ?? Future<void>.value(),
+      ]);
 
   /// Fetch the next page and APPEND it to the Redux list (read fresh at
   /// dispatch time so a concurrent SSE update isn't clobbered). Guarded so
@@ -146,139 +156,133 @@ class MessagesStateView extends State<MessagesView> {
           _lastCount = messagesList.length;
           return Scaffold(
             backgroundColor: p.bg,
-            body: Column(
-              children: [
-                // The two ways to start something, above the list rather than
-                // behind a floating button: web puts Create Group in the Messages
-                // header, and on a phone the header is already carrying the tab
-                // bar. Side by side and equal width because neither is the
-                // secondary one - a DM and a group chat are both just "a new
-                // conversation".
-                //
-                // md, not sm: these are the screen's primary actions sitting above
-                // a list of 60px rows, and at 32px they read as a filter chip
-                // rather than something to press. The labels ellipsise if a narrow
-                // device cannot fit them at this size (see CLBtn).
-                //
-                // softStrong, not soft and not primary. Two solid blue buttons
-                // out-shout the list they sit above - the inbox is the screen, and
-                // these only start something. But plain `soft` is #E7F0FE in LIGHT
-                // mode, near enough to white to read as disabled. softStrong is
-                // exactly `soft` in dark, where the tint already worked, and a
-                // deeper fill in light, where it did not.
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: CLBtn(
-                          label: "Write message",
-                          iconL: Icons.edit_square,
-                          variant: CLBtnVariant.softStrong,
-                          size: CLBtnSize.md,
-                          // One step down from md's own CLType.title, which is
-                          // the size a conversation NAME is drawn at below - a
-                          // button louder than the list it introduces is the wrong
-                          // way round. Height stays at md.
-                          labelSize: CLType.bodySm,
-                          block: true,
-                          onPressed: () => _openNewMessage(context),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: CLBtn(
-                          label: "Create group",
-                          iconL: Icons.group_add,
-                          variant: CLBtnVariant.softStrong,
-                          size: CLBtnSize.md,
-                          // One step down from md's own CLType.title, which is
-                          // the size a conversation NAME is drawn at below - a
-                          // button louder than the list it introduces is the wrong
-                          // way round. Height stays at md.
-                          labelSize: CLType.bodySm,
-                          block: true,
-                          onPressed: () => _openCreateGroup(context),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Thoughts, under the screen's actions and just above the
-                // conversations - where web puts it (below search and the
-                // list filters). No divider under it.
-                const Padding(
-                  // A little air between the thoughts and the conversations.
-                  padding: EdgeInsets.only(top: 4, bottom: 10),
-                  child: ThoughtsRailView(),
-                ),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: !isInitialized
-                        ? const Padding(
-                            key: ValueKey('loading'),
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: CLListSkeleton(),
-                          )
-                        : messagesList.isEmpty
-                            // Scrollable even when empty, so pull-to-refresh is a
-                            // way to retry a load that came back with nothing.
-                            ? RefreshIndicator(
-                                key: const ValueKey('empty'),
-                                onRefresh: () =>
-                                    getConversationListProcess(context),
-                                child: ListView(
-                                  physics:
-                                      const AlwaysScrollableScrollPhysics(),
-                                  children: [
-                                    SizedBox(
-                                        height:
-                                            MediaQuery.of(context).size.height *
-                                                0.22),
-                                    Padding(
-                                      padding: const EdgeInsets.all(24),
-                                      child: CLEmptyState(
-                                        icon: Icons.forum,
-                                        iconBg: p.surface2,
-                                        iconColor: p.text2,
-                                        iconBorderColor: p.border,
-                                        title: "No conversations yet",
-                                        subtitle:
-                                            "Search for people to start one.",
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : RefreshIndicator(
-                                key: const ValueKey('list'),
-                                onRefresh: () =>
-                                    getConversationListProcess(context),
-                                child: NotificationListener<ScrollNotification>(
-                                  onNotification: (n) {
-                                    if (n.metrics.pixels >=
-                                        n.metrics.maxScrollExtent - 240) {
-                                      _loadMore(context);
-                                    }
-                                    return false;
-                                  },
-                                  child: ListView.builder(
-                                    physics:
-                                        const AlwaysScrollableScrollPhysics(),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12),
-                                    itemCount: messagesList.length,
-                                    itemBuilder: (context, index) =>
-                                        MessageItemView(
-                                            message: messagesList[index],
-                                            userID: state.entityId),
-                                  ),
-                                ),
+            // ONE scroll view for the whole screen, so a pull anywhere on it
+            // refreshes - list and thoughts both - and the spinner comes down
+            // from the top of the screen. It used to start under the thoughts,
+            // where the list began, and reloaded the list only. The actions
+            // and the rail scroll away with the conversations as a result.
+            body: RefreshIndicator(
+              onRefresh: () => _refresh(context),
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (n) {
+                  // depth 0 is this screen's own scroll. The rail's sideways
+                  // one reports from deeper, and must not page the list.
+                  if (n.depth == 0 &&
+                      n.metrics.pixels >= n.metrics.maxScrollExtent - 240) {
+                    _loadMore(context);
+                  }
+                  return false;
+                },
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child:
+                          // The two ways to start something, above the list rather than
+                          // behind a floating button: web puts Create Group in the Messages
+                          // header, and on a phone the header is already carrying the tab
+                          // bar. Side by side and equal width because neither is the
+                          // secondary one - a DM and a group chat are both just "a new
+                          // conversation".
+                          //
+                          // md, not sm: these are the screen's primary actions sitting above
+                          // a list of 60px rows, and at 32px they read as a filter chip
+                          // rather than something to press. The labels ellipsise if a narrow
+                          // device cannot fit them at this size (see CLBtn).
+                          //
+                          // softStrong, not soft and not primary. Two solid blue buttons
+                          // out-shout the list they sit above - the inbox is the screen, and
+                          // these only start something. But plain `soft` is #E7F0FE in LIGHT
+                          // mode, near enough to white to read as disabled. softStrong is
+                          // exactly `soft` in dark, where the tint already worked, and a
+                          // deeper fill in light, where it did not.
+                          Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: CLBtn(
+                                label: "Write message",
+                                iconL: Icons.edit_square,
+                                variant: CLBtnVariant.softStrong,
+                                size: CLBtnSize.md,
+                                // One step down from md's own CLType.title, which is
+                                // the size a conversation NAME is drawn at below - a
+                                // button louder than the list it introduces is the wrong
+                                // way round. Height stays at md.
+                                labelSize: CLType.bodySm,
+                                block: true,
+                                onPressed: () => _openNewMessage(context),
                               ),
-                  ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: CLBtn(
+                                label: "Create group",
+                                iconL: Icons.group_add,
+                                variant: CLBtnVariant.softStrong,
+                                size: CLBtnSize.md,
+                                // One step down from md's own CLType.title, which is
+                                // the size a conversation NAME is drawn at below - a
+                                // button louder than the list it introduces is the wrong
+                                // way round. Height stays at md.
+                                labelSize: CLType.bodySm,
+                                block: true,
+                                onPressed: () => _openCreateGroup(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Thoughts, under the screen's actions and just above the
+                    // conversations - where web puts it (below search and the
+                    // list filters). No divider under it.
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        // A little air between the thoughts and the conversations.
+                        padding: const EdgeInsets.only(top: 4, bottom: 10),
+                        child: ThoughtsRailView(key: _railKey),
+                      ),
+                    ),
+                    if (!isInitialized)
+                      const SliverPadding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        sliver: SliverToBoxAdapter(child: CLListSkeleton()),
+                      )
+                    else if (messagesList.isEmpty)
+                      // The pull still works here, so it is a way to retry a
+                      // load that came back with nothing.
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                              24,
+                              MediaQuery.of(context).size.height * 0.22 + 24,
+                              24,
+                              24),
+                          child: CLEmptyState(
+                            icon: Icons.forum,
+                            iconBg: p.surface2,
+                            iconColor: p.text2,
+                            iconBorderColor: p.border,
+                            title: "No conversations yet",
+                            subtitle: "Search for people to start one.",
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        sliver: SliverList.builder(
+                          itemCount: messagesList.length,
+                          itemBuilder: (context, index) => MessageItemView(
+                              message: messagesList[index],
+                              userID: state.entityId),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
+              ),
             ),
           );
         },

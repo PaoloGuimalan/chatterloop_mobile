@@ -3,8 +3,10 @@
 // Layout is chosen by COUNT, which is the thing that actually decides what
 // reads well in a feed:
 //
-//   1        one image, full width, at its own aspect ratio (capped) - a lone
-//            photo in a fixed-height box is the classic letterboxing mistake
+//   1        one image or video, full width, at its own aspect ratio (capped,
+//            and cropped to cover past the cap - the viewer shows it whole) -
+//            a lone photo in a fixed-height box is the classic letterboxing
+//            mistake
 //   2        two equal halves
 //   3        one large left, two stacked right
 //   4+       2x2 grid, with a "+N" scrim on the last tile
@@ -36,18 +38,14 @@ List<PostReference> displayableReferences(List<PostReference> references) =>
 class PostAttachments extends StatelessWidget {
   final List<PostReference> references;
 
-  /// Whether a lone video gets a live player, or a poster that opens one.
+  /// Whether a lone video is a player here - controls showing, playing by
+  /// itself while in view (see [InlinePostVideo]) - or a still that opens the
+  /// full-screen viewer.
   ///
-  /// False in a FEED row, for the same reason a grid tile has never played
-  /// inline (see [_AttachmentTile]): every player is a platform-level decoder,
-  /// and a feed is a list of them. Ten video posts scrolled past would leave
-  /// ten alive.
-  ///
-  /// It also fixed a real symptom. Opening a post FROM a feed row left that
-  /// row's player alive underneath - two controllers on the same URL at once -
-  /// and the screen's one drew nothing but its background. The same post opened
-  /// from search, with nothing playing behind it, was fine. A row that never
-  /// starts a player can't collide with the screen's.
+  /// True for posts - the feed and the post screen. Two players on one video
+  /// used to collide (the screen opened over a playing row drew nothing); the
+  /// shared controllers made that one player (SharedVideoControllers). False
+  /// where a post is only being previewed: the share composer, moderation.
   final bool playInline;
 
   const PostAttachments({
@@ -155,26 +153,15 @@ class _SingleAttachment extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = cl(context);
     if (reference.isVideo) {
-      if (!playInline) {
-        // A feed row advertises the video; the viewer plays it. Tapping opens
-        // the same full-screen gallery a photo does, so media behaves the same
-        // way whichever kind it is.
-        return GestureDetector(
-          onTap: () => openPostGallery(context, [reference], 0),
-          child: Container(
-            // A fixed height, not the video's shape: that shape isn't known
-            // until a player has loaded it, and loading one is the thing this
-            // branch exists to avoid. Matches the multi-media grid, which sizes
-            // its rows the same way and for the same reason.
-            constraints: BoxConstraints(maxHeight: maxHeight),
-            width: double.infinity,
-            height: 200,
-            color: p.surface2,
-            child: VideoFirstFrame(source: reference.reference),
-          ),
-        );
-      }
-      return InlinePostVideo(source: reference.reference, maxHeight: maxHeight);
+      // The video's own shape either way - full width, capped, covering (see
+      // InlinePostVideo). Without playInline a tap opens the same full-screen
+      // viewer a photo does instead of a player here.
+      return InlinePostVideo(
+        source: reference.reference,
+        maxHeight: maxHeight,
+        onTap:
+            playInline ? null : () => openPostGallery(context, [reference], 0),
+      );
     }
     return GestureDetector(
       onTap: () => openPostGallery(context, [reference], 0),

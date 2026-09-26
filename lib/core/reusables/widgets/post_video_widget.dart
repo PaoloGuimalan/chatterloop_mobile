@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:crypto/crypto.dart';
@@ -9,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 /// One [VideoPlayerController] per source, shared by every widget showing it
 /// and disposed when the last one goes away.
@@ -225,6 +228,93 @@ class SharedVideoControllers {
   /// never got turned off, which no assertion in a widget test would catch.
   @visibleForTesting
   static int get activeCount => _entries.length;
+
+  /// Records how much of [entry]'s video [viewer] can see (null: it has
+  /// stopped showing it), and plays or pauses to match. Post videos only -
+  /// a player nobody reports on is left entirely to its own controls.
+  ///
+  /// Judged across EVERY place showing the video, because they share one
+  /// player: a feed row covered by the post it opened reports hidden while
+  /// the post screen over it reports watching, and the video must play on
+  /// through that hand-over rather than pause and restart.
+  ///  - someone starts watching (more than half in view): play, muted the
+  ///    first time it plays by itself - it started unasked, so it starts
+  ///    quiet; the viewer's unmute sticks after that;
+  ///  - nobody can see it at all: pause;
+  ///  - in between (only partly in view): leave it as it is.
+  static void setVisibility(
+      SharedVideoEntry entry, Object viewer, VideoVisibility? visibility) {
+    if (visibility == null) {
+      if (entry.viewers.remove(viewer) == null) return;
+    } else {
+      if (entry.viewers[viewer] == visibility) return;
+      entry.viewers[viewer] = visibility;
+    }
+    if (entry.reconcileQueued) return;
+    entry.reconcileQueued = true;
+    // A microtask: a hand-over arrives as two reports (the row hidden, the
+    // screen over it watching) and is judged once, as the pair.
+    scheduleMicrotask(() => _reconcile(entry));
+  }
+
+  /// [setVisibility] for a viewer holding the controller rather than the
+  /// entry - the full-screen page. Only where the video is already managed
+  /// by visibility (a post's), so opening a chat video full screen doesn't
+  /// start autoplaying it.
+  static void setVisibilityOf(VideoPlayerController controller, Object viewer,
+      VideoVisibility? visibility) {
+    for (final entry in _entries.values) {
+      if (!identical(entry.controller, controller)) continue;
+      if (visibility != null && entry.viewers.isEmpty) return;
+      setVisibility(entry, viewer, visibility);
+      return;
+    }
+  }
+
+  static Future<void> _reconcile(SharedVideoEntry entry) async {
+    entry.reconcileQueued = false;
+    try {
+      await entry.ready;
+    } catch (_) {
+      return; // Failed to load - the error state renders itself.
+    }
+    // Let go of while it loaded.
+    if (!_entries.containsValue(entry)) return;
+    final controller = entry.controller;
+    if (!controller.value.isInitialized) return;
+
+    final seen = entry.viewers.values;
+    final watching = seen.contains(VideoVisibility.watching);
+    if (watching) {
+      if (entry.watched) return;
+      entry.watched = true;
+      if (controller.value.isPlaying) return;
+      // if (!entry.autoMuted) {
+      //   entry.autoMuted = true;
+      //   await controller.setVolume(0);
+      // }
+      await controller.play();
+      return;
+    }
+    entry.watched = false;
+    if (seen.every((v) => v == VideoVisibility.hidden) &&
+        controller.value.isPlaying) {
+      await controller.pause();
+    }
+  }
+}
+
+/// How much of a post's video one place showing it can see - see
+/// [SharedVideoControllers.setVisibility].
+enum VideoVisibility {
+  /// None of it: off screen, under another screen, or on a hidden tab.
+  hidden,
+
+  /// Some of it, but not more than half.
+  partly,
+
+  /// More than half - enough to be watching it.
+  watching,
 }
 
 /// One shared controller and the single [ready] future every viewer of it
@@ -239,6 +329,20 @@ class SharedVideoEntry {
   late Future<void> ready;
   int refs = 0;
   int lastUsed = 0;
+
+  /// What each place showing it can see - post videos only. See
+  /// [SharedVideoControllers.setVisibility].
+  final Map<Object, VideoVisibility> viewers = {};
+
+  /// Someone was watching at the last check, so play happens on the way IN
+  /// to view, not on every report while it stays there - a video you paused
+  /// while watching stays paused.
+  bool watched = false;
+
+  /// It has played by itself once, muted. The volume is the viewer's after.
+  bool autoMuted = false;
+
+  bool reconcileQueued = false;
 }
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -277,10 +381,11 @@ class VideoPlayerScreen extends StatefulWidget {
   /// video.
   final bool anchorControlsToBounds;
 
-  /// Start playing as soon as it is ready. Set by [InlinePostVideo], where the
-  /// player only exists because the viewer just tapped play - making them tap
-  /// a second time would be absurd.
-  final bool autoPlay;
+  /// How much of this player is in view, for a post's video - which plays by
+  /// itself once it is more than half in view and pauses once it is out of
+  /// it (see [SharedVideoControllers.setVisibility]). [InlinePostVideo]
+  /// measures it. Null leaves the player to its own controls.
+  final VideoVisibility? visibility;
 
   /// Whether the controls offer the expand button at all.
   ///
@@ -296,15 +401,21 @@ class VideoPlayerScreen extends StatefulWidget {
   /// player with no relationship to it.
   final VoidCallback? onFullscreen;
 
+  /// Told the video's width-over-height once the player has loaded it - the
+  /// true shape, for a parent that sized the box before it knew it
+  /// ([InlinePostVideo] goes by the first frame until then).
+  final ValueChanged<double>? onAspectRatio;
+
   const VideoPlayerScreen({
     super.key,
     required this.videoUrl,
     this.isLocalFile = false,
     this.fillWidth = false,
     this.anchorControlsToBounds = false,
-    this.autoPlay = false,
+    this.visibility,
     this.showFullscreenButton = true,
     this.onFullscreen,
+    this.onAspectRatio,
   });
 
   @override
@@ -321,18 +432,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
     _entry = SharedVideoControllers.acquire(widget.videoUrl,
         isLocalFile: widget.isLocalFile);
-    if (widget.autoPlay) _playWhenReady();
+    _reportAspectWhenReady();
+    _reportVisibility();
   }
 
-  Future<void> _playWhenReady() async {
-    try {
-      await _entry.ready;
-    } catch (_) {
-      // The error state renders itself; nothing to start.
-      return;
-    }
-    if (!mounted || !_controller.value.isInitialized) return;
-    await _controller.play();
+  /// Tells the shared player how much of it this viewer can see.
+  void _reportVisibility() {
+    if (widget.visibility == null) return;
+    SharedVideoControllers.setVisibility(_entry, this, widget.visibility);
+  }
+
+  /// Hands [VideoPlayerScreen.onAspectRatio] the loaded video's shape. Per
+  /// entry, so a retry or a recycled widget reports its own video.
+  void _reportAspectWhenReady() {
+    if (widget.onAspectRatio == null) return;
+    final entry = _entry;
+    entry.ready.then((_) {
+      if (!mounted || !identical(entry, _entry)) return;
+      final value = _controller.value;
+      if (value.isInitialized && value.aspectRatio > 0) {
+        widget.onAspectRatio?.call(value.aspectRatio);
+      }
+    }, onError: (_) {
+      // Failed to load - the error state renders itself, and the parent
+      // keeps the shape it already had.
+    });
   }
 
   @override
@@ -340,18 +464,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.videoUrl == widget.videoUrl &&
         oldWidget.isLocalFile == widget.isLocalFile) {
+      if (oldWidget.visibility != widget.visibility) {
+        SharedVideoControllers.setVisibility(_entry, this, widget.visibility);
+      }
       return;
     }
     // Recycled onto a different video - let the old one go before taking the
     // new one, or the count for the old source never reaches zero.
+    SharedVideoControllers.setVisibility(_entry, this, null);
     SharedVideoControllers.release(oldWidget.videoUrl,
         isLocalFile: oldWidget.isLocalFile);
     _entry = SharedVideoControllers.acquire(widget.videoUrl,
         isLocalFile: widget.isLocalFile);
+    _reportAspectWhenReady();
+    _reportVisibility();
   }
 
   @override
   void dispose() {
+    SharedVideoControllers.setVisibility(_entry, this, null);
     SharedVideoControllers.release(widget.videoUrl,
         isLocalFile: widget.isLocalFile);
     super.dispose();
@@ -381,10 +512,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               onRetry: () {
                 SharedVideoControllers.evict(widget.videoUrl,
                     isLocalFile: widget.isLocalFile);
+                SharedVideoControllers.setVisibility(_entry, this, null);
                 setState(() {
                   _entry = SharedVideoControllers.acquire(widget.videoUrl,
                       isLocalFile: widget.isLocalFile);
                 });
+                _reportAspectWhenReady();
+                _reportVisibility();
               },
             );
           }
@@ -878,13 +1012,37 @@ class _VideoControlsOverlayState extends State<VideoControlsOverlay> {
   }
 }
 
-class _FullscreenVideoPlayerPage extends StatelessWidget {
+class _FullscreenVideoPlayerPage extends StatefulWidget {
   final VideoPlayerController controller;
 
   const _FullscreenVideoPlayerPage({required this.controller});
 
   @override
+  State<_FullscreenVideoPlayerPage> createState() =>
+      _FullscreenVideoPlayerPageState();
+}
+
+class _FullscreenVideoPlayerPageState
+    extends State<_FullscreenVideoPlayerPage> {
+  // Watching, for as long as it is open. It covers the post it was opened
+  // from, which then reports its video hidden - and a post's video pauses
+  // once nothing showing it can be seen.
+  @override
+  void initState() {
+    super.initState();
+    SharedVideoControllers.setVisibilityOf(
+        widget.controller, this, VideoVisibility.watching);
+  }
+
+  @override
+  void dispose() {
+    SharedVideoControllers.setVisibilityOf(widget.controller, this, null);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
     final aspectRatio =
         controller.value.isInitialized && controller.value.aspectRatio > 0
             ? controller.value.aspectRatio
@@ -1030,7 +1188,50 @@ class VideoFirstFrame extends StatefulWidget {
   static void clearCache() {
     _cache.clear();
     _inFlight.clear();
+    _ratios.clear();
   }
+
+  /// Width over height of each source's first frame, once read. Null value =
+  /// no frame to read it from.
+  static final Map<String, double?> _ratios = {};
+
+  /// The shape [source] plays at, if it is already known - so a post scrolled
+  /// back into view is built at its size straight away rather than growing
+  /// into it a frame later.
+  static double? knownAspectRatio(String source) => _ratios[source];
+
+  /// The shape [source] plays at, read off its first frame.
+  ///
+  /// This is what lets a post size its video before anyone presses play: the
+  /// platform hands the frame over upright, so its proportions are the
+  /// video's, and getting them costs no player - only the frame the post
+  /// shows anyway. Just the image's header is read, not its pixels.
+  static Future<double?> aspectRatioOf(String source) async {
+    if (_ratios.containsKey(source)) return _ratios[source];
+    final data = await _frameFor(source);
+    double? ratio;
+    if (data != null) {
+      try {
+        final buffer = await ui.ImmutableBuffer.fromUint8List(data);
+        final descriptor = await ui.ImageDescriptor.encoded(buffer);
+        if (descriptor.width > 0 && descriptor.height > 0) {
+          ratio = descriptor.width / descriptor.height;
+        }
+        descriptor.dispose();
+        buffer.dispose();
+      } catch (_) {
+        // Unreadable - the post keeps its default shape until a player
+        // reports the real one.
+      }
+    }
+    return _ratios[source] = ratio;
+  }
+
+  /// Seeds a source's shape, standing in for a frame the platform would
+  /// extract - there is no platform to extract one under test.
+  @visibleForTesting
+  static void debugSetAspectRatio(String source, double? ratio) =>
+      _ratios[source] = ratio;
 
   /// Where extracted frames are kept between app launches.
   ///
@@ -1162,22 +1363,39 @@ class _VideoFirstFrameState extends State<VideoFirstFrame> {
   }
 }
 
-/// A post's inline video: a still frame until you press play, a real player
-/// after that.
+/// A post's video, as a player with its controls - no still to tap first.
+/// It plays by itself (muted, the first time) once more than half of it is
+/// in view, and pauses once none of it is: scrolled away, under another
+/// screen, or on a tab you left.
 ///
-/// A feed is an unbounded list of videos, so the default state costs nothing
-/// (the frame is an extracted bitmap, see [VideoFirstFrame]) and the player
-/// is built on demand. Once started, each is its own player: starting another
-/// leaves this one playing, and it keeps its player until it scrolls away
-/// (see SharedVideoControllers for why that is safe now).
+/// The player is made the first time the video comes into view, not when the
+/// row is built: a feed builds rows ahead of the screen, and a player each
+/// would hold decoders for videos nobody has seen. Until it has loaded, the
+/// first frame (an extracted bitmap, see [VideoFirstFrame]) stands in, so the
+/// box shows the picture rather than an empty grey block. Once made, it stays
+/// until the row goes (see SharedVideoControllers for the budget on them).
+///
+/// The box takes the VIDEO's shape: always the full width, as tall as the
+/// video's proportions make it, up to [maxHeight]. A video taller than that is
+/// cropped to cover the box rather than letterboxed - the full-screen player
+/// shows it whole. The shape comes from the first frame, so it is right before
+/// the player loads, and the player corrects it if the two ever disagree.
+///
+/// With [onTap] (a post being previewed - the share composer, moderation) it
+/// is a still with a play badge instead, and the tap is the caller's.
 class InlinePostVideo extends StatefulWidget {
   final String source;
   final double maxHeight;
+
+  /// Makes it a still whose tap is this - the share composer and moderation
+  /// open the full-screen viewer. Null: a player that plays by itself.
+  final VoidCallback? onTap;
 
   const InlinePostVideo({
     super.key,
     required this.source,
     required this.maxHeight,
+    this.onTap,
   });
 
   @override
@@ -1185,42 +1403,123 @@ class InlinePostVideo extends StatefulWidget {
 }
 
 class _InlinePostVideoState extends State<InlinePostVideo> {
-  bool _active = false;
+  /// Until the frame says otherwise - the common shape of a phone video shot
+  /// sideways, and webapp's FittedPostMedia default.
+  static const double _defaultRatio = 16 / 9;
 
-  void _activate() => setState(() => _active = true);
+  /// The player exists - from the first time any of the video was in view.
+  bool _live = false;
+
+  VideoVisibility _visibility = VideoVisibility.hidden;
+
+  /// One per box: two posts can show the same video.
+  final Key _detectorKey = UniqueKey();
+
+  /// Width over height; null until known.
+  double? _ratio;
+
+  /// The player has reported the real shape, which the frame must not then
+  /// overwrite if it lands late.
+  bool _ratioFromPlayer = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveRatio();
+  }
+
+  @override
+  void didUpdateWidget(covariant InlinePostVideo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.source != widget.source) {
+      _ratioFromPlayer = false;
+      _resolveRatio();
+    }
+  }
+
+  void _onVisibilityChanged(VisibilityInfo info) {
+    // The detector's last report comes as the box is unmounted.
+    if (!mounted) return;
+    final fraction = info.visibleFraction;
+    final visibility = fraction <= 0
+        ? VideoVisibility.hidden
+        : fraction > 0.5
+            ? VideoVisibility.watching
+            : VideoVisibility.partly;
+    final live = _live || fraction > 0;
+    if (visibility == _visibility && live == _live) return;
+    setState(() {
+      _visibility = visibility;
+      _live = live;
+    });
+  }
+
+  void _resolveRatio() {
+    final source = widget.source;
+    _ratio = VideoFirstFrame.knownAspectRatio(source);
+    if (_ratio != null) return;
+    VideoFirstFrame.aspectRatioOf(source).then((ratio) {
+      if (!mounted || ratio == null || _ratioFromPlayer) return;
+      if (source != widget.source) return;
+      setState(() => _ratio = ratio);
+    });
+  }
+
+  void _onPlayerRatio(double ratio) {
+    _ratioFromPlayer = true;
+    if (_ratio != null && (ratio - _ratio!).abs() < 0.01) return;
+    setState(() => _ratio = ratio);
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
+    final onTap = widget.onTap;
 
-    if (_active) {
-      return Container(
-        constraints: BoxConstraints(maxHeight: widget.maxHeight),
-        width: double.infinity,
-        color: p.surface2,
-        // Full width like the image case, rather than sized to the video's own
-        // shape - see VideoPlayerScreen.fillWidth.
-        child: VideoPlayerScreen(
-          videoUrl: widget.source,
-          fillWidth: true,
-          autoPlay: true,
+    return LayoutBuilder(builder: (context, constraints) {
+      final width = constraints.hasBoundedWidth
+          ? constraints.maxWidth
+          : MediaQuery.of(context).size.width;
+      final height =
+          math.min(width / (_ratio ?? _defaultRatio), widget.maxHeight);
+
+      final box = SizedBox(
+        width: width,
+        height: height,
+        child: ColoredBox(
+          color: p.surface2,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Cover, like the player: the frame fills the box whatever it
+              // was sized from. Under the player it shows while that loads.
+              VideoFirstFrame(
+                  source: widget.source, showPlayBadge: onTap != null),
+              if (onTap != null)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onTap,
+                )
+              else if (_live)
+                // Its loading spinner and, once ready, the video and its
+                // controls fill this same box - fillWidth covers it.
+                VideoPlayerScreen(
+                  videoUrl: widget.source,
+                  fillWidth: true,
+                  visibility: _visibility,
+                  onAspectRatio: _onPlayerRatio,
+                ),
+            ],
+          ),
         ),
       );
-    }
-
-    return GestureDetector(
-      onTap: _activate,
-      child: Container(
-        // A fixed height, because the video's real shape isn't known until a
-        // player has loaded it - and not loading one is the point. The player
-        // resizes to the true aspect ratio the moment it starts.
-        constraints: BoxConstraints(maxHeight: widget.maxHeight),
-        width: double.infinity,
-        height: 220,
-        color: p.surface2,
-        child: VideoFirstFrame(source: widget.source),
-      ),
-    );
+      if (onTap != null) return box;
+      return VisibilityDetector(
+        key: _detectorKey,
+        onVisibilityChanged: _onVisibilityChanged,
+        child: box,
+      );
+    });
   }
 }
 

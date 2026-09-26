@@ -188,9 +188,15 @@ class ProfileHeader extends StatelessWidget {
                 ),
               ),
               if (onChangeCover != null)
+                // The cover's bottom-LEFT corner. Top-right was under your
+                // thought, which comes down over the avatar's upper right
+                // and grows up over the cover from there; top-left is the
+                // screen's floating back button.
                 Positioned(
-                  right: 12,
-                  top: MediaQuery.of(context).padding.top + 8,
+                  left: 12,
+                  // 12px above the cover's bottom edge: the Stack runs on
+                  // past the cover by the avatar's overhang.
+                  bottom: _avatarSize / 2 + 4 + 12,
                   child: _MediaEditButton(
                     onTap: onChangeCover!,
                     tooltip: "Change cover photo",
@@ -247,15 +253,20 @@ class ProfileHeader extends StatelessWidget {
               // Drawn after the avatar so it sits on top; inside the Stack's
               // bounds (over the cover) so it stays tappable.
               if (entityId != null && entityId!.isNotEmpty)
-                // Anchored by its BOTTOM-LEFT, just above-right of the
-                // avatar's head: a short thought used to be centred in a
-                // wide slot and drifted away from the picture it belongs to.
+                // Anchored by its BOTTOM-LEFT, just right of the avatar's
+                // centre line: a short thought used to be centred in a wide
+                // slot and drifted away from the picture it belongs to.
                 Positioned(
                   left: 0,
                   right: 0,
-                  // Stack height minus (avatar top + 14): the tail dots
-                  // land on the avatar's upper edge.
-                  bottom: _avatarSize - 10,
+                  // The tail tip 45% of the way down the avatar, so the bubble
+                  // comes down over its upper right and its lower edge sits
+                  // just above the middle - like the Messages rail. With the
+                  // tip on the top edge it floated clear of the face, which
+                  // on this side of the circle is lower than the box's top.
+                  // Anchored by the bottom, a longer thought grows up over
+                  // the cover, not further down the face.
+                  bottom: _avatarSize * 0.55,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
