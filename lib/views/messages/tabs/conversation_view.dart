@@ -23,6 +23,8 @@ import 'package:chatterloop_app/core/reusables/loaders/spinning_loader.dart';
 import 'package:chatterloop_app/core/reusables/loaders/typing_loader.dart';
 import 'package:chatterloop_app/core/reusables/widgets/message_content_widget.dart';
 import 'package:chatterloop_app/core/reusables/widgets/pending_content_widget.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
+import 'package:chatterloop_app/core/utils/media_downloader.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
@@ -2077,9 +2079,9 @@ class ConversationStateView extends State<ConversationView> {
   /// Same staging as _pickImages, any file type, multi-select - the real
   /// messageType (mimetype) is resolved server-side from each multipart
   /// part's content-type header once uploaded (matches webapp - the
-  /// server never trusts a client-supplied type). "file" here is only a
-  /// local placeholder so the staged-preview/pending-message widgets pick
-  /// the generic file-card branch instead of misreading it as text/image.
+  /// server never trusts a client-supplied type). The type here is only
+  /// for the previews until then (_previewTypeOf): the upload sends just
+  /// the files.
   Future<void> _pickFiles() async {
     final result = await FilePicker.pickFiles(allowMultiple: true);
     final files = result?.files ?? [];
@@ -2093,12 +2095,24 @@ class ConversationStateView extends State<ConversationView> {
         droppedAny = true;
         continue;
       }
-      accepted.add((path: path, messageType: "file"));
+      accepted.add((path: path, messageType: _previewTypeOf(file.name)));
     }
     if (!mounted) return;
     if (droppedAny) _attachmentTooLarge();
     if (accepted.isEmpty) return;
     setState(() => _stagedFiles = [..._stagedFiles, ...accepted]);
+  }
+
+  /// What a picked file is, for its previews - the staged chip and the
+  /// sending bubble - until the server's own type arrives with the sent
+  /// message: a photo shows as a photo, a video as a video, the rest as a
+  /// file card. Guessed from its name, which is all a picked file offers.
+  /// (HEIC stays a file card: not every phone can draw it.)
+  static String _previewTypeOf(String name) {
+    final type = mimeTypeForFileName(name);
+    if (type.startsWith("video/")) return type;
+    if (type.startsWith("image/") && type != "image/heic") return "image";
+    return "file";
   }
 
   void _removeStagedFile(int index) {
@@ -2107,11 +2121,12 @@ class ConversationStateView extends State<ConversationView> {
     });
   }
 
-  /// One thumbnail (image) or file-icon chip in the pre-send preview
-  /// strip, with a tap-to-remove "x" badge.
+  /// One thumbnail (image, or a video's first frame) or file-icon chip in
+  /// the pre-send preview strip, with a tap-to-remove "x" badge.
   Widget _stagedAttachmentChip(int index) {
     final file = _stagedFiles[index];
     final isImage = file.messageType == "image";
+    final isVideo = file.messageType.startsWith("video");
     return Padding(
       padding: const EdgeInsets.only(left: 6, top: 8, bottom: 8),
       child: Stack(
@@ -2128,7 +2143,23 @@ class ConversationStateView extends State<ConversationView> {
             child: isImage
                 ? Image.file(File(file.path),
                     width: 60, height: 60, fit: BoxFit.cover)
-                : Center(
+                : isVideo
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          VideoFirstFrame(
+                            source: file.path,
+                            isLocalFile: true,
+                            showPlayBadge: false,
+                          ),
+                          Center(
+                            child: Icon(Icons.play_circle_fill,
+                                size: 24,
+                                color: Colors.white.withValues(alpha: 0.9)),
+                          ),
+                        ],
+                      )
+                    : Center(
                     child: Icon(Icons.insert_drive_file_outlined,
                         color: Color(0xFF565656), size: 26),
                   ),

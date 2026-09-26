@@ -25,6 +25,8 @@ const _landscapeVideo = MediaSource(
 
 const _song = AudioTrack(
   path: '/in/song.mp3',
+  name: 'Song',
+  fileLength: Duration(seconds: 30),
   trim: TrimRange(Duration(seconds: 2), Duration(milliseconds: 9500)),
   volume: 0.8,
   fadeIn: Duration(seconds: 1),
@@ -42,17 +44,20 @@ const _p720 = EncodingProfile(
 /// Where the engine would have written the watermark asset.
 const _watermarkFile = '/tmp/asset-watermark.png';
 
+const _format = 'aformat=sample_rates=44100:channel_layouts=stereo';
+
 RenderCommand _build(
   Composition composition, {
   EncodingProfile profile = _p720,
   H264Encoder encoder = H264Encoder.mediaCodec,
+  String? watermarkPath,
 }) =>
     buildRenderCommand(
       composition: composition,
       profile: profile,
       encoder: encoder,
       outputPath: '/out/moment.mp4',
-      watermarkPath: _watermarkFile,
+      watermarkPath: watermarkPath,
     );
 
 /// The value following [flag] - the first occurrence after [from].
@@ -81,120 +86,139 @@ void main() {
     test('round-trips through JSON', () {
       const edit = Composition(
         background: CompositionBackground.color(0xFF203040),
-        layer: MediaLayer(
-          source: _landscapeVideo,
-          transform:
-              LayerTransform(cx: 0.4, cy: 0.6, scale: 1.7, rotationDeg: 15),
-          trim: TrimRange(Duration(seconds: 1), Duration(seconds: 5)),
-          volume: 0.35,
-        ),
-        audio: _song,
-        stillDuration: Duration(seconds: 12),
-        watermark: false,
+        clips: [
+          MediaLayer(
+            source: _landscapeVideo,
+            transform:
+                LayerTransform(cx: 0.4, cy: 0.6, scale: 1.7, rotationDeg: 15),
+            trim: TrimRange(Duration(seconds: 1), Duration(seconds: 5)),
+            volume: 0.35,
+          ),
+          MediaLayer(source: _photo, duration: Duration(seconds: 3)),
+        ],
+        audio: [_song],
       );
       final back = Composition.fromJson(edit.toJson());
 
       expect(back.toJson(), edit.toJson());
-      expect(back.version, Composition.currentVersion);
-      expect(back.background.isBlur, isFalse);
+      expect(back.version, 2);
       expect(back.background.argb, 0xFF203040);
-      expect(back.layer.source.duration, const Duration(seconds: 8));
-      expect(back.layer.transform.rotationDeg, 15);
-      expect(back.layer.trim!.length, const Duration(seconds: 4));
-      expect(back.layer.volume, 0.35);
-      expect(back.audio!.volume, 0.8);
-      expect(back.audio!.fadeOut, const Duration(seconds: 2));
-      expect(back.stillDuration, const Duration(seconds: 12));
-      expect(back.watermark, isFalse);
+      expect(back.clips, hasLength(2));
+      expect(back.clips[0].transform.rotationDeg, 15);
+      expect(back.clips[0].trim!.length, const Duration(seconds: 4));
+      expect(back.clips[0].volume, 0.35);
+      expect(back.clips[1].length, const Duration(seconds: 3));
+      final track = back.audio.single;
+      expect(track.name, 'Song');
+      expect(track.fileLength, const Duration(seconds: 30));
+      expect(track.start, Duration.zero);
+      expect(track.fadeOut, const Duration(seconds: 2));
     });
 
-    test('an edit saved with on/off video sound reads as a volume', () {
-      final json = const Composition(layer: MediaLayer(source: _landscapeVideo))
-          .toJson();
-      final layer = Map<String, dynamic>.from((json['layers'] as List).first)
-        ..remove('volume');
-      Composition read(bool keep) => Composition.fromJson({
-            ...json,
-            'layers': [
-              {...layer, 'keep_audio': keep}
-            ],
-          });
-      expect(read(false).layer.volume, 0);
-      expect(read(true).layer.volume, 1);
+    test('reads a version 1 edit: one layer, one song, the photo length', () {
+      final back = Composition.fromJson({
+        'v': 1,
+        'background': {'type': 'blur'},
+        'layers': [
+          {
+            'type': 'media',
+            'source': _photo.toJson(),
+            'transform': {'cx': 0.5, 'cy': 0.5, 'scale': 1, 'rotation': 0},
+            'keep_audio': false,
+          }
+        ],
+        'audio': {
+          'path': '/in/song.mp3',
+          'trim': {'start_ms': 0, 'end_ms': 12000},
+          'volume': 1,
+        },
+        'still_ms': 12000,
+      });
+      expect(back.clips.single.length, const Duration(seconds: 12));
+      expect(back.audio.single.start, Duration.zero);
+      expect(back.audio.single.length, const Duration(seconds: 12));
     });
 
-    test('an edit without optional parts reads back with defaults', () {
-      final back = Composition.fromJson(
-          const Composition(layer: MediaLayer(source: _photo)).toJson());
-      expect(back.background.isBlur, isTrue);
-      expect(back.audio, isNull);
-      expect(back.layer.trim, isNull);
-      expect(back.layer.transform.scale, 1);
-      expect(back.stillDuration, const Duration(seconds: 30));
-      expect(back.watermark, isTrue);
-      // Saved before the switch: stamped, as they all were.
-      final older = const Composition(layer: MediaLayer(source: _photo))
-          .toJson()
-        ..remove('watermark');
-      expect(Composition.fromJson(older).watermark, isTrue);
+    test('its length is its clips end to end; a photo shows 6s', () {
+      const edit = Composition(clips: [
+        MediaLayer(source: _photo),
+        MediaLayer(
+          source: _landscapeVideo,
+          trim: TrimRange(Duration(seconds: 1), Duration(seconds: 5)),
+        ),
+        MediaLayer(source: _photo, duration: Duration(milliseconds: 2500)),
+      ], audio: [
+        _song
+      ]);
+      expect(MediaLayer.defaultStill, const Duration(seconds: 6));
+      // The music doesn't make it longer.
+      expect(edit.naturalDuration, const Duration(milliseconds: 12500));
+      expect(edit.clipStarts, const [
+        Duration.zero,
+        Duration(seconds: 6),
+        Duration(seconds: 10),
+      ]);
+      // A whole video, untrimmed.
+      expect(const MediaLayer(source: _landscapeVideo).length,
+          const Duration(seconds: 8));
     });
 
-    test('natural length: trimmed video, else the audio track, else the still',
-        () {
-      expect(
-        const Composition(
-          layer: MediaLayer(
-            source: _landscapeVideo,
-            trim: TrimRange(Duration(seconds: 1), Duration(seconds: 5)),
-          ),
-          audio: _song,
-        ).naturalDuration,
-        const Duration(seconds: 4),
-      );
-      expect(
-        const Composition(layer: MediaLayer(source: _landscapeVideo))
-            .naturalDuration,
-        const Duration(seconds: 8),
-      );
-      expect(
-        const Composition(layer: MediaLayer(source: _photo), audio: _song)
-            .naturalDuration,
-        const Duration(milliseconds: 7500),
-      );
-      expect(
-        const Composition(layer: MediaLayer(source: _photo)).naturalDuration,
-        const Duration(seconds: 30),
-      );
+    test('finds the clip under a time, and how far into it', () {
+      const edit = Composition(clips: [
+        MediaLayer(source: _photo),
+        MediaLayer(source: _photo, duration: Duration(seconds: 4)),
+      ]);
+      expect(edit.locate(Duration.zero), (index: 0, offset: Duration.zero));
+      expect(edit.locate(const Duration(seconds: 5)),
+          (index: 0, offset: const Duration(seconds: 5)));
+      // A boundary belongs to the clip starting there.
+      expect(edit.locate(const Duration(seconds: 6)),
+          (index: 1, offset: Duration.zero));
+      // Past the end: the last clip's end.
+      expect(edit.locate(const Duration(seconds: 30)),
+          (index: 1, offset: const Duration(seconds: 4)));
     });
 
     test('has sound only when something audible is left', () {
-      expect(const Composition(layer: MediaLayer(source: _photo)).hasSound,
-          isFalse);
-      expect(
-          const Composition(layer: MediaLayer(source: _photo), audio: _song)
-              .hasSound,
+      const photo = MediaLayer(source: _photo);
+      expect(const Composition(clips: [photo]).hasSound, isFalse);
+      expect(const Composition(clips: [photo], audio: [_song]).hasSound,
           isTrue);
+      expect(
+          Composition(clips: const [photo], audio: [_song.copyWith(volume: 0)])
+              .hasSound,
+          isFalse);
+      // A song that starts after the last clip ends is never heard.
       expect(
           Composition(
-            layer: const MediaLayer(source: _photo),
-            audio: _song.copyWith(volume: 0),
-          ).hasSound,
+              clips: const [photo],
+              audio: [_song.copyWith(start: const Duration(seconds: 7))])
+              .hasSound,
           isFalse);
       expect(
-          const Composition(layer: MediaLayer(source: _landscapeVideo))
+          const Composition(clips: [MediaLayer(source: _landscapeVideo)])
               .hasSound,
           isTrue);
       expect(
           const Composition(
-                  layer: MediaLayer(source: _landscapeVideo, volume: 0))
+                  clips: [MediaLayer(source: _landscapeVideo, volume: 0)])
               .hasSound,
           isFalse);
+    });
+
+    test('all stills: photos only', () {
       expect(
-          const Composition(
-            layer: MediaLayer(source: _landscapeVideo, volume: 0),
-            audio: _song,
-          ).hasSound,
+          const Composition(clips: [
+            MediaLayer(source: _photo),
+            MediaLayer(source: _photo)
+          ]).allStills,
           isTrue);
+      expect(
+          const Composition(clips: [
+            MediaLayer(source: _photo),
+            MediaLayer(source: _landscapeVideo)
+          ]).allStills,
+          isFalse);
     });
 
     test('a backwards trim is empty, not negative', () {
@@ -463,11 +487,17 @@ void main() {
         'format',
         'setsar',
         'color',
+        'trim',
+        'tpad',
+        'concat',
         'anullsrc',
+        'anull',
         'atrim',
+        'asetpts',
         'aformat',
         'volume',
         'afade',
+        'adelay',
         'apad',
         'amix',
         'alimiter',
@@ -480,72 +510,78 @@ void main() {
                 filter.replaceAll(RegExp(r'\[[^\]]*\]'), '').split('=').first,
           };
       final edits = [
-        const Composition(layer: MediaLayer(source: _photo)),
-        const Composition(
-          background: CompositionBackground.color(0xFF102030),
-          layer: MediaLayer(
-            source: _photo,
-            transform: LayerTransform(scale: 2.5, rotationDeg: 30),
-          ),
-          audio: _song,
+        const Composition(clips: [MediaLayer(source: _photo)]),
+        Composition(
+          background: const CompositionBackground.color(0xFF102030),
+          clips: const [
+            MediaLayer(
+              source: _photo,
+              transform: LayerTransform(scale: 2.5, rotationDeg: 30),
+            ),
+            MediaLayer(source: _landscapeVideo, volume: 0.5),
+          ],
+          audio: [_song, _song.copyWith(start: const Duration(seconds: 10))],
         ),
         for (final turn in [90.0, 180.0, 270.0])
           Composition(
-            layer: MediaLayer(
-              source: _landscapeVideo,
-              transform: LayerTransform(scale: 1.4, rotationDeg: turn),
-              volume: 0.5,
-            ),
-            audio: _song,
+            clips: [
+              MediaLayer(
+                source: _landscapeVideo,
+                transform: LayerTransform(scale: 1.4, rotationDeg: turn),
+              ),
+            ],
           ),
         const Composition(
-          layer: MediaLayer(source: _landscapeVideo, volume: 0),
-        ),
-        const Composition(
-          layer: MediaLayer(source: _photo, transform: LayerTransform(cx: 3)),
+          clips: [
+            MediaLayer(source: _photo, transform: LayerTransform(cx: 3))
+          ],
         ),
       ];
-      const stamped = EncodingProfile(
-        width: 720,
-        height: 1280,
-        maxDuration: Duration(minutes: 2),
-        watermark: Watermark.chatterloop,
-      );
       for (final edit in edits) {
-        for (final profile in [_p720, stamped]) {
-          final used = filtersOf(_build(edit, profile: profile).filterGraph);
+        for (final watermark in [null, _watermarkFile]) {
+          final used = filtersOf(_build(edit,
+                  profile: EncodingProfile.moment, watermarkPath: watermark)
+              .filterGraph);
           expect(used.difference(bundled), isEmpty, reason: '$used');
         }
       }
     });
 
-    test('a photo alone is a 30s still with a silent track', () {
-      final cmd = _build(const Composition(layer: MediaLayer(source: _photo)));
+    test('a photo alone: 6s of it, with a silent track', () {
+      final cmd =
+          _build(const Composition(clips: [MediaLayer(source: _photo)]));
       final args = cmd.arguments;
 
-      expect(cmd.duration, const Duration(seconds: 30));
+      expect(cmd.duration, const Duration(seconds: 6));
       expect(cmd.hasSound, isFalse);
       // Any image demuxer works: no image2-only `-loop`.
       expect(args, isNot(contains('-loop')));
-      expect(_after(args, '-i'), '/in/photo.jpg');
+      expect(_inputs(args), ['/in/photo.jpg']);
       expect(
           cmd.filterGraph,
-          contains(
-              '[0:v:0]loop=loop=-1:size=1:start=0,setpts=N/(1*TB),split=2'));
+          contains('[0:v:0]loop=loop=-1:size=1:start=0,setpts=N/(1*TB),'
+              'split=2[bgsrc0][fgsrc0]'));
       expect(cmd.filterGraph,
-          contains('[fgsrc]scale=720:540:flags=lanczos,setsar=1[fg]'));
+          contains('[fgsrc0]scale=720:540:flags=lanczos,setsar=1[fg0]'));
+      // Composed once a second, then up to the frame rate, cut to length.
       expect(
           cmd.filterGraph,
-          contains(
-              'overlay=x=360.00-w/2:y=640.00-h/2:shortest=1,fps=30,format=nv12[v]'));
+          contains('[bg0][fg0]overlay=x=360.00-w/2:y=640.00-h/2:shortest=1,'
+              'fps=30,trim=duration=6.000,setpts=PTS-STARTPTS,'
+              'format=yuv420p,setsar=1[v0]'));
       expect(cmd.filterGraph,
-          contains('anullsrc=r=44100:cl=stereo,atrim=duration=30.000[a]'));
+          contains('anullsrc=r=44100:cl=stereo,atrim=duration=6.000[a0]'));
+      // One clip: nothing to join.
+      expect(cmd.filterGraph, isNot(contains('concat')));
+      expect(cmd.filterGraph, contains('[v0]format=nv12[v]'));
+      expect(cmd.filterGraph, contains('[a0]anull[a]'));
       expect(_after(args, '-filter_complex'), cmd.filterGraph);
     });
 
     test('output settings match the profile and the server contract', () {
-      final args = _build(const Composition(layer: MediaLayer(source: _photo)))
-          .arguments;
+      final args =
+          _build(const Composition(clips: [MediaLayer(source: _photo)]))
+              .arguments;
       final out = args.sublist(args.indexOf('-filter_complex'));
       expect(out.join(' '), contains('-map [v] -map [a]'));
       expect(_after(out, '-c:v'), 'h264_mediacodec');
@@ -556,106 +592,132 @@ void main() {
       expect(_after(out, '-b:a'), '128000');
       expect(_after(out, '-ar'), '44100');
       expect(_after(out, '-ac'), '2');
-      expect(_after(out, '-t'), '30.000');
+      expect(_after(out, '-t'), '6.000');
       expect(_after(out, '-movflags'), '+faststart');
       expect(_after(out, '-map_metadata'), '-1');
       expect(_after(out, '-f'), 'mp4');
       expect(args.last, '/out/moment.mp4');
     });
 
-    test('a photo with music lasts as long as the chosen segment', () {
-      final cmd = _build(const Composition(
-        layer: MediaLayer(source: _photo),
-        audio: _song,
-      ));
-      expect(cmd.duration, const Duration(milliseconds: 7500));
+    test('clips are joined end to end, each exactly its length', () {
+      final cmd = _build(const Composition(clips: [
+        MediaLayer(source: _photo),
+        MediaLayer(
+          source: _landscapeVideo,
+          trim: TrimRange(Duration(seconds: 1), Duration(seconds: 5)),
+        ),
+        MediaLayer(source: _photo, duration: Duration(milliseconds: 2500)),
+      ]));
+      expect(cmd.duration, const Duration(milliseconds: 12500));
+      expect(_inputs(cmd.arguments),
+          ['/in/photo.jpg', '/in/clip.mp4', '/in/photo.jpg']);
+      expect(_inputOptions(cmd.arguments, '/in/clip.mp4'),
+          ['-ss', '1.000', '-t', '4.000']);
+      // The video: to 30fps first, held on its last frame should the file
+      // run short, then cut to its 4s.
+      expect(
+          cmd.filterGraph,
+          contains('[1:v:0]fps=30,tpad=stop_mode=clone:stop_duration=1,'
+              'split=2[bgsrc1][fgsrc1]'));
+      expect(cmd.filterGraph, contains('trim=duration=4.000,'));
+      expect(cmd.filterGraph, contains('trim=duration=2.500,'));
+      // Its sound, held to the same 4s; silence for the photos.
+      expect(
+          cmd.filterGraph,
+          contains('[1:a:0]$_format,apad=whole_dur=4.000,'
+              'atrim=duration=4.000,asetpts=PTS-STARTPTS[a1]'));
+      expect(cmd.filterGraph,
+          contains('anullsrc=r=44100:cl=stereo,atrim=duration=2.500[a2]'));
+      expect(
+          cmd.filterGraph,
+          contains('[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[vcat][acat]'));
+      expect(cmd.filterGraph, contains('[vcat]format=nv12[v]'));
+      expect(cmd.filterGraph, contains('[acat]anull[a]'));
       expect(cmd.hasSound, isTrue);
+    });
+
+    test('music is laid over from its place in the edit', () {
+      final cmd = _build(Composition(
+        clips: const [
+          MediaLayer(source: _photo),
+          MediaLayer(source: _photo, duration: Duration(milliseconds: 6500)),
+        ],
+        audio: [_song.copyWith(start: const Duration(seconds: 3))],
+      ));
+      expect(cmd.duration, const Duration(milliseconds: 12500));
+      expect(cmd.hasSound, isTrue);
+      // Input 2, after the clips: its part of the file.
+      expect(_inputs(cmd.arguments)[2], '/in/song.mp3');
       expect(_inputOptions(cmd.arguments, '/in/song.mp3'),
           ['-ss', '2.000', '-t', '7.500']);
       expect(
         cmd.filterGraph,
-        contains('[1:a:0]aformat=sample_rates=44100:channel_layouts=stereo,'
-            'volume=0.800,afade=t=in:st=0:d=1.000,'
-            'afade=t=out:st=5.500:d=2.000,apad=whole_dur=7.500[a]'),
+        contains('[2:a:0]$_format,volume=0.800,afade=t=in:st=0:d=1.000,'
+            'afade=t=out:st=5.500:d=2.000,adelay=delays=3000:all=1,'
+            'apad=whole_dur=12.500[t0]'),
       );
-    });
-
-    test('music on a video is mixed with its sound, each at its volume', () {
-      final cmd = _build(const Composition(
-        layer: MediaLayer(source: _landscapeVideo, volume: 0.4),
-        audio: AudioTrack(
-          path: '/in/song.mp3',
-          trim: TrimRange(Duration.zero, Duration(seconds: 12)),
-          volume: 0.9,
-        ),
-      ));
-      // The video sets the length; the longer song is cut to it.
-      expect(cmd.duration, const Duration(seconds: 8));
-      expect(_inputOptions(cmd.arguments, '/in/song.mp3'), ['-t', '8.000']);
-      const format = 'aformat=sample_rates=44100:channel_layouts=stereo';
-      expect(
-        cmd.filterGraph,
-        contains('[0:a:0]$format,volume=0.400,apad=whole_dur=8.000[s0];'
-            '[1:a:0]$format,volume=0.900,apad=whole_dur=8.000[s1];'
-            '[s0][s1]amix=inputs=2:duration=longest:normalize=0,'
-            'alimiter=limit=0.95:level=0[a]'),
-      );
-      expect(cmd.hasSound, isTrue);
-    });
-
-    test('a muted song is left out; a muted video sound too', () {
-      final songMuted = _build(Composition(
-        layer: const MediaLayer(source: _landscapeVideo),
-        audio: _song.copyWith(volume: 0),
-      ));
-      expect(songMuted.arguments, isNot(contains('/in/song.mp3')));
-      expect(songMuted.filterGraph, isNot(contains('amix')));
-      expect(songMuted.filterGraph, contains('[0:a:0]'));
-
-      final videoMuted = _build(const Composition(
-        layer: MediaLayer(source: _landscapeVideo, volume: 0),
-        audio: _song,
-      ));
-      expect(videoMuted.filterGraph, isNot(contains('[0:a:0]')));
-      expect(videoMuted.filterGraph, isNot(contains('amix')));
-      // The song is input 1 all the same, and ends in a fade within the 7.5s
-      // of it used.
-      expect(
-          videoMuted.filterGraph,
-          contains('[1:a:0]aformat=sample_rates=44100:channel_layouts=stereo,'
-              'volume=0.800,afade=t=in:st=0:d=1.000,'
-              'afade=t=out:st=5.500:d=2.000,apad=whole_dur=8.000[a]'));
-    });
-
-    test('a trimmed video keeps its own sound and goes to 30fps first', () {
-      final cmd = _build(const Composition(
-        layer: MediaLayer(
-          source: _landscapeVideo,
-          trim: TrimRange(Duration(seconds: 1), Duration(seconds: 5)),
-        ),
-      ));
-      expect(cmd.duration, const Duration(seconds: 4));
-      expect(_inputOptions(cmd.arguments, '/in/clip.mp4'),
-          ['-ss', '1.000', '-t', '4.000']);
-      expect(cmd.filterGraph, startsWith('[0:v:0]fps=30,split=2'));
       expect(
           cmd.filterGraph,
-          contains('[0:a:0]aformat=sample_rates=44100:channel_layouts=stereo,'
-              'apad=whole_dur=4.000[a]'));
-      // Videos are already at the output rate at the overlay.
-      expect(cmd.filterGraph, contains('shortest=1,format=nv12[v]'));
+          contains('[acat][t0]amix=inputs=2:duration=first:normalize=0,'
+              'alimiter=limit=0.95:level=0[a]'));
     });
 
-    test('a muted video gets the silent track', () {
+    test('music running past the end is cut there, fading within', () {
+      final cmd = _build(Composition(
+        clips: const [MediaLayer(source: _photo)],
+        audio: [_song.copyWith(start: const Duration(seconds: 3))],
+      ));
+      // 3s of the 7.5s part is heard.
+      expect(_inputOptions(cmd.arguments, '/in/song.mp3'),
+          ['-ss', '2.000', '-t', '3.000']);
+      expect(cmd.filterGraph,
+          contains('afade=t=in:st=0:d=1.000,afade=t=out:st=1.000:d=2.000,'));
+    });
+
+    test('a muted song, or one after the end, is not read at all', () {
+      for (final track in [
+        _song.copyWith(volume: 0),
+        // Starts after the 8s video is over.
+        _song.copyWith(start: const Duration(seconds: 9)),
+      ]) {
+        final cmd = _build(Composition(
+          clips: const [MediaLayer(source: _landscapeVideo)],
+          audio: [track],
+        ));
+        expect(cmd.arguments, isNot(contains('/in/song.mp3')));
+        expect(cmd.filterGraph, isNot(contains('amix')));
+        expect(cmd.filterGraph, contains('[0:a:0]'));
+      }
+    });
+
+    test('two songs, each from its place', () {
+      final cmd = _build(Composition(
+        clips: const [MediaLayer(source: _landscapeVideo)],
+        audio: [
+          _song.copyWith(
+              trim: const TrimRange(Duration.zero, Duration(seconds: 3))),
+          _song.copyWith(
+              start: const Duration(seconds: 5),
+              trim: const TrimRange(Duration.zero, Duration(seconds: 3))),
+        ],
+      ));
+      expect(_inputs(cmd.arguments),
+          ['/in/clip.mp4', '/in/song.mp3', '/in/song.mp3']);
+      expect(cmd.filterGraph, contains('[1:a:0]'));
+      expect(cmd.filterGraph, contains('adelay=delays=5000:all=1'));
+      expect(cmd.filterGraph, contains('[a0][t0][t1]amix=inputs=3:'));
+    });
+
+    test('a muted video gets silence', () {
       final cmd = _build(const Composition(
-        layer: MediaLayer(source: _landscapeVideo, volume: 0),
+        clips: [MediaLayer(source: _landscapeVideo, volume: 0)],
       ));
       expect(cmd.hasSound, isFalse);
       expect(cmd.filterGraph, contains('anullsrc='));
       expect(cmd.filterGraph, isNot(contains('[0:a:0]')));
     });
 
-    test('a video longer than the profile allows is cut at the cap', () {
+    test('an edit longer than the profile allows is cut at the cap', () {
       const long = MediaSource(
         path: '/in/long.mp4',
         kind: MediaKind.video,
@@ -663,8 +725,13 @@ void main() {
         height: 1920,
         duration: Duration(minutes: 3),
       );
-      final cmd = _build(const Composition(layer: MediaLayer(source: long)));
+      final cmd = _build(const Composition(clips: [
+        MediaLayer(source: long),
+        MediaLayer(source: _photo),
+      ]));
       expect(cmd.duration, const Duration(minutes: 2));
+      // The photo after it doesn't make it in at all.
+      expect(_inputs(cmd.arguments), ['/in/long.mp4']);
       expect(_inputOptions(cmd.arguments, '/in/long.mp4'), ['-t', '120.000']);
       final out =
           cmd.arguments.sublist(cmd.arguments.indexOf('-filter_complex'));
@@ -673,67 +740,73 @@ void main() {
 
     test('quarter turns are pixel moves, other angles rotate with alpha', () {
       String rotated(double deg) => _build(Composition(
-            layer: MediaLayer(
-              source: _landscapeVideo,
-              transform: LayerTransform(rotationDeg: deg),
-            ),
+            clips: [
+              MediaLayer(
+                source: _landscapeVideo,
+                transform: LayerTransform(rotationDeg: deg),
+              ),
+            ],
           )).filterGraph;
 
-      expect(rotated(90), contains('setsar=1,transpose=clock[fg]'));
-      expect(rotated(-90), contains('setsar=1,transpose=cclock[fg]'));
-      expect(rotated(270), contains('setsar=1,transpose=cclock[fg]'));
-      expect(rotated(180), contains('setsar=1,hflip,vflip[fg]'));
-      expect(rotated(360), contains('setsar=1[fg]'));
+      expect(rotated(90), contains('setsar=1,transpose=clock[fg0]'));
+      expect(rotated(-90), contains('setsar=1,transpose=cclock[fg0]'));
+      expect(rotated(270), contains('setsar=1,transpose=cclock[fg0]'));
+      expect(rotated(180), contains('setsar=1,hflip,vflip[fg0]'));
+      expect(rotated(360), contains('setsar=1[fg0]'));
       expect(
         rotated(30),
         contains('format=rgba,rotate=a=0.523599:ow=rotw(0.523599)'
-            ':oh=roth(0.523599):c=black@0[fg]'),
+            ':oh=roth(0.523599):c=black@0[fg0]'),
       );
     });
 
-    test('a zoom crops before scaling; a contained layer does not', () {
-      final zoomed = _build(const Composition(
-        layer: MediaLayer(
+    test('each clip is framed its own way', () {
+      final graph = _build(const Composition(clips: [
+        MediaLayer(
           source: _landscapeVideo,
           transform: LayerTransform(scale: 1.5),
         ),
-      )).filterGraph;
+        MediaLayer(source: _landscapeVideo),
+      ])).filterGraph;
+      // The zoomed one is cropped before scaling; the contained one isn't.
       expect(
-        zoomed,
-        contains('[fgsrc]crop=w=iw*854/1280:h=ih*720/720:x=iw*213/1280'
-            ':y=ih*0/720:exact=1,scale=720:608:flags=lanczos,setsar=1[fg]'),
+        graph,
+        contains('[fgsrc0]crop=w=iw*854/1280:h=ih*720/720:x=iw*213/1280'
+            ':y=ih*0/720:exact=1,scale=720:608:flags=lanczos,setsar=1[fg0]'),
       );
-      final contained =
-          _build(const Composition(layer: MediaLayer(source: _landscapeVideo)))
-              .filterGraph;
-      expect(contained, isNot(contains('crop=w=')));
+      expect(graph,
+          contains('[fgsrc1]scale=720:406:flags=lanczos,setsar=1[fg1]'));
     });
 
-    test('a colour background is a colour source the length of the output', () {
+    test('a colour background is a colour source the length of each clip', () {
       final cmd = _build(const Composition(
         background: CompositionBackground.color(0xFF203040),
-        layer: MediaLayer(source: _photo),
-        stillDuration: Duration(seconds: 5),
+        clips: [
+          MediaLayer(source: _photo, duration: Duration(seconds: 5)),
+          MediaLayer(source: _photo, duration: Duration(seconds: 2)),
+        ],
       ));
       expect(cmd.filterGraph,
-          startsWith('color=c=0x203040:s=720x1280:r=30:d=5.000,setsar=1[bg];'));
+          startsWith('color=c=0x203040:s=720x1280:r=30:d=5.000,setsar=1[bg0];'));
+      expect(cmd.filterGraph,
+          contains('color=c=0x203040:s=720x1280:r=30:d=2.000,setsar=1[bg1];'));
       expect(cmd.filterGraph, isNot(contains('gblur')));
       expect(cmd.filterGraph, contains('[0:v:0]loop=loop=-1'));
     });
 
     test('media off the canvas leaves only the background', () {
       final cmd = _build(const Composition(
-        layer: MediaLayer(source: _photo, transform: LayerTransform(cx: 3)),
+        clips: [MediaLayer(source: _photo, transform: LayerTransform(cx: 3))],
       ));
       expect(cmd.filterGraph, isNot(contains('overlay')));
       expect(cmd.filterGraph, isNot(contains('split')));
-      expect(cmd.filterGraph, contains('[bg]fps=30,format=nv12[v]'));
+      expect(cmd.filterGraph, contains('[bg0]fps=30,trim=duration=6.000,'));
     });
 
     test('encoder profile, options and frame format follow the encoder', () {
       List<String> encoderArgs(H264Encoder encoder) {
         final args = _build(
-          const Composition(layer: MediaLayer(source: _photo)),
+          const Composition(clips: [MediaLayer(source: _photo)]),
           encoder: encoder,
         ).arguments;
         final at = args.indexOf('-c:v');
@@ -756,10 +829,10 @@ void main() {
           ['-c:v', 'h264_videotoolbox', '-allow_sw', '1']);
 
       final planar = _build(
-        const Composition(layer: MediaLayer(source: _photo)),
+        const Composition(clips: [MediaLayer(source: _photo)]),
         encoder: H264Encoder.mediaCodecPlanar,
       );
-      expect(planar.filterGraph, contains('format=yuv420p[v]'));
+      expect(planar.filterGraph, contains('[v0]format=yuv420p[v]'));
       expect(_after(planar.arguments, '-profile:v'), 'high');
     });
 
@@ -770,7 +843,7 @@ void main() {
       // The server takes a longest edge of up to 1920.
       expect(moment.height, lessThanOrEqualTo(1920));
       final cmd = _build(
-        const Composition(layer: MediaLayer(source: _photo)),
+        const Composition(clips: [MediaLayer(source: _photo)]),
         profile: moment,
       );
       // The blur scales with the canvas: 34px at 720 wide is 51 at 1080,
@@ -780,7 +853,7 @@ void main() {
           contains('scale=270:480:force_original_aspect_ratio=increase,'
               'crop=270:480,gblur=sigma=12.75,scale=1080:1920,lutyuv='));
       expect(cmd.filterGraph,
-          contains('[fgsrc]scale=1080:810:flags=lanczos,setsar=1[fg]'));
+          contains('[fgsrc0]scale=1080:810:flags=lanczos,setsar=1[fg0]'));
       expect(_after(cmd.arguments, '-b:v'), '12000000');
     });
 
@@ -809,7 +882,7 @@ void main() {
         duration: Duration(minutes: 2),
       );
       final cmd = _build(
-        const Composition(layer: MediaLayer(source: twoMinutes)),
+        const Composition(clips: [MediaLayer(source: twoMinutes)]),
         profile: moment,
       );
       expect(_after(cmd.arguments, '-b:v'), '5813930');
@@ -818,39 +891,45 @@ void main() {
     test("QP ceilings: a video's, a still's, and none when asked", () {
       const moment = EncodingProfile.moment;
       RenderCommand build(
-        MediaSource source, {
+        List<MediaLayer> clips, {
         H264Encoder encoder = H264Encoder.mediaCodec,
         bool qpCeilings = true,
       }) =>
           buildRenderCommand(
-            composition: Composition(layer: MediaLayer(source: source)),
+            composition: Composition(clips: clips),
             profile: moment,
             encoder: encoder,
             outputPath: '/out/moment.mp4',
             qpCeilings: qpCeilings,
-            watermarkPath: _watermarkFile,
           );
+      const video = MediaLayer(source: _landscapeVideo);
+      const photo = MediaLayer(source: _photo);
 
-      final video = build(_landscapeVideo);
-      expect(video.usesQpCeilings, isTrue);
-      expect(_after(video.arguments, '-qp_i_max'), '27');
-      expect(_after(video.arguments, '-qp_p_max'), '30');
-      expect(_after(video.arguments, '-g'), '60');
+      final moving = build([video]);
+      expect(moving.usesQpCeilings, isTrue);
+      expect(_after(moving.arguments, '-qp_i_max'), '27');
+      expect(_after(moving.arguments, '-qp_p_max'), '30');
+      expect(_after(moving.arguments, '-g'), '60');
 
-      // A photo: near-lossless keyframes, 10s apart.
-      final still = build(_photo);
+      // Photos only: near-lossless keyframes, 10s apart.
+      final still = build([photo, photo]);
       expect(_after(still.arguments, '-qp_i_max'), '20');
       expect(_after(still.arguments, '-qp_p_max'), '24');
       expect(_after(still.arguments, '-g'), '300');
 
-      final plain = build(_landscapeVideo, qpCeilings: false);
+      // A photo among videos moves: the video settings.
+      final mixed = build([photo, video]);
+      expect(_after(mixed.arguments, '-qp_i_max'), '27');
+      expect(_after(mixed.arguments, '-g'), '60');
+
+      final plain = build([video], qpCeilings: false);
       expect(plain.usesQpCeilings, isFalse);
       expect(plain.arguments, isNot(contains('-qp_i_max')));
       expect(plain.arguments, isNot(contains('-qp_p_max')));
       expect(_after(plain.arguments, '-b:v'), '12000000');
 
       // VideoToolbox has no such option.
-      final apple = build(_landscapeVideo, encoder: H264Encoder.videoToolbox);
+      final apple = build([video], encoder: H264Encoder.videoToolbox);
       expect(apple.usesQpCeilings, isFalse);
       expect(apple.arguments, isNot(contains('-qp_i_max')));
 
@@ -862,7 +941,7 @@ void main() {
 
     test('the profile sets size, rate and bitrates', () {
       final cmd = _build(
-        const Composition(layer: MediaLayer(source: _photo)),
+        const Composition(clips: [MediaLayer(source: _photo)]),
         profile: _p720.copyWith(
           fps: 24,
           videoBitrate: 4000000,
@@ -870,140 +949,106 @@ void main() {
         ),
       );
       expect(cmd.filterGraph, contains('gblur=sigma=8.50,scale=720:1280,'));
-      expect(cmd.filterGraph, contains('fps=24,format=nv12[v]'));
+      expect(cmd.filterGraph, contains('shortest=1,fps=24,'));
       expect(cmd.filterGraph, contains('cl=mono'));
       expect(_after(cmd.arguments, '-b:v'), '4000000');
       expect(_after(cmd.arguments, '-ac'), '1');
     });
 
     test('an edit that cannot be rendered is refused', () {
+      expect(() => _build(const Composition(clips: [])), throwsArgumentError);
       expect(
         () => _build(const Composition(
-          layer: MediaLayer(
-            source: _landscapeVideo,
-            trim: TrimRange(Duration(seconds: 3), Duration(seconds: 3)),
-          ),
+          clips: [
+            MediaLayer(
+              source: _landscapeVideo,
+              trim: TrimRange(Duration(seconds: 3), Duration(seconds: 3)),
+            ),
+          ],
         )),
         throwsArgumentError,
       );
       expect(
         () => _build(const Composition(
-          layer: MediaLayer(
-            source: MediaSource(
-                path: '/in/x.jpg', kind: MediaKind.image, width: 0, height: 0),
-          ),
+          clips: [
+            MediaLayer(
+              source: MediaSource(
+                  path: '/in/x.jpg',
+                  kind: MediaKind.image,
+                  width: 0,
+                  height: 0),
+            ),
+          ],
         )),
         throwsArgumentError,
       );
     });
 
     group('watermark', () {
-      test('Moments are stamped with the Chatterloop logo, bottom-left', () {
+      test('only when asked for: posting is left without it', () {
+        final plain = _build(
+          const Composition(clips: [MediaLayer(source: _photo)]),
+          profile: EncodingProfile.moment,
+        );
         expect(EncodingProfile.moment.watermark, Watermark.chatterloop);
-        final cmd = _build(
-          const Composition(layer: MediaLayer(source: _photo)),
-          profile: EncodingProfile.moment,
-        );
-        // Input 1, after the photo.
-        expect(_inputs(cmd.arguments), ['/in/photo.jpg', _watermarkFile]);
-        // 20% of 1080 wide, its height kept to the logo's shape; 12% of the
-        // width (130px) in from the left, 17% of the height (326px) up.
-        expect(cmd.filterGraph,
-            contains('[1:v:0]scale=216:-2:flags=lanczos[wm]'));
-        expect(
-            cmd.filterGraph,
-            contains('[bg][fg]overlay=x=540.00-w/2:y=960.00-h/2:shortest=1'
-                '[frame];'));
-        // Over the composed frame, before a still is brought up to 30fps.
-        expect(
-            cmd.filterGraph,
-            contains('[frame][wm]overlay=x=130:y=H-h-326:eof_action=repeat,'
-                'fps=30,format=nv12[v]'));
-      });
-
-      test('it comes after the audio track, and stamps videos too', () {
-        final cmd = _build(
-          const Composition(
-            layer: MediaLayer(source: _landscapeVideo),
-            audio: _song,
-          ),
-          profile: EncodingProfile.moment,
-        );
-        expect(_inputs(cmd.arguments),
-            ['/in/clip.mp4', '/in/song.mp3', _watermarkFile]);
-        expect(cmd.filterGraph, contains('[2:v:0]scale=216:-2'));
-        expect(
-            cmd.filterGraph,
-            contains('[frame][wm]overlay=x=130:y=H-h-326:eof_action=repeat,'
-                'format=nv12[v]'));
-        // The audio inputs are unmoved.
-        expect(cmd.filterGraph, contains('[1:a:0]aformat='));
-        expect(cmd.filterGraph, isNot(contains('[2:a')));
-      });
-
-      test('an edit can go without it - the switch for posting unbranded',
-          () {
-        const edit = Composition(layer: MediaLayer(source: _photo));
-        final plain = _build(edit.copyWith(watermark: false),
-            profile: EncodingProfile.moment);
         expect(plain.arguments, isNot(contains(_watermarkFile)));
         expect(plain.filterGraph, isNot(contains('[wm]')));
-        // Exactly the render of a profile that has no watermark at all.
-        final unbranded = _build(edit,
-            profile: EncodingProfile.moment.copyWith(clearWatermark: true));
-        expect(plain.arguments, unbranded.arguments);
-        // And it needs no file.
-        expect(
-          () => buildRenderCommand(
-            composition: edit.copyWith(watermark: false),
-            profile: EncodingProfile.moment,
-            encoder: H264Encoder.mediaCodec,
-            outputPath: '/out/moment.mp4',
-          ),
-          returnsNormally,
-        );
       });
 
-      test('a profile without one renders as before', () {
-        final cmd =
-            _build(const Composition(layer: MediaLayer(source: _photo)));
-        expect(_p720.watermark, isNull);
-        expect(cmd.arguments, isNot(contains(_watermarkFile)));
-        expect(cmd.filterGraph, isNot(contains('[frame]')));
-      });
-
-      test('media dragged off the canvas: the background is stamped', () {
+      test('a saved copy: the logo at the left, a little up from the bottom', () {
         final cmd = _build(
-          const Composition(
-            layer: MediaLayer(source: _photo, transform: LayerTransform(cx: 3)),
-          ),
+          const Composition(clips: [
+            MediaLayer(source: _photo),
+            MediaLayer(source: _landscapeVideo),
+          ], audio: [
+            _song
+          ]),
           profile: EncodingProfile.moment,
+          watermarkPath: _watermarkFile,
         );
+        // Last, after the clips and the song.
+        expect(_inputs(cmd.arguments).last, _watermarkFile);
+        // 22% of 1080 wide, its height kept to the logo's shape; 5% of it
+        // (54px) in from the left, 12% (130px) up from the bottom.
         expect(cmd.filterGraph,
-            contains('[bg][wm]overlay=x=130:y=H-h-326:eof_action=repeat,'));
-      });
-
-      test('a stamped render without the logo file is refused', () {
+            contains('[3:v:0]scale=238:-2:flags=lanczos[wm]'));
+        // Over the joined clips.
         expect(
-          () => buildRenderCommand(
-            composition: const Composition(layer: MediaLayer(source: _photo)),
-            profile: EncodingProfile.moment,
-            encoder: H264Encoder.mediaCodec,
-            outputPath: '/out/moment.mp4',
-          ),
-          throwsArgumentError,
-        );
+            cmd.filterGraph,
+            contains('[vcat][wm]overlay=x=54:y=H-h-130:eof_action=repeat,'
+                'format=nv12[v]'));
       });
+    });
 
-      test('the logo ships: a PNG with transparency', () async {
-        TestWidgetsFlutterBinding.ensureInitialized();
-        final png = await rootBundle.load(Watermark.chatterloop.asset);
-        // The PNG signature, then IHDR's colour type 6: RGBA.
-        expect(png.getUint32(0), 0x89504E47);
-        expect(png.getUint8(25), 6);
-        // Big enough for a sharp 1080-wide stamp (twice its 216px).
-        expect(png.getUint32(16), greaterThanOrEqualTo(2 * 216));
-      });
+    test('with a handle, scaled by the logo: a long name runs on, the logo '
+        'keeps its size', () {
+      final cmd = buildRenderCommand(
+        composition: const Composition(clips: [MediaLayer(source: _photo)]),
+        profile: EncodingProfile.moment,
+        encoder: H264Encoder.mediaCodec,
+        outputPath: '/out/moment.mp4',
+        watermarkPath: _watermarkFile,
+        // The logo is 630 wide in the picture; the picture may be wider.
+        watermarkLogoWidth: 630,
+      );
+      // 238 / 630 of whatever width the picture is.
+      expect(
+          cmd.filterGraph,
+          contains('[1:v:0]scale=trunc(iw*0.377778/2)*2:-2:flags=lanczos'
+              '[wm]'));
+      final stamp = buildStampCommand(
+        inputPath: '/in/moment.mp4',
+        watermarkPath: _watermarkFile,
+        watermarkLogoWidth: 630,
+        outputPath: '/out/saved.mp4',
+        width: 1920,
+        height: 1080,
+        isImage: false,
+        profile: EncodingProfile.moment,
+        encoder: H264Encoder.mediaCodec,
+      );
+      expect(stamp.filterGraph,
+          startsWith('[1:v:0]scale=trunc(iw*0.377778/2)*2:-2:'));
     });
 
     test('encoders are tried hardware-first per platform', () {
@@ -1014,6 +1059,85 @@ void main() {
         H264Encoder.mediaCodecPlanar,
         H264Encoder.mediaCodecDefault,
       ]);
+    });
+  });
+
+  group('buildStampCommand - a saved copy of a posted Moment', () {
+    RenderCommand stamp({
+      int width = 1080,
+      int height = 1920,
+      bool isImage = false,
+    }) =>
+        buildStampCommand(
+          inputPath: '/in/moment.mp4',
+          watermarkPath: _watermarkFile,
+          outputPath: isImage ? '/out/saved.jpg' : '/out/saved.mp4',
+          width: width,
+          height: height,
+          isImage: isImage,
+          profile: EncodingProfile.moment,
+          encoder: H264Encoder.mediaCodec,
+          duration: const Duration(seconds: 20),
+        );
+
+    test('a video: the logo overlaid, its sound kept, re-encoded', () {
+      final cmd = stamp();
+      expect(_inputs(cmd.arguments), ['/in/moment.mp4', _watermarkFile]);
+      expect(
+          cmd.filterGraph,
+          '[1:v:0]scale=238:-2:flags=lanczos[wm];'
+          '[0:v:0][wm]overlay=x=54:y=H-h-130:eof_action=repeat,format=nv12[v]');
+      final args = cmd.arguments.join(' ');
+      expect(args, contains('-map [v] -map 0:a:0?'));
+      expect(_after(cmd.arguments, '-c:v'), 'h264_mediacodec');
+      expect(_after(cmd.arguments, '-b:v'), '12000000');
+      expect(_after(cmd.arguments, '-qp_i_max'), '27');
+      expect(_after(cmd.arguments, '-c:a'), 'aac');
+      expect(_after(cmd.arguments, '-movflags'), '+faststart');
+      expect(cmd.arguments.last, '/out/saved.mp4');
+      expect(cmd.duration, const Duration(seconds: 20));
+    });
+
+    test('sized from the shorter side: a landscape video gets the same logo',
+        () {
+      expect(stamp(width: 1920, height: 1080).filterGraph,
+          stamp().filterGraph);
+      expect(stamp(width: 720, height: 1280).filterGraph,
+          contains('scale=158:-2:flags=lanczos[wm]'));
+    });
+
+    test('a photo: one JPEG, no video encoder', () {
+      final cmd = stamp(isImage: true);
+      expect(cmd.filterGraph, endsWith('eof_action=repeat[v]'));
+      expect(cmd.arguments, isNot(contains('-c:v')));
+      expect(_after(cmd.arguments, '-frames:v'), '1');
+      expect(cmd.arguments.last, '/out/saved.jpg');
+    });
+
+    test('a profile without a watermark has nothing to stamp', () {
+      expect(
+        () => buildStampCommand(
+          inputPath: '/in/moment.mp4',
+          watermarkPath: _watermarkFile,
+          outputPath: '/out/saved.mp4',
+          width: 1080,
+          height: 1920,
+          isImage: false,
+          profile: _p720,
+          encoder: H264Encoder.mediaCodec,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('the logo ships: a PNG with transparency', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final png = await rootBundle.load(Watermark.chatterloop.asset);
+      // The PNG signature, then IHDR's colour type 6: RGBA.
+      expect(png.getUint32(0), 0x89504E47);
+      expect(png.getUint8(25), 6);
+      // Big enough for a sharp 1080-wide stamp (twice its 238px).
+      expect(png.getUint32(16), greaterThanOrEqualTo(2 * 238));
     });
   });
 
@@ -1029,5 +1153,17 @@ void main() {
     expect(_after(args, '-update'), '1');
     expect(args, contains('-an'));
     expect(args.last, '/out/poster.jpg');
+  });
+
+  test("a clip's thumbnail is one small frame from where it starts", () {
+    final args = buildThumbnailCommand(
+      videoPath: '/in/clip.mp4',
+      at: const Duration(milliseconds: 1500),
+      outputPath: '/tmp/thumb.jpg',
+    );
+    expect(_inputOptions(args, '/in/clip.mp4'), ['-ss', '1.500']);
+    expect(_after(args, '-frames:v'), '1');
+    expect(_after(args, '-vf'), 'scale=240:-2');
+    expect(args.last, '/tmp/thumb.jpg');
   });
 }

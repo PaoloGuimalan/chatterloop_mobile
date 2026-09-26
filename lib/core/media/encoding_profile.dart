@@ -20,40 +20,55 @@ class QpCeiling {
         assert(other >= 0 && other <= 51);
 }
 
-/// A logo stamped into the bottom-left corner of every frame of an output.
+/// A logo stamped into the bottom-left corner of a picture.
 ///
-/// This is how it LOOKS, set per kind of output ([EncodingProfile.watermark]).
-/// Whether one edit carries it is the edit's own [Composition.watermark] - an
-/// option to post without it only has to turn that off.
+/// Only on copies SAVED to the phone - the editor's Save, a posted Moment
+/// downloaded from the viewer. What is posted stays without it. This is how
+/// it looks, per kind of output ([EncodingProfile.watermark]).
+///
+/// Sizes are fractions of the picture's SHORTER side (a portrait Moment's
+/// width), so a landscape video gets the same size of logo as a portrait one.
 @immutable
 class Watermark {
   /// A Flutter asset: a PNG with transparency, its shadow baked in
   /// (tool/make_watermark.py builds the Chatterloop one).
   final String asset;
 
-  /// Its width, as a fraction of the output's width.
+  /// A Flutter asset: where the wordmark sits in [asset] - the handle goes
+  /// under it (the tool writes it next to the PNG). Null: under the logo.
+  final String? layout;
+
+  /// Its width.
   final double width;
 
-  /// Its gap from the left edge, as a fraction of the output's width.
+  /// Its gap from the left edge.
   final double left;
 
-  /// Its gap from the bottom edge, as a fraction of the output's height.
+  /// Its gap from the bottom edge.
   final double bottom;
+
+  /// The size of the handle under the logo ("@paolo") - its own, so the
+  /// logo can be resized without the name going with it.
+  final double handleSize;
 
   const Watermark({
     required this.asset,
-    this.width = 0.20,
-    this.left = 0.12,
-    this.bottom = 0.17,
+    this.layout,
+    this.width = 0.22,
+    this.left = 0.05,
+    this.bottom = 0.12,
+    this.handleSize = 0.022,
   })  : assert(width > 0 && width < 1),
         assert(left >= 0 && left + width < 1),
-        assert(bottom >= 0 && bottom < 1);
+        assert(bottom >= 0 && bottom < 1),
+        assert(handleSize > 0);
 
-  /// The Chatterloop logo, 20% of the width, on the left above the viewer's
-  /// reply bar. 12% in from the left: the app's viewer fills a tall phone's
-  /// screen with a 9:16 Moment, trimming up to 10% off each side
-  /// (momentMediaFit), and the logo stays whole.
-  static const chatterloop = Watermark(asset: 'assets/images/watermark.png');
+  /// The Chatterloop logo, 22% of the width, near the left edge and lifted
+  /// a little off the bottom, the handle under it at 2.2% (24px at 1080).
+  static const chatterloop = Watermark(
+    asset: 'assets/images/watermark.png',
+    layout: 'assets/images/watermark.json',
+  );
 }
 
 /// What an encode produces - resolution, frame rate, bitrates, length cap.
@@ -107,8 +122,8 @@ class EncodingProfile {
   /// Poster JPEG quality on ffmpeg's -q:v scale: 2 (best) .. 31 (worst).
   final int posterQuality;
 
-  /// The logo this kind of output is stamped with, or null for none. An
-  /// edit can still go without it ([Composition.watermark]).
+  /// The logo a SAVED copy of this kind of output is stamped with, or null
+  /// for none. Renders for posting leave it out.
   final Watermark? watermark;
 
   const EncodingProfile({

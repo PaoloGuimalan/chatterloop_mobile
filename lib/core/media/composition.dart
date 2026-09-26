@@ -6,9 +6,10 @@
 /// canvas and sizes are relative to "fits inside the canvas", so the same
 /// edit renders the same at any output resolution.
 ///
-/// Today an edit is ONE visual layer (a photo or a video) on a background,
-/// plus an optional audio track. `layers` is a list, and the JSON keys leave
-/// room, for what comes later: text, stickers (image layers), transitions.
+/// An edit is a run of CLIPS - photos and videos, one after another, each
+/// framed on the canvas its own way - over one background, plus AUDIO tracks
+/// laid along the same timeline. The JSON leaves room for what comes later:
+/// transitions, text, stickers.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -106,6 +107,17 @@ class LayerTransform {
         rotationDeg: rotationDeg ?? this.rotationDeg,
       );
 
+  @override
+  bool operator ==(Object other) =>
+      other is LayerTransform &&
+      other.cx == cx &&
+      other.cy == cy &&
+      other.scale == scale &&
+      other.rotationDeg == rotationDeg;
+
+  @override
+  int get hashCode => Object.hash(cx, cy, scale, rotationDeg);
+
   Map<String, dynamic> toJson() =>
       {'cx': cx, 'cy': cy, 'scale': scale, 'rotation': rotationDeg};
 
@@ -130,6 +142,16 @@ class TrimRange {
 
   Duration get length => end > start ? end - start : Duration.zero;
 
+  @override
+  bool operator ==(Object other) =>
+      other is TrimRange && other.start == start && other.end == end;
+
+  @override
+  int get hashCode => Object.hash(start, end);
+
+  @override
+  String toString() => 'TrimRange($start, $end)';
+
   Map<String, dynamic> toJson() =>
       {'start_ms': start.inMilliseconds, 'end_ms': end.inMilliseconds};
 
@@ -139,25 +161,43 @@ class TrimRange {
       );
 }
 
-/// The one visual layer of today's edits: a photo or a video, placed.
+/// One CLIP of the edit: a photo or a video, framed on the canvas, for its
+/// [length].
 @immutable
 class MediaLayer {
+  /// How long a photo shows unless its card is stretched - the viewers' own
+  /// time for a photo.
+  static const defaultStill = Duration(seconds: 6);
+
   final MediaSource source;
   final LayerTransform transform;
 
   /// Videos only: the part to use. Null = the whole video.
   final TrimRange? trim;
 
+  /// Photos only: how long it shows. Null = [defaultStill].
+  final Duration? duration;
+
   /// Videos only: the level of the video's own sound, 0 (muted) ..2
-  /// (1 = as recorded). Mixed with the audio track when there is one.
+  /// (1 = as recorded). Mixed with the audio tracks.
   final double volume;
 
   const MediaLayer({
     required this.source,
     this.transform = LayerTransform.fit,
     this.trim,
+    this.duration,
     this.volume = 1,
   });
+
+  /// How long this clip runs in the edit.
+  Duration get length => source.isVideo
+      ? (trim?.length ?? source.duration ?? Duration.zero)
+      : (duration ?? defaultStill);
+
+  /// Videos: the part used ([trim], else all of it).
+  TrimRange get usedRange =>
+      trim ?? TrimRange(Duration.zero, source.duration ?? Duration.zero);
 
   /// Whether the video's own sound is heard in the output.
   bool get soundHeard => source.isVideo && source.hasAudio && volume > 0;
@@ -165,12 +205,14 @@ class MediaLayer {
   MediaLayer copyWith({
     LayerTransform? transform,
     TrimRange? trim,
+    Duration? duration,
     double? volume,
   }) =>
       MediaLayer(
         source: source,
         transform: transform ?? this.transform,
         trim: trim ?? this.trim,
+        duration: duration ?? this.duration,
         volume: volume ?? this.volume,
       );
 
@@ -179,27 +221,42 @@ class MediaLayer {
         'source': source.toJson(),
         'transform': transform.toJson(),
         if (trim != null) 'trim': trim!.toJson(),
+        if (duration != null) 'duration_ms': duration!.inMilliseconds,
         'volume': volume,
       };
 
-  factory MediaLayer.fromJson(Map<String, dynamic> json) => MediaLayer(
+  factory MediaLayer.fromJson(Map<String, dynamic> json,
+          {Duration? stillDuration}) =>
+      MediaLayer(
         source: MediaSource.fromJson(Map<String, dynamic>.from(json['source'])),
         transform: LayerTransform.fromJson(
             Map<String, dynamic>.from(json['transform'] ?? const {})),
         trim: json['trim'] == null
             ? null
             : TrimRange.fromJson(Map<String, dynamic>.from(json['trim'])),
+        duration: json['duration_ms'] == null
+            ? stillDuration
+            : Duration(milliseconds: (json['duration_ms'] as num).toInt()),
         // Edits saved before volumes had an on/off `keep_audio`.
         volume: (json['volume'] as num?)?.toDouble() ??
             (json['keep_audio'] == false ? 0 : 1),
       );
 }
 
-/// Sound laid over the edit - music on a photo, or on a video (mixed with
-/// the video's own sound at their two volumes). It starts with the edit.
+/// Sound laid along the edit - music, a voice-over - from [start], playing
+/// the [trim] part of its file. Mixed with the clips' own sound.
 @immutable
 class AudioTrack {
   final String path;
+
+  /// What the editor calls it (the file's name).
+  final String? name;
+
+  /// The whole file's length - how far the editor lets its part stretch.
+  final Duration? fileLength;
+
+  /// Where in the edit it starts.
+  final Duration start;
 
   /// The part of the file to use.
   final TrimRange trim;
@@ -212,6 +269,9 @@ class AudioTrack {
   const AudioTrack({
     required this.path,
     required this.trim,
+    this.name,
+    this.fileLength,
+    this.start = Duration.zero,
     this.volume = 1,
     this.fadeIn = Duration.zero,
     this.fadeOut = Duration.zero,
@@ -219,7 +279,13 @@ class AudioTrack {
 
   bool get heard => volume > 0;
 
+  Duration get length => trim.length;
+
+  /// Where in the edit it stops.
+  Duration get end => start + length;
+
   AudioTrack copyWith({
+    Duration? start,
     TrimRange? trim,
     double? volume,
     Duration? fadeIn,
@@ -227,6 +293,9 @@ class AudioTrack {
   }) =>
       AudioTrack(
         path: path,
+        name: name,
+        fileLength: fileLength,
+        start: start ?? this.start,
         trim: trim ?? this.trim,
         volume: volume ?? this.volume,
         fadeIn: fadeIn ?? this.fadeIn,
@@ -235,6 +304,9 @@ class AudioTrack {
 
   Map<String, dynamic> toJson() => {
         'path': path,
+        if (name != null) 'name': name,
+        if (fileLength != null) 'file_ms': fileLength!.inMilliseconds,
+        'start_ms': start.inMilliseconds,
         'trim': trim.toJson(),
         'volume': volume,
         'fade_in_ms': fadeIn.inMilliseconds,
@@ -243,6 +315,11 @@ class AudioTrack {
 
   factory AudioTrack.fromJson(Map<String, dynamic> json) => AudioTrack(
         path: json['path'] as String,
+        name: json['name'] as String?,
+        fileLength: json['file_ms'] == null
+            ? null
+            : Duration(milliseconds: (json['file_ms'] as num).toInt()),
+        start: Duration(milliseconds: (json['start_ms'] as num?)?.toInt() ?? 0),
         trim: TrimRange.fromJson(Map<String, dynamic>.from(json['trim'])),
         volume: (json['volume'] as num?)?.toDouble() ?? 1,
         fadeIn:
@@ -279,85 +356,118 @@ class CompositionBackground {
 @immutable
 class Composition {
   /// Bump when the meaning of a field changes; readers check it.
-  static const currentVersion = 1;
+  /// 2: a list of clips (was one layer) and of audio tracks (was one).
+  static const currentVersion = 2;
 
   final int version;
   final CompositionBackground background;
-  final MediaLayer layer;
-  final AudioTrack? audio;
 
-  /// How long a photo lasts when nothing else sets the length (no audio
-  /// track). Ignored for videos and for photos with an audio track.
-  final Duration stillDuration;
+  /// Played one after another. Never empty.
+  final List<MediaLayer> clips;
 
-  /// Whether the output is stamped with the profile's watermark (when the
-  /// profile has one - EncodingProfile.watermark, which sets its look). On
-  /// unless the edit opts out - the switch for posting without it.
-  final bool watermark;
+  /// Ordered by [AudioTrack.start]; they never overlap.
+  final List<AudioTrack> audio;
 
   const Composition({
     this.version = currentVersion,
     this.background = CompositionBackground.blur,
-    required this.layer,
-    this.audio,
-    this.stillDuration = const Duration(seconds: 30),
-    this.watermark = true,
+    required this.clips,
+    this.audio = const [],
   });
 
-  /// The edit's length before any profile cap: the video's (trimmed) length,
-  /// else the audio track's, else [stillDuration].
-  Duration get naturalDuration {
-    final source = layer.source;
-    if (source.isVideo) {
-      return layer.trim?.length ?? source.duration ?? Duration.zero;
+  /// The edit's length before any profile cap: its clips end to end.
+  Duration get naturalDuration =>
+      clips.fold(Duration.zero, (sum, clip) => sum + clip.length);
+
+  /// Where each clip starts in the edit.
+  List<Duration> get clipStarts {
+    final starts = <Duration>[];
+    var at = Duration.zero;
+    for (final clip in clips) {
+      starts.add(at);
+      at += clip.length;
     }
-    if (audio != null) return audio!.trim.length;
-    return stillDuration;
+    return starts;
   }
 
+  /// The clip playing at [at], and how far into it. Past the end: the last
+  /// clip's last moment.
+  ({int index, Duration offset}) locate(Duration at) {
+    var start = Duration.zero;
+    for (var i = 0; i < clips.length; i++) {
+      final end = start + clips[i].length;
+      if (at < end || i == clips.length - 1) {
+        final offset = at - start;
+        return (
+          index: i,
+          offset: offset < Duration.zero
+              ? Duration.zero
+              : (offset > clips[i].length ? clips[i].length : offset),
+        );
+      }
+      start = end;
+    }
+    return (index: 0, offset: Duration.zero);
+  }
+
+  /// Only photos - a still, or a slideshow.
+  bool get allStills => clips.every((clip) => !clip.source.isVideo);
+
   /// Whether the output will carry REAL sound (not only a silent track).
-  bool get hasSound => (audio?.heard ?? false) || layer.soundHeard;
+  bool get hasSound =>
+      clips.any((clip) => clip.soundHeard) ||
+      audio.any((track) => track.heard && track.start < naturalDuration);
 
   Composition copyWith({
     CompositionBackground? background,
-    MediaLayer? layer,
-    AudioTrack? audio,
-    bool clearAudio = false,
-    Duration? stillDuration,
-    bool? watermark,
+    List<MediaLayer>? clips,
+    List<AudioTrack>? audio,
   }) =>
       Composition(
         version: version,
         background: background ?? this.background,
-        layer: layer ?? this.layer,
-        audio: clearAudio ? null : (audio ?? this.audio),
-        stillDuration: stillDuration ?? this.stillDuration,
-        watermark: watermark ?? this.watermark,
+        clips: clips ?? this.clips,
+        audio: audio ?? this.audio,
       );
 
   Map<String, dynamic> toJson() => {
         'v': version,
         'background': background.toJson(),
-        'layers': [layer.toJson()],
-        if (audio != null) 'audio': audio!.toJson(),
-        'still_ms': stillDuration.inMilliseconds,
-        'watermark': watermark,
+        'clips': [for (final clip in clips) clip.toJson()],
+        'audio': [for (final track in audio) track.toJson()],
       };
 
   factory Composition.fromJson(Map<String, dynamic> json) {
-    final layers = (json['layers'] as List).cast<Map>();
+    final background = CompositionBackground.fromJson(
+        Map<String, dynamic>.from(json['background'] ?? const {}));
+    if (json['clips'] == null) {
+      // Version 1: one layer, one optional track, and the photo's length.
+      final still =
+          Duration(milliseconds: (json['still_ms'] as num?)?.toInt() ?? 30000);
+      final layers = (json['layers'] as List).cast<Map>();
+      final audio = json['audio'];
+      return Composition(
+        background: background,
+        clips: [
+          MediaLayer.fromJson(Map<String, dynamic>.from(layers.first),
+              stillDuration: still)
+        ],
+        audio: [
+          if (audio is Map) AudioTrack.fromJson(Map<String, dynamic>.from(audio))
+        ],
+      );
+    }
     return Composition(
       version: (json['v'] as num?)?.toInt() ?? currentVersion,
-      background: CompositionBackground.fromJson(
-          Map<String, dynamic>.from(json['background'] ?? const {})),
-      layer: MediaLayer.fromJson(Map<String, dynamic>.from(layers.first)),
-      audio: json['audio'] == null
-          ? null
-          : AudioTrack.fromJson(Map<String, dynamic>.from(json['audio'])),
-      stillDuration:
-          Duration(milliseconds: (json['still_ms'] as num?)?.toInt() ?? 30000),
-      // Edits from before the switch were all stamped.
-      watermark: json['watermark'] != false,
+      background: background,
+      clips: [
+        for (final clip in (json['clips'] as List).cast<Map>())
+          MediaLayer.fromJson(Map<String, dynamic>.from(clip))
+      ],
+      audio: [
+        for (final track in (json['audio'] as List? ?? const []).cast<Map>())
+          AudioTrack.fromJson(Map<String, dynamic>.from(track))
+      ],
     );
   }
 }

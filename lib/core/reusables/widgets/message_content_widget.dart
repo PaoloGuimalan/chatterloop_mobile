@@ -1833,6 +1833,12 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
 
   Widget messageDeletedItem(String messageType, bool isParentSenderCurrentUser,
       bool isCurrentUser, bool isReply) {
+    // Faint on purpose, in both themes: the light grey that reads pale on a
+    // light screen is near-white on a dark one, so dark mode takes its own
+    // muted text and border instead.
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final faded = dark ? cl(context).text3 : const Color(0xFFdedede);
+    final edge = dark ? cl(context).border2 : const Color(0xFFdedede);
     return Row(
       mainAxisAlignment:
           isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -1853,14 +1859,13 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           child: Container(
             decoration: BoxDecoration(
                 color: Colors.transparent,
-                border: Border.all(color: Color(0xFFdedede), width: 1),
+                border: Border.all(color: edge, width: 1),
                 borderRadius: BorderRadius.circular(10)),
             child: Padding(
               padding: EdgeInsets.only(top: 10, bottom: 10, left: 7, right: 7),
               child: Text(
                 "Message deleted",
-                style:
-                    TextStyle(fontSize: CLType.body, color: Color(0xFFdedede)),
+                style: TextStyle(fontSize: CLType.body, color: faded),
               ),
             ),
           ),

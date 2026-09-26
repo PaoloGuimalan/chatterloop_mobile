@@ -55,47 +55,6 @@ class GallerySaver {
         '_${two(t.hour)}${two(t.minute)}${two(t.second)}.$extension';
   }
 
-  /// The extension and content type to save [url] under: from its name when
-  /// that says a photo (or a video, [isVideo]), else from [mediaType], else
-  /// JPEG / MP4.
-  static ({String extension, String mimeType}) typeOf(
-    String url, {
-    required bool isVideo,
-    String? mediaType,
-  }) {
-    final kind = isVideo ? 'video/' : 'image/';
-    final path = Uri.tryParse(url)?.path ?? url;
-    final name = path.substring(path.lastIndexOf('/') + 1);
-    final dot = name.lastIndexOf('.');
-    final named = dot < 0 ? null : _types[name.substring(dot + 1).toLowerCase()];
-    if (named != null && named.startsWith(kind)) {
-      return (extension: name.substring(dot + 1).toLowerCase(), mimeType: named);
-    }
-    final type = mediaType != null && mediaType.startsWith(kind)
-        ? mediaType
-        : (isVideo ? 'video/mp4' : 'image/jpeg');
-    final extension = _types.entries
-            .where((e) => e.value == type)
-            .map((e) => e.key)
-            .firstOrNull ??
-        (isVideo ? 'mp4' : 'jpg');
-    return (extension: extension, mimeType: type);
-  }
-
-  /// The photo and video types a moment can be. First of a type is the
-  /// extension it saves with.
-  static const _types = {
-    'mp4': 'video/mp4',
-    'mov': 'video/quicktime',
-    'webm': 'video/webm',
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'webp': 'image/webp',
-    'gif': 'image/gif',
-    'heic': 'image/heic',
-  };
-
   /// What a failed save tells the user.
   /// Debug builds add the error itself, and log it.
   static String failureMessage(Object error) {

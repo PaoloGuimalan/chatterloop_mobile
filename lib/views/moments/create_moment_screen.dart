@@ -2,14 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/media/composition.dart';
 import 'package:chatterloop_app/core/media/encoding_profile.dart';
 import 'package:chatterloop_app/core/media/media_engine.dart';
+import 'package:chatterloop_app/core/media/sequence_player.dart';
 import 'package:chatterloop_app/core/media/still_image.dart';
+import 'package:chatterloop_app/core/media/timeline.dart';
 import 'package:chatterloop_app/core/media/widgets/edit_canvas.dart';
+import 'package:chatterloop_app/core/media/widgets/timeline_view.dart';
 import 'package:chatterloop_app/core/media/widgets/trim_bar.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/moments_api.dart';
@@ -19,6 +21,8 @@ import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/utils/gallery_saver.dart';
 import 'package:chatterloop_app/models/post_models/ephemeral_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/views/moments/audio_trim_page.dart';
+import 'package:chatterloop_app/views/moments/clip_trim_page.dart';
 import 'package:chatterloop_app/views/moments/moment_shared_post_card.dart';
 import 'package:chatterloop_app/views/moments/moments_strip.dart';
 import 'package:file_picker/file_picker.dart';
@@ -26,17 +30,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:video_player/video_player.dart';
 
-/// New Moment - a full-screen editor, the phone's way of doing web's Create
-/// Moment modal: a 9:16 canvas, the caption on it, Share top-right, and
-/// who-can-see / replies as two pills underneath.
+/// New Moment - a full-screen editor: a 9:16 canvas with the caption on it,
+/// Save and Share top-right, a timeline under it, and who-can-see / replies
+/// as two pills at the bottom.
 ///
-/// A photo or video from the device is EDITED here - dragged, pinched,
-/// twisted, fitted or filled over a blurred or plain background, a video
-/// trimmed, a photo given sound - and rendered on the device into the MP4
-/// that gets posted (lib/core/media). A photo becomes a 30s video, or as
-/// long as its sound. Up to 2 minutes.
+/// An edit is a run of CLIPS - photos and videos picked from the gallery
+/// (several at once) or the camera, each video first cut to the part wanted
+/// - played one after another, plus MUSIC laid along under them. On the
+/// timeline, clips and songs are cards: trimmed by their ends, clips
+/// reordered by holding and dragging, songs dragged to where they should
+/// play; split, duplicate, volume and delete act on the picked card. Each
+/// clip is framed on the canvas on its own - dragged, pinched, twisted,
+/// fitted or filled - over a blurred or plain background. Up to 2 minutes.
+///
+/// It is rendered on the device into the MP4 that gets posted
+/// (lib/core/media). Save puts a copy on the phone, with the watermark;
+/// what is posted has none.
 ///
 /// From a post's Share options it is that post instead ([sharedPost]),
 /// posted as it is - no editor, no render.
@@ -59,7 +69,10 @@ typedef _Upload = ({
   String? fileId,
 });
 
-class _CreateMomentScreenState extends State<CreateMomentScreen> {
+typedef _Picked = ({String path, bool video});
+
+class _CreateMomentScreenState extends State<CreateMomentScreen>
+    with TickerProviderStateMixin {
   static const _profile = EncodingProfile.moment;
 
   static const _backgrounds = <int>[
@@ -79,42 +92,29 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
   bool _allowReplies = true;
 
   // ---- The edit.
-  /// This editor's temp folder (prepared photos); deleted on close.
+  /// This editor's temp folder (prepared photos, thumbnails); deleted on
+  /// close.
   Directory? _workspace;
   Composition? _edit;
+  late final SequencePlayer _player = SequencePlayer(vsync: this)
+    ..addListener(_onPlayer);
+  TimelineSelection? _selection;
 
-  /// Where the layer started, for Reset.
-  LayerTransform _initialTransform = LayerTransform.fit;
-  VideoPlayerController? _video;
-  AudioPlayer? _songPlayer;
-  StreamSubscription<Duration>? _songPosition;
-  StreamSubscription<void>? _songDone;
-  String? _songName;
-  Duration? _songLength;
+  /// A video file's picture for its timeline cards, by path.
+  final Map<String, String> _thumbnails = {};
   bool _preparing = false;
 
-  // ---- Preview.
-  /// Where each track's preview is - the cards' playheads.
-  Duration? _videoAt;
-  Duration? _songAt;
-  bool _restarting = false;
+  /// Playing when a scrub started - it plays on once let go.
+  bool _resumeAfterScrub = false;
 
-  /// A trim thumb is held: the preview shows that edge instead of playing.
-  bool _scrubbing = false;
-  DateTime _lastScrubSeek = DateTime(0);
-
-  /// What each sound goes back to when unmuted.
-  double _videoVolume = 1;
-  double _songVolume = 1;
-
-  // ---- Share.
+  // ---- Share / Save.
   _Phase _phase = _Phase.editing;
   double _renderProgress = 0;
-  RenderJob? _job;
+  RenderJob<RenderResult>? _job;
 
-  /// The last render and the edit it was made from (as JSON): Retry after a
-  /// failed upload or post reuses it instead of rendering again - and the
-  /// uploads too, once made.
+  /// The last render and what it was made from (the edit as JSON, and
+  /// whether watermarked): Retry after a failed upload or post reuses it
+  /// instead of rendering again - and the uploads too, once made.
   RenderResult? _rendered;
   String? _renderedFor;
   _Upload? _uploadedVideo;
@@ -135,14 +135,16 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
     _caption.dispose();
     _job?.cancel();
     _rendered?.dispose();
-    _video?.removeListener(_onVideoTick);
-    _video?.dispose();
-    _songPosition?.cancel();
-    _songDone?.cancel();
-    _songPlayer?.dispose();
+    _player
+      ..removeListener(_onPlayer)
+      ..dispose();
     final workspace = _workspace;
     if (workspace != null) workspace.delete(recursive: true).ignore();
     super.dispose();
+  }
+
+  void _onPlayer() {
+    if (mounted) setState(() {});
   }
 
   void _toast(String text) {
@@ -154,40 +156,52 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
 
   // ---------------------------------------------------------------- picking
 
+  /// Time left before the moment reaches its 2 minutes.
+  Duration get _room =>
+      _edit?.remaining(_profile.maxDuration) ?? _profile.maxDuration;
+
+  void _full() => _toast(
+      "A moment can be up to ${TrimBar.lengthLabel(_profile.maxDuration)}");
+
   Future<void> _fromCamera({required bool video}) async {
+    if (_room < minPiece) return _full();
     final picker = ImagePicker();
     final file = video
-        ? await picker.pickVideo(
-            source: ImageSource.camera, maxDuration: _profile.maxDuration)
+        ? await picker.pickVideo(source: ImageSource.camera, maxDuration: _room)
         : await picker.pickImage(source: ImageSource.camera, imageQuality: 95);
     if (file == null) return;
-    await _open(file.path, looksLikeVideo: video);
+    await _addFiles([(path: file.path, video: video)]);
   }
 
-  /// The phone's gallery (Android's photo picker) - one photo or video - not
-  /// the file manager it used to open.
+  /// The phone's gallery (Android's photo picker) - as many photos and
+  /// videos as wanted, added in the order picked.
   Future<void> _fromGallery() async {
-    final XFile? file;
+    if (_room < minPiece) return _full();
+    final List<XFile> files;
     try {
-      file = await ImagePicker().pickMedia();
+      files = await ImagePicker().pickMultipleMedia();
     } catch (_) {
       if (mounted) _toast("Couldn't open your gallery");
       return;
     }
-    if (file == null) return;
-    await _open(
-      file.path,
-      looksLikeVideo: PendingMedia(
-              path: file.path,
-              name: file.name,
-              size: 0,
-              mimeType: file.mimeType)
-          .isVideo,
-    );
+    if (files.isEmpty) return;
+    await _addFiles([
+      for (final file in files)
+        (
+          path: file.path,
+          video: PendingMedia(
+                  path: file.path,
+                  name: file.name,
+                  size: 0,
+                  mimeType: file.mimeType)
+              .isVideo,
+        )
+    ]);
   }
 
-  /// Replace: the same three sources as the empty stage, as a sheet.
+  /// More clips: the same three sources as the empty canvas, as a sheet.
   Future<void> _chooseSource() async {
+    if (_room < minPiece) return _full();
     final choice = await showModalBottomSheet<int>(
       context: context,
       backgroundColor: cl(context).surface,
@@ -199,6 +213,11 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text("Choose from gallery"),
+                subtitle: const Text("Pick as many as you like"),
+                onTap: () => Navigator.pop(sheetContext, 2)),
+            ListTile(
                 leading: const Icon(Icons.photo_camera_outlined),
                 title: const Text("Take photo"),
                 onTap: () => Navigator.pop(sheetContext, 0)),
@@ -206,10 +225,6 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                 leading: const Icon(Icons.videocam_outlined),
                 title: const Text("Record video"),
                 onTap: () => Navigator.pop(sheetContext, 1)),
-            ListTile(
-                leading: const Icon(Icons.photo_library_outlined),
-                title: const Text("Choose from gallery"),
-                onTap: () => Navigator.pop(sheetContext, 2)),
           ],
         ),
       ),
@@ -219,34 +234,112 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
     if (choice == 2) await _fromGallery();
   }
 
-  /// Reads a picked file into an edit: a video is inspected by ffprobe, a
-  /// photo decoded and prepared (upright, capped in size - see prepareStill).
-  Future<void> _open(String path, {required bool looksLikeVideo}) async {
+  /// Turns picked files into clips - each video first cut to the part
+  /// wanted - and puts them in after the picked clip (else at the end),
+  /// while there is room.
+  Future<void> _addFiles(List<_Picked> files) async {
+    _player.pause();
     setState(() => _preparing = true);
+    final added = <MediaLayer>[];
+    var room = _room;
+    var ranOut = false;
     try {
+      // The preview's players are its own, outside the app's shared pool -
+      // so the pool's idle ones (feed videos just scrolled past) let go of
+      // their decoders first.
+      await SharedVideoControllers.releaseIdle();
       final workspace =
           _workspace ??= await MediaEngine.instance.createWorkspace();
-      MediaSource? source;
-      if (!looksLikeVideo) {
-        try {
-          source = await prepareStill(path, workspace);
-        } catch (_) {
-          // Not a photo the platform can read - maybe a video by another
-          // name; ffprobe decides below.
+      for (final (i, file) in files.indexed) {
+        if (room < minPiece) {
+          ranOut = true;
+          break;
         }
+        final source =
+            await _open(file.path, looksLikeVideo: file.video, into: workspace);
+        if (!mounted) return;
+        if (source == null) {
+          _toast("Couldn't open one of those");
+          continue;
+        }
+        final MediaLayer clip;
+        if (source.isVideo) {
+          setState(() => _preparing = false);
+          final range = await ClipTrimPage.open(
+            context,
+            source: source,
+            maxSpan: room,
+            step: files.length > 1 ? '${i + 1} of ${files.length}' : null,
+          );
+          if (!mounted) return;
+          setState(() => _preparing = true);
+          if (range == null) continue;
+          clip = MediaLayer(
+              source: source,
+              transform: _initialTransform(source),
+              trim: range);
+          if (!_thumbnails.containsKey(source.path)) {
+            final thumb = await MediaEngine.instance
+                .thumbnail(source.path, range.start, workspace);
+            if (thumb != null) _thumbnails[source.path] = thumb;
+          }
+        } else {
+          clip = MediaLayer(
+            source: source,
+            transform: _initialTransform(source),
+            duration: room < MediaLayer.defaultStill
+                ? room
+                : MediaLayer.defaultStill,
+          );
+        }
+        added.add(clip);
+        room -= clip.length;
       }
-      source ??= await _probeVideo(path);
-      if (source == null) {
-        if (mounted) _toast("Couldn't open that file");
-        return;
-      }
-      await _setSource(source);
     } catch (e) {
       debugPrint('CreateMoment: open failed: $e');
       if (mounted) _toast("Couldn't open that file");
     } finally {
       if (mounted) setState(() => _preparing = false);
     }
+    if (!mounted) return;
+    if (ranOut) {
+      _toast("Not all of them fit - a moment can be up to "
+          "${TrimBar.lengthLabel(_profile.maxDuration)}");
+    }
+    if (added.isEmpty) return;
+
+    final edit = _edit;
+    final selected = _selection;
+    final at = edit == null
+        ? 0
+        : (selected != null && selected.isClip
+            ? selected.index + 1
+            : edit.clips.length);
+    final next = edit == null
+        ? Composition(clips: added)
+        : edit.insertClips(added, index: at);
+    _setEdit(next);
+    setState(() => _selection = TimelineSelection.clip(at));
+    _player.seek(next.clipStarts[at]);
+  }
+
+  /// A picked file as a clip's media: a photo decoded and prepared (upright,
+  /// capped in size - see prepareStill), a video inspected by ffprobe.
+  Future<MediaSource?> _open(
+    String path, {
+    required bool looksLikeVideo,
+    required Directory into,
+  }) async {
+    MediaSource? source;
+    if (!looksLikeVideo) {
+      try {
+        source = await prepareStill(path, into);
+      } catch (_) {
+        // Not a photo the platform can read - maybe a video by another
+        // name; ffprobe decides below.
+      }
+    }
+    return source ?? await _probeVideo(path);
   }
 
   Future<MediaSource?> _probeVideo(String path) async {
@@ -263,184 +356,22 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
     }
   }
 
-  Future<void> _setSource(MediaSource source) async {
-    await _removeSong();
-    final old = _video;
-    old?.removeListener(_onVideoTick);
-    _video = null;
-    _videoAt = null;
-    _videoVolume = 1;
-    await old?.dispose();
-
+  /// Media close to the canvas's shape fills it; anything else fits whole,
+  /// over the background.
+  LayerTransform _initialTransform(MediaSource source) {
     final aspect = source.width / source.height;
     final canvas = _profile.aspectRatio;
-    // Media close to the canvas's shape fills it; anything else fits whole,
-    // over the blurred background.
-    final initial = LayerTransform.fillScale(aspect, canvas) <= 1.3
+    return LayerTransform.fillScale(aspect, canvas) <= 1.3
         ? LayerTransform.fill(aspect, canvas)
         : LayerTransform.fit;
-
-    TrimRange? trim;
-    VideoPlayerController? video;
-    if (source.isVideo) {
-      final total = source.duration!;
-      trim = TrimRange(Duration.zero,
-          total > _profile.maxDuration ? _profile.maxDuration : total);
-      // This preview is its own player, outside the app's shared pool - so
-      // the pool's idle players (feed videos just scrolled past) let go of
-      // their decoders first.
-      await SharedVideoControllers.releaseIdle();
-      // mixWithOthers: without it the video takes the device's audio focus
-      // and the music player pauses it (and it the music) - the two would
-      // never play together.
-      video = VideoPlayerController.file(
-        File(source.path),
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-      );
-      try {
-        await video.initialize();
-        await video.setVolume(source.hasAudio ? 1 : 0);
-        await video.play();
-        video.addListener(_onVideoTick);
-      } catch (e) {
-        debugPrint('CreateMoment: preview failed: $e');
-      }
-    }
-    if (!mounted) {
-      await video?.dispose();
-      return;
-    }
-    setState(() {
-      _initialTransform = initial;
-      _edit = Composition(
-        layer: MediaLayer(source: source, transform: initial, trim: trim),
-      );
-      _video = video;
-      _failed = false;
-    });
   }
 
-  // ------------------------------------------------------------- previews
-  //
-  // The preview plays the edit as it will come out: the video's trimmed part
-  // and the song's chosen part together from their starts, round and round,
-  // at their volumes.
+  // ------------------------------------------------------------------ music
 
-  /// Video ticks: its playhead, and the loop at the trimmed end.
-  void _onVideoTick() {
-    final video = _video;
-    final trim = _edit?.layer.trim;
-    if (video == null || trim == null) return;
-    final value = video.value;
-    if (!value.isInitialized) return;
-    final pos = value.position;
-    if (mounted &&
-        ((_videoAt ?? Duration.zero) - pos).abs() >
-            const Duration(milliseconds: 90)) {
-      setState(() => _videoAt = pos);
-    }
-    if (_phase != _Phase.editing || _scrubbing) return;
-    if ((value.isPlaying && pos >= trim.end) || value.isCompleted) {
-      _restartPreview();
-    }
-  }
-
-  void _onSongTick(Duration pos) {
-    if (mounted) setState(() => _songAt = pos);
-    final track = _edit?.audio;
-    if (track == null || _phase != _Phase.editing || _scrubbing) return;
-    if (pos >= track.trim.end) _songReachedEnd();
-  }
-
-  /// The song's part is over: over a photo it loops on its own; over a video
-  /// it waits for the video to come round.
-  void _songReachedEnd() {
-    if (_edit?.layer.source.isVideo == true) {
-      _songPlayer?.pause();
-    } else {
-      _restartPreview();
-    }
-  }
-
-  /// Every track back to its start, playing.
-  Future<void> _restartPreview() async {
-    final edit = _edit;
-    if (_restarting || edit == null || _phase != _Phase.editing) return;
-    _restarting = true;
-    try {
-      final video = _video;
-      final trim = edit.layer.trim;
-      final ready = video != null && video.value.isInitialized;
-      final track = edit.audio;
-      final player = _songPlayer;
-      if (ready && trim != null) {
-        await video.pause();
-        await video.seekTo(trim.start);
-      }
-      if (track != null && player != null) {
-        await player.pause();
-        await player.seek(track.trim.start);
-      }
-      if (!mounted || _phase != _Phase.editing || _scrubbing) return;
-      _applyVolumes();
-      await Future.wait([
-        if (ready) video.play(),
-        if (track != null && player != null) player.resume(),
-      ]);
-    } catch (e) {
-      debugPrint('CreateMoment: preview restart failed: $e');
-    } finally {
-      _restarting = false;
-    }
-  }
-
-  Future<void> _pausePreviews() async {
-    await _video?.pause();
-    await _songPlayer?.pause();
-  }
-
-  /// The edit's volumes on the preview players (which play at most 100%).
-  void _applyVolumes() {
+  Future<void> _addAudio() async {
     final edit = _edit;
     if (edit == null) return;
-    _video?.setVolume(
-        edit.layer.soundHeard ? edit.layer.volume.clamp(0.0, 1.0) : 0);
-    final track = edit.audio;
-    if (track != null) _songPlayer?.setVolume(track.volume.clamp(0.0, 1.0));
-  }
-
-  void _startScrub() {
-    _scrubbing = true;
-    _pausePreviews();
-  }
-
-  void _endScrub() {
-    _scrubbing = false;
-    _restartPreview();
-  }
-
-  // ----------------------------------------------------------------- sound
-
-  /// Short fades where the song is cut, so it doesn't start or stop on a
-  /// click. (A song cut by a shorter video fades at the video's end - the
-  /// renderer places the fade within the part actually used.)
-  AudioTrack _withFades(AudioTrack track) => track.copyWith(
-        fadeIn: track.trim.start > Duration.zero
-            ? const Duration(milliseconds: 300)
-            : Duration.zero,
-        fadeOut: track.trim.length >= const Duration(seconds: 4)
-            ? const Duration(seconds: 1)
-            : Duration.zero,
-      );
-
-  /// The longest part of a song that can be used: a video's trimmed length
-  /// (the song can't outlast it), else the 2-minute cap.
-  Duration get _songMaxSpan {
-    final layer = _edit!.layer;
-    return layer.source.isVideo ? layer.trim!.length : _profile.maxDuration;
-  }
-
-  Future<void> _pickSong() async {
+    _player.pause();
     final result = await FilePicker.pickFiles(type: FileType.audio);
     final file = result?.files.firstOrNull;
     final path = file?.path;
@@ -455,30 +386,38 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
         _toast("Couldn't use that audio file");
         return;
       }
-      final max = _songMaxSpan;
-      final trim = TrimRange(Duration.zero, length > max ? max : length);
-      final player = _songPlayer ??= AudioPlayer();
-      // Plays alongside the video preview instead of taking audio focus
-      // from it (see the video's mixWithOthers).
-      await player.setAudioContext(
-          AudioContextConfig(focus: AudioContextConfigFocus.mixWithOthers)
-              .build());
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.setSource(DeviceFileSource(path));
-      _songPosition ??= player.onPositionChanged.listen(_onSongTick);
-      _songDone ??= player.onPlayerComplete.listen((_) => _songReachedEnd());
+      final dot = file.name.lastIndexOf('.');
+      final name = dot > 0 ? file.name.substring(0, dot) : file.name;
+      final current = _edit!;
+      final at = _player.position.value;
+      // From the playhead - or the top, when the playhead is at the end.
+      final from =
+          at >= current.naturalDuration - minPiece ? Duration.zero : at;
+      final slot =
+          current.trackSlot(from) ?? current.trackSlot(Duration.zero);
+      if (slot == null) {
+        _toast("No room for more music - trim or move a song first");
+        return;
+      }
+      // The part of it to use, no longer than the room where it goes.
       if (!mounted) return;
-      _songVolume = 1;
-      setState(() {
-        _songName = file.name;
-        _songLength = length;
-        _songAt = Duration.zero;
-        _edit = _edit!
-            .copyWith(audio: _withFades(AudioTrack(path: path, trim: trim)));
-        _failed = false;
-      });
-      // From the top, together with the video.
-      await _restartPreview();
+      setState(() => _preparing = false);
+      final range = await AudioTrimPage.open(
+        context,
+        path: path,
+        name: name,
+        length: length,
+        maxSpan: slot.room,
+      );
+      if (range == null || !mounted) return;
+      final next = _edit!.addTrack(
+        AudioTrack(path: path, name: name, fileLength: length, trim: range),
+        at: slot.start,
+      );
+      if (next == null) return;
+      _setEdit(next);
+      final index = next.audio.indexWhere((t) => !current.audio.contains(t));
+      if (index >= 0) setState(() => _selection = TimelineSelection.track(index));
     } on MediaEngineException {
       if (mounted) _toast("Couldn't use that audio file");
     } catch (e) {
@@ -489,80 +428,72 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
     }
   }
 
-  Future<void> _removeSong() async {
-    await _songPlayer?.stop();
-    if (!mounted) return;
-    setState(() {
-      _songName = null;
-      _songLength = null;
-      _songAt = null;
-      if (_edit?.audio != null) _edit = _edit!.copyWith(clearAudio: true);
-    });
-  }
-
-  void _setVideoVolume(double volume) {
-    if (volume > 0) _videoVolume = volume;
-    final edit = _edit!;
-    setState(() =>
-        _edit = edit.copyWith(layer: edit.layer.copyWith(volume: volume)));
-    _applyVolumes();
-  }
-
-  void _setSongVolume(double volume) {
-    final track = _edit?.audio;
-    if (track == null) return;
-    if (volume > 0) _songVolume = volume;
-    setState(
-        () => _edit = _edit!.copyWith(audio: track.copyWith(volume: volume)));
-    _applyVolumes();
-  }
-
-  void _toggleVideoMute() =>
-      _setVideoVolume(_edit!.layer.volume > 0 ? 0 : _videoVolume);
-
-  void _toggleSongMute() =>
-      _setSongVolume((_edit!.audio?.volume ?? 0) > 0 ? 0 : _songVolume);
-
-  Future<void> _openMixer() async {
-    final edit = _edit!;
-    final source = edit.layer.source;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: cl(context).surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(CLRadii.lg))),
-      builder: (_) => _SoundMixSheet(
-        videoVolume:
-            source.isVideo && source.hasAudio ? edit.layer.volume : null,
-        videoRestore: _videoVolume,
-        songVolume: edit.audio?.volume,
-        songRestore: _songVolume,
-        songName: _songName,
-        onVideo: _setVideoVolume,
-        onSong: _setSongVolume,
-      ),
-    );
-  }
-
   // ------------------------------------------------------------------ edits
 
-  void _setTransform(LayerTransform transform) {
+  /// Every change to the edit comes through here - the preview follows.
+  void _setEdit(Composition? next) {
+    setState(() {
+      _edit = next;
+      _failed = false;
+      final selected = _selection;
+      if (next == null) {
+        _selection = null;
+      } else if (selected != null &&
+          selected.index >=
+              (selected.isClip ? next.clips.length : next.audio.length)) {
+        _selection = null;
+      }
+    });
+    _player.setEdit(next);
+  }
+
+  void _onTimelineEdit(Composition next) {
+    if (_player.playing) _player.pause();
+    _setEdit(next);
+  }
+
+  void _startScrub() {
+    _resumeAfterScrub = _player.playing;
+    _player.pause();
+  }
+
+  void _endScrub() {
+    if (_resumeAfterScrub) _player.play();
+    _resumeAfterScrub = false;
+  }
+
+  /// The clip on the canvas - the one under the playhead.
+  int get _current =>
+      _player.currentIndex.clamp(0, _edit!.clips.length - 1).toInt();
+
+  MediaLayer get _currentClip => _edit!.clips[_current];
+
+  void _select(TimelineSelection? selection) {
+    setState(() => _selection = selection);
     final edit = _edit;
-    if (edit == null) return;
-    setState(() => _edit =
-        edit.copyWith(layer: edit.layer.copyWith(transform: transform)));
+    if (selection == null || edit == null || !selection.isClip) return;
+    // The canvas shows the picked clip: the playhead into it.
+    final start = edit.clipStarts[selection.index];
+    final end = start + edit.clips[selection.index].length;
+    final at = _player.position.value;
+    if (at < start || at >= end) _player.seek(start);
+  }
+
+  void _setTransform(LayerTransform transform) {
+    final index = _current;
+    _setEdit(_edit!.replaceClip(
+        index, _edit!.clips[index].copyWith(transform: transform)));
   }
 
   double get _fillScale {
-    final source = _edit!.layer.source;
+    final source = _currentClip.source;
     return LayerTransform.fillScale(
         source.width / source.height, _profile.aspectRatio);
   }
 
   /// Fills the canvas: no bars, straight, centred.
   bool get _isFilled {
-    final t = _edit!.layer.transform;
+    final t = _currentClip.transform;
     return (t.scale - _fillScale).abs() < 0.01 &&
         t.cx == 0.5 &&
         t.cy == 0.5 &&
@@ -570,73 +501,26 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
   }
 
   void _toggleFill() {
-    final source = _edit!.layer.source;
+    final source = _currentClip.source;
     _setTransform(_isFilled
         ? LayerTransform.fit
         : LayerTransform.fill(
             source.width / source.height, _profile.aspectRatio));
   }
 
-  /// On to the next quarter turn clockwise (a twisted layer straightens to
+  /// On to the next quarter turn clockwise (a twisted clip straightens to
   /// the next one first).
   void _rotateQuarter() {
-    final t = _edit!.layer.transform;
+    final t = _currentClip.transform;
     final next = ((t.rotationDeg / 90).floor() + 1) * 90.0;
     _setTransform(t.copyWith(rotationDeg: next % 360));
   }
 
-  void _setVideoTrim(TrimRange trim) {
-    final edit = _edit!;
-    final previous = edit.layer.trim!;
-    _scrubTo(trim.start != previous.start
-        ? trim.start
-        : trim.end - const Duration(milliseconds: 40));
-    // The song can't outlast the video: its part shrinks along with it.
-    var track = edit.audio;
-    if (track != null && track.trim.length > trim.length) {
-      track = _withFades(track.copyWith(
-          trim: TrimRange(track.trim.start, track.trim.start + trim.length)));
-    }
-    setState(() => _edit =
-        edit.copyWith(layer: edit.layer.copyWith(trim: trim), audio: track));
-  }
+  bool get _isPristine =>
+      _currentClip.transform == _initialTransform(_currentClip.source);
 
-  /// While a video edge is dragged, the canvas shows the frame there (at
-  /// most every 80ms - seeks are not free).
-  void _scrubTo(Duration at) {
-    final video = _video;
-    final now = DateTime.now();
-    if (video == null ||
-        !video.value.isInitialized ||
-        now.difference(_lastScrubSeek) < const Duration(milliseconds: 80)) {
-      return;
-    }
-    _lastScrubSeek = now;
-    video.seekTo(at < Duration.zero ? Duration.zero : at);
-  }
-
-  void _setSongTrim(TrimRange trim) {
-    final track = _edit!.audio!;
-    setState(() =>
-        _edit = _edit!.copyWith(audio: _withFades(track.copyWith(trim: trim))));
-  }
-
-  void _reset() {
-    setState(() {
-      _edit = _edit!.copyWith(background: CompositionBackground.blur);
-    });
-    _setTransform(_initialTransform);
-  }
-
-  bool get _isPristine {
-    final edit = _edit!;
-    final t = edit.layer.transform, i = _initialTransform;
-    return edit.background.isBlur &&
-        t.cx == i.cx &&
-        t.cy == i.cy &&
-        t.scale == i.scale &&
-        t.rotationDeg == i.rotationDeg;
-  }
+  void _resetFraming() =>
+      _setTransform(_initialTransform(_currentClip.source));
 
   Future<void> _chooseBackground() async {
     final picked = await showModalBottomSheet<CompositionBackground>(
@@ -652,8 +536,84 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
       ),
     );
     if (picked != null && mounted) {
-      setState(() => _edit = _edit!.copyWith(background: picked));
+      _setEdit(_edit!.copyWith(background: picked));
     }
+  }
+
+  // ------------------------------------------------- the picked card's tools
+
+  void _split() {
+    final selected = _selection;
+    final edit = _edit;
+    if (selected == null || edit == null) return;
+    final at = _player.position.value;
+    final next = selected.isClip
+        ? edit.splitAt(at)
+        : edit.splitTrack(selected.index, at);
+    if (next == null) {
+      _toast(selected.isClip
+          ? "Move the playhead inside the clip to split it"
+          : "Move the playhead inside the song to split it");
+      return;
+    }
+    HapticFeedback.selectionClick();
+    _setEdit(next);
+  }
+
+  void _duplicate() {
+    final selected = _selection;
+    final edit = _edit;
+    if (selected == null || edit == null || !selected.isClip) return;
+    final clip = edit.clips[selected.index];
+    if (clip.length > _room) return _full();
+    _setEdit(edit.insertClips([clip], index: selected.index + 1));
+    setState(() => _selection = TimelineSelection.clip(selected.index + 1));
+  }
+
+  void _delete() {
+    final selected = _selection;
+    final edit = _edit;
+    if (selected == null || edit == null) return;
+    setState(() => _selection = null);
+    if (selected.isClip) {
+      // The last clip gone: back to picking.
+      _setEdit(edit.removeClip(selected.index));
+    } else {
+      _setEdit(edit.removeTrack(selected.index));
+    }
+  }
+
+  Future<void> _openVolume() async {
+    final selected = _selection;
+    final edit = _edit;
+    if (selected == null || edit == null) return;
+    final isClip = selected.isClip;
+    final index = selected.index;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: cl(context).surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(CLRadii.lg))),
+      builder: (_) => _VolumeSheet(
+        icon: isClip ? Icons.videocam_outlined : Icons.music_note_rounded,
+        title: isClip
+            ? "Video sound"
+            : (edit.audio[index].name ?? "Music"),
+        value: isClip ? edit.clips[index].volume : edit.audio[index].volume,
+        onChanged: (volume) {
+          final now = _edit;
+          if (now == null) return;
+          if (isClip && index < now.clips.length) {
+            _setEdit(now.replaceClip(
+                index, now.clips[index].copyWith(volume: volume)));
+          } else if (!isClip && index < now.audio.length) {
+            _setEdit(now.replaceTrack(
+                index, now.audio[index].copyWith(volume: volume)));
+          }
+        },
+      ),
+    );
   }
 
   // ------------------------------------------------------------------ share
@@ -663,15 +623,19 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
       (widget.sharedPost != null || _edit != null) &&
       ephemeralCharCount(_caption.text.trim()) <= momentCaptionMaxLength;
 
+  /// A single photo is a photo moment; anything more plays as a video.
+  static String _madeFrom(Composition edit) =>
+      edit.clips.length == 1 && edit.allStills ? 'photo' : 'video';
+
   Future<void> _share() async {
     if (!_ready) return;
     FocusScope.of(context).unfocus();
     if (widget.sharedPost != null) return _shareSharedPost();
 
-    final edit = _edit!;
-    await _pausePreviews();
+    final edit = _edit!.withAutoFades();
+    _player.pause();
     try {
-      final rendered = await _renderFor(edit);
+      final rendered = await _renderFor(edit, watermark: false);
       if (rendered == null) {
         // Cancelled.
         _backToEditing(failed: false);
@@ -696,7 +660,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
         mediaType: video.mediaType,
         fileName: video.fileName,
         poster: (url: poster, width: rendered.width, height: rendered.height),
-        source: edit.layer.source.isVideo ? 'video' : 'photo',
+        source: _madeFrom(edit),
         hasAudio: rendered.hasSound,
         caption: _caption.text.trim(),
         privacy: _audience,
@@ -720,22 +684,32 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
 
   bool get _canSave => !_busy && _edit != null;
 
-  /// Renders the edit - or takes the render already made of it - and saves
-  /// it to the gallery, without sharing. Share afterwards reuses that render.
+  /// Whose moment it is, for under the watermark's logo: "@username", or
+  /// the page's "@slug" while switched to one. Null when there is none.
+  String? get _handle {
+    final user = appStore.state.userAuth.user;
+    final name =
+        user.isActingAsEntity ? user.activeEntity?.slug : user.username;
+    return name == null || name.trim().isEmpty ? null : '@${name.trim()}';
+  }
+
+  /// Renders the edit with the watermark - or takes that render if it is
+  /// already made - and saves it to the gallery, without sharing.
   Future<void> _saveToDevice() async {
     if (!_canSave) return;
     FocusScope.of(context).unfocus();
-    final edit = _edit!;
-    await _pausePreviews();
+    final edit = _edit!.withAutoFades();
+    _player.pause();
     _savingToDevice = true;
     MediaEngineException? renderFailure;
     try {
-      final rendered = await _renderFor(edit);
+      final rendered =
+          await _renderFor(edit, watermark: true, handle: _handle);
       if (rendered != null && mounted) {
         setState(() => _phase = _Phase.saving);
-        // A photo with no sound is saved as the photo (the poster: the
-        // frame the video holds); anything else as the video.
-        final still = !edit.layer.source.isVideo && !rendered.hasSound;
+        // A single photo with no sound is saved as the photo (the poster:
+        // the frame the video holds); anything else as the video.
+        final still = _madeFrom(edit) == 'photo' && !rendered.hasSound;
         final saved = await GallerySaver.save(
           still ? rendered.posterPath : rendered.videoPath,
           fileName:
@@ -771,7 +745,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Try again, or try a different photo or video."),
+              const Text("Try again, or try different photos or videos."),
               if (details.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Flexible(
@@ -816,8 +790,9 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
 
   /// The render of [edit] - the one already made when nothing changed since,
   /// else a new one. Null when cancelled.
-  Future<RenderResult?> _renderFor(Composition edit) async {
-    final key = jsonEncode(edit.toJson());
+  Future<RenderResult?> _renderFor(Composition edit,
+      {required bool watermark, String? handle}) async {
+    final key = '${jsonEncode(edit.toJson())}|watermark=$watermark|$handle';
     final previous = _rendered;
     if (previous != null && _renderedFor == key) return previous;
     await _dropRender();
@@ -826,9 +801,18 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
       _phase = _Phase.rendering;
       _renderProgress = 0;
     });
-    final job = _job = MediaEngine.instance.render(edit, profile: _profile);
+    // The preview's players let go of their decoders and memory while the
+    // render needs them; they come back after (_backToEditing).
+    _player.releaseVideos();
+    final job = _job = MediaEngine.instance.render(edit,
+        profile: _profile, watermark: watermark, handle: handle);
     void onProgress() {
-      if (mounted) setState(() => _renderProgress = job.progress.value);
+      // Progress arrives with every frame encoded: the screen redraws only
+      // when the percentage shown changes.
+      final value = job.progress.value;
+      if (mounted && (value * 100).floor() != (_renderProgress * 100).floor()) {
+        setState(() => _renderProgress = value);
+      }
     }
 
     job.progress.addListener(onProgress);
@@ -872,7 +856,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
       _phase = _Phase.editing;
       _failed = failed;
     });
-    _restartPreview();
+    _player.resume();
   }
 
   Future<void> _shareSharedPost() async {
@@ -913,13 +897,16 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
     final hasContent = widget.sharedPost != null || _edit != null;
     final audience = ephemeralAudiences.firstWhere((a) => a.key == _audience,
         orElse: () => ephemeralAudiences.first);
-    final uploading = _phase == _Phase.uploading || _phase == _Phase.posting;
+    final holding = _phase == _Phase.uploading ||
+        _phase == _Phase.posting ||
+        _phase == _Phase.saving;
+    final edit = _edit;
 
     return PopScope(
       // A render can be abandoned (leaving cancels it); an upload or post
       // in flight can't be taken back, so it is waited out - and a save to
       // the gallery, which is copying the render leaving would delete.
-      canPop: !uploading && _phase != _Phase.saving,
+      canPop: !holding,
       child: Scaffold(
         backgroundColor: Colors.black,
         resizeToAvoidBottomInset: true,
@@ -931,9 +918,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      onPressed: uploading || _phase == _Phase.saving
-                          ? null
-                          : () => context.pop(),
+                      onPressed: holding ? null : () => context.pop(),
                       icon:
                           const Icon(Icons.close_rounded, color: Colors.white),
                     ),
@@ -948,7 +933,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                           fontWeight: FontWeight.w800),
                     ),
                     const Spacer(),
-                    if (widget.sharedPost == null && _edit != null) ...[
+                    if (widget.sharedPost == null && edit != null) ...[
                       IconButton(
                         tooltip: "Save to device",
                         onPressed: _canSave ? _saveToDevice : null,
@@ -982,7 +967,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                           fit: StackFit.expand,
                           children: [
                             _stage(),
-                            if (_edit != null && _phase == _Phase.editing)
+                            if (edit != null && _phase == _Phase.editing)
                               Positioned(
                                 top: 10,
                                 right: 10,
@@ -1003,9 +988,28 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                   ),
                 ),
               ),
-              if (_edit != null) _timeline(),
+              if (edit != null) ...[
+                _transport(edit),
+                TimelineView(
+                  edit: edit,
+                  position: _player.position,
+                  maxTotal: _profile.maxDuration,
+                  thumbnails: _thumbnails,
+                  selection: _selection,
+                  onSelect: _select,
+                  onEdit: _onTimelineEdit,
+                  onEditEnd: () {},
+                  onSeek: _player.seek,
+                  onScrubStart: _startScrub,
+                  onScrubEnd: _endScrub,
+                  onAddMedia: _chooseSource,
+                  onAddAudio: _addAudio,
+                  enabled: !_busy,
+                ),
+                _selectionBar(edit),
+              ],
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
                 child: Row(
                   children: [
                     _Pill(
@@ -1025,15 +1029,6 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                               setState(() => _allowReplies = !_allowReplies),
                     ),
                     const Spacer(),
-                    if (_edit != null) ...[
-                      const Icon(Icons.movie_outlined,
-                          size: 16, color: Colors.white60),
-                      const SizedBox(width: 4),
-                      Text(_lengthLabel(),
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: CLType.caption)),
-                      const SizedBox(width: 10),
-                    ],
                     const Icon(Icons.timer_outlined,
                         size: 16, color: Colors.white60),
                     const SizedBox(width: 4),
@@ -1050,26 +1045,111 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
     );
   }
 
-  String _lengthLabel() {
-    final natural = _edit!.naturalDuration;
-    return TrimBar.lengthLabel(
-        natural > _profile.maxDuration ? _profile.maxDuration : natural);
+  /// Play / pause, and where the playhead is of how long.
+  Widget _transport(Composition edit) {
+    final total = edit.naturalDuration;
+    final over = total > _profile.maxDuration;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 2, 12, 0),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: _player.playing ? "Pause" : "Play",
+            onPressed: _busy ? null : _player.toggle,
+            icon: Icon(
+              _player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          ValueListenableBuilder<Duration>(
+            valueListenable: _player.position,
+            builder: (context, at, _) => Text(
+              "${TrimBar.clock(at)} / ${TrimBar.clock(total)}",
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: CLType.label,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: [FontFeature.tabularFigures()]),
+            ),
+          ),
+          const Spacer(),
+          Text(
+            over
+                ? "Only the first ${TrimBar.lengthLabel(_profile.maxDuration)} is kept"
+                : "${edit.clips.length} ${edit.clips.length == 1 ? "clip" : "clips"}"
+                    " · up to ${TrimBar.lengthLabel(_profile.maxDuration)}",
+            style: TextStyle(
+                color: over ? const Color(0xFFFFB74D) : Colors.white54,
+                fontSize: CLType.caption),
+          ),
+        ],
+      ),
+    );
   }
 
-  /// The edit's tools, down the canvas's right edge.
+  /// What can be done to the picked card - or how to pick one.
+  Widget _selectionBar(Composition edit) {
+    final selected = _selection;
+    if (selected == null) {
+      return const SizedBox(
+        height: 52,
+        child: Center(
+          child: Text(
+            "Tap a clip or song to edit it · hold a clip to move it",
+            style: TextStyle(color: Colors.white38, fontSize: CLType.caption),
+          ),
+        ),
+      );
+    }
+    final enabled = !_busy;
+    final clip = selected.isClip ? edit.clips[selected.index] : null;
+    final hasSound = clip == null || (clip.source.isVideo && clip.source.hasAudio);
+    return SizedBox(
+      height: 52,
+      child: Row(
+        children: [
+          const SizedBox(width: 8),
+          _BarAction(
+            icon: Icons.content_cut_rounded,
+            label: "Split",
+            onTap: enabled ? _split : null,
+          ),
+          if (clip != null)
+            _BarAction(
+              icon: Icons.control_point_duplicate_rounded,
+              label: "Duplicate",
+              onTap: enabled ? _duplicate : null,
+            ),
+          if (hasSound)
+            _BarAction(
+              icon: Icons.volume_up_rounded,
+              label: "Volume",
+              onTap: enabled ? _openVolume : null,
+            ),
+          _BarAction(
+            icon: Icons.delete_outline_rounded,
+            label: "Delete",
+            onTap: enabled ? _delete : null,
+          ),
+          const Spacer(),
+          _BarAction(
+            icon: Icons.check_rounded,
+            label: "Done",
+            onTap: () => _select(null),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+    );
+  }
+
+  /// The clip's tools, down the canvas's right edge - for the clip on it.
   Widget _tools() {
-    final edit = _edit!;
-    final source = edit.layer.source;
     const gap = SizedBox(height: 8);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _RoundAction(
-          icon: Icons.swap_horiz_rounded,
-          tooltip: "Replace",
-          onTap: _chooseSource,
-        ),
-        gap,
         _RoundAction(
           icon: _isFilled
               ? Icons.fit_screen_outlined
@@ -1085,110 +1165,21 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
         ),
         gap,
         _RoundAction(
-          icon: edit.background.isBlur
+          icon: _edit!.background.isBlur
               ? Icons.blur_on_rounded
               : Icons.format_color_fill_rounded,
           tooltip: "Background",
           onTap: _chooseBackground,
         ),
-        if ((source.isVideo && source.hasAudio) || edit.audio != null) ...[
-          gap,
-          _RoundAction(
-            icon: Icons.tune_rounded,
-            tooltip: "Sound mix",
-            onTap: _openMixer,
-          ),
-        ],
         if (!_isPristine) ...[
           gap,
           _RoundAction(
             icon: Icons.restart_alt_rounded,
-            tooltip: "Reset",
-            onTap: _reset,
+            tooltip: "Reset framing",
+            onTap: _resetFraming,
           ),
         ],
       ],
-    );
-  }
-
-  /// Under the canvas, one card per track, stacked like an editor's
-  /// timeline: the video (trim + its sound), then the music (its part + its
-  /// volume) - or a button to add music.
-  Widget _timeline() {
-    final edit = _edit!;
-    final source = edit.layer.source;
-    final track = edit.audio;
-    final enabled = _phase == _Phase.editing && !_preparing;
-    final cards = <Widget>[
-      if (source.isVideo)
-        TrimBar(
-          icon: Icons.videocam_outlined,
-          title: "Video",
-          total: source.duration!,
-          range: edit.layer.trim!,
-          maxSpan: _profile.maxDuration,
-          position: _videoAt,
-          enabled: enabled,
-          onChangeStart: (_) => _startScrub(),
-          onChanged: _setVideoTrim,
-          onChangeEnd: (_) => _endScrub(),
-          actions: [
-            if (source.hasAudio)
-              _SoundButton(
-                volume: edit.layer.volume,
-                onTap: enabled ? _toggleVideoMute : null,
-                onLongPress: enabled ? _openMixer : null,
-              ),
-          ],
-        ),
-      if (track != null && _songLength != null)
-        TrimBar(
-          icon: Icons.music_note_rounded,
-          title: _songName ?? "Music",
-          total: _songLength!,
-          range: track.trim,
-          maxSpan: _songMaxSpan,
-          position: _songAt,
-          enabled: enabled,
-          onChangeStart: (_) => _startScrub(),
-          onChanged: _setSongTrim,
-          onChangeEnd: (_) => _endScrub(),
-          actions: [
-            _SoundButton(
-              volume: track.volume,
-              onTap: enabled ? _toggleSongMute : null,
-              onLongPress: enabled ? _openMixer : null,
-            ),
-            IconButton(
-              tooltip: "Remove music",
-              visualDensity: VisualDensity.compact,
-              onPressed: enabled ? _removeSong : null,
-              icon: const Icon(Icons.close_rounded,
-                  size: 18, color: Colors.white70),
-            ),
-          ],
-        )
-      else
-        Align(
-          alignment: Alignment.centerLeft,
-          child: _Pill(
-            icon: Icons.music_note_rounded,
-            label: "Add music",
-            onTap: enabled ? _pickSong : null,
-          ),
-        ),
-    ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (i, card) in cards.indexed) ...[
-            if (i > 0) const SizedBox(height: 6),
-            card,
-          ],
-        ],
-      ),
     );
   }
 
@@ -1313,53 +1304,63 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
       return ColoredBox(
         color: const Color(0xFF15181D),
         child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text("Add a photo or video",
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: CLType.sectionTitle,
-                      fontWeight: FontWeight.w700)),
-              const SizedBox(height: 4),
-              const Text("It disappears after 24 hours.",
-                  style: TextStyle(
-                      color: Colors.white60, fontSize: CLType.caption)),
-              const SizedBox(height: 22),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _SourceButton(
-                    icon: Icons.photo_camera_outlined,
-                    label: "Photo",
-                    onTap: () => _fromCamera(video: false),
-                  ),
-                  const SizedBox(width: 18),
-                  _SourceButton(
-                    icon: Icons.videocam_outlined,
-                    label: "Video",
-                    onTap: () => _fromCamera(video: true),
-                  ),
-                  const SizedBox(width: 18),
-                  _SourceButton(
-                    icon: Icons.photo_library_outlined,
-                    label: "Gallery",
-                    onTap: _fromGallery,
-                  ),
-                ],
-              ),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Add photos and videos",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: CLType.sectionTitle,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                    "Pick several - they play one after another, up to "
+                    "${TrimBar.lengthLabel(_profile.maxDuration)}. "
+                    "Gone after 24 hours.",
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.white60, fontSize: CLType.caption)),
+                const SizedBox(height: 22),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _SourceButton(
+                      icon: Icons.photo_camera_outlined,
+                      label: "Photo",
+                      onTap: () => _fromCamera(video: false),
+                    ),
+                    const SizedBox(width: 18),
+                    _SourceButton(
+                      icon: Icons.videocam_outlined,
+                      label: "Video",
+                      onTap: () => _fromCamera(video: true),
+                    ),
+                    const SizedBox(width: 18),
+                    _SourceButton(
+                      icon: Icons.photo_library_outlined,
+                      label: "Gallery",
+                      onTap: _fromGallery,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
+    final index = _current;
     return Stack(
       fit: StackFit.expand,
       children: [
         EditCanvas(
-          composition: edit,
-          video: _video,
+          layer: edit.clips[index],
+          background: edit.background,
+          video: _player.videoFor(index),
           enabled: _phase == _Phase.editing && !_preparing,
           onTransform: _setTransform,
           onDoubleTap: _toggleFill,
@@ -1371,6 +1372,128 @@ class _CreateMomentScreenState extends State<CreateMomentScreen> {
                 Center(child: CircularProgressIndicator(color: Colors.white)),
           ),
       ],
+    );
+  }
+}
+
+/// A tool for the picked card, under the timeline.
+class _BarAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _BarAction({required this.icon, required this.label, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onTap == null ? Colors.white38 : Colors.white;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(CLRadii.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(height: 2),
+            Text(label,
+                style: TextStyle(
+                    color: color,
+                    fontSize: CLType.meta,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One sound's level - a clip's own, or a song's - with a mute.
+class _VolumeSheet extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  const _VolumeSheet({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  State<_VolumeSheet> createState() => _VolumeSheetState();
+}
+
+class _VolumeSheetState extends State<_VolumeSheet> {
+  late double _value = widget.value;
+  late double _restore = widget.value > 0 ? widget.value : 1;
+
+  void _set(double value) {
+    setState(() {
+      _value = value;
+      if (value > 0) _restore = value;
+    });
+    widget.onChanged(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final muted = _value <= 0;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: p.border2,
+                    borderRadius: BorderRadius.circular(CLRadii.pill)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Icon(widget.icon, size: 18, color: p.text2),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: CLType.title,
+                          fontWeight: FontWeight.w700,
+                          color: p.text)),
+                ),
+                Text(muted ? "Muted" : "${(_value * 100).round()}%",
+                    style: TextStyle(fontSize: CLType.caption, color: p.text2)),
+                IconButton(
+                  tooltip: muted ? "Unmute" : "Mute",
+                  onPressed: () => _set(muted ? _restore : 0),
+                  icon: Icon(
+                    muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                    color: muted ? p.text2 : p.brand,
+                  ),
+                ),
+              ],
+            ),
+            Slider(
+              value: _value.clamp(0.0, 1.0),
+              divisions: 20,
+              onChanged: _set,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1465,195 +1588,6 @@ class _Pill extends StatelessWidget {
                     color: Colors.white,
                     fontSize: CLType.label,
                     fontWeight: FontWeight.w600)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A track card's sound: tap mutes / unmutes, long-press opens the mix.
-/// Shows the level when it is neither full nor off.
-class _SoundButton extends StatelessWidget {
-  final double volume;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-
-  const _SoundButton({required this.volume, this.onTap, this.onLongPress});
-
-  @override
-  Widget build(BuildContext context) {
-    final muted = volume <= 0;
-    final partial = !muted && (volume - 1).abs() > 0.005;
-    return Tooltip(
-      message: muted ? "Unmute" : "Mute",
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(CLRadii.pill),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                size: 18,
-                color: muted ? Colors.white54 : Colors.white,
-              ),
-              if (partial) ...[
-                const SizedBox(width: 2),
-                Text("${(volume * 100).round()}%",
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: CLType.meta)),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The sound mix: the video's own sound and the music, each with a level and
-/// a mute - mute one, both, or blend them.
-class _SoundMixSheet extends StatefulWidget {
-  /// Null when there is no such sound (a photo, a silent video, no music).
-  final double? videoVolume;
-  final double? songVolume;
-
-  /// The levels unmuting goes back to.
-  final double videoRestore;
-  final double songRestore;
-  final String? songName;
-  final ValueChanged<double> onVideo;
-  final ValueChanged<double> onSong;
-
-  const _SoundMixSheet({
-    required this.videoVolume,
-    required this.songVolume,
-    required this.videoRestore,
-    required this.songRestore,
-    required this.songName,
-    required this.onVideo,
-    required this.onSong,
-  });
-
-  @override
-  State<_SoundMixSheet> createState() => _SoundMixSheetState();
-}
-
-class _SoundMixSheetState extends State<_SoundMixSheet> {
-  late double? _video = widget.videoVolume;
-  late double? _song = widget.songVolume;
-  late double _videoRestore = widget.videoRestore;
-  late double _songRestore = widget.songRestore;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = cl(context);
-    Widget row({
-      required IconData icon,
-      required String label,
-      required double value,
-      required double restore,
-      required ValueChanged<double> onChanged,
-    }) {
-      final muted = value <= 0;
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 18, color: p.text2),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: CLType.title,
-                          fontWeight: FontWeight.w700,
-                          color: p.text)),
-                ),
-                Text(muted ? "Muted" : "${(value * 100).round()}%",
-                    style: TextStyle(fontSize: CLType.caption, color: p.text2)),
-                IconButton(
-                  tooltip: muted ? "Unmute" : "Mute",
-                  onPressed: () => onChanged(muted ? restore : 0),
-                  icon: Icon(
-                    muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                    color: muted ? p.text2 : p.brand,
-                  ),
-                ),
-              ],
-            ),
-            Slider(
-              value: value.clamp(0.0, 1.0),
-              divisions: 20,
-              onChanged: onChanged,
-            ),
-          ],
-        ),
-      );
-    }
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 38,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: p.border2,
-                    borderRadius: BorderRadius.circular(CLRadii.pill)),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text("Sound mix",
-                style: TextStyle(
-                    fontSize: CLType.sectionTitle,
-                    fontWeight: FontWeight.w800,
-                    color: p.text)),
-            const SizedBox(height: 4),
-            Text("Both play together - lower one to hear the other.",
-                style: TextStyle(fontSize: CLType.caption, color: p.text2)),
-            const SizedBox(height: 12),
-            if (_video != null)
-              row(
-                icon: Icons.videocam_outlined,
-                label: "Video sound",
-                value: _video!,
-                restore: _videoRestore,
-                onChanged: (v) {
-                  setState(() {
-                    _video = v;
-                    if (v > 0) _videoRestore = v;
-                  });
-                  widget.onVideo(v);
-                },
-              ),
-            if (_song != null)
-              row(
-                icon: Icons.music_note_rounded,
-                label: widget.songName ?? "Music",
-                value: _song!,
-                restore: _songRestore,
-                onChanged: (v) {
-                  setState(() {
-                    _song = v;
-                    if (v > 0) _songRestore = v;
-                  });
-                  widget.onSong(v);
-                },
-              ),
           ],
         ),
       ),

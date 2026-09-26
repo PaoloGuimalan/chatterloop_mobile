@@ -148,6 +148,12 @@ String mimeTypeForFileName(String fileName) {
   }
 }
 
+/// Turns a downloaded file at `path` into the one to save - e.g. a posted
+/// Moment with the watermark stamped on - reporting 0..1 as it goes. Its
+/// `dispose` deletes that file once it is saved.
+typedef MediaProcessor = Future<({String path, Future<void> Function() dispose})>
+    Function(String path, void Function(double progress) onProgress);
+
 /// Downloads message attachments and files them away on the device.
 ///
 /// A singleton because the progress it publishes has to be readable from
@@ -192,11 +198,15 @@ class MediaDownloader {
   /// [toGallery] saves a photo or video into the phone's gallery instead of
   /// Downloads (a saved Moment - see [GallerySaver]), as [fileName] when
   /// given rather than the storage key's name.
+  ///
+  /// [process] makes the file that is saved from the downloaded one; the
+  /// download is then the first half of the progress, [process] the second.
   Future<void> download(
     String content, {
     String? mimeType,
     String? fileName,
     bool toGallery = false,
+    MediaProcessor? process,
   }) async {
     final url = chatMediaUrl(content);
     if (url.isEmpty) return;
@@ -228,15 +238,24 @@ class MediaDownloader {
           // total is -1 whenever the response carries no Content-Length;
           // leaving the entry at 0 keeps the UI on its indeterminate spinner
           // instead of showing a percentage it does not actually know.
-          if (total > 0) _publish(url, received / total);
+          if (total > 0) {
+            _publish(url, received / total * (process == null ? 1 : 0.5));
+          }
         },
       );
       staged = File(stagedPath);
 
       if (toGallery) {
-        final saved = await GallerySaver.save(staged.path,
-            fileName: fileName, mimeType: type);
-        if (saved) clSnack("Saved to your gallery");
+        final processed = process == null
+            ? null
+            : await process(staged.path, (p) => _publish(url, 0.5 + p / 2));
+        try {
+          final saved = await GallerySaver.save(processed?.path ?? staged.path,
+              fileName: fileName, mimeType: type);
+          if (saved) clSnack("Saved to your gallery");
+        } finally {
+          await processed?.dispose();
+        }
         return;
       }
       final location = await _saveToDevice(staged, fileName, type);

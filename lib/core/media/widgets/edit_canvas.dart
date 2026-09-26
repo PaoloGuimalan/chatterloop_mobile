@@ -8,15 +8,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
-/// The editor's canvas: a [Composition] drawn with the SAME geometry the
-/// renderer uses ([placeLayer]), plus the gestures that change it - drag to
-/// move, pinch to zoom, twist to rotate, double-tap for [onDoubleTap].
+/// The editor's canvas: one clip of an edit, over the edit's background,
+/// drawn with the SAME geometry the renderer uses ([placeLayer]), plus the
+/// gestures that change its framing - drag to move, pinch to zoom, twist to
+/// rotate, double-tap for [onDoubleTap].
 ///
 /// Size it to the output's aspect ratio (an AspectRatio parent); every
 /// position is a fraction of whatever size it gets, so the preview matches
 /// the render at any screen size.
 class EditCanvas extends StatefulWidget {
-  final Composition composition;
+  /// The clip shown - the one under the playhead.
+  final MediaLayer layer;
+  final CompositionBackground background;
 
   /// The playing video, when the layer is a video.
   final VideoPlayerController? video;
@@ -29,7 +32,8 @@ class EditCanvas extends StatefulWidget {
 
   const EditCanvas({
     super.key,
-    required this.composition,
+    required this.layer,
+    required this.background,
     required this.onTransform,
     this.video,
     this.onDoubleTap,
@@ -57,7 +61,7 @@ class _EditCanvasState extends State<EditCanvas> {
   bool _snapX = false, _snapY = false, _snapTurn = false;
   bool _gesturing = false;
 
-  MediaLayer get _layer => widget.composition.layer;
+  MediaLayer get _layer => widget.layer;
 
   void _onScaleStart(ScaleStartDetails d) {
     _start = _layer.transform;
@@ -129,7 +133,7 @@ class _EditCanvasState extends State<EditCanvas> {
           canvasHeight: _size.height,
           transform: _layer.transform,
         );
-        final background = widget.composition.background;
+        final background = widget.background;
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,

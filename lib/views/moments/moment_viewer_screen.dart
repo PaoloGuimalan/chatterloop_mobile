@@ -3,6 +3,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/media/media_engine.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/requests/moments_api.dart';
@@ -1278,19 +1279,33 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
     );
   }
 
-  /// Saves your moment to the gallery. In the background: it carries on,
-  /// and says when it's done, if you move on or close the viewer.
+  /// Saves your moment to the gallery, the watermark stamped on the copy
+  /// (what was posted has none). In the background: it carries on, and says
+  /// when it's done, if you move on or close the viewer.
   void _save(Moment moment) {
     final save = moment.saveable;
     if (save == null) return;
-    final type = GallerySaver.typeOf(save.url,
-        isVideo: save.isVideo, mediaType: save.mediaType);
+    final isVideo = save.isVideo;
     MediaDownloader.instance.download(
       save.url,
-      mimeType: type.mimeType,
+      // The stamped copy is an MP4, or a JPEG.
+      mimeType: isVideo ? 'video/mp4' : 'image/jpeg',
       fileName: GallerySaver.fileNameFor(
-          moment.post.datePosted ?? DateTime.now(), type.extension),
+          moment.post.datePosted ?? DateTime.now(), isVideo ? 'mp4' : 'jpg'),
       toGallery: true,
+      process: (path, onProgress) async {
+        final handle = moment.post.author.handle.trim();
+        final job = MediaEngine.instance.stamp(path,
+            isImage: !isVideo, handle: handle.isEmpty ? null : '@$handle');
+        void report() => onProgress(job.progress.value);
+        job.progress.addListener(report);
+        try {
+          final stamped = await job.result;
+          return (path: stamped.path, dispose: stamped.dispose);
+        } finally {
+          job.progress.removeListener(report);
+        }
+      },
     );
   }
 

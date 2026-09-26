@@ -145,16 +145,25 @@ const _scaleFlags = 'lanczos';
 /// The ffmpeg arguments that render [composition] to an MP4 at
 /// [outputPath], encoded per [profile] with [encoder].
 ///
+/// Each clip is composed on its own - framed over the background, cut to
+/// exactly its length, with its own sound or silence as long - and the clips
+/// are joined end to end. The audio tracks are then laid over, each from its
+/// place in the edit. An edit longer than the profile allows is cut there.
+///
 /// [qpCeilings] false leaves the profile's QP ceilings out - for the retry
 /// when an encoder refuses them, or when they pushed the file past
 /// [EncodingProfile.maxBytes].
 ///
-/// [watermarkPath] is the profile's [EncodingProfile.watermark] image as a
-/// file - needed when the profile has one and the edit keeps it
-/// ([Composition.watermark]).
+/// [watermarkPath]: stamp the profile's [EncodingProfile.watermark] (that
+/// image, as a file) into the corner - for a copy saved to the phone. What
+/// gets posted is left without it. [watermarkLogoWidth] is the logo's width
+/// in that image: the image is scaled by what brings the logo to its size,
+/// so a handle longer than the logo (see watermark_image.dart) runs on to
+/// the right at the same scale instead of shrinking the logo. Without it,
+/// the whole image is sized as the logo.
 ///
-/// Throws an [ArgumentError] for an edit that cannot be rendered (no length,
-/// no media size), or a watermark without its file.
+/// Throws an [ArgumentError] for an edit that cannot be rendered (no clips,
+/// no length, a clip with no media size).
 RenderCommand buildRenderCommand({
   required Composition composition,
   required EncodingProfile profile,
@@ -162,12 +171,16 @@ RenderCommand buildRenderCommand({
   required String outputPath,
   bool qpCeilings = true,
   String? watermarkPath,
+  int? watermarkLogoWidth,
 }) {
-  final layer = composition.layer;
-  final source = layer.source;
-  if (source.width <= 0 || source.height <= 0) {
-    throw ArgumentError.value(
-        source.path, 'composition', 'media has no known size');
+  if (composition.clips.isEmpty) {
+    throw ArgumentError.value(composition, 'composition', 'has no clips');
+  }
+  for (final clip in composition.clips) {
+    if (clip.source.width <= 0 || clip.source.height <= 0) {
+      throw ArgumentError.value(
+          clip.source.path, 'composition', 'media has no known size');
+    }
   }
   final natural = composition.naturalDuration;
   final duration =
@@ -181,191 +194,131 @@ RenderCommand buildRenderCommand({
   final fps = profile.fps;
   final seconds = _seconds(duration);
 
-  // ---- Inputs: 0 = the media, then the audio track and the watermark
-  // (each when there is one).
-  final args = <String>['-hide_banner', '-y'];
-  if (source.isVideo) {
-    final start = layer.trim?.start ?? Duration.zero;
-    if (start > Duration.zero) args.addAll(['-ss', _seconds(start)]);
-    args.addAll(['-t', seconds, '-i', source.path]);
-  } else {
-    // One frame, repeated by the loop filter below - that works for any
-    // image demuxer, where `-loop 1` only exists on image2.
-    args.addAll(['-i', source.path]);
+  // The clips that make it into the output, each as long as it plays - the
+  // ones past the profile's cap cut short or left out.
+  final pieces = <(MediaLayer, Duration)>[];
+  var left = duration;
+  for (final clip in composition.clips) {
+    if (left <= Duration.zero) break;
+    final length = _atMost(clip.length, left);
+    if (length <= Duration.zero) continue;
+    pieces.add((clip, length));
+    left -= length;
   }
 
-  // Input 1 only when the track is heard - a muted track isn't read at all.
-  final track = (composition.audio?.heard ?? false) ? composition.audio : null;
-  final trackLength =
-      track == null ? duration : _atMost(track.trim.length, duration);
-  if (track != null) {
+  // ---- Inputs: the clips in order, then each heard audio track, then the
+  // watermark.
+  final args = <String>['-hide_banner', '-y'];
+  for (final (clip, length) in pieces) {
+    if (clip.source.isVideo) {
+      final start = clip.usedRange.start;
+      if (start > Duration.zero) args.addAll(['-ss', _seconds(start)]);
+      args.addAll(['-t', _seconds(length), '-i', clip.source.path]);
+    } else {
+      // One frame, repeated by the loop filter below - that works for any
+      // image demuxer, where `-loop 1` only exists on image2.
+      args.addAll(['-i', clip.source.path]);
+    }
+  }
+
+  // A muted track, or one starting after the end, isn't read at all.
+  final tracks = <(int, AudioTrack, Duration)>[];
+  for (final track in composition.audio) {
+    if (!track.heard || track.start >= duration) continue;
+    final used = _atMost(track.length, duration - track.start);
+    if (used < const Duration(milliseconds: 10)) continue;
+    final input = pieces.length + tracks.length;
     if (track.trim.start > Duration.zero) {
       args.addAll(['-ss', _seconds(track.trim.start)]);
     }
-    args.addAll(['-t', _seconds(trackLength), '-i', track.path]);
+    args.addAll(['-t', _seconds(used), '-i', track.path]);
+    tracks.add((input, track, used));
   }
 
-  final watermark = composition.watermark ? profile.watermark : null;
-  if (watermark != null && watermarkPath == null) {
-    throw ArgumentError.value(
-        watermarkPath, 'watermarkPath', 'the profile stamps a watermark');
-  }
-  final watermarkInput = track == null ? 1 : 2;
+  final watermark = watermarkPath == null ? null : profile.watermark;
+  final watermarkInput = pieces.length + tracks.length;
   if (watermark != null) args.addAll(['-i', watermarkPath!]);
 
-  // ---- Video.
+  // ---- Each clip: [v<i>] and [a<i>], exactly its length.
   final graph = <String>[];
-  // A video is brought to the output rate first (a 60fps source then costs
-  // half); a still becomes an endless run of one frame at _stillComposeFps.
-  final prepare = source.isVideo
-      ? ['fps=$fps']
-      : [
-          'loop=loop=-1:size=1:start=0',
-          'setpts=N/($_stillComposeFps*TB)',
-        ];
-  // Stills are brought up to the output rate at the very end.
-  final finish = [
-    if (!source.isVideo) 'fps=$fps',
-    'format=${encoder.pixelFormat}',
-  ];
-
-  final part = visiblePart(
-    mediaWidth: source.width,
-    mediaHeight: source.height,
-    canvasWidth: w.toDouble(),
-    canvasHeight: h.toDouble(),
-    transform: layer.transform,
-  );
-
-  String? foregroundIn;
-  final foreground = <String>[];
-  if (composition.background.isBlur) {
-    final bw = evenPixels(w / _blurDownscale);
-    final bh = evenPixels(h / _blurDownscale);
-    final blur = [
-      'scale=$bw:$bh:force_original_aspect_ratio=increase',
-      'crop=$bw:$bh',
-      // Sigma at the quarter size the blur runs at.
-      'gblur=sigma=${(_blurSigmaPerWidth * w / _blurDownscale).toStringAsFixed(2)}',
-      'scale=$w:$h',
-      _blurDim,
-      'setsar=1',
-    ];
-    if (part == null) {
-      graph.add(_chain('[0:v:0]', [...prepare, ...blur], '[bg]'));
-    } else {
-      graph.add(_chain('[0:v:0]', [...prepare, 'split=2'], '[bgsrc][fgsrc]'));
-      graph.add(_chain('[bgsrc]', blur, '[bg]'));
-      foregroundIn = '[fgsrc]';
-    }
-  } else {
-    final rgb = (composition.background.argb & 0xFFFFFF)
-        .toRadixString(16)
-        .padLeft(6, '0');
-    graph.add('color=c=0x$rgb:s=${w}x$h:r=$fps:d=$seconds,setsar=1[bg]');
-    if (part != null) {
-      foregroundIn = '[0:v:0]';
-      foreground.addAll(prepare);
-    }
-  }
-
-  // The composed frame: its input(s), and the filters that make it. When
-  // nothing of the media reaches the canvas, the background is the frame.
-  var frameIn = '[bg]';
-  final frame = <String>[];
-  if (part != null && foregroundIn != null) {
-    final placed = part.placement;
-    if (!part.isWhole) {
-      // As fractions of the decoded frame, so a probe that was a pixel off
-      // can never ask for a crop outside it.
-      final mw = source.width, mh = source.height;
-      foreground.add('crop=w=iw*${part.width}/$mw:h=ih*${part.height}/$mh'
-          ':x=iw*${part.left}/$mw:y=ih*${part.top}/$mh:exact=1');
-    }
-    foreground
-      ..add('scale=${evenPixels(placed.width)}:${evenPixels(placed.height)}'
-          ':flags=$_scaleFlags')
-      ..add('setsar=1')
-      ..addAll(_rotationFilters(placed.rotation));
-    graph.add(_chain(foregroundIn, foreground, '[fg]'));
-    // overlay's w/h are the (rotated) foreground's own size, so this centres
-    // it whatever the rotation made its bounding box.
-    final x = placed.centerX.toStringAsFixed(2);
-    final y = placed.centerY.toStringAsFixed(2);
-    frameIn = '[bg][fg]';
-    frame.add('overlay=x=$x-w/2:y=$y-h/2:shortest=1');
-  }
-
-  if (watermark == null) {
-    graph.add(_chain(frameIn, [...frame, ...finish], '[v]'));
-  } else {
-    // Stamped last, over the composed frame - and before a still is brought
-    // up to the output rate, so once a second rather than on every frame.
-    // The logo is a single image: overlay holds it for every frame.
-    if (frame.isNotEmpty) {
-      graph.add(_chain(frameIn, frame, '[frame]'));
-      frameIn = '[frame]';
-    }
-    graph.add(_chain(
-      '[$watermarkInput:v:0]',
-      ['scale=${evenPixels(w * watermark.width)}:-2:flags=$_scaleFlags'],
-      '[wm]',
-    ));
-    final left = (w * watermark.left).round();
-    final bottom = (h * watermark.bottom).round();
-    graph.add(_chain(
-      '$frameIn[wm]',
-      ['overlay=x=$left:y=H-h-$bottom:eof_action=repeat', ...finish],
-      '[v]',
-    ));
-  }
-
-  // ---- Audio: every output has a track (silent when there is no sound),
-  // spanning the whole video. The video's own sound and the audio track
-  // each get their volume, then are mixed.
   final layout = profile.audioChannels == 1 ? 'mono' : 'stereo';
   final rate = profile.audioSampleRate;
   final format = 'aformat=sample_rates=$rate:channel_layouts=$layout';
-  // Each heard sound as (input, filters); padded with silence to the end so
-  // a short song doesn't end the mix early.
-  final sounds = <(String, List<String>)>[
-    if (layer.soundHeard) ('[0:a:0]', [format, ..._volume(layer.volume)]),
-    if (track != null)
-      (
-        '[1:a:0]',
-        [
-          format,
-          ..._volume(track.volume),
-          ..._fades(track, trackLength),
-        ]
-      ),
-  ];
-  final pad = 'apad=whole_dur=$seconds';
-  switch (sounds) {
-    case []:
-      graph.add('anullsrc=r=$rate:cl=$layout,atrim=duration=$seconds[a]');
-    case [final only]:
-      graph.add(_chain(only.$1, [...only.$2, pad], '[a]'));
-    default:
-      final labels = <String>[];
-      for (final (i, sound) in sounds.indexed) {
-        labels.add('[s$i]');
-        graph.add(_chain(sound.$1, [...sound.$2, pad], '[s$i]'));
-      }
-      // normalize=0: the volumes are the author's, not divided by the
-      // number of sounds. The limiter keeps two loud sounds from clipping.
-      graph.add(_chain(
-        labels.join(),
-        [
-          'amix=inputs=${labels.length}:duration=longest:normalize=0',
-          'alimiter=limit=0.95:level=0',
-        ],
-        '[a]',
-      ));
+  for (final (i, (clip, length)) in pieces.indexed) {
+    graph.addAll(_clipVideo(
+      clip: clip,
+      input: i,
+      label: '[v$i]',
+      length: length,
+      background: composition.background,
+      width: w,
+      height: h,
+      fps: fps,
+    ));
+    graph.add(clip.soundHeard
+        ? _chain('[$i:a:0]', [
+            format,
+            ..._volume(clip.volume),
+            // Held to the clip's length whatever the file's sound runs to.
+            'apad=whole_dur=${_seconds(length)}',
+            'atrim=duration=${_seconds(length)}',
+            'asetpts=PTS-STARTPTS',
+          ], '[a$i]')
+        : 'anullsrc=r=$rate:cl=$layout,atrim=duration=${_seconds(length)}'
+            '[a$i]');
+  }
+
+  // ---- The clips joined.
+  var videoOut = '[v0]';
+  var audioOut = '[a0]';
+  if (pieces.length > 1) {
+    final inputs = [
+      for (var i = 0; i < pieces.length; i++) '[v$i][a$i]'
+    ].join();
+    graph.add('${inputs}concat=n=${pieces.length}:v=1:a=1[vcat][acat]');
+    videoOut = '[vcat]';
+    audioOut = '[acat]';
+  }
+
+  // ---- The picture out: stamped, when asked, then in the encoder's format.
+  if (watermark == null) {
+    graph.add(_chain(videoOut, ['format=${encoder.pixelFormat}'], '[v]'));
+  } else {
+    final (scale, place) =
+        _watermarkFilters(watermark, w, h, logoWidth: watermarkLogoWidth);
+    graph.add(_chain('[$watermarkInput:v:0]', [scale], '[wm]'));
+    graph.add(_chain(
+        '$videoOut[wm]', [place, 'format=${encoder.pixelFormat}'], '[v]'));
+  }
+
+  // ---- The sound out: the clips' own, with each track laid over from its
+  // place in the edit.
+  if (tracks.isEmpty) {
+    graph.add(_chain(audioOut, ['anull'], '[a]'));
+  } else {
+    final labels = [audioOut];
+    for (final (j, (input, track, used)) in tracks.indexed) {
+      final delay = track.start.inMilliseconds;
+      graph.add(_chain('[$input:a:0]', [
+        format,
+        ..._volume(track.volume),
+        ..._fades(track, used),
+        if (delay > 0) 'adelay=delays=$delay:all=1',
+        'apad=whole_dur=$seconds',
+      ], '[t$j]'));
+      labels.add('[t$j]');
+    }
+    // duration=first: as long as the clips. normalize=0: the volumes are
+    // the author's, not divided by the number of sounds. The limiter keeps
+    // loud ones from clipping together.
+    graph.add(_chain(labels.join(), [
+      'amix=inputs=${labels.length}:duration=first:normalize=0',
+      'alimiter=limit=0.95:level=0',
+    ], '[a]'));
   }
 
   final filterGraph = graph.join(';');
-  final still = !source.isVideo;
+  final still = composition.allStills;
   final ceiling = still ? profile.stillQp : profile.videoQp;
   final withCeilings = qpCeilings && encoder.takesQpCeilings && ceiling != null;
   final keyframeInterval = still
@@ -375,24 +328,15 @@ RenderCommand buildRenderCommand({
     '-filter_complex', filterGraph,
     '-map', '[v]',
     '-map', '[a]',
-    '-c:v', encoder.name,
-    if (encoder.profile != null) ...['-profile:v', encoder.profile!],
-    ...encoder.options,
-    '-b:v', '${profile.videoBitrateFor(duration)}',
-    if (withCeilings) ...[
-      '-qp_i_max',
-      '${ceiling.keyframe}',
-      '-qp_p_max',
-      '${ceiling.other}',
-    ],
-    '-g', '$keyframeInterval',
+    ..._videoEncoding(encoder, profile, duration, keyframeInterval,
+        withCeilings ? ceiling : null),
     '-r', '$fps',
     '-c:a', 'aac',
     '-b:a', '${profile.audioBitrate}',
     '-ar', '$rate',
     '-ac', '${profile.audioChannels}',
     '-t', seconds,
-    // Nothing from the source file's metadata - a phone video's carries
+    // Nothing from the source files' metadata - a phone video's carries
     // where it was shot.
     '-map_metadata', '-1',
     '-map_chapters', '-1',
@@ -407,7 +351,242 @@ RenderCommand buildRenderCommand({
     arguments: List.unmodifiable(args),
     filterGraph: filterGraph,
     duration: duration,
-    hasSound: composition.hasSound,
+    hasSound: pieces.any((piece) => piece.$1.soundHeard) || tracks.isNotEmpty,
+    usesQpCeilings: withCeilings,
+  );
+}
+
+/// One clip's picture, framed on the canvas and cut to [length]: the chains
+/// that end in [label].
+List<String> _clipVideo({
+  required MediaLayer clip,
+  required int input,
+  required String label,
+  required Duration length,
+  required CompositionBackground background,
+  required int width,
+  required int height,
+  required int fps,
+}) {
+  final w = width, h = height;
+  final source = clip.source;
+  final graph = <String>[];
+  final n = input;
+  // A video is brought to the output rate first (a 60fps source then costs
+  // half), and held on its last frame a moment in case the file runs a
+  // little short of what its probe said; a still becomes an endless run of
+  // one frame at _stillComposeFps.
+  final prepare = source.isVideo
+      ? ['fps=$fps', 'tpad=stop_mode=clone:stop_duration=1']
+      : [
+          'loop=loop=-1:size=1:start=0',
+          'setpts=N/($_stillComposeFps*TB)',
+        ];
+  // Then exactly the clip's length, from 0 - the join needs both.
+  final finish = [
+    if (!source.isVideo) 'fps=$fps',
+    'trim=duration=${_seconds(length)}',
+    'setpts=PTS-STARTPTS',
+    'format=yuv420p',
+    'setsar=1',
+  ];
+
+  final part = visiblePart(
+    mediaWidth: source.width,
+    mediaHeight: source.height,
+    canvasWidth: w.toDouble(),
+    canvasHeight: h.toDouble(),
+    transform: clip.transform,
+  );
+
+  String? foregroundIn;
+  final foreground = <String>[];
+  if (background.isBlur) {
+    final bw = evenPixels(w / _blurDownscale);
+    final bh = evenPixels(h / _blurDownscale);
+    final blur = [
+      'scale=$bw:$bh:force_original_aspect_ratio=increase',
+      'crop=$bw:$bh',
+      // Sigma at the quarter size the blur runs at.
+      'gblur=sigma=${(_blurSigmaPerWidth * w / _blurDownscale).toStringAsFixed(2)}',
+      'scale=$w:$h',
+      _blurDim,
+      'setsar=1',
+    ];
+    if (part == null) {
+      graph.add(_chain('[$n:v:0]', [...prepare, ...blur], '[bg$n]'));
+    } else {
+      graph.add(
+          _chain('[$n:v:0]', [...prepare, 'split=2'], '[bgsrc$n][fgsrc$n]'));
+      graph.add(_chain('[bgsrc$n]', blur, '[bg$n]'));
+      foregroundIn = '[fgsrc$n]';
+    }
+  } else {
+    final rgb = (background.argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0');
+    graph.add('color=c=0x$rgb:s=${w}x$h:r=$fps:d=${_seconds(length)},'
+        'setsar=1[bg$n]');
+    if (part != null) {
+      foregroundIn = '[$n:v:0]';
+      foreground.addAll(prepare);
+    }
+  }
+
+  if (part == null || foregroundIn == null) {
+    // Nothing of the media reaches the canvas: the background is the frame.
+    graph.add(_chain('[bg$n]', finish, label));
+    return graph;
+  }
+  final placed = part.placement;
+  if (!part.isWhole) {
+    // As fractions of the decoded frame, so a probe that was a pixel off
+    // can never ask for a crop outside it.
+    final mw = source.width, mh = source.height;
+    foreground.add('crop=w=iw*${part.width}/$mw:h=ih*${part.height}/$mh'
+        ':x=iw*${part.left}/$mw:y=ih*${part.top}/$mh:exact=1');
+  }
+  foreground
+    ..add('scale=${evenPixels(placed.width)}:${evenPixels(placed.height)}'
+        ':flags=$_scaleFlags')
+    ..add('setsar=1')
+    ..addAll(_rotationFilters(placed.rotation));
+  graph.add(_chain(foregroundIn, foreground, '[fg$n]'));
+  // overlay's w/h are the (rotated) foreground's own size, so this centres
+  // it whatever the rotation made its bounding box.
+  final x = placed.centerX.toStringAsFixed(2);
+  final y = placed.centerY.toStringAsFixed(2);
+  graph.add(_chain(
+    '[bg$n][fg$n]',
+    ['overlay=x=$x-w/2:y=$y-h/2:shortest=1', ...finish],
+    label,
+  ));
+  return graph;
+}
+
+/// The watermark's two filters for a [width] x [height] picture: its scale
+/// (sized from the picture's shorter side, so a landscape video gets the
+/// same size of logo as a portrait one) and its overlay, at the left, a
+/// little up from the bottom. The logo is one image: overlay holds it for every frame.
+(String, String) _watermarkFilters(
+  Watermark watermark,
+  int width,
+  int height, {
+  int? logoWidth,
+}) {
+  final side = math.min(width, height);
+  final target = evenPixels(side * watermark.width);
+  // By a factor when the logo's own width in the image is known: the image
+  // may be wider (a long handle), the logo must still come out [target].
+  final scale = logoWidth == null || logoWidth <= 0
+      ? 'scale=$target:-2:flags=$_scaleFlags'
+      : 'scale=trunc(iw*${(target / logoWidth).toStringAsFixed(6)}/2)*2:-2'
+          ':flags=$_scaleFlags';
+  final left = (side * watermark.left).round();
+  final bottom = (side * watermark.bottom).round();
+  return (
+    scale,
+    'overlay=x=$left:y=H-h-$bottom:eof_action=repeat',
+  );
+}
+
+/// The video encoder's arguments: codec, profile, bitrate, the QP [ceiling]
+/// when given, keyframes.
+List<String> _videoEncoding(
+  H264Encoder encoder,
+  EncodingProfile profile,
+  Duration duration,
+  int keyframeInterval,
+  QpCeiling? ceiling,
+) =>
+    [
+      '-c:v', encoder.name,
+      if (encoder.profile != null) ...['-profile:v', encoder.profile!],
+      ...encoder.options,
+      '-b:v', '${profile.videoBitrateFor(duration)}',
+      if (ceiling != null) ...[
+        '-qp_i_max',
+        '${ceiling.keyframe}',
+        '-qp_p_max',
+        '${ceiling.other}',
+      ],
+      '-g', '$keyframeInterval',
+    ];
+
+/// The ffmpeg arguments that stamp the profile's watermark onto a copy of
+/// the media at [inputPath] (a posted Moment, downloaded to be saved): a
+/// video re-encoded to an MP4, a photo written as a JPEG, at [outputPath].
+///
+/// [width] x [height] is the media's displayed size (ffprobe's, rotation
+/// applied - ffmpeg turns the frames upright as it reads them); [duration]
+/// a video's length, for the bitrate and progress.
+RenderCommand buildStampCommand({
+  required String inputPath,
+  required String watermarkPath,
+  int? watermarkLogoWidth,
+  required String outputPath,
+  required int width,
+  required int height,
+  required bool isImage,
+  required EncodingProfile profile,
+  required H264Encoder encoder,
+  Duration duration = Duration.zero,
+  bool qpCeilings = true,
+}) {
+  final watermark = profile.watermark;
+  if (watermark == null) {
+    throw ArgumentError.value(profile, 'profile', 'has no watermark');
+  }
+  if (width <= 0 || height <= 0) {
+    throw ArgumentError.value(inputPath, 'inputPath', 'media has no known size');
+  }
+  final (scale, place) = _watermarkFilters(watermark, width, height,
+      logoWidth: watermarkLogoWidth);
+  final filterGraph = [
+    _chain('[1:v:0]', [scale], '[wm]'),
+    _chain('[0:v:0][wm]',
+        [place, if (!isImage) 'format=${encoder.pixelFormat}'], '[v]'),
+  ].join(';');
+  final inputs = [
+    '-hide_banner', '-y',
+    '-i', inputPath,
+    '-i', watermarkPath,
+    '-filter_complex', filterGraph,
+    '-map', '[v]',
+  ];
+  if (isImage) {
+    return RenderCommand(
+      arguments: List.unmodifiable([
+        ...inputs,
+        '-frames:v', '1',
+        '-q:v', '2',
+        '-update', '1',
+        '-map_metadata', '-1',
+        outputPath,
+      ]),
+      filterGraph: filterGraph,
+      duration: Duration.zero,
+      hasSound: false,
+    );
+  }
+  final ceiling = profile.videoQp;
+  final withCeilings = qpCeilings && encoder.takesQpCeilings && ceiling != null;
+  return RenderCommand(
+    arguments: List.unmodifiable([
+      ...inputs,
+      // Its sound as it was, when it has any.
+      '-map', '0:a:0?',
+      ..._videoEncoding(encoder, profile, duration, profile.keyframeInterval,
+          withCeilings ? ceiling : null),
+      '-c:a', 'aac',
+      '-b:a', '${profile.audioBitrate}',
+      '-map_metadata', '-1',
+      '-map_chapters', '-1',
+      '-movflags', '+faststart',
+      '-f', 'mp4',
+      outputPath,
+    ]),
+    filterGraph: filterGraph,
+    duration: duration,
+    hasSound: true,
     usesQpCeilings: withCeilings,
   );
 }
@@ -429,6 +608,27 @@ List<String> buildPosterCommand({
       // One image, not a numbered sequence.
       '-update', '1',
       posterPath,
+    ]);
+
+/// The ffmpeg arguments for a small JPEG of [videoPath] at [at] - a video
+/// clip's picture on its timeline card.
+List<String> buildThumbnailCommand({
+  required String videoPath,
+  required Duration at,
+  required String outputPath,
+  int width = 240,
+}) =>
+    List.unmodifiable([
+      '-hide_banner',
+      '-y',
+      '-ss', _seconds(at),
+      '-i', videoPath,
+      '-an',
+      '-frames:v', '1',
+      '-vf', 'scale=$width:-2',
+      '-q:v', '5',
+      '-update', '1',
+      outputPath,
     ]);
 
 /// The filters that turn a layer by [radians] clockwise. Quarter turns are

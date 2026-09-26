@@ -359,12 +359,15 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                 // A pending video's content is always a local path (the
                 // file being uploaded) - no %%%/### legacy-URL handling
                 // applies to it, unlike a confirmed message's content.
+                // While it sends it is a still with a play badge, as it was
+                // in the picked-files strip; the player comes with the sent
+                // message.
                 child: content.startsWith('http')
                     ? VideoPlayerScreen(
                         videoUrl: content
                             .split("%%%")[0]
                             .replaceAll("###", "%23%23%23"))
-                    : VideoPlayerScreen(videoUrl: content, isLocalFile: true),
+                    : _PendingVideo(path: content),
               ),
             ),
           ),
@@ -743,6 +746,42 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
           )
         ],
       ),
+    );
+  }
+}
+
+/// A video still being sent: its first frame with a play badge, at the
+/// video's shape - the same still it showed in the picked-files strip. No
+/// player (and no decoder) until the message is sent.
+class _PendingVideo extends StatefulWidget {
+  final String path;
+
+  const _PendingVideo({required this.path});
+
+  @override
+  State<_PendingVideo> createState() => _PendingVideoState();
+}
+
+class _PendingVideoState extends State<_PendingVideo> {
+  late double? _ratio = VideoFirstFrame.knownAspectRatio(widget.path);
+
+  @override
+  void initState() {
+    super.initState();
+    if (_ratio == null) {
+      VideoFirstFrame.aspectRatioOf(widget.path).then((ratio) {
+        if (mounted && ratio != null) setState(() => _ratio = ratio);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // A tall phone video is kept to 4:5, like a post's, filled.
+    final ratio = (_ratio ?? 16 / 9).clamp(0.8, 1.91);
+    return AspectRatio(
+      aspectRatio: ratio,
+      child: VideoFirstFrame(source: widget.path, isLocalFile: true),
     );
   }
 }
