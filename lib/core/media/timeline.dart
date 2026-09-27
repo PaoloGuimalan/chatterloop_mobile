@@ -37,12 +37,13 @@ import 'package:chatterloop_app/core/media/composition.dart';
 /// The shortest a clip, an overlay or an audio track can be trimmed to.
 const minPiece = Duration(milliseconds: 500);
 
-/// The most overlay lanes: every one is another picture decoded at once,
-/// in the preview and in the render.
-const maxOverlayLanes = 3;
+/// The most overlay lanes - as many as anyone will make: no limit in
+/// practice. (Every video layer showing at once is another picture
+/// decoded, in the preview and the render - a phone slows with many.)
+const maxOverlayLanes = 999;
 
-/// The most audio lanes - songs playing at once.
-const maxAudioLanes = 4;
+/// The most audio lanes - songs playing at once; no limit in practice.
+const maxAudioLanes = 999;
 
 Duration _clamp(Duration value, Duration low, Duration high) =>
     value < low ? low : (value > high ? high : value);
