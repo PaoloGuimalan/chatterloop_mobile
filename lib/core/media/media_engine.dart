@@ -16,6 +16,7 @@ import 'package:chatterloop_app/core/media/composition.dart';
 import 'package:chatterloop_app/core/media/encoding_profile.dart';
 import 'package:chatterloop_app/core/media/ffmpeg_command.dart';
 import 'package:chatterloop_app/core/media/media_info.dart';
+import 'package:chatterloop_app/core/media/mp4_restart_points.dart';
 import 'package:chatterloop_app/core/media/watermark_image.dart';
 import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_session.dart';
@@ -286,6 +287,10 @@ class MediaEngine {
         throw const MediaEngineException(
             'This came out too big to share. Try a shorter part.');
       }
+      // The phone's encoder marks no restart points after the first frame;
+      // streamed, the moment stuttered at every stall. See
+      // mp4_restart_points.dart - it leaves a file it can't fix as it is.
+      await Mp4RestartPoints.addToFile(videoPath);
 
       final poster = await _execute(
         job,
