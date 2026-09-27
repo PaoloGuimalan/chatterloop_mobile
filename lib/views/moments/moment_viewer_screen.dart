@@ -562,15 +562,17 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
                         ),
                       ),
                     ),
+                    // In from the sides by the screen's insets too: in
+                    // landscape the camera cutout is on one of them.
                     Positioned(
-                      left: 12,
-                      right: 12,
+                      left: 12 + mq.padding.left,
+                      right: 12 + mq.padding.right,
                       top: mq.padding.top + 6,
                       child: _header(moment),
                     ),
                     Positioned(
-                      left: 12,
-                      right: 12,
+                      left: 12 + mq.padding.left,
+                      right: 12 + mq.padding.right,
                       bottom: bottom,
                       child:
                           _isSelf ? _selfPanel(moment) : _othersPanel(moment),

@@ -401,6 +401,49 @@ void main() {
       expect(card.height, closeTo(150, 1));
     });
 
+    testWidgets(
+        'a phone on its side: the tiles still start at the heading, not '
+        'after the side inset', (tester) async {
+      _serve({
+        '/moments/tray/': {
+          "results": [
+            {
+              "entity": _entity("e1", "Ana", "Reyes"),
+              "is_self": true,
+              "moment_count": 1,
+              "has_unseen": false,
+              "start_post_id": "m1",
+            }
+          ]
+        }
+      });
+      // The camera cutout's inset on the left, as a screen on its side
+      // reports it.
+      await _pump(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (context) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(padding: const EdgeInsets.only(left: 40)),
+                child: const MomentsStrip(),
+              ),
+            ),
+          ));
+      await _settle(tester);
+
+      expect(find.text('You'), findsOneWidget);
+      final heading = tester.getRect(find.text('Moments'));
+      final addTile = tester.getRect(find
+          .ancestor(
+              of: find.text('Add Moment'),
+              matching: find.byWidgetPredicate((w) =>
+                  w is Container &&
+                  w.constraints == const BoxConstraints.tightFor(width: 100)))
+          .first);
+      expect(addTile.left, heading.left);
+    });
+
     testWidgets('Add Moment is white on the light feed', (tester) async {
       _serve({
         '/moments/tray/': {"results": []}

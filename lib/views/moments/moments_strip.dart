@@ -186,6 +186,10 @@ class _MomentsStripState extends State<MomentsStrip> {
                       )
                     : ListView(
                         scrollDirection: Axis.horizontal,
+                        // Its own zero: left to itself, a sideways list pads
+                        // its start by the screen's side inset - in landscape
+                        // the camera cutout, a gap before the first tile.
+                        padding: EdgeInsets.zero,
                         children: [
                           if (featured != null)
                             _FeaturedTile(
@@ -587,6 +591,7 @@ class _BoardSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       scrollDirection: Axis.horizontal,
+      padding: EdgeInsets.zero,
       physics: const NeverScrollableScrollPhysics(),
       children: [
         const Padding(

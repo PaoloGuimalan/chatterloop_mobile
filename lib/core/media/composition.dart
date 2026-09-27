@@ -7,9 +7,13 @@
 /// edit renders the same at any output resolution.
 ///
 /// An edit is a run of CLIPS - photos and videos, one after another, each
-/// framed on the canvas its own way - over one background, plus AUDIO tracks
-/// laid along the same timeline. The JSON leaves room for what comes later:
-/// transitions, text, stickers.
+/// framed on the canvas its own way - over one background; OVERLAYS - more
+/// clips laid over that run in LANES, a higher lane drawn on top; and AUDIO
+/// tracks along the same timeline, in lanes of their own that play
+/// together. It runs as long as whatever ends last. Wherever nothing is -
+/// a blank left between clips, the time after the last clip that a layer or
+/// a song runs on into - it is black and silent. The JSON leaves room for
+/// what comes later: transitions, text, stickers.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -182,12 +186,17 @@ class MediaLayer {
   /// (1 = as recorded). Mixed with the audio tracks.
   final double volume;
 
+  /// Main clips only: a blank before it in the run - black, silent. Zero
+  /// (the usual) sits it straight after the clip before.
+  final Duration gapBefore;
+
   const MediaLayer({
     required this.source,
     this.transform = LayerTransform.fit,
     this.trim,
     this.duration,
     this.volume = 1,
+    this.gapBefore = Duration.zero,
   });
 
   /// How long this clip runs in the edit.
@@ -207,6 +216,7 @@ class MediaLayer {
     TrimRange? trim,
     Duration? duration,
     double? volume,
+    Duration? gapBefore,
   }) =>
       MediaLayer(
         source: source,
@@ -214,6 +224,7 @@ class MediaLayer {
         trim: trim ?? this.trim,
         duration: duration ?? this.duration,
         volume: volume ?? this.volume,
+        gapBefore: gapBefore ?? this.gapBefore,
       );
 
   Map<String, dynamic> toJson() => {
@@ -223,6 +234,7 @@ class MediaLayer {
         if (trim != null) 'trim': trim!.toJson(),
         if (duration != null) 'duration_ms': duration!.inMilliseconds,
         'volume': volume,
+        if (gapBefore > Duration.zero) 'gap_before_ms': gapBefore.inMilliseconds,
       };
 
   factory MediaLayer.fromJson(Map<String, dynamic> json,
@@ -240,6 +252,8 @@ class MediaLayer {
         // Edits saved before volumes had an on/off `keep_audio`.
         volume: (json['volume'] as num?)?.toDouble() ??
             (json['keep_audio'] == false ? 0 : 1),
+        gapBefore: Duration(
+            milliseconds: (json['gap_before_ms'] as num?)?.toInt() ?? 0),
       );
 }
 
@@ -261,6 +275,10 @@ class AudioTrack {
   /// The part of the file to use.
   final TrimRange trim;
 
+  /// Its row: tracks in one lane follow one another; the lanes play
+  /// together, their sound mixed.
+  final int lane;
+
   /// 0 (muted) ..2 (1 = as recorded).
   final double volume;
   final Duration fadeIn;
@@ -272,6 +290,7 @@ class AudioTrack {
     this.name,
     this.fileLength,
     this.start = Duration.zero,
+    this.lane = 0,
     this.volume = 1,
     this.fadeIn = Duration.zero,
     this.fadeOut = Duration.zero,
@@ -287,6 +306,7 @@ class AudioTrack {
   AudioTrack copyWith({
     Duration? start,
     TrimRange? trim,
+    int? lane,
     double? volume,
     Duration? fadeIn,
     Duration? fadeOut,
@@ -297,6 +317,7 @@ class AudioTrack {
         fileLength: fileLength,
         start: start ?? this.start,
         trim: trim ?? this.trim,
+        lane: lane ?? this.lane,
         volume: volume ?? this.volume,
         fadeIn: fadeIn ?? this.fadeIn,
         fadeOut: fadeOut ?? this.fadeOut,
@@ -308,6 +329,7 @@ class AudioTrack {
         if (fileLength != null) 'file_ms': fileLength!.inMilliseconds,
         'start_ms': start.inMilliseconds,
         'trim': trim.toJson(),
+        'lane': lane,
         'volume': volume,
         'fade_in_ms': fadeIn.inMilliseconds,
         'fade_out_ms': fadeOut.inMilliseconds,
@@ -321,12 +343,133 @@ class AudioTrack {
             : Duration(milliseconds: (json['file_ms'] as num).toInt()),
         start: Duration(milliseconds: (json['start_ms'] as num?)?.toInt() ?? 0),
         trim: TrimRange.fromJson(Map<String, dynamic>.from(json['trim'])),
+        lane: (json['lane'] as num?)?.toInt() ?? 0,
         volume: (json['volume'] as num?)?.toDouble() ?? 1,
         fadeIn:
             Duration(milliseconds: (json['fade_in_ms'] as num?)?.toInt() ?? 0),
         fadeOut:
             Duration(milliseconds: (json['fade_out_ms'] as num?)?.toInt() ?? 0),
       );
+}
+
+/// A clip laid OVER the main run of clips: from [start] in the edit, on
+/// overlay [lane] - 0 just above the main clips, each lane over the one
+/// before. Framed on the canvas like any clip, but with no background of
+/// its own: the picture under it shows around it. Its sound, if any, is
+/// mixed in.
+@immutable
+class OverlayClip {
+  final MediaLayer clip;
+
+  /// Where in the edit it starts.
+  final Duration start;
+  final int lane;
+
+  /// A TEXT layer's words and look - its [clip] is a picture of them (see
+  /// text_card_image.dart), drawn and rendered like any photo layer; kept
+  /// so the words can be changed and drawn again.
+  final TextCard? text;
+
+  const OverlayClip({
+    required this.clip,
+    this.start = Duration.zero,
+    this.lane = 0,
+    this.text,
+  });
+
+  Duration get length => clip.length;
+
+  /// Where in the edit it stops.
+  Duration get end => start + length;
+
+  bool get isText => text != null;
+
+  OverlayClip copyWith(
+          {MediaLayer? clip, Duration? start, int? lane, TextCard? text}) =>
+      OverlayClip(
+        clip: clip ?? this.clip,
+        start: start ?? this.start,
+        lane: lane ?? this.lane,
+        text: text ?? this.text,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'clip': clip.toJson(),
+        'start_ms': start.inMilliseconds,
+        'lane': lane,
+        if (text != null) 'text': text!.toJson(),
+      };
+
+  factory OverlayClip.fromJson(Map<String, dynamic> json) => OverlayClip(
+        clip: MediaLayer.fromJson(Map<String, dynamic>.from(json['clip'])),
+        start: Duration(milliseconds: (json['start_ms'] as num?)?.toInt() ?? 0),
+        lane: (json['lane'] as num?)?.toInt() ?? 0,
+        text: json['text'] == null
+            ? null
+            : TextCard.fromJson(Map<String, dynamic>.from(json['text'])),
+      );
+}
+
+/// How a text layer's words look. The app's own font; no animation.
+@immutable
+class TextCard {
+  final String text;
+
+  /// The words' colour.
+  final int argb;
+
+  /// On a box of a colour that stands out from theirs.
+  final bool boxed;
+  final bool bold;
+
+  /// "left", "center" or "right".
+  final String align;
+
+  const TextCard({
+    required this.text,
+    this.argb = 0xFFFFFFFF,
+    this.boxed = false,
+    this.bold = true,
+    this.align = 'center',
+  });
+
+  TextCard copyWith(
+          {String? text, int? argb, bool? boxed, bool? bold, String? align}) =>
+      TextCard(
+        text: text ?? this.text,
+        argb: argb ?? this.argb,
+        boxed: boxed ?? this.boxed,
+        bold: bold ?? this.bold,
+        align: align ?? this.align,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'text': text,
+        'argb': argb,
+        'boxed': boxed,
+        'bold': bold,
+        'align': align,
+      };
+
+  factory TextCard.fromJson(Map<String, dynamic> json) => TextCard(
+        text: json['text'] as String? ?? '',
+        argb: (json['argb'] as num?)?.toInt() ?? 0xFFFFFFFF,
+        boxed: json['boxed'] as bool? ?? false,
+        bold: json['bold'] as bool? ?? true,
+        align: json['align'] as String? ?? 'center',
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is TextCard &&
+      other.text == text &&
+      other.argb == argb &&
+      other.boxed == boxed &&
+      other.bold == bold &&
+      other.align == align;
+
+  @override
+  int get hashCode => Object.hash(text, argb, boxed, bold, align);
 }
 
 /// What fills the canvas around the media.
@@ -357,76 +500,119 @@ class CompositionBackground {
 class Composition {
   /// Bump when the meaning of a field changes; readers check it.
   /// 2: a list of clips (was one layer) and of audio tracks (was one).
-  static const currentVersion = 2;
+  /// 3: overlays, and lanes for the audio tracks.
+  /// 4: blanks - a clip's [MediaLayer.gapBefore] - and an edit as long as
+  /// whatever ends last, not only its clips.
+  static const currentVersion = 4;
 
   final int version;
   final CompositionBackground background;
 
-  /// Played one after another. Never empty.
+  /// Played one after another - the MAIN run - each after the blank before
+  /// it ([MediaLayer.gapBefore]). Empty when only layers or songs are left.
   final List<MediaLayer> clips;
 
-  /// Ordered by [AudioTrack.start]; they never overlap.
+  /// Over the main run, ordered by lane, then start - so in the order they
+  /// are drawn. Within a lane they never overlap.
+  final List<OverlayClip> overlays;
+
+  /// Ordered by lane, then start. Within a lane they never overlap; across
+  /// lanes they play together.
   final List<AudioTrack> audio;
 
   const Composition({
     this.version = currentVersion,
     this.background = CompositionBackground.blur,
     required this.clips,
+    this.overlays = const [],
     this.audio = const [],
   });
 
-  /// The edit's length before any profile cap: its clips end to end.
-  Duration get naturalDuration =>
-      clips.fold(Duration.zero, (sum, clip) => sum + clip.length);
+  /// How many overlay lanes there are (0 with no overlays).
+  int get overlayLanes => overlays.fold(
+      0, (int n, overlay) => overlay.lane >= n ? overlay.lane + 1 : n);
 
-  /// Where each clip starts in the edit.
+  /// How many audio lanes there are (0 with no tracks).
+  int get audioLanes =>
+      audio.fold(0, (int n, track) => track.lane >= n ? track.lane + 1 : n);
+
+  /// The overlays showing at [at], bottom first - the order they are drawn.
+  List<int> overlaysAt(Duration at) => [
+        for (var i = 0; i < overlays.length; i++)
+          if (at >= overlays[i].start && at < overlays[i].end) i
+      ];
+
+  /// Where the main run ends: its clips and the blanks between them.
+  Duration get mainEnd => clips.fold(
+      Duration.zero, (sum, clip) => sum + clip.gapBefore + clip.length);
+
+  /// The edit's length before any profile cap: to the end of whatever ends
+  /// last - the main clips, a layer, a song. Past the main clips, blank.
+  Duration get naturalDuration {
+    var end = mainEnd;
+    for (final overlay in overlays) {
+      if (overlay.end > end) end = overlay.end;
+    }
+    for (final track in audio) {
+      if (track.end > end) end = track.end;
+    }
+    return end;
+  }
+
+  /// Where each main clip starts in the edit.
   List<Duration> get clipStarts {
     final starts = <Duration>[];
     var at = Duration.zero;
     for (final clip in clips) {
+      at += clip.gapBefore;
       starts.add(at);
       at += clip.length;
     }
     return starts;
   }
 
-  /// The clip playing at [at], and how far into it. Past the end: the last
-  /// clip's last moment.
-  ({int index, Duration offset}) locate(Duration at) {
+  /// The main clip playing at [at], and how far into it - null in a blank
+  /// (between clips, or before or past them). At the very end of an edit
+  /// the last clip ends: its last moment.
+  ({int index, Duration offset})? locate(Duration at) {
     var start = Duration.zero;
     for (var i = 0; i < clips.length; i++) {
+      start += clips[i].gapBefore;
       final end = start + clips[i].length;
-      if (at < end || i == clips.length - 1) {
-        final offset = at - start;
-        return (
-          index: i,
-          offset: offset < Duration.zero
-              ? Duration.zero
-              : (offset > clips[i].length ? clips[i].length : offset),
-        );
-      }
+      if (at >= start && at < end) return (index: i, offset: at - start);
       start = end;
     }
-    return (index: 0, offset: Duration.zero);
+    if (clips.isNotEmpty && at >= start && start == naturalDuration) {
+      return (index: clips.length - 1, offset: clips.last.length);
+    }
+    return null;
   }
 
-  /// Only photos - a still, or a slideshow.
-  bool get allStills => clips.every((clip) => !clip.source.isVideo);
+  /// Only photos (and blanks) - a still, or a slideshow - overlays
+  /// included.
+  bool get allStills =>
+      clips.every((clip) => !clip.source.isVideo) &&
+      overlays.every((overlay) => !overlay.clip.source.isVideo);
 
   /// Whether the output will carry REAL sound (not only a silent track).
-  bool get hasSound =>
-      clips.any((clip) => clip.soundHeard) ||
-      audio.any((track) => track.heard && track.start < naturalDuration);
+  bool get hasSound {
+    final end = naturalDuration;
+    return clips.any((clip) => clip.soundHeard) ||
+        overlays.any((o) => o.clip.soundHeard && o.start < end) ||
+        audio.any((track) => track.heard && track.start < end);
+  }
 
   Composition copyWith({
     CompositionBackground? background,
     List<MediaLayer>? clips,
+    List<OverlayClip>? overlays,
     List<AudioTrack>? audio,
   }) =>
       Composition(
         version: version,
         background: background ?? this.background,
         clips: clips ?? this.clips,
+        overlays: overlays ?? this.overlays,
         audio: audio ?? this.audio,
       );
 
@@ -434,6 +620,7 @@ class Composition {
         'v': version,
         'background': background.toJson(),
         'clips': [for (final clip in clips) clip.toJson()],
+        'overlays': [for (final overlay in overlays) overlay.toJson()],
         'audio': [for (final track in audio) track.toJson()],
       };
 
@@ -463,6 +650,12 @@ class Composition {
       clips: [
         for (final clip in (json['clips'] as List).cast<Map>())
           MediaLayer.fromJson(Map<String, dynamic>.from(clip))
+      ],
+      // Version 2 had none, and its tracks all in one lane.
+      overlays: [
+        for (final overlay
+            in (json['overlays'] as List? ?? const []).cast<Map>())
+          OverlayClip.fromJson(Map<String, dynamic>.from(overlay))
       ],
       audio: [
         for (final track in (json['audio'] as List? ?? const []).cast<Map>())

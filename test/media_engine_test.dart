@@ -94,25 +94,69 @@ void main() {
             trim: TrimRange(Duration(seconds: 1), Duration(seconds: 5)),
             volume: 0.35,
           ),
-          MediaLayer(source: _photo, duration: Duration(seconds: 3)),
+          MediaLayer(
+            source: _photo,
+            duration: Duration(seconds: 3),
+            gapBefore: Duration(seconds: 1),
+          ),
         ],
-        audio: [_song],
+        overlays: [
+          OverlayClip(
+            clip: MediaLayer(
+              source: _photo,
+              transform: LayerTransform(scale: 0.6),
+              duration: Duration(seconds: 2),
+            ),
+            start: Duration(seconds: 1),
+            lane: 1,
+          ),
+        ],
+        audio: [
+          _song,
+          AudioTrack(
+            path: '/in/b.mp3',
+            trim: TrimRange(Duration.zero, Duration(seconds: 3)),
+            lane: 1,
+          ),
+        ],
       );
       final back = Composition.fromJson(edit.toJson());
 
       expect(back.toJson(), edit.toJson());
-      expect(back.version, 2);
+      expect(back.version, 4);
+      final layer = back.overlays.single;
+      expect((layer.start, layer.lane), (const Duration(seconds: 1), 1));
+      expect(layer.clip.transform.scale, 0.6);
+      expect(layer.length, const Duration(seconds: 2));
+      expect(back.audio.map((t) => t.lane), [0, 1]);
       expect(back.background.argb, 0xFF203040);
       expect(back.clips, hasLength(2));
       expect(back.clips[0].transform.rotationDeg, 15);
       expect(back.clips[0].trim!.length, const Duration(seconds: 4));
       expect(back.clips[0].volume, 0.35);
       expect(back.clips[1].length, const Duration(seconds: 3));
-      final track = back.audio.single;
+      expect(back.clips[1].gapBefore, const Duration(seconds: 1));
+      expect(back.clips[0].gapBefore, Duration.zero);
+      final track = back.audio.first;
       expect(track.name, 'Song');
       expect(track.fileLength, const Duration(seconds: 30));
       expect(track.start, Duration.zero);
       expect(track.fadeOut, const Duration(seconds: 2));
+    });
+
+    test('reads a version 2 edit: no layers, its songs on one lane', () {
+      final json = const Composition(
+        clips: [MediaLayer(source: _photo)],
+        audio: [_song],
+      ).toJson()
+        ..['v'] = 2
+        ..remove('overlays');
+      ((json['audio'] as List).first as Map).remove('lane');
+      final back = Composition.fromJson(json);
+      expect(back.overlays, isEmpty);
+      expect(back.audio.single.lane, 0);
+      expect(back.overlayLanes, 0);
+      expect(back.audioLanes, 1);
     });
 
     test('reads a version 1 edit: one layer, one song, the photo length', () {
@@ -188,13 +232,14 @@ void main() {
           Composition(clips: const [photo], audio: [_song.copyWith(volume: 0)])
               .hasSound,
           isFalse);
-      // A song that starts after the last clip ends is never heard.
+      // A song that starts after the last clip ends runs the moment on,
+      // blank under it: heard.
       expect(
           Composition(
               clips: const [photo],
               audio: [_song.copyWith(start: const Duration(seconds: 7))])
               .hasSound,
-          isFalse);
+          isTrue);
       expect(
           const Composition(clips: [MediaLayer(source: _landscapeVideo)])
               .hasSound,
@@ -203,6 +248,26 @@ void main() {
           const Composition(
                   clips: [MediaLayer(source: _landscapeVideo, volume: 0)])
               .hasSound,
+          isFalse);
+      // A layer's own sound - past the clips too.
+      expect(
+          const Composition(clips: [photo], overlays: [
+            OverlayClip(clip: MediaLayer(source: _landscapeVideo)),
+          ]).hasSound,
+          isTrue);
+      expect(
+          const Composition(clips: [photo], overlays: [
+            OverlayClip(
+                clip: MediaLayer(source: _landscapeVideo),
+                start: Duration(seconds: 6)),
+          ]).hasSound,
+          isTrue);
+      expect(
+          const Composition(clips: [photo], overlays: [
+            OverlayClip(
+                clip: MediaLayer(source: _landscapeVideo, volume: 0),
+                start: Duration(seconds: 6)),
+          ]).hasSound,
           isFalse);
     });
 
@@ -217,6 +282,14 @@ void main() {
           const Composition(clips: [
             MediaLayer(source: _photo),
             MediaLayer(source: _landscapeVideo)
+          ]).allStills,
+          isFalse);
+      // A video layer makes it a video.
+      expect(
+          const Composition(clips: [
+            MediaLayer(source: _photo)
+          ], overlays: [
+            OverlayClip(clip: MediaLayer(source: _landscapeVideo)),
           ]).allStills,
           isFalse);
     });
@@ -536,6 +609,27 @@ void main() {
             MediaLayer(source: _photo, transform: LayerTransform(cx: 3))
           ],
         ),
+        Composition(
+          clips: const [MediaLayer(source: _landscapeVideo)],
+          overlays: const [
+            OverlayClip(
+              clip: MediaLayer(
+                source: _landscapeVideo,
+                transform: LayerTransform(scale: 2.2, rotationDeg: 30),
+                trim: TrimRange(Duration(seconds: 1), Duration(seconds: 3)),
+              ),
+              start: Duration(seconds: 1),
+            ),
+            OverlayClip(
+              clip: MediaLayer(
+                source: _photo,
+                transform: LayerTransform(scale: 0.5, rotationDeg: 90),
+              ),
+              lane: 1,
+            ),
+          ],
+          audio: [_song],
+        ),
       ];
       for (final edit in edits) {
         for (final watermark in [null, _watermarkFile]) {
@@ -662,11 +756,168 @@ void main() {
               'alimiter=limit=0.95:level=0[a]'));
     });
 
-    test('music running past the end is cut there, fading within', () {
+    test('a layer: framed with nothing around it, over the clips from its '
+        'start', () {
+      final cmd = _build(const Composition(
+        clips: [MediaLayer(source: _photo)],
+        overlays: [
+          OverlayClip(
+            clip: MediaLayer(
+              source: _landscapeVideo,
+              transform: LayerTransform(scale: 0.5),
+              trim: TrimRange(Duration(seconds: 1), Duration(seconds: 4)),
+            ),
+            start: Duration(seconds: 2),
+          ),
+        ],
+      ));
+      // The clips set the length.
+      expect(cmd.duration, const Duration(seconds: 6));
+      expect(_inputs(cmd.arguments), ['/in/photo.jpg', '/in/clip.mp4']);
+      expect(_inputOptions(cmd.arguments, '/in/clip.mp4'),
+          ['-ss', '1.000', '-t', '3.000']);
+      // Its picture: at the output rate, at its size on the canvas (half of
+      // fitting it), cut to its 3s, and moved to 2s in.
+      expect(
+          cmd.filterGraph,
+          contains('[1:v:0]fps=30,tpad=stop_mode=clone:stop_duration=1,'
+              'scale=360:202:flags=lanczos,setsar=1,'
+              'trim=duration=3.000,setpts=PTS-STARTPTS+2.000/TB[ov0]'));
+      // Over the clip; before and after it, the picture under it passes.
+      expect(
+          cmd.filterGraph,
+          contains('[v0][ov0]overlay=x=360.00-w/2:y=640.00-h/2'
+              ':eof_action=pass[vo0]'));
+      expect(cmd.filterGraph, contains('[vo0]format=nv12[v]'));
+      // Its sound too, from 2s, as long as it shows.
+      expect(
+          cmd.filterGraph,
+          contains('[1:a:0]$_format,apad=whole_dur=3.000,atrim=duration=3.000,'
+              'asetpts=PTS-STARTPTS,adelay=delays=2000:all=1,'
+              'apad=whole_dur=6.000[oa0]'));
+      expect(
+          cmd.filterGraph,
+          contains('[a0][oa0]amix=inputs=2:duration=first:normalize=0,'
+              'alimiter=limit=0.95:level=0[a]'));
+      expect(cmd.hasSound, isTrue);
+    });
+
+    test('layers drawn bottom lane first; a photo one composed once a '
+        'second; one past the cap left out', () {
+      final cmd = _build(
+          profile: _p720.copyWith(maxDuration: const Duration(seconds: 6)),
+          const Composition(
+        clips: [MediaLayer(source: _photo)],
+        overlays: [
+          OverlayClip(
+            clip: MediaLayer(source: _photo, duration: Duration(seconds: 2)),
+            start: Duration(seconds: 1),
+          ),
+          OverlayClip(
+              clip: MediaLayer(source: _landscapeVideo, volume: 0), lane: 1),
+          OverlayClip(
+            clip: MediaLayer(source: _photo),
+            start: Duration(seconds: 6),
+            lane: 1,
+          ),
+        ],
+      ));
+      expect(_inputs(cmd.arguments),
+          ['/in/photo.jpg', '/in/photo.jpg', '/in/clip.mp4']);
+      // The 8s video, cut where the moment must end.
+      expect(_inputOptions(cmd.arguments, '/in/clip.mp4'), ['-t', '6.000']);
+      expect(
+          cmd.filterGraph,
+          contains('[1:v:0]loop=loop=-1:size=1:start=0,setpts=N/(1*TB),'
+              'scale=720:540:flags=lanczos,setsar=1,fps=30,'
+              'trim=duration=2.000,setpts=PTS-STARTPTS+1.000/TB[ov0]'));
+      expect(cmd.filterGraph,
+          contains('trim=duration=6.000,setpts=PTS-STARTPTS[ov1]'));
+      expect(cmd.filterGraph, contains('[v0][ov0]overlay='));
+      expect(cmd.filterGraph, contains('[vo0][ov1]overlay='));
+      expect(cmd.filterGraph, contains('[vo1]format=nv12[v]'));
+      // Muted, the video layer adds no sound.
+      expect(cmd.filterGraph, contains('[a0]anull[a]'));
+      expect(cmd.hasSound, isFalse);
+    });
+
+    test('a layer off the canvas is not drawn, but still heard', () {
+      final cmd = _build(const Composition(
+        clips: [MediaLayer(source: _photo)],
+        overlays: [
+          OverlayClip(
+            clip: MediaLayer(
+                source: _landscapeVideo, transform: LayerTransform(cx: 3)),
+            start: Duration(seconds: 1),
+          ),
+        ],
+      ));
+      expect(cmd.filterGraph, isNot(contains('[ov0]')));
+      // Its 8s from 1s run on past the 6s photo: black under the rest.
+      expect(cmd.duration, const Duration(seconds: 9));
+      expect(cmd.filterGraph, contains('[vcat]format=nv12[v]'));
+      expect(cmd.filterGraph, contains('adelay=delays=1000:all=1'));
+      expect(cmd.hasSound, isTrue);
+    });
+
+    test('a blank between clips: black, and silent, as long', () {
+      final cmd = _build(const Composition(clips: [
+        MediaLayer(source: _photo, duration: Duration(seconds: 2)),
+        MediaLayer(
+          source: _landscapeVideo,
+          trim: TrimRange(Duration.zero, Duration(seconds: 3)),
+          gapBefore: Duration(milliseconds: 1500),
+        ),
+      ]));
+      expect(cmd.duration, const Duration(milliseconds: 6500));
+      // Nothing read for it: the video is still input 1.
+      expect(_inputs(cmd.arguments), ['/in/photo.jpg', '/in/clip.mp4']);
+      expect(
+          cmd.filterGraph,
+          contains('color=c=black:s=720x1280:r=30:d=1.500,format=yuv420p,'
+              'setsar=1[v1];anullsrc=r=44100:cl=stereo,atrim=duration=1.500'
+              '[a1]'));
+      // The video after it, from its own input, as piece 2.
+      expect(cmd.filterGraph, contains('[1:v:0]fps=30'));
+      expect(cmd.filterGraph, contains('[1:a:0]$_format,'));
+      expect(cmd.filterGraph, contains('[a2]'));
+      expect(
+          cmd.filterGraph,
+          contains('[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[vcat][acat]'));
+    });
+
+    test('no clips at all: a song over black', () {
+      final cmd = _build(Composition(clips: const [], audio: [_song]));
+      expect(cmd.duration, const Duration(milliseconds: 7500));
+      expect(_inputs(cmd.arguments), ['/in/song.mp3']);
+      expect(cmd.filterGraph,
+          startsWith('color=c=black:s=720x1280:r=30:d=7.500,format=yuv420p,'));
+      expect(cmd.filterGraph, contains('[0:a:0]$_format,'));
+      expect(cmd.hasSound, isTrue);
+    });
+
+    test('music running past the clips runs the moment on, black under it',
+        () {
       final cmd = _build(Composition(
         clips: const [MediaLayer(source: _photo)],
         audio: [_song.copyWith(start: const Duration(seconds: 3))],
       ));
+      // All of its 7.5s part, from 3s: 10.5s, the photo's 6 and 4.5 blank.
+      expect(cmd.duration, const Duration(milliseconds: 10500));
+      expect(_inputOptions(cmd.arguments, '/in/song.mp3'),
+          ['-ss', '2.000', '-t', '7.500']);
+      expect(cmd.filterGraph, contains('color=c=black:s=720x1280:r=30:d=4.500'));
+      expect(cmd.filterGraph,
+          contains('afade=t=in:st=0:d=1.000,afade=t=out:st=5.500:d=2.000,'));
+    });
+
+    test('music running past the cap is cut there, fading within', () {
+      final cmd = _build(
+          profile: _p720.copyWith(maxDuration: const Duration(seconds: 6)),
+          Composition(
+            clips: const [MediaLayer(source: _photo)],
+            audio: [_song.copyWith(start: const Duration(seconds: 3))],
+          ));
       // 3s of the 7.5s part is heard.
       expect(_inputOptions(cmd.arguments, '/in/song.mp3'),
           ['-ss', '2.000', '-t', '3.000']);
@@ -674,11 +925,9 @@ void main() {
           contains('afade=t=in:st=0:d=1.000,afade=t=out:st=1.000:d=2.000,'));
     });
 
-    test('a muted song, or one after the end, is not read at all', () {
+    test('a muted song is not read at all', () {
       for (final track in [
         _song.copyWith(volume: 0),
-        // Starts after the 8s video is over.
-        _song.copyWith(start: const Duration(seconds: 9)),
       ]) {
         final cmd = _build(Composition(
           clips: const [MediaLayer(source: _landscapeVideo)],

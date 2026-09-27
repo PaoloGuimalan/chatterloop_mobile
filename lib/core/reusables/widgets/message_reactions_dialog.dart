@@ -24,6 +24,7 @@
 // the tap animation finish before the route pops, and dropping it makes the
 // dialog vanish mid-animation.
 
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -164,58 +165,72 @@ class _CLMessageReactionsDialogState extends State<CLMessageReactionsDialog> {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ReactionsRow(
-                  reactions: widget.reactions,
-                  alignment: widget.widgetAlignment,
-                  onReactionTap: _handleReactionTap,
-                  clickedIndex: _clickedReactionIndex,
-                  reactionClicked: _reactionClicked,
-                  selected: widget.myReaction,
-                ),
-                const SizedBox(height: 10),
-                // The message takes whatever is LEFT, and scrolls past that.
-                //
-                // This column shrink-wraps its children, so a long text
-                // message (or a tall attachment) simply made it taller than
-                // the screen: the reaction row went off the top, the menu off
-                // the bottom, and the bubble overlapped both. Flexible caps it
-                // at exactly the space the row and the menu are not using -
-                // better than a fixed fraction of the screen, which has to
-                // guess at a menu whose height varies with how many entries
-                // the message qualifies for.
-                //
-                // The scroll view is OUTSIDE the Hero on purpose. Inside, it
-                // would bound the bubble's height, and the flight would then
-                // lay the OTHER side's copy out at that bound - which for a
-                // long message is a RenderFlex overflow for the length of the
-                // animation. Out here the hero still measures, flies and lands
-                // at its natural size, and only what is past the cap is
-                // clipped.
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: MessageBubble(
-                      id: widget.id,
-                      messageWidget: widget.messageWidget,
-                      alignment: widget.widgetAlignment,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _ContextMenu(
-                  menuItems: widget.menuItems,
-                  alignment: widget.widgetAlignment,
-                  menuWidth: widget.menuItemsWidth,
-                  clickedIndex: _clickedMenuIndex,
-                  onMenuItemTap: _handleMenuTap,
-                ),
-              ],
-            ),
+            child: LayoutBuilder(
+                builder: (context, box) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ReactionsRow(
+                          reactions: widget.reactions,
+                          alignment: widget.widgetAlignment,
+                          onReactionTap: _handleReactionTap,
+                          clickedIndex: _clickedReactionIndex,
+                          reactionClicked: _reactionClicked,
+                          selected: widget.myReaction,
+                        ),
+                        const SizedBox(height: 10),
+                        // The message takes whatever is LEFT, and scrolls past that.
+                        //
+                        // This column shrink-wraps its children, so a long text
+                        // message (or a tall attachment) simply made it taller than
+                        // the screen: the reaction row went off the top, the menu off
+                        // the bottom, and the bubble overlapped both. Flexible caps it
+                        // at exactly the space the row and the menu are not using -
+                        // better than a fixed fraction of the screen, which has to
+                        // guess at a menu whose height varies with how many entries
+                        // the message qualifies for.
+                        //
+                        // The scroll view is OUTSIDE the Hero on purpose. Inside, it
+                        // would bound the bubble's height, and the flight would then
+                        // lay the OTHER side's copy out at that bound - which for a
+                        // long message is a RenderFlex overflow for the length of the
+                        // animation. Out here the hero still measures, flies and lands
+                        // at its natural size, and only what is past the cap is
+                        // clipped.
+                        Flexible(
+                          child: SingleChildScrollView(
+                            child: MessageBubble(
+                              id: widget.id,
+                              messageWidget: widget.messageWidget,
+                              alignment: widget.widgetAlignment,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _menu(
+                            short: box.maxHeight < 520, height: box.maxHeight),
+                      ],
+                    )),
           ),
         ),
       ),
+    );
+  }
+
+  /// The options - on a short screen (a phone on its side), at most half
+  /// the height and scrolling past it: all of its rows under the reactions
+  /// did not fit there.
+  Widget _menu({required bool short, required double height}) {
+    final menu = _ContextMenu(
+      menuItems: widget.menuItems,
+      alignment: widget.widgetAlignment,
+      menuWidth: widget.menuItemsWidth,
+      clickedIndex: _clickedMenuIndex,
+      onMenuItemTap: _handleMenuTap,
+    );
+    if (!short) return menu;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: height * 0.5),
+      child: SingleChildScrollView(child: menu),
     );
   }
 
@@ -268,7 +283,9 @@ class _ContextMenu extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: Container(
-          width: MediaQuery.of(context).size.width * menuWidth,
+          // A share of the screen's width - but not a landscape one's,
+          // which made a card twice as wide as its longest label.
+          width: math.min(MediaQuery.of(context).size.width * menuWidth, 260),
           padding: const EdgeInsets.symmetric(vertical: 4),
           decoration: BoxDecoration(
             color: p.surface,

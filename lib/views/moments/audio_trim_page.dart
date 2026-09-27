@@ -8,7 +8,9 @@ import 'package:chatterloop_app/core/media/widgets/trim_bar.dart';
 import 'package:flutter/material.dart';
 
 /// Before a song joins an edit: the part of it to use - where it starts and
-/// ends - no longer than [maxSpan], the room there is for it where it goes.
+/// ends - no longer than [maxSpan], the room there is for it where it goes
+/// (it may run on past the clips - the moment grows). Picked to start with:
+/// [initialSpan] of it, when given - the moment's length as it is.
 /// The chosen part plays round and round while it is picked, like
 /// ClipTrimPage for a video.
 ///
@@ -20,6 +22,7 @@ class AudioTrimPage extends StatefulWidget {
   /// The whole file's length.
   final Duration length;
   final Duration maxSpan;
+  final Duration? initialSpan;
 
   const AudioTrimPage({
     super.key,
@@ -27,6 +30,7 @@ class AudioTrimPage extends StatefulWidget {
     required this.name,
     required this.length,
     required this.maxSpan,
+    this.initialSpan,
   });
 
   static Future<TrimRange?> open(
@@ -35,12 +39,18 @@ class AudioTrimPage extends StatefulWidget {
     required String name,
     required Duration length,
     required Duration maxSpan,
+    Duration? initialSpan,
   }) =>
       Navigator.of(context, rootNavigator: true).push<TrimRange>(
         MaterialPageRoute(
           fullscreenDialog: true,
           builder: (_) => AudioTrimPage(
-              path: path, name: name, length: length, maxSpan: maxSpan),
+            path: path,
+            name: name,
+            length: length,
+            maxSpan: maxSpan,
+            initialSpan: initialSpan,
+          ),
         ),
       );
 
@@ -49,8 +59,13 @@ class AudioTrimPage extends StatefulWidget {
 }
 
 class _AudioTrimPageState extends State<AudioTrimPage> {
-  late TrimRange _range = TrimRange(Duration.zero,
-      widget.length > widget.maxSpan ? widget.maxSpan : widget.length);
+  late TrimRange _range = TrimRange(Duration.zero, _startSpan);
+
+  Duration get _startSpan {
+    var span = widget.initialSpan ?? widget.maxSpan;
+    if (span > widget.maxSpan) span = widget.maxSpan;
+    return widget.length > span ? span : widget.length;
+  }
   final _player = AudioPlayer();
   StreamSubscription<Duration>? _position;
   StreamSubscription<void>? _done;
@@ -128,6 +143,67 @@ class _AudioTrimPageState extends State<AudioTrimPage> {
     }
   }
 
+  Widget _art(double size) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: const Color(0xFF2E7D6B),
+          borderRadius: BorderRadius.circular(CLRadii.lg),
+        ),
+        child: Icon(Icons.music_note_rounded,
+            size: size * 0.47, color: Colors.white),
+      );
+
+  Widget _title({required TextAlign align}) => Text(
+        widget.name,
+        textAlign: align,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+            color: Colors.white,
+            fontSize: CLType.sectionTitle,
+            fontWeight: FontWeight.w700),
+      );
+
+  Widget _playButton() => IconButton.filled(
+        tooltip: _playing ? "Pause" : "Play",
+        onPressed: _toggle,
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          fixedSize: const Size(56, 56),
+        ),
+        icon: Icon(_playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+      );
+
+  Widget _stacked() => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _art(120),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: _title(align: TextAlign.center),
+          ),
+          const SizedBox(height: 18),
+          _playButton(),
+        ],
+      );
+
+  Widget _inARow() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _art(72),
+            const SizedBox(width: 16),
+            Flexible(child: _title(align: TextAlign.start)),
+            const SizedBox(width: 16),
+            _playButton(),
+          ],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -163,48 +239,11 @@ class _AudioTrimPageState extends State<AudioTrimPage> {
               ),
             ),
             Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2E7D6B),
-                        borderRadius: BorderRadius.circular(CLRadii.lg),
-                      ),
-                      child: const Icon(Icons.music_note_rounded,
-                          size: 56, color: Colors.white),
-                    ),
-                    const SizedBox(height: 16),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text(
-                        widget.name,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: CLType.sectionTitle,
-                            fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    IconButton.filled(
-                      tooltip: _playing ? "Pause" : "Play",
-                      onPressed: _toggle,
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black,
-                        fixedSize: const Size(56, 56),
-                      ),
-                      icon: Icon(_playing
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded),
-                    ),
-                  ],
+              child: LayoutBuilder(
+                // Stacked when there is the height for it; on a phone on
+                // its side, in a row - stacked, it overflowed.
+                builder: (context, box) => Center(
+                  child: box.maxHeight >= 270 ? _stacked() : _inARow(),
                 ),
               ),
             ),
@@ -231,7 +270,10 @@ class _AudioTrimPageState extends State<AudioTrimPage> {
               child: Text(
                 widget.length > widget.maxSpan
                     ? "Up to ${TrimBar.lengthLabel(widget.maxSpan)} fits where it goes."
-                    : "Drag the ends to keep just the part you want.",
+                    : widget.length > _startSpan
+                        ? "Picked to your moment's length - drag the end on "
+                            "to make the moment longer."
+                        : "Drag the ends to keep just the part you want.",
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     color: Colors.white60, fontSize: CLType.caption),

@@ -264,9 +264,21 @@ class _IncomingCallViewState extends State<IncomingCallView> {
         ? alert.callDisplayName
         : alert.caller.name;
 
+    // A phone on its side leaves this panel under 200 high - the design's
+    // 112 picture in 24 of padding overflowed it. A smaller picture there.
+    return LayoutBuilder(
+      builder: (context, box) {
+        final short = box.maxHeight < 260;
+        return _callerCard(alert, hasImage, name, short: short);
+      },
+    );
+  }
+
+  Widget _callerCard(IncomingCallAlert alert, bool hasImage, String name,
+      {required bool short}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(short ? 12 : 24),
       decoration: BoxDecoration(
         color: CLColors.callPanel,
         borderRadius: BorderRadius.circular(CLColors.callRadius),
@@ -275,7 +287,7 @@ class _IncomingCallViewState extends State<IncomingCallView> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           CircleAvatar(
-            radius: 56, // 112 across, per the design
+            radius: short ? 34 : 56, // 112 across, per the design
             backgroundColor: CLColors.brand300,
             backgroundImage:
                 hasImage ? NetworkImage(alert.displayImage!) : null,
@@ -289,7 +301,7 @@ class _IncomingCallViewState extends State<IncomingCallView> {
                         fontWeight: FontWeight.w700),
                   ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: short ? 10 : 16),
           Text(
             name,
             textAlign: TextAlign.center,

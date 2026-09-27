@@ -147,8 +147,13 @@ const _scaleFlags = 'lanczos';
 ///
 /// Each clip is composed on its own - framed over the background, cut to
 /// exactly its length, with its own sound or silence as long - and the clips
-/// are joined end to end. The audio tracks are then laid over, each from its
-/// place in the edit. An edit longer than the profile allows is cut there.
+/// are joined end to end, with a black, silent piece for every blank: one
+/// left before a clip, and the time after the last clip that a layer or a
+/// song runs on into. The overlays are drawn over that, lane by lane
+/// (a higher lane over a lower), each framed the same way but with no
+/// background, from its place in the edit. The audio tracks and the
+/// overlays' own sound are mixed in, each from its place. An edit longer
+/// than the profile allows is cut there.
 ///
 /// [qpCeilings] false leaves the profile's QP ceilings out - for the retry
 /// when an encoder refuses them, or when they pushed the file past
@@ -162,8 +167,8 @@ const _scaleFlags = 'lanczos';
 /// the right at the same scale instead of shrinking the logo. Without it,
 /// the whole image is sized as the logo.
 ///
-/// Throws an [ArgumentError] for an edit that cannot be rendered (no clips,
-/// no length, a clip with no media size).
+/// Throws an [ArgumentError] for an edit that cannot be rendered (no
+/// length, a clip with no media size).
 RenderCommand buildRenderCommand({
   required Composition composition,
   required EncodingProfile profile,
@@ -173,10 +178,10 @@ RenderCommand buildRenderCommand({
   String? watermarkPath,
   int? watermarkLogoWidth,
 }) {
-  if (composition.clips.isEmpty) {
-    throw ArgumentError.value(composition, 'composition', 'has no clips');
-  }
-  for (final clip in composition.clips) {
+  for (final clip in [
+    ...composition.clips,
+    for (final overlay in composition.overlays) overlay.clip,
+  ]) {
     if (clip.source.width <= 0 || clip.source.height <= 0) {
       throw ArgumentError.value(
           clip.source.path, 'composition', 'media has no known size');
@@ -194,22 +199,32 @@ RenderCommand buildRenderCommand({
   final fps = profile.fps;
   final seconds = _seconds(duration);
 
-  // The clips that make it into the output, each as long as it plays - the
-  // ones past the profile's cap cut short or left out.
-  final pieces = <(MediaLayer, Duration)>[];
+  // The main run as it plays out, each piece as long as it plays - a clip
+  // (with its input), or a blank (null) - the ones past the profile's cap
+  // cut short or left out.
+  final pieces = <(MediaLayer?, Duration)>[];
   var left = duration;
-  for (final clip in composition.clips) {
-    if (left <= Duration.zero) break;
-    final length = _atMost(clip.length, left);
-    if (length <= Duration.zero) continue;
-    pieces.add((clip, length));
-    left -= length;
+  void piece(MediaLayer? clip, Duration length) {
+    final used = _atMost(length, left);
+    if (used <= Duration.zero) return;
+    pieces.add((clip, used));
+    left -= used;
   }
 
+  for (final clip in composition.clips) {
+    if (clip.gapBefore > Duration.zero) piece(null, clip.gapBefore);
+    piece(clip, clip.length);
+  }
+  // Layers or songs running on past the clips: blank under them.
+  if (left > Duration.zero) piece(null, left);
+
   // ---- Inputs: the clips in order, then each heard audio track, then the
-  // watermark.
+  // overlays, then the watermark. Blanks read nothing.
   final args = <String>['-hide_banner', '-y'];
-  for (final (clip, length) in pieces) {
+  final inputOf = <int, int>{};
+  for (final (i, (clip, length)) in pieces.indexed) {
+    if (clip == null) continue;
+    inputOf[i] = inputOf.length;
     if (clip.source.isVideo) {
       final start = clip.usedRange.start;
       if (start > Duration.zero) args.addAll(['-ss', _seconds(start)]);
@@ -220,6 +235,7 @@ RenderCommand buildRenderCommand({
       args.addAll(['-i', clip.source.path]);
     }
   }
+  final clipInputs = inputOf.length;
 
   // A muted track, or one starting after the end, isn't read at all.
   final tracks = <(int, AudioTrack, Duration)>[];
@@ -227,7 +243,7 @@ RenderCommand buildRenderCommand({
     if (!track.heard || track.start >= duration) continue;
     final used = _atMost(track.length, duration - track.start);
     if (used < const Duration(milliseconds: 10)) continue;
-    final input = pieces.length + tracks.length;
+    final input = clipInputs + tracks.length;
     if (track.trim.start > Duration.zero) {
       args.addAll(['-ss', _seconds(track.trim.start)]);
     }
@@ -235,19 +251,47 @@ RenderCommand buildRenderCommand({
     tracks.add((input, track, used));
   }
 
+  // The overlays that show before the end, each for as long as it shows -
+  // drawn in list order, which is lane order: bottom first.
+  final overlays = <(int, OverlayClip, Duration)>[];
+  for (final overlay in composition.overlays) {
+    if (overlay.start >= duration) continue;
+    final used = _atMost(overlay.length, duration - overlay.start);
+    if (used < const Duration(milliseconds: 10)) continue;
+    final input = clipInputs + tracks.length + overlays.length;
+    final source = overlay.clip.source;
+    if (source.isVideo) {
+      final start = overlay.clip.usedRange.start;
+      if (start > Duration.zero) args.addAll(['-ss', _seconds(start)]);
+      args.addAll(['-t', _seconds(used), '-i', source.path]);
+    } else {
+      args.addAll(['-i', source.path]);
+    }
+    overlays.add((input, overlay, used));
+  }
+
   final watermark = watermarkPath == null ? null : profile.watermark;
-  final watermarkInput = pieces.length + tracks.length;
+  final watermarkInput = clipInputs + tracks.length + overlays.length;
   if (watermark != null) args.addAll(['-i', watermarkPath!]);
 
-  // ---- Each clip: [v<i>] and [a<i>], exactly its length.
+  // ---- Each piece: [v<i>] and [a<i>], exactly its length.
   final graph = <String>[];
   final layout = profile.audioChannels == 1 ? 'mono' : 'stereo';
   final rate = profile.audioSampleRate;
   final format = 'aformat=sample_rates=$rate:channel_layouts=$layout';
   for (final (i, (clip, length)) in pieces.indexed) {
+    if (clip == null) {
+      // A blank: black, and silence as long.
+      graph.add('color=c=black:s=${w}x$h:r=$fps:d=${_seconds(length)},'
+          'format=yuv420p,setsar=1[v$i]');
+      graph.add('anullsrc=r=$rate:cl=$layout,atrim=duration=${_seconds(length)}'
+          '[a$i]');
+      continue;
+    }
+    final input = inputOf[i]!;
     graph.addAll(_clipVideo(
       clip: clip,
-      input: i,
+      input: input,
       label: '[v$i]',
       length: length,
       background: composition.background,
@@ -256,7 +300,7 @@ RenderCommand buildRenderCommand({
       fps: fps,
     ));
     graph.add(clip.soundHeard
-        ? _chain('[$i:a:0]', [
+        ? _chain('[$input:a:0]', [
             format,
             ..._volume(clip.volume),
             // Held to the clip's length whatever the file's sound runs to.
@@ -280,6 +324,25 @@ RenderCommand buildRenderCommand({
     audioOut = '[acat]';
   }
 
+  // ---- The overlays, each over what is under it: from its start, gone
+  // again at its end (eof_action=pass lets the picture under it through).
+  for (final (j, (input, overlay, used)) in overlays.indexed) {
+    final chain = _overlayVideo(
+      clip: overlay.clip,
+      start: overlay.start,
+      length: used,
+      width: w,
+      height: h,
+      fps: fps,
+    );
+    if (chain == null) continue; // None of it on the canvas.
+    final (filters, place) = chain;
+    graph.add(_chain('[$input:v:0]', filters, '[ov$j]'));
+    graph.add(_chain('$videoOut[ov$j]',
+        ['overlay=$place:eof_action=pass'], '[vo$j]'));
+    videoOut = '[vo$j]';
+  }
+
   // ---- The picture out: stamped, when asked, then in the encoder's format.
   if (watermark == null) {
     graph.add(_chain(videoOut, ['format=${encoder.pixelFormat}'], '[v]'));
@@ -291,9 +354,13 @@ RenderCommand buildRenderCommand({
         '$videoOut[wm]', [place, 'format=${encoder.pixelFormat}'], '[v]'));
   }
 
-  // ---- The sound out: the clips' own, with each track laid over from its
-  // place in the edit.
-  if (tracks.isEmpty) {
+  // ---- The sound out: the clips' own, with each track and each overlay's
+  // own sound laid over from its place in the edit.
+  final heardOverlays = [
+    for (final (j, (input, overlay, used)) in overlays.indexed)
+      if (overlay.clip.soundHeard) (j, input, overlay, used)
+  ];
+  if (tracks.isEmpty && heardOverlays.isEmpty) {
     graph.add(_chain(audioOut, ['anull'], '[a]'));
   } else {
     final labels = [audioOut];
@@ -307,6 +374,19 @@ RenderCommand buildRenderCommand({
         'apad=whole_dur=$seconds',
       ], '[t$j]'));
       labels.add('[t$j]');
+    }
+    for (final (j, input, overlay, used) in heardOverlays) {
+      final delay = overlay.start.inMilliseconds;
+      graph.add(_chain('[$input:a:0]', [
+        format,
+        ..._volume(overlay.clip.volume),
+        'apad=whole_dur=${_seconds(used)}',
+        'atrim=duration=${_seconds(used)}',
+        'asetpts=PTS-STARTPTS',
+        if (delay > 0) 'adelay=delays=$delay:all=1',
+        'apad=whole_dur=$seconds',
+      ], '[oa$j]'));
+      labels.add('[oa$j]');
     }
     // duration=first: as long as the clips. normalize=0: the volumes are
     // the author's, not divided by the number of sounds. The limiter keeps
@@ -351,7 +431,9 @@ RenderCommand buildRenderCommand({
     arguments: List.unmodifiable(args),
     filterGraph: filterGraph,
     duration: duration,
-    hasSound: pieces.any((piece) => piece.$1.soundHeard) || tracks.isNotEmpty,
+    hasSound: pieces.any((piece) => piece.$1?.soundHeard == true) ||
+        tracks.isNotEmpty ||
+        heardOverlays.isNotEmpty,
     usesQpCeilings: withCeilings,
   );
 }
@@ -460,6 +542,57 @@ List<String> _clipVideo({
     label,
   ));
   return graph;
+}
+
+/// An overlay's picture, framed on the canvas with nothing around it, cut to
+/// [length] and moved to [start] in the edit: its filters, and where
+/// overlay puts it (`x=..:y=..`). Null when none of it reaches the canvas.
+(List<String>, String)? _overlayVideo({
+  required MediaLayer clip,
+  required Duration start,
+  required Duration length,
+  required int width,
+  required int height,
+  required int fps,
+}) {
+  final source = clip.source;
+  final part = visiblePart(
+    mediaWidth: source.width,
+    mediaHeight: source.height,
+    canvasWidth: width.toDouble(),
+    canvasHeight: height.toDouble(),
+    transform: clip.transform,
+  );
+  if (part == null) return null;
+  final placed = part.placement;
+  final mw = source.width, mh = source.height;
+  final filters = [
+    // As a clip's: a video at the output rate and held on its last frame;
+    // a still composed once a second.
+    if (source.isVideo) ...[
+      'fps=$fps',
+      'tpad=stop_mode=clone:stop_duration=1',
+    ] else ...[
+      'loop=loop=-1:size=1:start=0',
+      'setpts=N/($_stillComposeFps*TB)',
+    ],
+    if (!part.isWhole)
+      'crop=w=iw*${part.width}/$mw:h=ih*${part.height}/$mh'
+          ':x=iw*${part.left}/$mw:y=ih*${part.top}/$mh:exact=1',
+    'scale=${evenPixels(placed.width)}:${evenPixels(placed.height)}'
+        ':flags=$_scaleFlags',
+    'setsar=1',
+    ..._rotationFilters(placed.rotation),
+    if (!source.isVideo) 'fps=$fps',
+    'trim=duration=${_seconds(length)}',
+    // From its place in the edit: overlay shows nothing of it before.
+    start > Duration.zero
+        ? 'setpts=PTS-STARTPTS+${_seconds(start)}/TB'
+        : 'setpts=PTS-STARTPTS',
+  ];
+  final x = placed.centerX.toStringAsFixed(2);
+  final y = placed.centerY.toStringAsFixed(2);
+  return (filters, 'x=$x-w/2:y=$y-h/2');
 }
 
 /// The watermark's two filters for a [width] x [height] picture: its scale

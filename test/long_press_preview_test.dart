@@ -26,8 +26,9 @@ const _menuItems = [
   MenuItem(label: 'Report', icon: Icons.report, isDestructive: true),
 ];
 
-Future<void> _pumpPreview(WidgetTester tester, {required double height}) async {
-  tester.view.physicalSize = _screen;
+Future<void> _pumpPreview(WidgetTester tester,
+    {required double height, Size screen = _screen}) async {
+  tester.view.physicalSize = screen;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
@@ -91,5 +92,21 @@ void main() {
     await _pumpPreview(tester, height: 60);
 
     expect(tester.getRect(find.byKey(const ValueKey('bubble'))).height, 60);
+  });
+
+  testWidgets('a phone on its side: the menu scrolls, all of it on screen',
+      (tester) async {
+    const onItsSide = Size(915, 412);
+    await _pumpPreview(tester, height: 300, screen: onItsSide);
+    expect(tester.takeException(), isNull);
+    // Its first rows showing, the rest a scroll away - and nothing past the
+    // bottom of the screen.
+    final reply = tester.getRect(find.text('Reply'));
+    expect(reply.bottom, lessThanOrEqualTo(onItsSide.height));
+    expect(tester.getRect(find.text('👍')).top, greaterThanOrEqualTo(0.0));
+    await tester.drag(find.text('Reply'), const Offset(0, -200));
+    await tester.pump();
+    expect(tester.getRect(find.text('Report')).bottom,
+        lessThanOrEqualTo(onItsSide.height));
   });
 }

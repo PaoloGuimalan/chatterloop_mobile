@@ -367,7 +367,17 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                     offset: _tabSlide,
                     duration: _tabSlideDur,
                     curve: Curves.easeOutCubic,
-                    child: widget.navigationShell,
+                    // The sides kept clear too, as the header and the nav bar
+                    // above and below already are: in landscape the camera
+                    // cutout (or a 3-button nav bar) sits on one side, and
+                    // the tabs ran under it. It also takes that inset out of
+                    // what the tabs see, so a sideways list inside no longer
+                    // adds it as a gap of its own (the Moments strip did).
+                    child: SafeArea(
+                      top: false,
+                      bottom: false,
+                      child: widget.navigationShell,
+                    ),
                   ),
                 ),
                 Container(
