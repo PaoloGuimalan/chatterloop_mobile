@@ -163,9 +163,14 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
     return moments[_index.clamp(0, moments.length - 1)];
   }
 
+  /// The phone's hardware decoders, taken back from the feed's videos
+  /// under this screen - awaited before a moment's video starts.
+  late final Future<void> _decoders = SharedVideoControllers.claimFullScreen();
+
   @override
   void initState() {
     super.initState();
+    _decoders; // Claimed as it opens.
     _replyFocus.addListener(_syncPause);
     // The send button lights up once there is something to send.
     _reply.addListener(() => setState(() {}));
@@ -186,6 +191,7 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
     _progress.dispose();
     _releaseVideo();
     _releasePreload();
+    SharedVideoControllers.endFullScreen();
     _reply.dispose();
     _replyFocus.dispose();
     super.dispose();
@@ -280,6 +286,8 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
       _preloadNext();
     } else if (moment.media?.isVideo == true) {
       final source = moment.media!.reference;
+      await _decoders;
+      if (!mounted || shown != _showCount) return;
       final entry = SharedVideoControllers.acquire(source, isLocalFile: false);
       _videoSource = source;
       // Already loading (or loaded) when it was the preloaded next one.
@@ -508,17 +516,25 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false,
+      // The frosted controls share ONE blur of what's behind them: each
+      // blurring the playing video on its own, every frame, was ~6 full
+      // blurs a frame - the video stuttered on a phone though its decoder
+      // kept a steady 30fps (see _Glass).
+      body: BackdropGroup(child: _body()),
+    );
+  }
+
+  Widget _body() {
     final moment = _current;
     final mq = MediaQuery.of(context);
     // Over the keyboard while typing a reply; otherwise clear of the home
     // indicator. The media itself does not move - the screen is not resized.
     final keyboard = mq.viewInsets.bottom;
     final bottom = keyboard > 0 ? keyboard + 10 : mq.padding.bottom + 16;
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      resizeToAvoidBottomInset: false,
-      body: _moments == null
+    return _moments == null
           ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : moment == null
               ? SafeArea(child: _gone())
@@ -578,8 +594,7 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
                           _isSelf ? _selfPanel(moment) : _othersPanel(moment),
                     ),
                   ],
-                ),
-    );
+                );
   }
 
   Widget _gone() {
@@ -1468,7 +1483,9 @@ class _Glass extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
+      // Grouped: every glass on the screen shares one backdrop blur (the
+      // BackdropGroup at its root) instead of each doing its own.
+      child: BackdropFilter.grouped(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           width: width,

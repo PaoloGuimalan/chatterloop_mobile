@@ -165,6 +165,27 @@ class SharedVideoControllers {
   /// player outside this pool (the Moment editor's preview).
   static Future<void> releaseIdle() => _settle(_trimIdle(roomFor: maxLive));
 
+  /// Above zero while a full-screen player is open (the Moments viewer):
+  /// the inline feed videos under it let their players go. With every
+  /// hardware decoder held by those, its video fell back to a software
+  /// decoder that couldn't keep up with 1080p - choppy moments. They come
+  /// back as it closes.
+  static final fullScreen = ValueNotifier<int>(0);
+
+  /// For a full-screen player as it opens: the inline videos let go, then
+  /// every idle player is freed - await it before starting the video, so
+  /// that starts on a free hardware decoder. Pair with [endFullScreen].
+  static Future<void> claimFullScreen() async {
+    fullScreen.value++;
+    // The inline videos drop their players as they rebuild.
+    await WidgetsBinding.instance.endOfFrame;
+    await releaseIdle();
+  }
+
+  static void endFullScreen() {
+    if (fullScreen.value > 0) fullScreen.value--;
+  }
+
   static void release(String source, {required bool isLocalFile}) {
     final key = _keyFor(source, isLocalFile);
     final entry = _entries[key];
@@ -1427,6 +1448,17 @@ class _InlinePostVideoState extends State<InlinePostVideo> {
   void initState() {
     super.initState();
     _resolveRatio();
+    SharedVideoControllers.fullScreen.addListener(_onFullScreen);
+  }
+
+  void _onFullScreen() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    SharedVideoControllers.fullScreen.removeListener(_onFullScreen);
+    super.dispose();
   }
 
   @override
@@ -1501,7 +1533,9 @@ class _InlinePostVideoState extends State<InlinePostVideo> {
                   behavior: HitTestBehavior.opaque,
                   onTap: onTap,
                 )
-              else if (_live)
+              // Not while a full-screen player is open over the feed: that
+              // one gets the decoders (the frame shows here meanwhile).
+              else if (_live && SharedVideoControllers.fullScreen.value == 0)
                 // Its loading spinner and, once ready, the video and its
                 // controls fill this same box - fillWidth covers it.
                 VideoPlayerScreen(
