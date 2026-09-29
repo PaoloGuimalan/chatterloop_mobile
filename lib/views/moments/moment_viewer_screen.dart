@@ -18,6 +18,7 @@ import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/views/moments/moment_shared_post_card.dart';
 import 'package:chatterloop_app/views/moments/moment_viewers_sheet.dart';
 import 'package:chatterloop_app/views/moments/moments_strip.dart';
+import 'package:chatterloop_app/views/moments/moment_route.dart';
 import 'package:chatterloop_app/views/moments/reaction_burst.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -365,12 +366,63 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
       return false;
     }
     final entry = _order[target];
-    context.pushReplacement(Uri(
-      path: '/moments/${entry.author.entityId}',
-      queryParameters: {'post': entry.startPostId},
-    ).toString());
+    context.pushReplacement(
+      Uri(
+        path: '/moments/${entry.author.entityId}',
+        queryParameters: {'post': entry.startPostId},
+      ).toString(),
+      // This one slides out the way the next comes in (MomentPage).
+      extra: offset > 0 ? MomentSlide.next : MomentSlide.previous,
+    );
     return true;
   }
+
+  /// The page this viewer is shown in, when it is the moments one - the
+  /// drag down moves it.
+  MomentPageRoute? get _route {
+    final route = ModalRoute.of(context);
+    return route is MomentPageRoute ? route : null;
+  }
+
+  /// How far a drag down has gone.
+  double _dragDy = 0;
+
+  /// Dragged down: the viewer follows the finger, held still meanwhile.
+  bool _dismissing = false;
+
+  void _dismissDrag(DragUpdateDetails details, double height) {
+    _dragDy += details.delta.dy;
+    final route = _route;
+    if (route == null) return;
+    if (!_dismissing && _dragDy > 0) {
+      if (!route.startDismiss()) return;
+      _dismissing = true;
+      _held = true;
+      _syncPause();
+    }
+    if (_dismissing) route.updateDismiss(_dragDy / height);
+  }
+
+  void _endVerticalDrag(DragEndDetails details, double height) {
+    final v = details.primaryVelocity ?? 0;
+    if (_dismissing) {
+      _dismissing = false;
+      // A flick down, or let go a fifth of the way down (not flicked back).
+      final closing = v > 700 || (_dragDy > height * 0.2 && v > -300);
+      _route?.endDismiss(closing: closing);
+      if (closing) {
+        _close();
+      } else {
+        _held = false;
+        _syncPause();
+      }
+      return;
+    }
+    // Not the moments page (tests): a flick still closes.
+    if (v > 400) _close();
+    if (v < -400 && _isSelf) _openViewers();
+  }
+
 
   void _toggleMute() {
     setState(() => _muted = !_muted);
@@ -635,12 +687,13 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
         _held = false;
         _syncPause();
       },
-      // Down to dismiss; up (yours) for who saw it; sideways to change person.
-      onVerticalDragEnd: (details) {
-        final v = details.primaryVelocity ?? 0;
-        if (v > 400) _close();
-        if (v < -400 && _isSelf) _openViewers();
-      },
+      // Down to dismiss (the viewer follows the finger); up (yours) for who
+      // saw it; sideways to change person.
+      onVerticalDragStart: (_) => _dragDy = 0,
+      onVerticalDragUpdate: (d) => _dismissDrag(d, mq.size.height),
+      onVerticalDragEnd: (d) => _endVerticalDrag(d, mq.size.height),
+      onVerticalDragCancel: () => _endVerticalDrag(
+          DragEndDetails(primaryVelocity: 0), mq.size.height),
       onHorizontalDragEnd: (details) {
         final v = details.primaryVelocity ?? 0;
         if (v < -300) _goToAuthor(1);

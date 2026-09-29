@@ -513,9 +513,13 @@ class _PresenceMarkerState extends State<_PresenceMarker> {
         // CONTACTS and DM counterparts and excludes you from your own scope.
         // Left to the map alone, your own avatar is the one face in the app
         // that never lights up, which reads as a bug rather than as a rule.
+        //
+        // Only the profile you are USING now, though: switched into a realm,
+        // your own user profile is offline - the server says so to everyone
+        // else, and it showed online only here. It goes by the map like
+        // anyone's until you switch back.
         final me = store.state.userAuth.user;
-        if (widget.entityId == me.entityId ||
-            widget.entityId == me.personalEntityId) {
+        if (widget.entityId == me.entityId) {
           return const _PresenceVM(online: true);
         }
         final PresenceInfo? info = store.state.presence[widget.entityId];

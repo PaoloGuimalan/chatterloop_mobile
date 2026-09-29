@@ -18,14 +18,16 @@ import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart
 
 const _me = 'me-entity';
 
-AppState _state(Map<String, PresenceInfo> presence) => AppState(
+AppState _state(Map<String, PresenceInfo> presence, {ActiveEntity? acting}) =>
+    AppState(
       // `entityId` is a getter over activeEntity/personalEntityId/id, so the
-      // signed-in entity is set through personalEntityId here.
-      userAuth: const UserAuth(
+      // signed-in entity is set through personalEntityId here - and the
+      // realm being used, when switched into one, through activeEntity.
+      userAuth: UserAuth(
         true,
         UserAccount('acc', 'ada', 'Ada', '', 'L', null, true, true, null, null,
             null, null,
-            personalEntityId: _me),
+            personalEntityId: _me, activeEntity: acting),
       ),
       presence: presence,
     );
@@ -35,8 +37,10 @@ Future<void> _pump(
   required String entityId,
   required double size,
   required Map<String, PresenceInfo> presence,
+  ActiveEntity? acting,
 }) async {
-  final store = Store<AppState>((s, a) => s, initialState: _state(presence));
+  final store = Store<AppState>((s, a) => s,
+      initialState: _state(presence, acting: acting));
   await tester.pumpWidget(StoreProvider<AppState>(
     store: store,
     child: MaterialApp(
@@ -110,6 +114,31 @@ void main() {
         (tester) async {
       await _pump(tester, entityId: _me, size: 40, presence: const {});
       expect(_dot, findsOneWidget);
+    });
+
+    testWidgets(
+        'switched into a realm: the realm is you, your own profile goes by '
+        'the presence map like anyone', (tester) async {
+      const realm = ActiveEntity(id: 'realm-entity', type: 'realm');
+      await _pump(tester,
+          entityId: 'realm-entity', size: 40, presence: const {}, acting: realm);
+      expect(_dot, findsOneWidget);
+
+      await _pump(tester,
+          entityId: _me, size: 40, presence: const {}, acting: realm);
+      expect(_dot, findsNothing);
+
+      await _pump(tester,
+          entityId: _me,
+          size: 40,
+          presence: {
+            _me: PresenceInfo(
+                online: false,
+                lastSeen: DateTime.now().subtract(const Duration(minutes: 3)))
+          },
+          acting: realm);
+      expect(_dot, findsNothing);
+      expect(find.text('3m'), findsOneWidget);
     });
   });
 

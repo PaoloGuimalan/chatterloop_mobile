@@ -37,6 +37,7 @@ import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/post_preview_view.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/views/moments/create_moment_screen.dart';
+import 'package:chatterloop_app/views/moments/moment_route.dart';
 import 'package:chatterloop_app/views/moments/moment_viewer_screen.dart';
 import 'package:chatterloop_app/views/search/search_detail_view.dart';
 import 'package:chatterloop_app/views/search/search_view.dart';
@@ -64,6 +65,16 @@ import 'package:go_router/go_router.dart';
 /// reads as an abrupt cut at normal tap speed).
 Page<void> _clPage(GoRouterState state, Widget child) =>
     CLPage(key: state.pageKey, child: child);
+
+/// The moments viewer: its own slides (see MomentPage) - `extra` says
+/// whether it is the next or previous person's, when moved to from another.
+Page<void> _momentPage(GoRouterState state, Widget child) => MomentPage(
+      key: state.pageKey,
+      slide: state.extra is MomentSlide
+          ? state.extra as MomentSlide
+          : MomentSlide.open,
+      child: child,
+    );
 
 /// Deliberately a hand-rolled Page/PageRoute pair rather than go_router's
 /// `CustomTransitionPage`, for ONE reason: [CLPageRoute.canTransitionTo].
@@ -486,7 +497,7 @@ GoRouter buildAppRouter(AuthController authController) {
           // '/moments/:entityId'.
           GoRoute(
             path: '/moments/archive',
-            pageBuilder: (c, s) => _clPage(
+            pageBuilder: (c, s) => _momentPage(
                 s,
                 MomentViewerScreen(
                     entityId: appStore.state.userAuth.user.entityId,
@@ -495,7 +506,7 @@ GoRouter buildAppRouter(AuthController authController) {
           ),
           GoRoute(
             path: '/moments/:entityId',
-            pageBuilder: (c, s) => _clPage(
+            pageBuilder: (c, s) => _momentPage(
                 s,
                 MomentViewerScreen(
                     // "self": your own moments - where a notification
