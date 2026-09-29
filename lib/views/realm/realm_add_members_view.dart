@@ -197,11 +197,8 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
     if (!mounted) return;
     setState(() => _adding = false);
 
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not add them. Please try again.')));
-      return;
-    }
+    // The request has already said why (reportedAction).
+    if (!ok) return;
     Navigator.of(context).pop(true);
   }
 

@@ -18,6 +18,7 @@
 
 import 'dart:io';
 
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:chatterloop_app/core/utils/app_messenger.dart';
 import 'package:chatterloop_app/core/utils/gallery_saver.dart';
 import 'package:dio/dio.dart';
@@ -252,29 +253,37 @@ class MediaDownloader {
         try {
           final saved = await GallerySaver.save(processed?.path ?? staged.path,
               fileName: fileName, mimeType: type);
-          if (saved) clSnack("Saved to your gallery");
+          if (saved) {
+            clSnack("Saved to your gallery", type: CLAlertType.success);
+          }
         } finally {
           await processed?.dispose();
         }
         return;
       }
       final location = await _saveToDevice(staged, fileName, type);
-      clSnack("Saved $fileName to $location");
+      clSnack("Saved $fileName to $location", type: CLAlertType.success);
     } on DioException catch (e) {
       debugPrint('MediaDownloader: $url failed: $e');
-      clSnack(toGallery
-          ? "Couldn't download it. Check your connection."
-          : "Couldn't download $fileName. Check your connection.");
+      clSnack(
+          toGallery
+              ? "Couldn't download it. Check your connection."
+              : "Couldn't download $fileName. Check your connection.",
+          type: CLAlertType.error);
     } on PlatformException catch (e) {
-      clSnack(toGallery
-          ? GallerySaver.failureMessage(e)
-          : e.code == "permission_denied"
-              ? "Storage permission is needed to save files."
-              : "Couldn't save $fileName to this device.");
+      clSnack(
+          toGallery
+              ? GallerySaver.failureMessage(e)
+              : e.code == "permission_denied"
+                  ? "Storage permission is needed to save files."
+                  : "Couldn't save $fileName to this device.",
+          type: CLAlertType.warning);
     } catch (e) {
-      clSnack(toGallery
-          ? GallerySaver.failureMessage(e)
-          : "Couldn't save $fileName to this device.");
+      clSnack(
+          toGallery
+              ? GallerySaver.failureMessage(e)
+              : "Couldn't save $fileName to this device.",
+          type: CLAlertType.error);
     } finally {
       // The staged copy has been handed over, or the attempt failed - either
       // way this process is done with it. Best-effort: the cache directory is

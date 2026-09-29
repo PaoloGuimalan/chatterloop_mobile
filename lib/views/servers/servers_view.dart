@@ -206,11 +206,7 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
     });
     // The server is yours now, so it belongs in the rail beside this pane.
     if (joined) widget.onServersChanged?.call();
-
-    if (!joined) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not join. Please try again.')));
-    }
+    // A failed join has already said why (reportedAction).
   }
 
   /// Pushes the create form and, if something was created, re-reads both lists:

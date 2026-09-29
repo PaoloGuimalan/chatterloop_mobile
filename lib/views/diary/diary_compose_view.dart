@@ -13,6 +13,7 @@ import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:chatterloop_app/views/diary/widgets/mood_picker_sheet.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
@@ -149,7 +150,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
     setState(() {});
     if (rejected.isNotEmpty && mounted) {
-      _toast("Skipped ${rejected.length} file(s) over $kMaxUploadLabel");
+      _toast("Skipped ${rejected.length} file(s) over $kMaxUploadLabel",
+          type: CLAlertType.warning);
     }
   }
 
@@ -163,10 +165,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     if (picked != null && mounted) setState(() => _entryDate = picked);
   }
 
-  void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
-    );
+  void _toast(String message, {CLAlertType type = CLAlertType.error}) {
+    CLAlerts.show(message, type: type);
   }
 
   /// Parchment document -> HTML, the format the server stores and webapp
@@ -189,11 +189,11 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     // The server 422s when either is blank, so catch it here with a message
     // that says which one rather than surfacing a raw failure.
     if (title.isEmpty) {
-      _toast("Add a title first");
+      _toast("Add a title first", type: CLAlertType.warning);
       return;
     }
     if (plain.isEmpty) {
-      _toast("Write something first");
+      _toast("Write something first", type: CLAlertType.warning);
       return;
     }
 
@@ -211,7 +211,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
       if (result == null) {
         if (!mounted) return;
         setState(() => _isSaving = false);
-        _toast("Couldn't upload ${pending.name}");
+        // Already reported by the request (reportedAction).
         return;
       }
       uploaded.add(DiaryAttachment(

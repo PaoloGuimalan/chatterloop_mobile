@@ -1,9 +1,11 @@
 // Own-profile update, avatar/cover upload, and other-user profile lookup.
 // Split out from AuthApi since these aren't session/credential concerns.
 
+import 'package:chatterloop_app/core/errors/request_errors.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/requests/reported_action.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/paged_result.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
@@ -20,21 +22,16 @@ class ProfileApi {
   /// fields. Response envelope is `{status, message, data: account}`, not
   /// the usual {status, result} shape used elsewhere in this app.
   Future<Map<String, dynamic>?> updateProfileRequest(
-      Map<String, dynamic> fieldsToUpdate) async {
-    try {
-      final response =
-          await _userDio.put(_endpoints.updateProfile, data: fieldsToUpdate);
-      if (response.data["status"] == false) return null;
-      return response.data["data"] is Map
+      Map<String, dynamic> fieldsToUpdate) {
+    // Refusals here are mostly validation ("That username is taken", a DRF
+    // field error) - exactly what the person needs to read to fix the form.
+    return reportedRequest(
+      () => _userDio.put(_endpoints.updateProfile, data: fieldsToUpdate),
+      failure: "We couldn't save your changes.",
+      parse: (response) => response.data["data"] is Map
           ? Map<String, dynamic>.from(response.data["data"])
-          : null;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return null;
-    }
+          : null,
+    );
   }
 
   /// Response is {"data": {...}} - not wrapped in {status, result} either.
@@ -100,19 +97,14 @@ class ProfileApi {
   Future<bool> updateRealmRequest(
       String realmId, Map<String, dynamic> fields) async {
     if (fields.isEmpty) return true;
-    try {
-      final response = await _userDio.put(
+    return reportedAction(
+      () => _userDio.put(
         _endpoints.myRealms,
         data: {'realm_id': realmId, 'fields': fields},
-      );
-      return response.data != null;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't save those changes.",
+      accepted: (r) => r.data != null,
+    );
   }
 
   /// The public realm directory - webapp's GetTopRealmsRequest.
@@ -201,7 +193,13 @@ class ProfileApi {
   /// thing from a server with no channels. The search results now open a server
   /// by id whether or not you are in it, exactly as web does, so the caller has
   /// to be able to tell those two apart to say so.
-  Future<({List<ServerChannel> channels, bool isAdmin, bool hasAccess})>
+  Future<
+      ({
+        List<ServerChannel> channels,
+        bool isAdmin,
+        bool canCreateChannel,
+        bool hasAccess
+      })>
       getServerChannelsRequest(String serverId) async {
     try {
       final response =
@@ -210,6 +208,7 @@ class ProfileApi {
         return (
           channels: const <ServerChannel>[],
           isAdmin: false,
+          canCreateChannel: false,
           // A `status: false` body is the route's own error path, not a denial -
           // the denial is the 401 caught below.
           hasAccess: true,
@@ -236,11 +235,17 @@ class ProfileApi {
         return (
           channels: const <ServerChannel>[],
           isAdmin: false,
+          canCreateChannel: false,
           hasAccess: true
         );
       }
       final first = rows.first;
       final isAdmin = first is Map && first["is_admin"] == true;
+      // The server's own answer to "may I create a channel here", computed
+      // by the check /u/createchannel applies. Absent from an older server:
+      // is_admin, which matches the default roles, stands in.
+      final canCreate = first is Map ? first["can_create_channel"] : null;
+      final canCreateChannel = canCreate is bool ? canCreate : isAdmin;
       final channels = first is Map ? first["channels"] : null;
       if (channels is! List) {
         if (kDebugMode) {
@@ -250,6 +255,7 @@ class ProfileApi {
         return (
           channels: const <ServerChannel>[],
           isAdmin: isAdmin,
+          canCreateChannel: canCreateChannel,
           hasAccess: true
         );
       }
@@ -263,6 +269,7 @@ class ProfileApi {
                 ServerChannel.fromJson(Map<String, dynamic>.from(item)))
             .toList(),
         isAdmin: isAdmin,
+        canCreateChannel: canCreateChannel,
         hasAccess: true,
       );
     } on DioException catch (e) {
@@ -276,6 +283,7 @@ class ProfileApi {
       return (
         channels: const <ServerChannel>[],
         isAdmin: false,
+        canCreateChannel: false,
         hasAccess: e.response?.statusCode != 401,
       );
     } catch (e) {
@@ -286,6 +294,7 @@ class ProfileApi {
       return (
         channels: const <ServerChannel>[],
         isAdmin: false,
+        canCreateChannel: false,
         hasAccess: true
       );
     }
@@ -340,7 +349,7 @@ class ProfileApi {
       );
       return (
         ok: response.data?["status"] != false,
-        message: response.data?["message"]?.toString(),
+        message: messageFromBody(response.data),
       );
     } on DioException catch (e) {
       if (kDebugMode) {
@@ -349,9 +358,7 @@ class ProfileApi {
       }
       return (
         ok: false,
-        message: e.response?.data is Map
-            ? e.response?.data["message"]?.toString()
-            : null,
+        message: serverReason(e),
       );
     } catch (e) {
       if (kDebugMode) {
@@ -377,7 +384,7 @@ class ProfileApi {
       );
       return (
         ok: response.data?["status"] == true,
-        message: response.data?["message"]?.toString(),
+        message: messageFromBody(response.data),
       );
     } on DioException catch (e) {
       if (kDebugMode) {
@@ -386,9 +393,7 @@ class ProfileApi {
       }
       return (
         ok: false,
-        message: e.response?.data is Map
-            ? e.response?.data["message"]?.toString()
-            : null,
+        message: serverReason(e),
       );
     } catch (e) {
       if (kDebugMode) {
@@ -414,40 +419,34 @@ class ProfileApi {
   /// fullName are cosmetic, feeding the notification text, and web fills them
   /// from the page's slug/name when acting as one.
   Future<bool> joinServerRequest(String serverId) async {
-    try {
-      final user = appStore.state.userAuth.user;
-      final acting = user.activeEntity;
-      final asPage = user.isActingAsEntity;
-      final payload = {
-        'serverID': serverId,
-        'memberstoadd': [
-          {
-            'userID': asPage
-                ? (acting?.slug ?? acting?.name ?? user.username)
-                : user.username,
-            'entityID': user.entityId,
-            'fullName': asPage
-                ? (acting?.name ?? user.personalDisplayName)
-                : user.personalDisplayName,
-          }
-        ],
-        // The ENTITY id here, which is what web sends for a self-join - the
-        // admin-driven add path sends account ids instead. It only drives SSE
-        // fan-out, and the one person to notify is you.
-        'receivers': [user.entityId],
-      };
-      final response = await _mainDio.post(
+    final user = appStore.state.userAuth.user;
+    final acting = user.activeEntity;
+    final asPage = user.isActingAsEntity;
+    final payload = {
+      'serverID': serverId,
+      'memberstoadd': [
+        {
+          'userID': asPage
+              ? (acting?.slug ?? acting?.name ?? user.username)
+              : user.username,
+          'entityID': user.entityId,
+          'fullName': asPage
+              ? (acting?.name ?? user.personalDisplayName)
+              : user.personalDisplayName,
+        }
+      ],
+      // The ENTITY id here, which is what web sends for a self-join - the
+      // admin-driven add path sends account ids instead. It only drives SSE
+      // fan-out, and the one person to notify is you.
+      'receivers': [user.entityId],
+    };
+    return reportedAction(
+      () => _mainDio.post(
         _endpoints.addNewMemberToServer,
         data: {'token': JwtCodec.sign(payload)},
-      );
-      return response.data?["status"] != false;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't join that server.",
+    );
   }
 
   /// Creates a GROUP CHAT - webapp's CreateGroupChatRequest.
@@ -465,8 +464,8 @@ class ProfileApi {
     required bool isPrivate,
     List<String> memberEntityIds = const [],
   }) async {
-    try {
-      final response = await _mainDio.post(
+    return reportedAction(
+      () => _mainDio.post(
         _endpoints.createGroupChat,
         data: {
           'token': JwtCodec.sign({
@@ -475,15 +474,9 @@ class ProfileApi {
             'otherUsers': memberEntityIds,
           })
         },
-      );
-      return response.data?["status"] != false;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't create that group chat.",
+    );
   }
 
   /// Creates a SERVER - webapp's CreateServerRequest.
@@ -499,8 +492,8 @@ class ProfileApi {
     required bool isPrivate,
     List<String> memberEntityIds = const [],
   }) async {
-    try {
-      final response = await _mainDio.post(
+    return reportedAction(
+      () => _mainDio.post(
         _endpoints.createServer,
         data: {
           'token': JwtCodec.sign({
@@ -511,15 +504,9 @@ class ProfileApi {
             'otherUsers': memberEntityIds,
           })
         },
-      );
-      return response.data?["status"] != false;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't create that server.",
+    );
   }
 
   /// Creates a channel inside a server - webapp's CreateChannelRequest.
@@ -534,8 +521,8 @@ class ProfileApi {
     required String type,
     List<String> memberEntityIds = const [],
   }) async {
-    try {
-      final response = await _mainDio.post(
+    return reportedAction(
+      () => _mainDio.post(
         _endpoints.createChannel,
         data: {
           'token': JwtCodec.sign({
@@ -546,15 +533,9 @@ class ProfileApi {
             'type': type,
           })
         },
-      );
-      return response.data?["status"] != false;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't create that channel.",
+    );
   }
 
   /// Adds people to a realm. Mirrors webapp's AddNewMemberRequest:
@@ -583,26 +564,20 @@ class ProfileApi {
     bool isServer = false,
   }) async {
     if (members.isEmpty) return true;
-    try {
-      final payload = <String, dynamic>{
-        // The id's KEY changes with the endpoint - serverID there,
-        // conversationID here - even though the value is the same realm id.
-        (isServer ? 'serverID' : 'conversationID'): conversationId,
-        'memberstoadd': members.map((m) => m.toJson()).toList(),
-        'receivers': members.map((m) => m.accountId).toList(),
-      };
-      final response = await _mainDio.post(
+    final payload = <String, dynamic>{
+      // The id's KEY changes with the endpoint - serverID there,
+      // conversationID here - even though the value is the same realm id.
+      (isServer ? 'serverID' : 'conversationID'): conversationId,
+      'memberstoadd': members.map((m) => m.toJson()).toList(),
+      'receivers': members.map((m) => m.accountId).toList(),
+    };
+    return reportedAction(
+      () => _mainDio.post(
         isServer ? _endpoints.addNewMemberToServer : _endpoints.addNewMember,
         data: {'token': JwtCodec.sign(payload)},
-      );
-      return response.data?["status"] != false;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't add them.",
+    );
   }
 
   /// Promote to admin / demote to member. NODE, and keyed by the MEMBER ROW's
@@ -614,19 +589,13 @@ class ProfileApi {
     required String memberId,
     required String role,
   }) async {
-    try {
-      final response = await _mainDio.put(
+    return reportedAction(
+      () => _mainDio.put(
         _endpoints.realmMemberRole,
         data: {'realm_id': realmId, 'member_id': memberId, 'new_role': role},
-      );
-      return response.data?["status"] != false;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't change their role.",
+    );
   }
 
   /// A realm's followers - pages only, since nothing else can be followed.
@@ -660,20 +629,16 @@ class ProfileApi {
   /// Drops one follower. Keyed by follow_id (the FOLLOW row), not by who they
   /// are - see RealmPerson.removalId.
   Future<bool> removeRealmFollowerRequest(
-      String realmId, String followId) async {
-    try {
-      await _userDio.delete(
+      String realmId, String followId) {
+    // Any 2xx is a removal - DRF answers a delete with no body to inspect.
+    return reportedAction(
+      () => _userDio.delete(
         _endpoints.realmFollowers,
         data: {'realm_id': realmId, 'follow_id': followId},
-      );
-      return true;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't remove that follower.",
+      accepted: (_) => true,
+    );
   }
 
   /// Replaces a realm's avatar or cover. One multipart POST to NODE, unlike a
@@ -688,24 +653,18 @@ class ProfileApi {
     required String mediaType,
     required String filePath,
   }) async {
-    try {
-      final fileName = filePath.split(RegExp(r'[\\/]')).last;
-      final form = FormData.fromMap({
-        'realm_id': realmId,
-        'realm_type': realmType,
-        'media_type': mediaType,
-        'image': await MultipartFile.fromFile(filePath, filename: fileName),
-      });
-      final response =
-          await _mainDio.post(_endpoints.realmUploadMedia, data: form);
-      return response.data?["status"] == true;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+    final fileName = filePath.split(RegExp(r'[\\/]')).last;
+    final form = FormData.fromMap({
+      'realm_id': realmId,
+      'realm_type': realmType,
+      'media_type': mediaType,
+      'image': await MultipartFile.fromFile(filePath, filename: fileName),
+    });
+    return reportedAction(
+      () => _mainDio.post(_endpoints.realmUploadMedia, data: form),
+      failure: "We couldn't upload that image.",
+      accepted: (r) => r.data is Map && r.data['status'] == true,
+    );
   }
 
   /// Step 1 of the avatar/cover upload flow - uploads the raw file, returns
@@ -730,52 +689,45 @@ class ProfileApi {
     String filePath,
     String mediaType, {
     required String action,
-  }) async {
-    try {
-      final fileName = filePath.split(RegExp(r'[\\/]')).last;
-      final form = FormData.fromMap({
-        'media': await MultipartFile.fromFile(filePath, filename: fileName),
-        'captions': '[""]',
-        'referenceMediaTypes': '["$mediaType"]',
-        'action': action,
-      });
+  }) {
+    final fileName = filePath.split(RegExp(r'[\\/]')).last;
+    return reportedRequest(
+      () async => _mainDio.post('/posts/upload',
+          data: FormData.fromMap({
+            'media':
+                await MultipartFile.fromFile(filePath, filename: fileName),
+            'captions': '[""]',
+            'referenceMediaTypes': '["$mediaType"]',
+            'action': action,
+          })),
+      // Too large, a type the server won't take, a moment upload the server
+      // refused - all reasons it states.
+      failure: "We couldn't upload $fileName.",
+      parse: (response) {
+        final result = response.data["result"];
+        if (result is! List || result.isEmpty) return null;
 
-      final response = await _mainDio.post('/posts/upload', data: form);
+        final first = Map<String, dynamic>.from(result[0]);
+        final fileDetails = first["fileDetails"] is Map
+            ? Map<String, dynamic>.from(first["fileDetails"])
+            : const {};
+        final url = fileDetails["data"]?.toString();
+        if (url == null) return null;
 
-      if (response.data["status"] == false) return null;
-      final result = response.data["result"];
-      if (result is! List || result.isEmpty) return null;
-
-      final first = Map<String, dynamic>.from(result[0]);
-      final fileDetails = first["fileDetails"] is Map
-          ? Map<String, dynamic>.from(first["fileDetails"])
-          : const {};
-      final url = fileDetails["data"]?.toString();
-      if (url == null) return null;
-
-      return (
-        url: url,
-        mediaType: (first["fileType"] ?? mediaType).toString(),
-        fileName: (first["fileName"] ?? fileName).toString(),
-        // Diary attachments persist this as Attachment.file_id (see
-        // diary/models.py); the profile/cover flow ignores it. Nullable
-        // because only the diary path actually depends on it - a missing
-        // fileID shouldn't fail an avatar upload.
-        fileId: first["fileID"]?.toString(),
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return null;
-    }
+        return (
+          url: url,
+          mediaType: (first["fileType"] ?? mediaType).toString(),
+          fileName: (first["fileName"] ?? fileName).toString(),
+          // Diary attachments persist this as Attachment.file_id (see
+          // diary/models.py); the profile/cover flow ignores it. Nullable
+          // because only the diary path actually depends on it - a missing
+          // fileID shouldn't fail an avatar upload.
+          fileId: first["fileID"]?.toString(),
+        );
+      },
+    );
   }
 
-  /// Step 2 - also creates a visible feed post as a side effect (confirmed
-  /// by reading server/routes/posts/index.js's /createpost handler: it both
-  /// updates user_account.profile/coverphoto AND inserts into
-  /// newsfeed_post when content_type is "profile"/"cover_photo").
   Future<bool> setProfileOrCoverMediaRequest({
     required String url,
     required String mediaType,
@@ -872,22 +824,21 @@ class ProfileApi {
     required String entityId,
     required bool follow,
   }) async {
-    try {
-      final body = {'entity_id': entityId};
-      final response = follow
+    final body = {'entity_id': entityId};
+    Response<dynamic>? answered;
+    final ok = await reportedAction(
+      () async => answered = follow
           ? await _userDio.post(_endpoints.realmFollow, data: body)
-          : await _userDio.delete(_endpoints.realmFollow, data: body);
-      final data = response.data;
-      final ok =
-          data is Map ? data["status"] != false : response.statusCode == 200;
-      final pending = follow && ok && data is Map && data["is_pending"] == true;
-      return (ok: ok, isPending: pending);
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return (ok: false, isPending: false);
-    }
+          : await _userDio.delete(_endpoints.realmFollow, data: body),
+      failure: follow
+          ? "We couldn't follow them."
+          : "We couldn't unfollow them.",
+      accepted: (response) => response.data is Map
+          ? response.data["status"] != false
+          : response.statusCode == 200,
+    );
+    final data = answered?.data;
+    final pending = follow && ok && data is Map && data["is_pending"] == true;
+    return (ok: ok, isPending: pending);
   }
 }

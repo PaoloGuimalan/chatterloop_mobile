@@ -7,6 +7,7 @@
 
 import 'package:dio/dio.dart';
 
+import 'package:chatterloop_app/core/errors/request_errors.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/user_models/blocked_account_model.dart';
@@ -86,7 +87,7 @@ class SettingsApi {
           await _dio.post(_endpoints.blocks, data: {'entityID': entityID});
       return (
         ok: response.data?['status'] == true,
-        message: response.data?['message']?.toString(),
+        message: messageFromBody(response.data),
       );
     } catch (e) {
       if (kDebugMode) print('ERROR blockAccount: $e');
@@ -121,15 +122,13 @@ class SettingsApi {
       });
       return (
         ok: response.data?['status'] == true,
-        message: response.data?['message']?.toString(),
+        message: messageFromBody(response.data),
       );
     } on DioException catch (e) {
       if (kDebugMode) print('ERROR submitReport: $e');
       return (
         ok: false,
-        message: e.response?.data is Map
-            ? e.response?.data['message']?.toString()
-            : null,
+        message: serverReason(e),
       );
     } catch (e) {
       if (kDebugMode) print('ERROR submitReport: $e');

@@ -17,6 +17,7 @@ import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/settings_api.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -36,10 +37,8 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
   bool _deleting = false;
   bool _confirmDelete = false;
 
-  void _snack(String m) {
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(m)));
+  void _snack(String m, {CLAlertType type = CLAlertType.error}) {
+    CLAlerts.show(m, type: type);
   }
 
   /// Flip the private-profile setting.
@@ -67,13 +66,15 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
         setUserAuthT, UserAuth(true, account.copyWith(isPrivate: next))));
 
     if (!next) {
-      _snack('Your profile is now public.');
+      _snack('Your profile is now public.', type: CLAlertType.success);
     } else if (result.postsRestricted > 0) {
       final n = result.postsRestricted;
-      _snack('Your profile is now private. $n existing '
-          '${n == 1 ? 'post is' : 'posts are'} now visible to your contacts only.');
+      _snack(
+          'Your profile is now private. $n existing '
+          '${n == 1 ? 'post is' : 'posts are'} now visible to your contacts only.',
+          type: CLAlertType.success);
     } else {
-      _snack('Your profile is now private.');
+      _snack('Your profile is now private.', type: CLAlertType.success);
     }
   }
 

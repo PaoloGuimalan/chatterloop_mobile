@@ -5,6 +5,7 @@
 // /u/getContacts endpoint this file previously called - that endpoint isn't
 // used by the live webapp at all.
 
+import 'package:chatterloop_app/core/errors/request_errors.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/user_models/contact_model.dart';
@@ -72,14 +73,14 @@ class ContactsApi {
           await _dio.post(_endpoints.poke, data: {'target_id': targetId});
       return (
         success: response.data["status"] == true,
-        message: response.data["message"]?.toString(),
+        message: messageFromBody(response.data),
       );
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");
         print(e);
       }
-      return (success: false, message: null);
+      return (success: false, message: serverReason(e));
     }
   }
 

@@ -9,6 +9,7 @@ import 'package:chatterloop_app/models/post_models/ephemeral_models.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/views/moments/moments_strip.dart';
 import 'package:chatterloop_app/views/moments/reaction_burst.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -405,16 +406,13 @@ class _ThoughtDetailState extends State<_ThoughtDetail> {
       content: text,
     );
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
     if (error != null) {
       setState(() => _sending = false);
-      messenger.showSnackBar(SnackBar(content: Text(error)));
+      CLAlerts.show(error, type: CLAlertType.error);
       return;
     }
     Navigator.of(context).pop();
-    messenger.showSnackBar(SnackBar(
-        content: Text("Reply sent to $_first"),
-        duration: const Duration(seconds: 2)));
+    CLAlerts.show("Reply sent to $_first", type: CLAlertType.success);
   }
 
   @override
@@ -711,12 +709,10 @@ class _ThoughtComposerState extends State<_ThoughtComposer> {
 
   int get _count => ephemeralCharCount(_text.text.trim());
 
-  void _done(String message) {
+  void _done(String message, {CLAlertType type = CLAlertType.success}) {
     EphemeralEvents.thoughts.value++;
-    final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
-    messenger.showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
+    CLAlerts.show(message, type: type);
   }
 
   Future<void> _save() async {
@@ -731,8 +727,7 @@ class _ThoughtComposerState extends State<_ThoughtComposer> {
     if (!mounted) return;
     if (error != null) {
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error)));
+      CLAlerts.show(error, type: CLAlertType.error);
       return;
     }
     _done(existing == null
@@ -744,12 +739,12 @@ class _ThoughtComposerState extends State<_ThoughtComposer> {
     final existing = widget.existing;
     if (existing == null || _busy) return;
     setState(() => _busy = true);
-    final ok = await NewsfeedApi().deletePostRequest(existing.postId);
+    final ok = await NewsfeedApi().deletePostRequest(existing.postId,
+        failure: "We couldn't delete your thought.");
     if (!mounted) return;
     if (!ok) {
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't delete your thought.")));
+      // Already reported by the request (reportedAction).
       return;
     }
     _done("Thought deleted");

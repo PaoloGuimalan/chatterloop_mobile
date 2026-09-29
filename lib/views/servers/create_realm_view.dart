@@ -39,6 +39,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:chatterloop_app/views/realm/realm_add_members_view.dart'
     show inviteFullName;
 import 'package:flutter/material.dart';
@@ -232,8 +233,8 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
     if (_saving) return;
     final name = _name.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('A ${_noun.toLowerCase()} needs a name.')));
+      CLAlerts.show('A ${_noun.toLowerCase()} needs a name.',
+          type: CLAlertType.warning);
       return;
     }
 
@@ -260,12 +261,9 @@ class _CreateRealmScreenState extends State<CreateRealmScreen> {
     if (!mounted) return;
     setState(() => _saving = false);
 
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              'Could not create the ${_noun.toLowerCase()}. Please try again.')));
-      return;
-    }
+    // Refused or failed: the request has already said why - including a
+    // member without permission to create channels (reportedAction).
+    if (!ok) return;
     Navigator.of(context)
         .pop<CreatedRealmKind>(_isChannel ? _channelType : 'server');
   }

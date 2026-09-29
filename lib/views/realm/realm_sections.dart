@@ -12,6 +12,7 @@ import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/realm/realm_add_members_view.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -208,8 +209,9 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
     // The realm id from the ROW, falling back to the screen's - webapp passes
     // member.realm here, not the realm it was opened with.
     final realmId = person.realmId.isNotEmpty ? person.realmId : _realm.id;
-    // The members call carries a reason on refusal; the followers one is a
-    // plain bool, so 'unknown' stands in for "no message, use the generic".
+    // The members call carries a reason on refusal ('unknown' when it has
+    // none); the followers one reports its own failure (reportedAction), so
+    // an empty string means "already said".
     final String? failure;
     if (widget.members) {
       final result = await ProfileApi()
@@ -218,7 +220,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
     } else {
       final ok = await ProfileApi()
           .removeRealmFollowerRequest(_realm.id, person.removalId);
-      failure = ok ? null : 'unknown';
+      failure = ok ? null : '';
     }
     if (!mounted) return;
     setState(() {
@@ -227,11 +229,12 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
         _people.removeWhere((entry) => entry.removalId == person.removalId);
       }
     });
-    if (failure != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(failure == 'unknown'
+    if (failure != null && failure.isNotEmpty && mounted) {
+      CLAlerts.show(
+          failure == 'unknown'
               ? 'Could not remove them. Please try again.'
-              : failure)));
+              : failure,
+          type: CLAlertType.warning);
     }
   }
 
@@ -256,11 +259,12 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
     if (!mounted) return;
     setState(() => _busyId = null);
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(result.message ??
+    CLAlerts.show(
+        result.message ??
             (result.ok
                 ? 'Ownership transferred'
-                : 'Could not transfer ownership'))));
+                : 'Could not transfer ownership'),
+        type: result.ok ? CLAlertType.success : CLAlertType.warning);
     if (!result.ok) return;
 
     // Both halves: the roster so their role reads "owner", and the realm so
@@ -300,9 +304,8 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
     setState(() => _busyId = null);
 
     if (!result.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:
-              Text(result.message ?? 'Could not leave. Please try again.')));
+      CLAlerts.show(result.message ?? 'Could not leave. Please try again.',
+          type: CLAlertType.warning);
       return;
     }
     // Nothing to stay for: this screen is reached through the manage shell,
@@ -324,11 +327,8 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
     if (!mounted) return;
     setState(() => _busyId = null);
 
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not change their role. Please try again.')));
-      return;
-    }
+    // The request has already said why (reportedAction).
+    if (!ok) return;
     // Re-read rather than patching the row: a role change can reorder the
     // list server-side, and the row also carries a member_id the next action
     // depends on.
@@ -749,11 +749,10 @@ class _RealmMediaScreenState extends State<RealmMediaScreen> {
       _changed = _changed || ok;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok
-          ? 'Updated. It may take a moment to appear everywhere.'
-          : 'Could not upload that image. Please try again.'),
-    ));
+    // A failed upload has already said why (reportedAction).
+    if (ok) {
+      CLAlerts.success('Updated. It may take a moment to appear everywhere.');
+    }
   }
 
   @override

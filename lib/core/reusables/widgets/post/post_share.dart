@@ -88,10 +88,7 @@ class _SharePostSheetState extends State<_SharePostSheet> {
 
     if (!ok) {
       setState(() => _sharing = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Couldn't share that post. Try again."),
-        duration: Duration(seconds: 2),
-      ));
+      // Already reported by the request (reportedAction).
       return;
     }
     Navigator.of(context).pop(true);

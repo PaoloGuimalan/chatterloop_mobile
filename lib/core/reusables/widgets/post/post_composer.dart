@@ -29,6 +29,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
@@ -282,24 +283,23 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
 
     setState(() {});
     if (rejected.isNotEmpty) {
-      _toast("Skipped ${rejected.length} file(s) over $kMaxUploadLabel");
+      _toast("Skipped ${rejected.length} file(s) over $kMaxUploadLabel",
+          type: CLAlertType.warning);
     }
   }
 
-  void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
-    );
+  void _toast(String message, {CLAlertType type = CLAlertType.error}) {
+    CLAlerts.show(message, type: type);
   }
 
   Future<void> _post() async {
     final caption = _caption.text.trim();
     if (widget.mode.isMedia && _media.isEmpty) {
-      _toast("Choose a photo first");
+      _toast("Choose a photo first", type: CLAlertType.warning);
       return;
     }
     if (!widget.mode.isMedia && caption.isEmpty && _media.isEmpty) {
-      _toast("Write a caption or add a photo first");
+      _toast("Write a caption or add a photo first", type: CLAlertType.warning);
       return;
     }
     if (_posting) return;
@@ -330,7 +330,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
           _posting = false;
           _progress = '';
         });
-        _toast("Couldn't upload ${pending.name}");
+        // Already reported by the request (reportedAction).
         return;
       }
       uploaded.add(PostMediaReference(
@@ -363,7 +363,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
         _posting = false;
         _progress = '';
       });
-      _toast("Couldn't create that post. Try again.");
+      // Already reported by the request (reportedAction).
       return;
     }
     Navigator.of(context).pop(true);

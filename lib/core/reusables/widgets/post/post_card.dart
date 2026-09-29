@@ -28,6 +28,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/hashtags.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -206,10 +207,7 @@ class _PostCardState extends State<PostCard> {
 
     final shared = await showSharePostSheet(context, post: _post);
     if (!mounted || !shared) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text("Shared to your feed"),
-      duration: Duration(seconds: 2),
-    ));
+    CLAlerts.show("Shared to your feed", type: CLAlertType.success);
   }
 
   Widget _sharedUnavailableCard(CLPalette p, {String? label}) {

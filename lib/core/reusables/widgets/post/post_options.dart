@@ -82,7 +82,7 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
     setState(() => _busy = false);
     if (!ok) {
       widget.onChanged?.call(widget.post.copyWith(isSaved: !saved));
-      _toast("Couldn't ${saved ? 'save' : 'unsave'} that post.");
+      // Already reported by the request (reportedAction).
     }
   }
 
@@ -95,7 +95,7 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
     setState(() => _busy = false);
     if (!ok) {
       widget.onChanged?.call(widget.post.copyWith(isArchived: !archived));
-      _toast("Couldn't ${archived ? 'archive' : 'unarchive'} that post.");
+      // Already reported by the request (reportedAction).
     }
   }
 
@@ -134,7 +134,7 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
     if (ok) {
       widget.onDeleted?.call();
     } else {
-      _toast("Couldn't delete that post. Try again.");
+      // Already reported by the request (reportedAction).
     }
   }
 
@@ -153,12 +153,6 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
     );
   }
 
-  void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      duration: const Duration(seconds: 2),
-    ));
-  }
 
   @override
   Widget build(BuildContext context) {

@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/requests/reported_action.dart';
 import 'package:chatterloop_app/core/utils/chat_commands.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
@@ -199,16 +200,17 @@ class ConversationsApi {
   /// POST /m/history {conversationID, action} - archive | unarchive | clear
   /// (clear = delete the conversation for the user). Mirrors webapp's
   /// UpdateChatHistoryRequest.
-  Future<bool> updateChatHistoryRequest(
-      String conversationID, String action) async {
-    try {
-      final response = await _dio.post(_endpoints.chatHistory,
-          data: {'conversationID': conversationID, 'action': action});
-      return response.data?["status"] != false;
-    } catch (e) {
-      if (kDebugMode) print("ERROR updateChatHistory: $e");
-      return false;
-    }
+  Future<bool> updateChatHistoryRequest(String conversationID, String action) {
+    return reportedAction(
+      () => _dio.post(_endpoints.chatHistory,
+          data: {'conversationID': conversationID, 'action': action}),
+      failure: switch (action) {
+        'archive' => "We couldn't archive that conversation.",
+        'unarchive' => "We couldn't unarchive that conversation.",
+        'clear' => "We couldn't delete that conversation.",
+        _ => "We couldn't update that conversation.",
+      },
+    );
   }
 
   /// One-time snapshot of which contacts are currently online, plus a
@@ -482,30 +484,27 @@ class ConversationsApi {
     String note = "",
   }) async {
     ContentValidator().printer('${_endpoints.apiUrl}${_endpoints.sendPost}');
-    try {
-      final response = await _dio.post(_endpoints.sendPost, data: {
+    return reportedRequest(
+      () => _dio.post(_endpoints.sendPost, data: {
         "token": JwtCodec.sign({
           "postID": postId,
           "targets": targets.map((target) => target.toJson()).toList(),
           "content": note,
         }),
-      });
-      final result = response.data["result"];
-      if (result is! Map) return null;
-      final results = result["results"] is List
-          ? (result["results"] as List).whereType<Map>()
-          : const <Map>[];
-      return (
-        sent: result["sent"] is int ? result["sent"] as int : 0,
-        failed: results.where((entry) => entry["status"] != true).length,
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return null;
-    }
+      }),
+      failure: "We couldn't send that post.",
+      parse: (response) {
+        final result = response.data["result"];
+        if (result is! Map) return null;
+        final results = result["results"] is List
+            ? (result["results"] as List).whereType<Map>()
+            : const <Map>[];
+        return (
+          sent: result["sent"] is int ? result["sent"] as int : 0,
+          failed: results.where((entry) => entry["status"] != true).length,
+        );
+      },
+    );
   }
 
   /// Matches webapp's SendFilesRequest (ConversationV2.tsx) exactly - one
@@ -659,12 +658,30 @@ class ConversationsApi {
   /// matches webapp's CreateInitialConversation, used by a profile's
   /// "Message" button when there's no existing conversation/connection to
   /// route to yet.
-  Future<String?> createInitialConversationRequest(String otherEntityID) async {
+  ///
+  /// Every "Message" button funnels through here, and starting a chat is a
+  /// permission the server enforces (conversations.create) - so a failure is
+  /// reported, with the server's reason. Pass [report] false where the caller
+  /// words its own failure (a moment reply saying it couldn't reach them).
+  Future<String?> createInitialConversationRequest(String otherEntityID,
+      {bool report = true}) async {
+    Future<Response<dynamic>> send() =>
+        _dio.post('/m/crtc', data: {'otherEntityID': otherEntityID});
+    String? idFrom(Response<dynamic> response) {
+      final id = response.data is Map
+          ? response.data["conversationID"]?.toString()
+          : null;
+      return id == null || id.isEmpty ? null : id;
+    }
+
+    if (report) {
+      return reportedRequest(send,
+          failure: "We couldn't open that conversation.", parse: idFrom);
+    }
     try {
-      final response =
-          await _dio.post('/m/crtc', data: {'otherEntityID': otherEntityID});
+      final response = await send();
       if (response.data["status"] == false) return null;
-      return response.data["conversationID"]?.toString();
+      return idFrom(response);
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

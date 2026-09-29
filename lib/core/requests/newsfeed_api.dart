@@ -12,6 +12,7 @@
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/requests/reported_action.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/core/utils/view_cache.dart';
 import 'package:chatterloop_app/models/http_models/paged_result.dart';
@@ -99,21 +100,15 @@ class NewsfeedApi {
     required String postId,
     required String emojiId,
     required ReactionMethod method,
-  }) async {
-    try {
-      final response = await _dio.request(
+  }) {
+    return reportedAction(
+      () => _dio.request(
         _endpoints.newsfeedReaction,
         data: {'post_id': postId, 'emoji_id': emojiId},
         options: Options(method: _verb(method)),
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't save that reaction.",
+    );
   }
 
   /// Same three verbs, one level down - a reaction on a COMMENT.
@@ -265,9 +260,9 @@ class NewsfeedApi {
     String? parentId,
     required String text,
     String? attachment,
-  }) async {
-    try {
-      final response = await _dio.post(
+  }) {
+    return reportedAction(
+      () => _dio.post(
         _endpoints.newsfeedComments,
         data: {
           'post_id': postId,
@@ -277,15 +272,9 @@ class NewsfeedApi {
           'new_comment': text,
           if (attachment != null) 'new_attachment': attachment,
         },
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't post that comment.",
+    );
   }
 
   /// One page of a profile's posts - the feed under a user OR a realm.
@@ -506,20 +495,15 @@ class NewsfeedApi {
   Future<bool> setPostSavedRequest({
     required String postId,
     required bool saved,
-  }) async {
-    try {
-      final response = saved
-          ? await _dio.post(_endpoints.newsfeedSaves, data: {'post_id': postId})
-          : await _dio
-              .delete(_endpoints.newsfeedSaves, data: {'post_id': postId});
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+  }) {
+    return reportedAction(
+      () => saved
+          ? _dio.post(_endpoints.newsfeedSaves, data: {'post_id': postId})
+          : _dio.delete(_endpoints.newsfeedSaves, data: {'post_id': postId}),
+      failure: saved
+          ? "We couldn't save that post."
+          : "We couldn't unsave that post.",
+    );
   }
 
   /// Archive / unarchive - AUTHOR only (the server enforces it too).
@@ -529,64 +513,52 @@ class NewsfeedApi {
   Future<bool> setPostArchivedRequest({
     required String postId,
     required bool archived,
-  }) async {
-    try {
-      final response = await _dio.put(
+  }) {
+    return reportedAction(
+      () => _dio.put(
         _endpoints.newsfeedPost,
         data: {
           'post_id': postId,
           'fields': {'is_archived': archived},
         },
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: archived
+          ? "We couldn't archive that post."
+          : "We couldn't unarchive that post.",
+    );
   }
 
   /// Delete a post - AUTHOR only.
   ///
   /// The endpoint takes `post_ids`, PLURAL, even for a single post: it's a
   /// bulk delete that the UI only ever calls with one.
-  Future<bool> deletePostRequest(String postId) async {
-    try {
-      final response = await _dio.delete(
+  ///
+  /// [failure] names what is being deleted - a moment and a thought are posts
+  /// too, and "that post" would read wrong for them.
+  Future<bool> deletePostRequest(String postId,
+      {String failure = "We couldn't delete that post."}) {
+    return reportedAction(
+      () => _dio.delete(
         _endpoints.newsfeedPost,
         data: {
           'post_ids': [postId]
         },
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: failure,
+    );
   }
 
   /// Delete a comment - its AUTHOR only. Soft-deleted server side, which also
   /// enforces ownership (assert_owns), so the client gate is only about not
   /// offering a button that would 403.
-  Future<bool> deleteCommentRequest(String commentId) async {
-    try {
-      final response = await _dio.delete(
+  Future<bool> deleteCommentRequest(String commentId) {
+    return reportedAction(
+      () => _dio.delete(
         _endpoints.newsfeedComments,
         data: {'comment_id': commentId},
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't delete that comment.",
+    );
   }
 
   /// Create an ordinary post - caption, optional media, optional tags.
@@ -615,7 +587,7 @@ class NewsfeedApi {
     List<String> taggedEntityIds = const [],
     String privacy = "public",
     String? contentType,
-  }) async {
+  }) {
     final hasMedia = media.isNotEmpty;
     final payload = {
       'content': {
@@ -637,19 +609,13 @@ class NewsfeedApi {
       'onfeed': 'feed',
     };
 
-    try {
-      final response = await _nodeDio.post(
+    return reportedAction(
+      () => _nodeDio.post(
         _endpoints.createPost,
         data: {'token': JwtCodec.sign(payload)},
-      );
-      return response.data["status"] != false;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't create that post.",
+    );
   }
 
   /// Share a post onto the viewer's own feed, with an optional caption.
@@ -666,7 +632,7 @@ class NewsfeedApi {
     String caption = "",
     String privacy = "public",
     List<String> taggedEntityIds = const [],
-  }) async {
+  }) {
     final payload = {
       'content': {
         'isShared': true,
@@ -693,18 +659,12 @@ class NewsfeedApi {
       'onfeed': 'feed',
     };
 
-    try {
-      final response = await _nodeDio.post(
+    return reportedAction(
+      () => _nodeDio.post(
         _endpoints.createPost,
         data: {'token': JwtCodec.sign(payload)},
-      );
-      return response.data["status"] != false;
-    } catch (e) {
-      if (kDebugMode) {
-        print("ERROR");
-        print(e);
-      }
-      return false;
-    }
+      ),
+      failure: "We couldn't share that post.",
+    );
   }
 }

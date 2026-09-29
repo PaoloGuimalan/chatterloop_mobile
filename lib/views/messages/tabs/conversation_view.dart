@@ -47,6 +47,7 @@ import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:chatterloop_app/core/reusables/widgets/reply_target_card.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:flutter_redux/flutter_redux.dart';
@@ -652,9 +653,8 @@ class ConversationStateView extends State<ConversationView> {
       // Usually "Transfer ownership to another member before leaving." - a
       // thread has no my_role to check up front, so the server's own reason
       // is what explains why nothing happened.
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:
-              Text(result.message ?? 'Could not leave. Please try again.')));
+      CLAlerts.show(result.message ?? 'Could not leave. Please try again.',
+          type: CLAlertType.warning);
       return;
     }
     // Refresh the list this thread just dropped off, then leave the screen -
@@ -899,8 +899,7 @@ class ConversationStateView extends State<ConversationView> {
     final ok = await applyConversationAction(widget.conversationId, action);
     if (!mounted) return;
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Action failed. Please try again.')));
+      // Already reported by the request (reportedAction).
       return;
     }
     // Leave the thread once it is archived or deleted - mirrors webapp
@@ -1231,19 +1230,17 @@ class ConversationStateView extends State<ConversationView> {
     setState(() =>
         conversationLoadError = 'You are no longer a member of this $noun');
 
-    // Resolved BEFORE the pop: afterwards this context is defunct. The messenger
-    // is the app-level one, so the message survives the navigation and lands on
+    // Resolved BEFORE the pop: afterwards this context is defunct. The notice
+    // is app-level (CLAlerts), so it survives the navigation and shows over
     // whatever screen you end up on - otherwise the thread would simply vanish
     // with no explanation at all.
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
       navigator.pop();
     } else {
       context.go('/messages');
     }
-    messenger.showSnackBar(
-        SnackBar(content: Text('You were removed from this $noun.')));
+    CLAlerts.show('You were removed from this $noun.', type: CLAlertType.info);
   }
 
   /// The message the composer is quoting, or null when it isn't in the loaded
@@ -2047,10 +2044,8 @@ class ConversationStateView extends State<ConversationView> {
 
   void _attachmentTooLarge() {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text("Cannot upload files greater than $kMaxUploadLabel")),
-    );
+    CLAlerts.show("Cannot upload files greater than $kMaxUploadLabel",
+        type: CLAlertType.warning);
   }
 
   /// Stages picked images for review instead of sending immediately -
@@ -2191,11 +2186,8 @@ class ConversationStateView extends State<ConversationView> {
   Future<void> _startVoiceRecording() async {
     if (!await _voiceRecorder.hasPermission()) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text("Microphone access is required to send a voice message")),
-      );
+      CLAlerts.show("Microphone access is required to send a voice message",
+          type: CLAlertType.warning);
       return;
     }
     final dir = await getTemporaryDirectory();

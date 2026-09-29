@@ -7,6 +7,7 @@
 // skipped rather than guessed at - that is what lets the server introduce an
 // action type without breaking already-shipped apps.
 
+import 'package:chatterloop_app/core/errors/request_errors.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:dio/dio.dart';
@@ -132,16 +133,13 @@ Future<NotificationActionOutcome> runNotificationAction(
     final ok = data is Map ? data['status'] != false : true;
     return NotificationActionOutcome(
       ok: ok,
-      message: data is Map ? data['message']?.toString() : null,
+      message: messageFromBody(data),
     );
   } on DioException catch (e) {
     if (kDebugMode) print('[notificationAction] ${action.id} failed: $e');
-    final data = e.response?.data;
     return NotificationActionOutcome(
       ok: false,
-      message: data is Map
-          ? data['message']?.toString()
-          : 'Something went wrong. Please try again.',
+      message: serverReason(e) ?? 'Something went wrong. Please try again.',
     );
   } catch (e) {
     if (kDebugMode) print('[notificationAction] ${action.id} failed: $e');

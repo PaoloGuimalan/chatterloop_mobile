@@ -547,10 +547,7 @@ class PostCommentsState extends State<PostComments> {
 
     if (!ok) {
       widget.onCountChanged?.call(removed);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Couldn't delete that comment. Try again."),
-        duration: Duration(seconds: 2),
-      ));
+      // Already reported by the request (reportedAction).
     }
   }
 
@@ -604,10 +601,7 @@ class PostCommentsState extends State<PostComments> {
     );
     if (!mounted) return;
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Couldn't post that comment. Try again."),
-        duration: Duration(seconds: 2),
-      ));
+      // Already reported by the request (reportedAction).
       return;
     }
 

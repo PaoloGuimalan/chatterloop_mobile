@@ -35,6 +35,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/realm/realm_sections.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -526,8 +527,7 @@ class _RealmDetailsScreenState extends State<RealmDetailsScreen> {
       return;
     }
     if (_name.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('A page needs a name.')));
+      CLAlerts.show('A page needs a name.', type: CLAlertType.warning);
       return;
     }
 
@@ -536,11 +536,8 @@ class _RealmDetailsScreenState extends State<RealmDetailsScreen> {
     if (!mounted) return;
     setState(() => _saving = false);
 
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save. Please try again.')));
-      return;
-    }
+    // The request has already said why (reportedAction).
+    if (!ok) return;
     Navigator.of(context).pop(true);
   }
 

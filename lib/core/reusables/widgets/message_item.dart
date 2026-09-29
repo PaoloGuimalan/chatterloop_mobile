@@ -133,8 +133,7 @@ class MessageItemView extends StatelessWidget {
     if (!context.mounted) return;
 
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Action failed. Please try again.')));
+      // Already reported by the request (reportedAction).
       return;
     }
     // Otherwise no navigation of our own - applyConversationAction has already

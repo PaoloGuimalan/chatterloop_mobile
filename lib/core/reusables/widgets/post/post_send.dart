@@ -18,6 +18,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/models/messages_models/send_post_targets_model.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 
 enum ShareChoice { toFeed, inMessage, toMoment }
@@ -197,24 +198,19 @@ class _SendPostSheetState extends State<_SendPostSheet> {
     );
     if (!mounted) return;
 
-    final messenger = ScaffoldMessenger.of(context);
     if (result == null || result.sent == 0) {
       setState(() => _sending = false);
-      messenger.showSnackBar(const SnackBar(
-        content: Text("Couldn't send that post. Try again."),
-        duration: Duration(seconds: 2),
-      ));
+      // Already reported by the request (reportedAction).
       return;
     }
 
-    messenger.showSnackBar(SnackBar(
-      content: Text(result.failed > 0
-          ? "Sent to ${result.sent}, but ${result.failed} couldn't be reached"
-          : result.sent == 1
-              ? "Post sent"
-              : "Post sent to ${result.sent} chats"),
-      duration: const Duration(seconds: 2),
-    ));
+    CLAlerts.show(
+        result.failed > 0
+            ? "Sent to ${result.sent}, but ${result.failed} couldn't be reached"
+            : result.sent == 1
+                ? "Post sent"
+                : "Post sent to ${result.sent} chats",
+        type: result.failed > 0 ? CLAlertType.warning : CLAlertType.success);
     Navigator.of(context).pop(true);
   }
 

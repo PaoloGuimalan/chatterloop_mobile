@@ -7,9 +7,11 @@
 // endpoint gates ephemeral posts itself) and deleting reuses
 // NewsfeedApi.deletePostRequest.
 
+import 'package:chatterloop_app/core/errors/request_errors.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
+import 'package:chatterloop_app/core/requests/reported_action.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/post_models/ephemeral_models.dart';
 import 'package:dio/dio.dart';
@@ -32,16 +34,23 @@ class MomentsApi {
     }
   }
 
-  /// The server's own refusal message, when it sent one.
+  /// What to tell the user about a failed request, or null to let the caller
+  /// use its own words.
+  ///
+  /// The server's reason when it gave a presentable one (through the shared
+  /// resolver, so raw exception text and HTML error pages never reach the
+  /// screen), the connection copy when it never answered - and null for a
+  /// server-side crash, a cancelled request or anything that isn't a request
+  /// failure at all.
   static String? errorMessage(Object e) {
-    if (e is DioException) {
-      final data = e.response?.data;
-      if (data is Map && data["message"] != null) {
-        return data["message"].toString();
-      }
-      if (data is String && data.isNotEmpty && data.length < 200) return data;
+    if (e is! DioException || e.type == DioExceptionType.cancel) return null;
+    final response = e.response;
+    if (response == null) {
+      final message = describeRequestError(e).message;
+      return message == genericErrorMessage ? null : message;
     }
-    return null;
+    if ((response.statusCode ?? 0) >= 500) return null;
+    return messageFromBody(response.data);
   }
 
   Future<MomentTray> getTrayRequest() async {
@@ -141,18 +150,19 @@ class MomentsApi {
 
   /// [archive] ends it now - it leaves the board and moves to the archive.
   Future<bool> updateMomentRequest(String postId,
-      {String? privacyStatus, bool? allowReplies, bool? archive}) async {
-    try {
-      await _dio.put('$_base/moments/$postId/', data: {
+      {String? privacyStatus, bool? allowReplies, bool? archive}) {
+    return reportedAction(
+      () => _dio.put('$_base/moments/$postId/', data: {
         if (privacyStatus != null) 'privacy_status': privacyStatus,
         if (allowReplies != null) 'allow_replies': allowReplies,
         if (archive != null) 'archive': archive,
-      });
-      return true;
-    } catch (e) {
-      _log(e);
-      return false;
-    }
+      }),
+      failure: switch (archive) {
+        true => "We couldn't archive your moment.",
+        false => "We couldn't unarchive your moment.",
+        null => "We couldn't update your moment.",
+      },
+    );
   }
 
   /// ONE uploaded photo/video ([mediaUrl] + [mediaType] from
@@ -197,8 +207,7 @@ class MomentsApi {
       final response = await _nodeDio.post('/posts/moments/create',
           data: {'token': JwtCodec.sign(payload)});
       if (response.data["status"] == false) {
-        return (response.data["message"] ?? "Couldn't share your moment.")
-            .toString();
+        return resolveResponseMessage(response, "Couldn't share your moment.");
       }
       return null;
     } catch (e) {
@@ -262,8 +271,7 @@ class MomentsApi {
       final response = await _nodeDio.post('/posts/thoughts/create',
           data: {'token': JwtCodec.sign(payload)});
       if (response.data["status"] == false) {
-        return (response.data["message"] ?? "Couldn't share your thought.")
-            .toString();
+        return resolveResponseMessage(response, "Couldn't share your thought.");
       }
       return null;
     } catch (e) {
@@ -294,8 +302,9 @@ class MomentsApi {
     required String postId,
     required String content,
   }) async {
+    // report: false - this method says so itself, in words about the reply.
     final conversationId = await ConversationsApi()
-        .createInitialConversationRequest(authorEntityId);
+        .createInitialConversationRequest(authorEntityId, report: false);
     if (conversationId == null || conversationId.isEmpty) {
       return "Couldn't open your chat with them.";
     }
@@ -313,8 +322,7 @@ class MomentsApi {
       final response = await _nodeDio.post(_endpoints.sendNewMessage,
           data: {'token': JwtCodec.sign(payload)});
       if (response.data["status"] == false) {
-        return (response.data["message"] ?? "Couldn't send that reply.")
-            .toString();
+        return resolveResponseMessage(response, "Couldn't send that reply.");
       }
       return null;
     } catch (e) {

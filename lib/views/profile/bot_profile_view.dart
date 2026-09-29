@@ -123,10 +123,7 @@ class _BotProfileScreenState extends State<BotProfileScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text("Couldn't open the conversation. Please try again."),
-      duration: Duration(seconds: 2),
-    ));
+    // Already reported by the request (reportedAction).
   }
 
   @override

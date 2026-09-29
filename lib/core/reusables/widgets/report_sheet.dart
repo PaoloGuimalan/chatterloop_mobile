@@ -14,6 +14,7 @@ import 'dart:math' as math;
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/settings_api.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 
 /// Mirrors Report.TARGET_TYPE_CHOICES in the user_service entity app.
@@ -123,7 +124,6 @@ Future<bool> showReportSheet(
 }) async {
   if (targetId.isEmpty) return false;
   final p = cl(context);
-  final messenger = ScaffoldMessenger.of(context);
 
   String reason = 'spam';
   final descController = TextEditingController();
@@ -248,15 +248,17 @@ Future<bool> showReportSheet(
                           // The sheet's own context is the only one guaranteed
                           // to still be mounted here - the caller may have been
                           // disposed while the request was in flight - so pop
-                          // through it and toast through the messenger captured
-                          // before the sheet opened.
+                          // through it. The notice needs no context at all.
                           if (!sheetCtx.mounted) return;
                           Navigator.of(sheetCtx).pop(result.ok);
-                          messenger.showSnackBar(SnackBar(
-                              content: Text(result.message ??
+                          CLAlerts.show(
+                              result.message ??
                                   (result.ok
                                       ? 'Report submitted'
-                                      : 'Could not submit report'))));
+                                      : 'Could not submit report'),
+                              type: result.ok
+                                  ? CLAlertType.success
+                                  : CLAlertType.warning);
                         },
                 ),
                 const SizedBox(height: 6),

@@ -33,6 +33,7 @@ import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/views/servers/create_realm_view.dart';
 import 'package:chatterloop_app/views/servers/servers_view.dart';
 import 'package:chatterloop_app/views/servers/voice_channel_view.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -73,6 +74,11 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
   /// switches that lookup to realm_id), and my own member row does not say
   /// "admin" for an owner.
   bool _isAdmin = false;
+
+  /// Whether I may create channels here - the server's own permission answer
+  /// (realm.channel.create), not inferred from the role, so an edited role
+  /// matrix or a per-member grant/deny is respected. Gates every create entry.
+  bool _canCreateChannel = false;
 
   /// False when /s/initserverchannels answered 401 - you are not a member.
   ///
@@ -142,6 +148,7 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     setState(() {
       _channels = result.channels;
       _isAdmin = result.isAdmin;
+      _canCreateChannel = result.canCreateChannel;
       _hasAccess = result.hasAccess;
       _loading = false;
     });
@@ -157,11 +164,8 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     final joined = await ProfileApi().joinServerRequest(widget.serverId);
     if (!mounted) return;
     setState(() => _joining = false);
-    if (!joined) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not join. Please try again.')));
-      return;
-    }
+    // The request has already said why (reportedAction).
+    if (!joined) return;
     setState(() => _loading = true);
     await _load();
   }
@@ -217,9 +221,8 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
       // The owner is refused here ("Transfer ownership to another member
       // before leaving.") - this screen does not carry the realm payload, so
       // it reports the server's reason rather than pre-empting it.
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:
-              Text(result.message ?? 'Could not leave. Please try again.')));
+      CLAlerts.show(result.message ?? 'Could not leave. Please try again.',
+          type: CLAlertType.warning);
       return;
     }
     // Back to the directory, NOT out to the Servers tab. You have left one
@@ -269,8 +272,8 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
   /// into, and presence is announced by the controller's notify-voice-join.
   void _openVoice(ServerChannel channel) {
     if (appStore.state.currentCall != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Leave your current call first.')));
+      CLAlerts.show('Leave your current call first.',
+          type: CLAlertType.warning);
       return;
     }
     Navigator.of(context).push(MaterialPageRoute(
@@ -462,7 +465,7 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
                 iconBorderColor: p.border,
                 compact: true,
                 title: 'No channels yet',
-                subtitle: _isAdmin
+                subtitle: _canCreateChannel
                     ? 'Create the first one and it shows up here.'
                     : 'This server has no channels yet.'
                         ' An admin can create the first one.',
@@ -472,7 +475,7 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
               // ARE channels - so a brand new server has no way to get its
               // first one. Here the empty state carries the action, the same
               // shape the Servers tab uses for Open Servers.
-              if (_isAdmin) ...[
+              if (_canCreateChannel) ...[
                 const SizedBox(height: 18),
                 CLBtn(
                   label: 'Create channel',
@@ -501,12 +504,10 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
               child: Row(
                 children: [
                   const Expanded(child: _SectionLabel(label: 'Channels')),
-                  // Admins only, like Manage server in the header menu. Web
-                  // shows the + to everyone, but the server refuses a
-                  // non-admin's create - so the entry would only ever fail for
-                  // them, on the surface where the useful action (opening a
-                  // channel) is every row below it.
-                  if (_isAdmin)
+                  // Only for people the server lets create one - anyone else
+                  // would only ever be refused. Web now gates its + the same
+                  // way, on the same flag.
+                  if (_canCreateChannel)
                     CLIconBtn(icon: Icons.add, onPressed: _createChannel),
                 ],
               ),

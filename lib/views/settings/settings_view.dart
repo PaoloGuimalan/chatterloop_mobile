@@ -16,6 +16,7 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/utils/app_version.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -255,17 +256,13 @@ class _VersionFooterState extends State<_VersionFooter> {
   /// Copies the version, plus the platform the server keys off in X-Platform -
   /// a pasted "android" saves support a round trip asking which phone.
   ///
-  /// The messenger is captured BEFORE the await: Clipboard.setData is async,
-  /// and reaching back through `context` after it resolves is the standard way
-  /// this crashes when the user leaves Settings in the meantime.
+  /// The notice needs no context, so nothing is read through `context` after
+  /// the await - which is how this used to risk crashing when the user left
+  /// Settings in the meantime.
   Future<void> _copy(String label) async {
-    final messenger = ScaffoldMessenger.of(context);
     await Clipboard.setData(
         ClipboardData(text: "$label - ${AppVersion.platform}"));
     if (!mounted) return;
-    messenger.showSnackBar(const SnackBar(
-      content: Text("Version copied."),
-      duration: Duration(seconds: 2),
-    ));
+    CLAlerts.show("Version copied.", type: CLAlertType.success);
   }
 }

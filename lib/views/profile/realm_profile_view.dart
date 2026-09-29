@@ -24,6 +24,7 @@ import 'package:chatterloop_app/views/profile/widgets/saved_posts_feed.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
 import 'package:chatterloop_app/views/moments/moment_archive.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -263,12 +264,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     });
 
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Couldn't update follow. Try again."),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      // Already reported by the request (reportedAction).
     }
   }
 
@@ -502,9 +498,10 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
 
     final result = await SettingsApi().blockAccount(realm.entityId);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(result.message ??
-            (result.ok ? 'Page blocked' : 'Could not block this page'))));
+    CLAlerts.show(
+        result.message ??
+            (result.ok ? 'Page blocked' : 'Could not block this page'),
+        type: result.ok ? CLAlertType.success : CLAlertType.warning);
     if (result.ok && mounted) {
       // Leave the now-blocked page, same as the user profile does.
       context.pop();
@@ -686,10 +683,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text("Couldn't open the conversation. Please try again."),
-      duration: Duration(seconds: 2),
-    ));
+    // Already reported by the request (reportedAction).
   }
 
   /// A Connection is entity<->entity, so a page can be a contact just like a

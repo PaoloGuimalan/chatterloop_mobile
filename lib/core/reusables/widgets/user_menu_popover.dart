@@ -16,6 +16,7 @@ import 'package:chatterloop_app/core/requests/entity_api.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -201,9 +202,8 @@ class _UserMenuOverlayState extends State<_UserMenuOverlay> {
                     if (target.isEmpty) {
                       // Better than a tap that silently does nothing, which is
                       // indistinguishable from a broken button.
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content:
-                              Text("Couldn't open this page's settings.")));
+                      CLAlerts.show("Couldn't open this page's settings.",
+                          type: CLAlertType.error);
                       widget.onClose();
                       return;
                     }
@@ -338,8 +338,18 @@ class _MenuContent extends StatelessWidget {
                 highlighted: !isSwitched,
                 child: Row(
                   children: [
-                    Icon(Icons.person,
-                        size: 18, color: !isSwitched ? p.brand : p.text2),
+                    // Your own face (or initials), like the page rows below -
+                    // while acting as a page, this is the way back to you.
+                    CLAvatar(
+                      id: user.id,
+                      name: user.personalDisplayName.isEmpty
+                          ? user.username
+                          : user.personalDisplayName,
+                      src: user.profile != null && user.profile != "none"
+                          ? user.profile
+                          : null,
+                      size: 26,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(

@@ -101,8 +101,7 @@ class _MomentViewersSheetState extends State<_MomentViewersSheet> {
         _audience = beforeAudience;
         _allowReplies = beforeReplies;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't update your moment.")));
+      // Already reported by the request (reportedAction).
     }
   }
 
@@ -116,8 +115,7 @@ class _MomentViewersSheetState extends State<_MomentViewersSheet> {
       Navigator.of(context).pop(MomentSheetOutcome.archived);
     } else {
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't archive your moment.")));
+      // Already reported by the request (reportedAction).
     }
   }
 
@@ -131,8 +129,7 @@ class _MomentViewersSheetState extends State<_MomentViewersSheet> {
       Navigator.of(context).pop(MomentSheetOutcome.unarchived);
     } else {
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't unarchive your moment.")));
+      // Already reported by the request (reportedAction).
     }
   }
 
@@ -153,14 +150,14 @@ class _MomentViewersSheetState extends State<_MomentViewersSheet> {
     );
     if (confirmed != true || !mounted) return;
     setState(() => _busy = true);
-    final ok = await NewsfeedApi().deletePostRequest(widget.moment.post.postId);
+    final ok = await NewsfeedApi().deletePostRequest(widget.moment.post.postId,
+        failure: "We couldn't delete your moment.");
     if (!mounted) return;
     if (ok) {
       Navigator.of(context).pop(MomentSheetOutcome.deleted);
     } else {
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't delete your moment.")));
+      // Already reported by the request (reportedAction).
     }
   }
 

@@ -28,6 +28,7 @@ import 'package:chatterloop_app/views/moments/clip_trim_page.dart';
 import 'package:chatterloop_app/views/moments/moment_shared_post_card.dart';
 import 'package:chatterloop_app/views/moments/moments_strip.dart';
 import 'package:chatterloop_app/views/moments/text_card_page.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -187,9 +188,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     if (mounted) setState(() {});
   }
 
-  void _toast(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
+  void _toast(String text, {CLAlertType type = CLAlertType.warning}) {
+    CLAlerts.show(text, type: type);
   }
 
   bool get _busy => _phase != _Phase.editing || _preparing;

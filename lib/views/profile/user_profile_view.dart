@@ -19,6 +19,7 @@ import 'package:chatterloop_app/views/profile/widgets/saved_posts_feed.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
 import 'package:chatterloop_app/views/moments/moment_archive.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -266,9 +267,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (!mounted) return;
     setState(() => isPokeLoading = false);
     if (result.message != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message!)),
-      );
+      CLAlerts.show(result.message!,
+          type: result.success ? CLAlertType.success : CLAlertType.warning);
     }
   }
 
@@ -361,9 +361,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
     final result = await SettingsApi().blockAccount(profile!.entityId);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(result.message ??
-            (result.ok ? 'Account blocked' : 'Could not block this account'))));
+    CLAlerts.show(
+        result.message ??
+            (result.ok ? 'Account blocked' : 'Could not block this account'),
+        type: result.ok ? CLAlertType.success : CLAlertType.warning);
     if (result.ok) {
       // Refresh the contacts + conversations lists so the now-blocked account
       // (and any conversation with them) drops off those tabs immediately,

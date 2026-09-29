@@ -151,8 +151,7 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
     setState(() => _opening = null);
 
     if (conversationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Couldn't open that conversation. Please try again.")));
+      // Already reported by the request (reportedAction).
       return;
     }
     context.push('/conversation/$conversationId');

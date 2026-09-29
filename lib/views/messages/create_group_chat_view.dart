@@ -28,6 +28,7 @@ import 'package:chatterloop_app/core/requests/network_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:chatterloop_app/views/realm/realm_add_members_view.dart'
     show inviteFullName;
 import 'package:flutter/material.dart';
@@ -152,9 +153,7 @@ class _CreateGroupChatScreenState extends State<CreateGroupChatScreen> {
     if (_saving) return;
     final name = _name.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('A group chat needs a name.')),
-      );
+      CLAlerts.show('A group chat needs a name.', type: CLAlertType.warning);
       return;
     }
 
@@ -167,14 +166,8 @@ class _CreateGroupChatScreenState extends State<CreateGroupChatScreen> {
     if (!mounted) return;
     setState(() => _saving = false);
 
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Could not create the group chat. Please try '
-                'again.')),
-      );
-      return;
-    }
+    // Refused or failed: the request has already said why (reportedAction).
+    if (!ok) return;
     // True, not the conversation id: /u/createContactGroupChat answers
     // {status, message} and nothing else - the conversation itself reaches the
     // client over SSE - so all the caller can be told is that it worked, and

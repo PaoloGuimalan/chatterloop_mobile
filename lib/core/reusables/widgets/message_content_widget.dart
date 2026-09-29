@@ -20,6 +20,7 @@ import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
 import 'package:chatterloop_app/models/messages_models/reply_target_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -589,12 +590,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   Future<void> _copyMessage() async {
     await Clipboard.setData(ClipboardData(text: _copyText));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(_messageContent.messageType == "text"
-          ? "Message copied"
-          : "Link copied"),
-      duration: const Duration(seconds: 2),
-    ));
+    CLAlerts.show(
+        _messageContent.messageType == "text"
+            ? "Message copied"
+            : "Link copied",
+        type: CLAlertType.success);
   }
 
   /// Opens one attachment full screen.

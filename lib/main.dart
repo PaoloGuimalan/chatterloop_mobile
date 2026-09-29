@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/notifications/push_notification_service.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/foundation.dart';
@@ -189,6 +190,10 @@ class _MyAppState extends State<MyApp> {
                 darkTheme: buildCLTheme(Brightness.dark),
                 themeMode: _themeController.mode,
                 routerConfig: _router,
+                // Notices sit OVER the Navigator, not inside any screen, so
+                // no tab, sheet or dialog can cover one. See CLAlertHost.
+                builder: (context, child) =>
+                    CLAlertHost(child: child ?? const SizedBox.shrink()),
               ),
             ),
           );

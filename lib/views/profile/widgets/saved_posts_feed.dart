@@ -103,9 +103,7 @@ class SavedPostsFeedState extends State<SavedPostsFeed> {
     });
 
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't unsave that post.")),
-      );
+      // Already reported by the request (reportedAction).
     }
   }
 

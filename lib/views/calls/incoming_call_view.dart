@@ -18,6 +18,7 @@ import 'package:chatterloop_app/core/requests/call_api.dart';
 import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/models/call_models/call_signed_payloads_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -99,12 +100,10 @@ class _IncomingCallViewState extends State<IncomingCallView> {
       //
       // Says so, and still declines nothing - the caller keeps ringing, and
       // this user's other devices keep their chance to answer.
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(CallController.instance.isBusy
+      CLAlerts.show(CallController.instance.isBusy
             ? "Leave your current call before answering."
             : (CallController.instance.lastError ??
-                "Could not join the call.")),
-      ));
+                "Could not join the call."), type: CLAlertType.warning);
       Navigator.of(context).pop();
       return;
     }

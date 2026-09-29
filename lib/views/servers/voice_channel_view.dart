@@ -31,6 +31,7 @@ import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/views/messages/conversation_info_view.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -348,9 +349,9 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
     if (!mounted) return;
     if (!result.ok) {
       setState(() => _leavingChannel = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(result.message ??
-              'Could not leave the channel. Please try again.')));
+      CLAlerts.show(
+          result.message ?? 'Could not leave the channel. Please try again.',
+          type: CLAlertType.warning);
       return;
     }
     // The channel list refetches on its own: removed_user_notif is published

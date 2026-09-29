@@ -261,19 +261,21 @@ class NotificationRenderer {
           // is what guarantees an unanswered ring never gets stuck.
           timeoutAfter: ringFor.inMilliseconds,
           additionalFlags: Int32List.fromList(const <int>[_flagInsistent]),
+          // Android lays actions out in list order, so Join sits on the left
+          // and Decline on the right.
           actions: const <AndroidNotificationAction>[
+            AndroidNotificationAction(
+              callJoinActionId,
+              'Join',
+              titleColor: Color(0xFF30A46C),
+              showsUserInterface: true,
+            ),
             // Handled natively (cancelNotification) plus the background
             // marker in [onBackgroundAction] - no app launch, no network.
             AndroidNotificationAction(
               callDeclineActionId,
               'Decline',
               titleColor: Color(0xFFE5484D),
-            ),
-            AndroidNotificationAction(
-              callJoinActionId,
-              'Join',
-              titleColor: Color(0xFF30A46C),
-              showsUserInterface: true,
             ),
           ],
         ),

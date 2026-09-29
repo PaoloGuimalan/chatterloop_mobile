@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:chatterloop_app/views/notifications/notifications_view.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 
 class NotificationsDetailScreen extends StatefulWidget {
@@ -129,12 +130,11 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
 
     final kind = item.isFollowRequest ? "Follow" : "Contact";
     final label = accept ? "accepted" : "declined";
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok
-          ? "$kind request $label"
-          : "Couldn't ${accept ? 'accept' : 'decline'} the request. Try again."),
-      duration: const Duration(seconds: 2),
-    ));
+    CLAlerts.show(
+        ok
+            ? "$kind request $label"
+            : "Couldn't ${accept ? 'accept' : 'decline'} the request. Try again.",
+        type: ok ? CLAlertType.success : CLAlertType.error);
   }
 
   /// Server-driven action - see notifications_view.dart's _runAction, which
@@ -169,10 +169,8 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
     });
 
     if (!outcome.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(outcome.message ?? "Couldn't complete that action."),
-        duration: const Duration(seconds: 2),
-      ));
+      CLAlerts.show(outcome.message ?? "Couldn't complete that action.",
+          type: CLAlertType.warning);
     }
   }
 

@@ -12,6 +12,7 @@ import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 
@@ -110,10 +111,8 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
     return age >= 13;
   }
 
-  void _alert(String msg) {
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(msg)));
+  void _alert(String msg, {CLAlertType type = CLAlertType.warning}) {
+    CLAlerts.show(msg, type: type);
   }
 
   Future<void> _save() async {
@@ -168,7 +167,7 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
     if (!mounted) return;
     if (data == null) {
       setState(() => _saving = false);
-      _alert('Could not save changes. Please try again.');
+      // Already reported by the request (reportedAction).
       return;
     }
 
@@ -184,7 +183,7 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
       _initialized = false;
     });
     _initFrom(account);
-    _alert('Profile updated');
+    _alert('Profile updated', type: CLAlertType.success);
   }
 
   @override

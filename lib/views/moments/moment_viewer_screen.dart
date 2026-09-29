@@ -20,6 +20,7 @@ import 'package:chatterloop_app/views/moments/moment_viewers_sheet.dart';
 import 'package:chatterloop_app/views/moments/moments_strip.dart';
 import 'package:chatterloop_app/views/moments/moment_route.dart';
 import 'package:chatterloop_app/views/moments/reaction_burst.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
@@ -437,9 +438,8 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
     }
   }
 
-  void _toast(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
+  void _toast(String text, {CLAlertType type = CLAlertType.error}) {
+    CLAlerts.show(text, type: type);
   }
 
   void _toggleTray() {
@@ -472,7 +472,7 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
         postId: id, emojiId: emoji.emojiId, method: ReactionMethod.add);
     if (!ok && mounted) {
       setState(() => _myReactions[id] = before);
-      _toast("Couldn't save that reaction.");
+      // Already reported by the request (reportedAction).
     }
   }
 
@@ -503,7 +503,8 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
     }
     _reply.clear();
     _replyFocus.unfocus();
-    _toast("Reply sent to ${moment.post.author.displayName.split(" ").first}");
+    _toast("Reply sent to ${moment.post.author.displayName.split(" ").first}",
+        type: CLAlertType.success);
   }
 
   /// Back on the board until its natural end - and out of the archive being
@@ -515,10 +516,10 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
         .updateMomentRequest(moment.post.postId, archive: false);
     if (!mounted) return;
     if (!ok) {
-      _toast("Couldn't unarchive that moment.");
+      // Already reported by the request (reportedAction).
       return;
     }
-    _toast("Moment is back on your board");
+    _toast("Moment is back on your board", type: CLAlertType.success);
     EphemeralEvents.moments.value++;
     final moments = [...?_moments]..removeAt(_index);
     if (moments.isEmpty) {
@@ -542,9 +543,7 @@ class _MomentViewerScreenState extends State<MomentViewerScreen>
     if (!mounted) return;
     _held = false;
     if (outcome == MomentSheetOutcome.unarchived && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Moment is back on your board"),
-          duration: Duration(seconds: 2)));
+      CLAlerts.show("Moment is back on your board", type: CLAlertType.success);
     }
     if (outcome == MomentSheetOutcome.deleted ||
         outcome == MomentSheetOutcome.archived ||

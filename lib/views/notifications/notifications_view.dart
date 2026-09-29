@@ -25,6 +25,7 @@ import 'package:chatterloop_app/core/utils/notification_actions.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_state_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:go_router/go_router.dart';
@@ -198,12 +199,11 @@ class _NotificationsViewState extends State<NotificationsView> {
 
     final kind = item.isFollowRequest ? "Follow" : "Contact";
     final label = accept ? "accepted" : "declined";
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok
-          ? "$kind request $label"
-          : "Couldn't ${accept ? 'accept' : 'decline'} the request. Try again."),
-      duration: const Duration(seconds: 2),
-    ));
+    CLAlerts.show(
+        ok
+            ? "$kind request $label"
+            : "Couldn't ${accept ? 'accept' : 'decline'} the request. Try again.",
+        type: ok ? CLAlertType.success : CLAlertType.error);
   }
 
   /// Server-driven action. ONE handler for every button the server can send,
@@ -238,10 +238,8 @@ class _NotificationsViewState extends State<NotificationsView> {
           ? candidate.copyWith(referenceStatus: true)
           : candidate);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(outcome.message ?? "Couldn't complete that action."),
-        duration: const Duration(seconds: 2),
-      ));
+      CLAlerts.show(outcome.message ?? "Couldn't complete that action.",
+          type: CLAlertType.warning);
     }
 
     // Refetch on failure too: the optimistic flip above has to be undone, and
