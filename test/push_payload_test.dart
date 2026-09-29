@@ -56,4 +56,48 @@ void main() {
       expect(payload.isMessage, isFalse);
     });
   });
+
+  group('reaction push', () {
+    // What user_service's PostReactionsView sends the post's owner.
+    Map<String, dynamic> reactionData(String kind, String route) =>
+        <String, dynamic>{
+          'type': '${kind}_reaction',
+          'title': 'Reaction',
+          'body': '@paulo reacted 😂 to your $kind.',
+          if (route.isNotEmpty) 'route': route,
+          'senderAvatarUrl': 'https://cdn.example.com/paulo.jpg',
+        };
+
+    test('a post reaction opens the post', () {
+      final payload =
+          PushPayload.fromData(reactionData('post', '/post/PST_abc123'));
+      expect(payload.isMessage, isFalse);
+      expect(payload.safeRoute, '/post/PST_abc123');
+    });
+
+    test('a moment reaction opens the owner\'s viewer at that moment', () {
+      final payload = PushPayload.fromData(
+          reactionData('moment', '/moments/self?post=PST_abc123'));
+      expect(payload.safeRoute, '/moments/self?post=PST_abc123');
+    });
+
+    test('a comment push opens the post at the comment', () {
+      // Comments, replies and comment mentions all send the post anchored at
+      // the comment; the anchor must not cost the route its allowlisting.
+      final payload = PushPayload.fromData(<String, dynamic>{
+        'type': 'post_comment',
+        'title': 'Post Comment',
+        'body': '@paulo commented on your post.',
+        'route': '/post/PST_abc123?anchor=CMT_1',
+      });
+      expect(payload.safeRoute, '/post/PST_abc123?anchor=CMT_1');
+    });
+
+    test('a thought reaction has no route and opens notifications', () {
+      // Thoughts have no screen of their own in the app, so the server sends
+      // no route and the tap falls back to the notifications list.
+      final payload = PushPayload.fromData(reactionData('thought', ''));
+      expect(payload.safeRoute, isNull);
+    });
+  });
 }

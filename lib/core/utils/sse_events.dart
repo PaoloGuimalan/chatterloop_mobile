@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
+import 'package:chatterloop_app/core/calls/incoming_call_alerts.dart';
 import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
@@ -10,7 +11,6 @@ import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
-import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_item_model.dart';
@@ -339,40 +339,11 @@ class SseEvents {
               JwtCodec.decode(parsedresponse["result"]);
           final rawCallMetadata = decodedResult?["callmetadata"];
           if (rawCallMetadata is Map) {
-            final alert = IncomingCallAlert.fromJson(
-                Map<String, dynamic>.from(rawCallMetadata));
-
-            // Busy on THIS device - drop the signal here, before anything is
-            // pushed or dispatched.
-            //
-            // This used to be handled a layer down, in IncomingCallView's
-            // initState, which meant the route was already pushed and one
-            // frame of a full-screen incoming-call alert was already painted
-            // over the live call before it dismissed itself. Checking here is
-            // what makes it invisible rather than a flash.
-            //
-            // And SILENT, where the old handling auto-DECLINED. Declining
-            // posts /rejectcall, which tells the caller they were refused and
-            // tears their call down - so being busy on this phone would
-            // cancel a call the same person could have taken on their laptop.
-            // Every device on this entity's channel gets this event; each one
-            // answers for itself, and a free one still rings.
-            //
-            // CallController.isBusy, not appStore.state.currentCall: a voice
-            // channel never sets currentCall. See its doc comment.
-            if (CallController.instance.isBusy) {
-              if (kDebugMode) {
-                print("[SSE] incomingcall suppressed - already in a call "
-                    "(engine=${CallController.instance.status}, "
-                    "conversation=${CallController.instance.conversationID})");
-              }
-              return;
-            }
-
-            // appRouter (not a BuildContext) since this fires outside any
-            // widget's tree.
-            appStore.dispatch(DispatchModel(setPendingIncomingCallT, alert));
-            appRouter.push('/call/incoming', extra: alert);
+            // In front: the ringing screen. Behind: the ringing notification
+            // - pushing the screen there is what used to ring nobody. The
+            // busy check (silent, never a decline) lives there too.
+            IncomingCallAlerts.present(IncomingCallAlert.fromJson(
+                Map<String, dynamic>.from(rawCallMetadata)));
           }
         }
         return;
@@ -401,17 +372,29 @@ class SseEvents {
           if (rawRejectData is Map) {
             final conversationID = rawRejectData["conversationID"]?.toString();
             if (conversationID != null) {
-              final pending = appStore.state.pendingIncomingCall;
-              if (pending != null && pending.conversationID == conversationID) {
-                appStore
-                    .dispatch(DispatchModel(clearPendingIncomingCallT, null));
-              }
+              // Whether it is ringing on screen or in the tray.
+              await IncomingCallAlerts.dismiss(conversationID);
               final current = appStore.state.currentCall;
               if (current != null && current.conversationID == conversationID) {
                 await CallController.instance.leaveCall();
                 appStore.dispatch(DispatchModel(clearCurrentCallT, null));
               }
             }
+          }
+        }
+        return;
+      case "callmissed":
+        // A call ended without this user joining it - the live twin of the
+        // `call_missed` push (server/reusables/hooks/callRinging.js), for
+        // devices the worker won't push to because they are connected.
+        // JWT-wrapped as {missedcall: <the push's data block>}, so it is
+        // drawn by the same renderer a push would use.
+        if (_isAuthedOk(event.data)) {
+          final parsed = jsonDecode(event.data as String);
+          final decoded = JwtCodec.decode(parsed["result"]?.toString() ?? '');
+          final missed = decoded?["missedcall"];
+          if (missed is Map) {
+            await IncomingCallAlerts.missed(Map<String, dynamic>.from(missed));
           }
         }
         return;
@@ -566,16 +549,28 @@ class SseEvents {
             // username/entityID come through too - the ongoing-call banner
             // names who is in the room, and this event is the only place a
             // live join's name is available.
+            final roomId =
+                (participant["channelID"] ?? participant["channelId"] ?? '')
+                    .toString();
+            final joinedEntityId =
+                (participant["entityID"] ?? participant["entityId"])
+                    ?.toString();
             VoiceRoomPresence.instance.add(
-              (participant["channelID"] ?? participant["channelId"] ?? '')
-                  .toString(),
+              roomId,
               (participant["clientID"] ?? participant["clientId"] ?? '')
                   .toString(),
               username: participant["username"]?.toString(),
-              entityId: (participant["entityID"] ?? participant["entityId"])
-                  ?.toString(),
+              entityId: joinedEntityId,
               profile: participant["profile"]?.toString(),
             );
+
+            // YOU joined this room, from another device - that call is
+            // answered, so stop it ringing here. The device that joined is
+            // the one whose engine is in the room, and it is left alone.
+            if (joinedEntityId == appStore.state.userAuth.user.entityId &&
+                CallController.instance.conversationID != roomId) {
+              await IncomingCallAlerts.dismiss(roomId);
+            }
             if (kDebugMode) {
               print("[voice] joined room "
                   "${participant["channelID"] ?? participant["channelId"]} "

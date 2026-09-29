@@ -78,6 +78,29 @@
 //
 //   /conversation/:id   /user/:username   /realm/:slug
 //   /notifications      /profile          /settings
+//   /post/:id           /moments/:entityId /server/:serverId
+//
+// ─── The third shape: calls ──────────────────────────────────────────────────
+//
+// Direct and group calls (server/reusables/hooks/pushnotification.js sendCall,
+// cancelCall, sendMissedCall), on their own loud "Calls" channel:
+//
+//   "type": "call"        -> rings, looping, with Join / Decline, and removes
+//                            itself 45s after `sentAt`. Carries the flattened
+//                            call: conversationID, conversationType, callType,
+//                            callDisplayName, callerName, callerEntityID,
+//                            recepients (JSON), displayImage, title, body,
+//                            sentAt. Sent with a short FCM TTL.
+//   "type": "call_cancel" -> takes the ring away silently (conversationID).
+//                            Answered or declined on another device.
+//   "type": "call_missed" -> the call ENDED without this user joining. An
+//                            activity-shaped notice (title, body, route to
+//                            the conversation, senderAvatarUrl) that replaces
+//                            the ring; also carries conversationID and
+//                            ringStartedAt, the `call`'s own sentAt.
+//
+// Nothing but the phone times a ring - the server keeps no timer. See
+// NotificationRenderer's call section and IncomingCallAlerts.
 //
 // The separate channel matters: Android exposes channels individually in system
 // settings, so a user can silence activity notifications while keeping messages
@@ -150,6 +173,12 @@ class PushPayload {
     '/notifications',
     '/profile',
     '/settings',
+    // Reaction pushes: a post opens its page, a moment opens the owner's
+    // viewer at it (`/moments/self?post=<id>`).
+    '/post/',
+    '/moments/',
+    // Voice channel joins: the server the channel belongs to.
+    '/server/',
   ];
 
   /// [route] if it's one we recognise, otherwise null.

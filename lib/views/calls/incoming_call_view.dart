@@ -8,12 +8,13 @@ import 'dart:async';
 
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/calls/call_ring_manager.dart';
+import 'package:chatterloop_app/core/calls/incoming_call_alerts.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/requests/call_api.dart';
-import 'package:chatterloop_app/models/call_models/call_session_model.dart';
 import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:chatterloop_app/models/call_models/call_signed_payloads_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
@@ -50,17 +51,28 @@ class _IncomingCallViewState extends State<IncomingCallView> {
     // of which may be free and ringing. Real "second incoming call" UX
     // (hold/switch) is still out of scope.
     if (CallController.instance.isBusy) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _dismissBusy());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _dismissSilently());
       return;
     }
     CallRingManager.start();
-    _autoDeclineTimer = Timer(const Duration(seconds: 60), _decline);
+    // Stops when the ringing notification would - the same server-stamped
+    // window, so a phone and the in-app screen never disagree about whether
+    // the call is still ringing.
+    //
+    // A silent dismiss, NOT a decline, which it used to be: an unanswered
+    // call is a MISSED call, sent by the server when the call ends. Declining
+    // would tell the caller they were refused and take the missed call away.
+    _autoDeclineTimer = Timer(
+      NotificationRenderer.ringTimeLeft(widget.alert.ringStartedAt),
+      _dismissSilently,
+    );
   }
 
   @override
   void dispose() {
     _autoDeclineTimer?.cancel();
     CallRingManager.stop();
+    IncomingCallAlerts.screenClosed(widget.alert.conversationID);
     super.dispose();
   }
 
@@ -72,26 +84,11 @@ class _IncomingCallViewState extends State<IncomingCallView> {
     setState(() => _resolving = true);
     _autoDeclineTimer?.cancel();
     CallRingManager.stop();
-    appStore.dispatch(DispatchModel(clearPendingIncomingCallT, null));
 
-    // The callee's recipients (who to notify when WE leave) = the caller
-    // plus every other participant the alert carries, minus ourselves.
-    // Without this the callee had no recipients, so its leave-room couldn't
-    // tell the caller it left. entityID throughout (matches webapp).
-    final myEntityId = appStore.state.userAuth.user.entityId;
-    final recepients = <String>{
-      widget.alert.caller.entityId,
-      ...widget.alert.recepients,
-    }.where((e) => e.isNotEmpty && e != myEntityId).toList();
-
-    final joined = await CallController.instance.joinCall(
-      conversationID: widget.alert.conversationID,
-      conversationType: widget.alert.conversationType,
-      callType: widget.alert.callType,
-      isOutgoing: false,
-      recepients: recepients,
-      startCameraOff: cameraOff || widget.alert.callType != "video",
-    );
+    // Shared with the ringing notification's Join - clears the pending alert
+    // and the tray ring, joins, and records the current call.
+    final joined =
+        await IncomingCallAlerts.answer(widget.alert, cameraOff: cameraOff);
     if (!mounted) return;
     if (!joined) {
       // joinCall refuses anything but an idle engine, so the usual reason to
@@ -111,14 +108,6 @@ class _IncomingCallViewState extends State<IncomingCallView> {
       Navigator.of(context).pop();
       return;
     }
-    appStore.dispatch(DispatchModel(
-        setCurrentCallT,
-        CallSession(
-            conversationID: widget.alert.conversationID,
-            conversationType: widget.alert.conversationType,
-            callType: widget.alert.callType,
-            isOutgoing: false,
-            recepients: recepients)));
     // pushReplacement (not go) so THIS incoming-call route is REPLACED by
     // the active-call route rather than left underneath it. With go,
     // go_router can keep this imperatively-pushed page in the stack, so
@@ -144,13 +133,14 @@ class _IncomingCallViewState extends State<IncomingCallView> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  /// Busy on this device: take the alert away without telling anybody.
+  /// Take the alert away without telling anybody - this device is busy, or
+  /// the ring ran out.
   ///
-  /// Clears the pending state the SSE handler may already have dispatched
-  /// (the race this guards), stops any ringtone, and pops. Notifies nothing -
-  /// see initState for why a busy device must not decline on the user's
-  /// behalf.
-  void _dismissBusy() {
+  /// Clears the pending state the SSE handler may already have dispatched,
+  /// stops any ringtone, and pops. Notifies nothing: a busy device must not
+  /// decline on the user's behalf (see initState), and a ring that ran out is
+  /// a missed call, which the server sends when the call ends.
+  void _dismissSilently() {
     if (_resolving) return;
     setState(() => _resolving = true);
     _autoDeclineTimer?.cancel();

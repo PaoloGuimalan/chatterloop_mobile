@@ -21,15 +21,18 @@
 
 import 'dart:convert';
 
+import 'package:chatterloop_app/core/calls/incoming_call_alerts.dart';
 import 'package:chatterloop_app/core/notifications/fcm_token_holder.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/notifications/push_payload.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
+import 'package:chatterloop_app/models/call_models/incoming_call_alert_model.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-class PushNotificationService {
+class PushNotificationService with WidgetsBindingObserver {
   PushNotificationService._();
   static final PushNotificationService instance = PushNotificationService._();
 
@@ -68,7 +71,18 @@ class PushNotificationService {
     // _initLocalNotifications instead.
     FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteTap);
 
+    // A call that started ringing while the app was behind rings in the
+    // tray; coming back to the front hands it to the in-app screen.
+    WidgetsBinding.instance.addObserver(this);
+
     await _handleColdStartTap();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      IncomingCallAlerts.onResumed();
+    }
   }
 
   /// Requests the notification permission. On Android 13+ this shows the
@@ -103,12 +117,16 @@ class PushNotificationService {
       onDidReceiveNotificationResponse: (resp) {
         final payload = resp.payload;
         if (payload != null && payload.isNotEmpty) {
-          _navigateFromData(_decode(payload));
+          _navigateFromData(_decode(payload), actionId: resp.actionId);
         }
       },
+      // Actions that don't open the app (a call's Decline) run in a
+      // background isolate, never through the callback above.
+      onDidReceiveBackgroundNotificationResponse:
+          NotificationRenderer.onBackgroundAction,
     );
 
-    // Both channels up front, so they exist in system settings from first
+    // Every channel up front, so they exist in system settings from first
     // launch rather than only appearing after the first notification of each
     // kind arrives.
     await NotificationRenderer.createChannels(_local);
@@ -135,7 +153,8 @@ class PushNotificationService {
       if ((launch?.didNotificationLaunchApp ?? false) &&
           payload != null &&
           payload.isNotEmpty) {
-        _navigateAfterColdStart(_decode(payload));
+        _navigateAfterColdStart(_decode(payload),
+            actionId: launch?.notificationResponse?.actionId);
         return;
       }
     } catch (e) {
@@ -146,8 +165,9 @@ class PushNotificationService {
     if (initial != null) _navigateAfterColdStart(initial.data);
   }
 
-  void _navigateAfterColdStart(Map<String, dynamic> data) {
-    Future.delayed(_coldStartNavDelay, () => _navigateFromData(data));
+  void _navigateAfterColdStart(Map<String, dynamic> data, {String? actionId}) {
+    Future.delayed(
+        _coldStartNavDelay, () => _navigateFromData(data, actionId: actionId));
   }
 
   /// Foreground messages are never displayed by FCM in either payload style,
@@ -167,6 +187,23 @@ class PushNotificationService {
     }
 
     if (data.isEmpty) return;
+
+    // Call pushes with the app open go where the SSE versions go: a ring
+    // opens the in-app screen rather than a tray entry nobody needs while
+    // looking at the app. (One reaching an open app means this device was
+    // offline when the call started.)
+    switch (data['type']) {
+      case 'call':
+        IncomingCallAlerts.present(IncomingCallAlert.fromPushData(data));
+        return;
+      case 'call_cancel':
+        IncomingCallAlerts.dismiss((data['conversationID'] ?? '').toString());
+        return;
+      case 'call_missed':
+        IncomingCallAlerts.missed(data);
+        return;
+    }
+
     NotificationRenderer.render(data);
   }
 
@@ -182,8 +219,23 @@ class PushNotificationService {
   /// That last fallback is what lets the backend add new notification types
   /// without a mobile release: an unrecognised type still lands somewhere
   /// useful instead of doing nothing when tapped.
-  void _navigateFromData(Map<String, dynamic> data) {
+  void _navigateFromData(Map<String, dynamic> data, {String? actionId}) {
     final payload = PushPayload.fromData(data);
+
+    // A ringing call: Join goes straight into it, a tap on the body opens
+    // the ringing screen. (Decline never reaches here - it runs in the
+    // background, see NotificationRenderer.onBackgroundAction.) A MISSED
+    // call is not this branch; it routes like any activity, to its
+    // conversation.
+    if (payload.type == 'call') {
+      final alert = IncomingCallAlert.fromPushData(data);
+      if (actionId == NotificationRenderer.callJoinActionId) {
+        IncomingCallAlerts.answerFromNotification(alert);
+      } else {
+        IncomingCallAlerts.openRinging(alert);
+      }
+      return;
+    }
 
     if (payload.isMessage) {
       final conversationId = payload.conversationId!;

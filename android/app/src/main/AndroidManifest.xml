@@ -64,6 +64,14 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_stat_chatterloop" />
+        <!-- Receives notification ACTION buttons that don't open the app - a
+             ringing call's Decline, which stops the ring without launching
+             anything (NotificationRenderer.onBackgroundAction). The plugin's
+             own manifest does not declare it; without this line the button
+             does nothing and the phone keeps ringing. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
         <!-- Photo picker on Android 11 and 12: asks Google Play services to
              install the backported picker, so choosing photos and videos
              opens the gallery there too (main.dart turns the picker on).
