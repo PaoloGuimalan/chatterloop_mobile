@@ -171,7 +171,8 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   /// Who this call is with, as every screen outside the media shows it: the
   /// group for a group call, the other person for a direct one. From the
   /// conversation for a call placed here, from the ring for one answered.
-  /// Null for a voice channel, whose screen names the room itself.
+  /// Null for a voice channel, whose screen names the room itself. Set by
+  /// every joinCall, and kept after the call so a closing screen keeps it.
   String? displayName;
 
   /// That group's or person's picture; null when they have none (initials).
@@ -253,8 +254,6 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   void _cleanupLocalCallResources() {
     _cameraPausedForBackground = false;
     connectedAt = null;
-    displayName = null;
-    displayImage = null;
     for (final t in mediaStream?.getTracks() ?? const <MediaStreamTrack>[]) {
       t.stop();
     }
@@ -577,7 +576,14 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   /// not currently on a /call screen (e.g. the user already navigated).
   void _navigateAwayFromCall() {
     try {
-      final loc = appRouter.routerDelegate.currentConfiguration.uri.path;
+      // The route on TOP, not the configuration's uri: go_router leaves that
+      // at the base location on push(), and every call screen is pushed - so
+      // this used to read "/conversation/..." and give up, leaving the call
+      // screen up after the call ended (a declined call sat there with its
+      // video grey). Only the paths that close the screen themselves (End,
+      // the single-call auto-close) ever got it off screen.
+      final config = appRouter.routerDelegate.currentConfiguration;
+      final loc = config.lastOrNull?.matchedLocation ?? config.uri.path;
       if (!loc.startsWith('/call')) return;
       if (appRouter.canPop()) {
         appRouter.pop();

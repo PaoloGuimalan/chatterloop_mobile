@@ -202,12 +202,15 @@ class _ActiveCallViewState extends State<ActiveCallView> {
           // rebuilding one at the instant status flips to idle (which was
           // unreliable for the auto-end path). Nothing to do here.
 
+          // A direct call rings until the other person picks up. A group call
+          // is connected the moment we are in it: there is no one person to
+          // wait for, and the others join as and when they do.
           final connecting = controller.status == CallEngineStatus.joining;
           final statusText = connecting
               ? "Connecting..."
-              : controller.joinedParticipants.isEmpty
-                  ? "Ringing..."
-                  : "Connected";
+              : controller.isGroup || controller.joinedParticipants.isNotEmpty
+                  ? "Connected"
+                  : "Ringing...";
 
           final hasAnyVideo =
               !controller.cameraOff || _remoteRenderers.isNotEmpty;
