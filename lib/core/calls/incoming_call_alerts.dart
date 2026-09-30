@@ -14,9 +14,12 @@
 // the call ending - goes through [dismiss] or [missed], so the screen, the
 // pending state and the tray entry can't disagree.
 
+import 'dart:async';
+
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/models/call_models/call_session_model.dart';
@@ -59,6 +62,17 @@ class IncomingCallAlerts {
     // The same ring from a second path (SSE and a push, say).
     final pending = appStore.state.pendingIncomingCall;
     if (pending?.conversationID == alert.conversationID) return;
+
+    // Another call is already ringing: this one waits in the tray, silent,
+    // with its own Join and Decline. It never takes over the ringing screen
+    // or the pending slot the first call is using.
+    if (pending != null && _stillRinging(pending)) {
+      NotificationRenderer.showCallRing(alert.toPushData(), silent: true);
+      if (_inForeground) {
+        CLAlerts.info("${alert.callDisplayName} is also calling you.");
+      }
+      return;
+    }
 
     appStore.dispatch(DispatchModel(setPendingIncomingCallT, alert));
     if (_inForeground) {
@@ -121,6 +135,8 @@ class IncomingCallAlerts {
       startCameraOff: cameraOff || alert.callType != "video",
     );
     if (!joined) return false;
+    // Any other call still ringing here would ring over this one.
+    unawaited(NotificationRenderer.cancelOtherCallRings(alert.conversationID));
 
     appStore.dispatch(DispatchModel(
         setCurrentCallT,
@@ -167,6 +183,17 @@ class IncomingCallAlerts {
     } else {
       appStore.dispatch(DispatchModel(clearPendingIncomingCallT, null));
     }
+  }
+
+  /// Whether [alert]'s ring window is still open. A pending alert outlives
+  /// its ring when the ring times out in the tray, and that stale one must
+  /// not make the next call wait forever.
+  static bool _stillRinging(IncomingCallAlert alert) {
+    final ms = int.tryParse(alert.ringStartedAt ?? '');
+    if (ms == null) return true;
+    final age =
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+    return age.isNegative || age < NotificationRenderer.callRingWindow;
   }
 
   static void _pushScreen(IncomingCallAlert alert) {

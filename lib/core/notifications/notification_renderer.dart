@@ -56,6 +56,8 @@ class NotificationRenderer {
   static const List<String> _legacyChannelIds = <String>[
     'chatterloop_messages',
     'chatterloop_activity',
+    // v2 added the ring vibration pattern.
+    'chatterloop_calls_v1',
   ];
 
   /// Everything that isn't a chat message - contact requests, accepts, pokes,
@@ -74,7 +76,7 @@ class NotificationRenderer {
   /// that must be LOUD - maximum importance, the ringtone on the ring stream
   /// - and Android lets the user tune each channel separately, so muting
   /// activity never silences a call or the reverse.
-  static const String callsChannelId = 'chatterloop_calls_v1';
+  static const String callsChannelId = 'chatterloop_calls_v2';
   static const String callsChannelName = 'Calls';
   static const String callsChannelDescription =
       'Incoming voice and video calls';
@@ -83,6 +85,12 @@ class NotificationRenderer {
   /// purpose: [_flagInsistent] loops it, and iOS (later) caps a notification
   /// sound at 30s.
   static const String _callSound = 'call_ringtone';
+
+  /// 1s buzz, 1s pause - a phone's ring rhythm. [_flagInsistent] repeats it
+  /// with the sound. Android files it as ring vibration, so it follows the
+  /// phone's own "vibrate for calls" setting and the ringer mode, like a call.
+  static final Int64List _callVibration =
+      Int64List.fromList(const <int>[0, 1000, 1000]);
 
   /// How long a call rings, measured from when the SERVER sent the ring - so
   /// every device of every callee stops together, however late its push
@@ -202,16 +210,27 @@ class NotificationRenderer {
   /// Public for the one caller outside a push: an `incomingcall` SSE that
   /// arrives while the app is in the background (IncomingCallAlerts), which
   /// hands over the same data a push would carry.
-  static Future<void> showCallRing(Map<String, dynamic> raw) async {
+  ///
+  /// [silent] posts it as a waiting call: see [_renderCallRing].
+  static Future<void> showCallRing(
+    Map<String, dynamic> raw, {
+    bool silent = false,
+  }) async {
     try {
       await _ensureInitialized();
-      await _renderCallRing(raw);
+      await _renderCallRing(raw, silent: silent);
     } catch (e) {
       if (kDebugMode) debugPrint('[FCM] call ring failed: $e');
     }
   }
 
-  static Future<void> _renderCallRing(Map<String, dynamic> raw) async {
+  /// Rings already posted by this isolate, as `conversationId:sentAt`.
+  static final Set<String> _postedRings = <String>{};
+
+  static Future<void> _renderCallRing(
+    Map<String, dynamic> raw, {
+    bool silent = false,
+  }) async {
     final payload = PushPayload.fromData(raw);
     final conversationId = payload.conversationId;
     if (conversationId == null) return;
@@ -225,6 +244,24 @@ class NotificationRenderer {
       if (declined == ringStartedAt) return;
       await _clearDeclined(conversationId);
     }
+
+    // Post each ring ONCE. A second post is an update, and Android mutes an
+    // update that lands within a second of the app's last alert ("recently
+    // noisy") - which for an insistent notification stops the loop outright
+    // and leaves a silent ring in the tray. Duplicates are real: FCM can
+    // redeliver, and the SSE and the push can both arrive. The set catches
+    // two landing together (before either is posted), the tray check one
+    // arriving later.
+    final ringKey = '$conversationId:$ringStartedAt';
+    if (!_postedRings.add(ringKey)) return;
+    if (await isCallRinging(conversationId)) return;
+
+    // A second call while another is already ringing waits, like call
+    // waiting on a phone: its own row with its own Join and Decline, but
+    // silent. Android plays one notification sound at a time, so letting it
+    // ring would only cut the first ring off - and hanging either one up
+    // would then silence the other.
+    final waiting = silent || await _otherCallRinging(conversationId);
 
     final ringFor = ringTimeLeft(ringStartedAt);
 
@@ -253,6 +290,8 @@ class NotificationRenderer {
           // The ring stream, not the notification one: rings at ringer
           // volume, like a phone call does.
           audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          enableVibration: true,
+          vibrationPattern: _callVibration,
           // Only Join or Decline end it early - not a stray swipe.
           ongoing: true,
           autoCancel: false,
@@ -260,7 +299,9 @@ class NotificationRenderer {
           // The only ring timeout anywhere. The server keeps none, so this
           // is what guarantees an unanswered ring never gets stuck.
           timeoutAfter: ringFor.inMilliseconds,
-          additionalFlags: Int32List.fromList(const <int>[_flagInsistent]),
+          silent: waiting,
+          additionalFlags:
+              waiting ? null : Int32List.fromList(const <int>[_flagInsistent]),
           // Android lays actions out in list order, so Join sits on the left
           // and Decline on the right.
           actions: const <AndroidNotificationAction>[
@@ -310,6 +351,35 @@ class NotificationRenderer {
       await _plugin.cancel(id: callRingId(conversationId));
     } catch (e) {
       if (kDebugMode) debugPrint('[FCM] call ring cancel failed: $e');
+    }
+  }
+
+  /// Whether a DIFFERENT call is ringing in the tray right now.
+  static Future<bool> _otherCallRinging(String conversationId) async {
+    try {
+      final id = callRingId(conversationId);
+      final active = await _plugin.getActiveNotifications();
+      return active.any((n) => n.channelId == callsChannelId && n.id != id);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Takes down every ring but [conversationId]'s - the user just answered
+  /// that one. The others are not declined: their callers keep ringing
+  /// everyone else, and this user gets a missed call when each one ends.
+  static Future<void> cancelOtherCallRings(String conversationId) async {
+    try {
+      await _ensureInitialized();
+      final id = callRingId(conversationId);
+      final active = await _plugin.getActiveNotifications();
+      for (final n in active) {
+        if (n.channelId == callsChannelId && n.id != id && n.id != null) {
+          await _plugin.cancel(id: n.id!);
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[FCM] cancel other rings failed: $e');
     }
   }
 
@@ -626,7 +696,7 @@ class NotificationRenderer {
       ),
     );
     await android.createNotificationChannel(
-      const AndroidNotificationChannel(
+      AndroidNotificationChannel(
         callsChannelId,
         callsChannelName,
         description: callsChannelDescription,
@@ -634,6 +704,8 @@ class NotificationRenderer {
         importance: Importance.max,
         sound: RawResourceAndroidNotificationSound(_callSound),
         audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+        enableVibration: true,
+        vibrationPattern: _callVibration,
       ),
     );
   }
