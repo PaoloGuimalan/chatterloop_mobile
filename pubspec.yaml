@@ -30,6 +30,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # The native half of calls: the app-played ringtone, the ongoing-call
+  # notification and picture-in-picture (Android), and the same contract on
+  # iOS. In-repo so it can change together with the call code that drives it.
+  chatterloop_call_native:
+    path: packages/chatterloop_call_native
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

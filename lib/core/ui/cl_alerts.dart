@@ -20,6 +20,7 @@ import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/errors/request_errors.dart';
+import 'package:chatterloop_call_native/chatterloop_call_native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -193,7 +194,9 @@ class CLAlertHost extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return ValueListenableBuilder<bool>(
+      valueListenable: CallNative.inPip,
+      builder: (context, _, __) => Stack(
       children: [
         child,
         Positioned(
@@ -205,7 +208,11 @@ class CLAlertHost extends StatelessWidget {
             child: ValueListenableBuilder<List<CLAlert>>(
               valueListenable: CLAlerts.active,
               builder: (context, alerts, _) {
-                if (alerts.isEmpty) return const SizedBox.shrink();
+                // Nothing over a call's PiP window - it is a video, not the
+                // app. The notices wait for the app to come back.
+                if (alerts.isEmpty || CallNative.inPip.value) {
+                  return const SizedBox.shrink();
+                }
                 return Align(
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(
@@ -229,6 +236,7 @@ class CLAlertHost extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
 }

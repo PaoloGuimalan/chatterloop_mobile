@@ -4,6 +4,7 @@ import 'dart:ui' show Color, DartPluginRegistrant;
 
 import 'package:chatterloop_app/core/notifications/notification_thread_store.dart';
 import 'package:chatterloop_app/core/notifications/push_payload.dart';
+import 'package:chatterloop_call_native/chatterloop_call_native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
@@ -72,14 +73,29 @@ class NotificationRenderer {
   static const String activityChannelDescription =
       'Contact requests, reactions, mentions and other activity';
 
-  /// Incoming direct and group calls. Its own channel because it is the one
-  /// that must be LOUD - maximum importance, the ringtone on the ring stream
-  /// - and Android lets the user tune each channel separately, so muting
-  /// activity never silences a call or the reverse.
+  /// Incoming calls the app rings ITSELF (chatterloop_call_native's ringer):
+  /// maximum importance, so the call pops up, but no sound or vibration of
+  /// its own - the ringer plays both. A notification's own looping sound
+  /// stops the moment the user opens the shade to look at the call, and its
+  /// vibration follows the phone's often-off "vibrate for calls" setting;
+  /// the ringer's do neither. Also where a waiting second call goes: seen,
+  /// not heard.
+  static const String ringChannelId = 'chatterloop_incoming_calls_v1';
+  static const String ringChannelName = 'Calls';
+  static const String ringChannelDescription = 'Incoming voice and video calls';
+
+  /// Incoming calls the NOTIFICATION rings - whenever the app can't ring
+  /// itself: iOS, a ring that arrived over the live connection rather than
+  /// as a push, or Android refusing the ringer for a moment. Loud: maximum
+  /// importance, the ringtone on the ring stream, looping. Its own channel
+  /// because Android lets the user tune each channel separately.
   static const String callsChannelId = 'chatterloop_calls_v2';
-  static const String callsChannelName = 'Calls';
+  static const String callsChannelName = 'Calls (backup ring)';
   static const String callsChannelDescription =
-      'Incoming voice and video calls';
+      "Rings an incoming call when Chatterloop can't ring it itself";
+
+  static bool _isCallChannel(String? id) =>
+      id == ringChannelId || id == callsChannelId;
 
   /// res/raw/call_ringtone.mp3 - the 21s cut of the in-app ringtone. Short on
   /// purpose: [_flagInsistent] loops it, and iOS (later) caps a notification
@@ -159,7 +175,7 @@ class NotificationRenderer {
       await _ensureInitialized();
       switch (payload.type) {
         case 'call':
-          await _renderCallRing(data);
+          await _renderCallRing(data, viaPush: true);
           return;
         case 'call_cancel':
           await cancelCallRing(payload.conversationId ?? '');
@@ -202,9 +218,8 @@ class NotificationRenderer {
     }
   }
 
-  /// An incoming call, rung by the notification itself: the ringtone loops
-  /// until Join, Decline, a cancel, or [callRingWindow] runs out - after
-  /// which it simply goes. There is deliberately no full-screen takeover; the
+  /// An incoming call: the ringtone loops until Join, Decline, a cancel, or
+  /// [callRingWindow] runs out - after which it simply goes. There is deliberately no full-screen takeover; the
   /// notification IS the alert.
   ///
   /// Public for the one caller outside a push: an `incomingcall` SSE that
@@ -227,9 +242,14 @@ class NotificationRenderer {
   /// Rings already posted by this isolate, as `conversationId:sentAt`.
   static final Set<String> _postedRings = <String>{};
 
+  /// Missed calls already posted by this isolate, as
+  /// `conversationId:ringStartedAt`.
+  static final Set<String> _postedMissed = <String>{};
+
   static Future<void> _renderCallRing(
     Map<String, dynamic> raw, {
     bool silent = false,
+    bool viaPush = false,
   }) async {
     final payload = PushPayload.fromData(raw);
     final conversationId = payload.conversationId;
@@ -256,72 +276,132 @@ class NotificationRenderer {
     if (!_postedRings.add(ringKey)) return;
     if (await isCallRinging(conversationId)) return;
 
+    // Already in a call on this phone. The in-app path drops such a ring
+    // (IncomingCallAlerts.present); a push drawn here can't see the call
+    // controller, so it asks the native side, which can. Dropped, never
+    // declined - a missed call follows if the call ends without us.
+    if (viaPush && await CallNative.isInCall()) return;
+
     // A second call while another is already ringing waits, like call
     // waiting on a phone: its own row with its own Join and Decline, but
-    // silent. Android plays one notification sound at a time, so letting it
-    // ring would only cut the first ring off - and hanging either one up
-    // would then silence the other.
+    // silent. Only one thing can ring at a time, and hanging either one up
+    // must not silence the other.
     final waiting = silent || await _otherCallRinging(conversationId);
 
-    final ringFor = ringTimeLeft(ringStartedAt);
+    // The app rings it itself when it can. Only for a push: the push is what
+    // lets Android start the ringer with the app in the background.
+    final selfRing = viaPush && !waiting && CallNative.ringerSupported;
 
     final avatarUrl = raw['displayImage']?.toString() ?? '';
-    final avatar = avatarUrl.isEmpty ? null : await avatarFile(avatarUrl);
+    // Bounded, because Android only lets a push start the ringer for a few
+    // seconds after it lands - a slow avatar must not cost the ring.
+    final avatar = avatarUrl.isEmpty
+        ? null
+        : await avatarFile(avatarUrl).timeout(
+            const Duration(seconds: 3),
+            onTimeout: () => null,
+          );
     final kind = raw['callType'] == 'video' ? 'video call' : 'voice call';
+    final title =
+        payload.title ?? raw['callDisplayName']?.toString() ?? 'Incoming call';
+    final body = payload.body.isNotEmpty ? payload.body : 'Incoming $kind';
+    final id = callRingId(conversationId);
 
-    await _plugin.show(
-      id: callRingId(conversationId),
-      title:
-          payload.title ??
-          raw['callDisplayName']?.toString() ??
-          'Incoming call',
-      body: payload.body.isNotEmpty ? payload.body : 'Incoming $kind',
-      notificationDetails: NotificationDetails(
-        android: AndroidNotificationDetails(
-          callsChannelId,
-          callsChannelName,
-          channelDescription: callsChannelDescription,
-          importance: Importance.max,
-          priority: Priority.max,
-          category: AndroidNotificationCategory.call,
-          icon: _smallIcon,
-          largeIcon: avatar == null ? null : FilePathAndroidBitmap(avatar.path),
-          sound: const RawResourceAndroidNotificationSound(_callSound),
-          // The ring stream, not the notification one: rings at ringer
-          // volume, like a phone call does.
-          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
-          enableVibration: true,
-          vibrationPattern: _callVibration,
-          // Only Join or Decline end it early - not a stray swipe.
-          ongoing: true,
-          autoCancel: false,
-          visibility: NotificationVisibility.public,
-          // The only ring timeout anywhere. The server keeps none, so this
-          // is what guarantees an unanswered ring never gets stuck.
-          timeoutAfter: ringFor.inMilliseconds,
-          silent: waiting,
-          additionalFlags:
-              waiting ? null : Int32List.fromList(const <int>[_flagInsistent]),
-          // Android lays actions out in list order, so Join sits on the left
-          // and Decline on the right.
-          actions: const <AndroidNotificationAction>[
-            AndroidNotificationAction(
-              callJoinActionId,
-              'Join',
-              titleColor: Color(0xFF30A46C),
-              showsUserInterface: true,
+    Future<void> post({required bool audible}) => _plugin.show(
+          id: id,
+          title: title,
+          body: body,
+          notificationDetails: NotificationDetails(
+            android: _callRingDetails(
+              audible: audible,
+              avatar: avatar,
+              ringFor: ringTimeLeft(ringStartedAt),
             ),
-            // Handled natively (cancelNotification) plus the background
-            // marker in [onBackgroundAction] - no app launch, no network.
-            AndroidNotificationAction(
-              callDeclineActionId,
-              'Decline',
-              titleColor: Color(0xFFE5484D),
-            ),
-          ],
+          ),
+          payload: jsonEncode(raw),
+        );
+
+    if (!selfRing) {
+      await post(audible: !waiting);
+      return;
+    }
+
+    await post(audible: false);
+    final ringing = await CallNative.startRinging(
+      notificationId: id,
+      channelId: ringChannelId,
+      ringFor: ringTimeLeft(ringStartedAt),
+      sound: _callSound,
+      vibrationPattern: _callVibration.toList(),
+      declineActionIndex: _declineActionIndex,
+    );
+    if (ringing) return;
+
+    // Android refused the ringer just now. Ring the old way instead - after a
+    // second, because Android mutes a sounding post that follows the app's
+    // previous one that closely - unless the ring was answered meanwhile.
+    await Future<void>.delayed(const Duration(milliseconds: 1100));
+    if (await isCallRinging(conversationId)) await post(audible: true);
+  }
+
+  /// Decline's place in [_callRingDetails]'s actions - the ringer rewires
+  /// that button so it silences the ring the instant it is pressed.
+  static const int _declineActionIndex = 1;
+
+  /// A ringing call's notification. [audible]: on the backup channel, ringing
+  /// by itself; otherwise on the silent one, for the app's own ringer - or no
+  /// ringer at all, for a waiting call.
+  static AndroidNotificationDetails _callRingDetails({
+    required bool audible,
+    required File? avatar,
+    required Duration ringFor,
+  }) {
+    return AndroidNotificationDetails(
+      audible ? callsChannelId : ringChannelId,
+      audible ? callsChannelName : ringChannelName,
+      channelDescription:
+          audible ? callsChannelDescription : ringChannelDescription,
+      importance: Importance.max,
+      priority: Priority.max,
+      category: AndroidNotificationCategory.call,
+      icon: _smallIcon,
+      largeIcon: avatar == null ? null : FilePathAndroidBitmap(avatar.path),
+      playSound: audible,
+      sound: audible
+          ? const RawResourceAndroidNotificationSound(_callSound)
+          : null,
+      // The ring stream, not the notification one: rings at ringer volume,
+      // like a phone call does.
+      audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+      enableVibration: audible,
+      vibrationPattern: audible ? _callVibration : null,
+      // Only Join or Decline end it early - not a stray swipe.
+      ongoing: true,
+      autoCancel: false,
+      visibility: NotificationVisibility.public,
+      // The ring's timeout when the notification rings (or waits) by itself.
+      // The server keeps none, so this is what guarantees an unanswered ring
+      // never gets stuck. The app's ringer keeps its own, to the same end.
+      timeoutAfter: ringFor.inMilliseconds,
+      additionalFlags:
+          audible ? Int32List.fromList(const <int>[_flagInsistent]) : null,
+      // Android lays actions out in list order, so Join sits on the left and
+      // Decline on the right ([_declineActionIndex]).
+      actions: const <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          callJoinActionId,
+          'Join',
+          titleColor: Color(0xFF30A46C),
+          showsUserInterface: true,
         ),
-      ),
-      payload: jsonEncode(raw),
+        // Handled natively (cancelNotification) plus the background marker
+        // in [onBackgroundAction] - no app launch, no network.
+        AndroidNotificationAction(
+          callDeclineActionId,
+          'Decline',
+          titleColor: Color(0xFFE5484D),
+        ),
+      ],
     );
   }
 
@@ -348,7 +428,10 @@ class NotificationRenderer {
     if (conversationId.isEmpty) return;
     try {
       await _ensureInitialized();
-      await _plugin.cancel(id: callRingId(conversationId));
+      final id = callRingId(conversationId);
+      // The ringer owns its notification - a plain cancel can't remove it.
+      await CallNative.stopRinging(notificationId: id);
+      await _plugin.cancel(id: id);
     } catch (e) {
       if (kDebugMode) debugPrint('[FCM] call ring cancel failed: $e');
     }
@@ -359,7 +442,7 @@ class NotificationRenderer {
     try {
       final id = callRingId(conversationId);
       final active = await _plugin.getActiveNotifications();
-      return active.any((n) => n.channelId == callsChannelId && n.id != id);
+      return active.any((n) => _isCallChannel(n.channelId) && n.id != id);
     } catch (_) {
       return false;
     }
@@ -374,7 +457,8 @@ class NotificationRenderer {
       final id = callRingId(conversationId);
       final active = await _plugin.getActiveNotifications();
       for (final n in active) {
-        if (n.channelId == callsChannelId && n.id != id && n.id != null) {
+        if (_isCallChannel(n.channelId) && n.id != id && n.id != null) {
+          await CallNative.stopRinging(notificationId: n.id);
           await _plugin.cancel(id: n.id!);
         }
       }
@@ -404,7 +488,12 @@ class NotificationRenderer {
   ) async {
     final conversationId = payload.conversationId;
     if (conversationId == null) return;
-    await _plugin.cancel(id: callRingId(conversationId));
+    await cancelCallRing(conversationId);
+
+    // Once per missed call: calls reach every device now, so an open app gets
+    // both the push and the live event for it.
+    final missedKey = '$conversationId:${raw['ringStartedAt'] ?? ''}';
+    if (!_postedMissed.add(missedKey)) return;
 
     final declined = await _declinedRing(conversationId);
     if (declined != null) {
@@ -433,7 +522,11 @@ class NotificationRenderer {
       if (raw is! Map) return;
       final conversationId = raw['conversationID']?.toString() ?? '';
       final ringStartedAt = raw['sentAt']?.toString() ?? '';
-      if (conversationId.isEmpty || ringStartedAt.isEmpty) return;
+      if (conversationId.isEmpty) return;
+      // The ringer already stopped when Decline was pressed; this covers a
+      // ring it never adopted.
+      await CallNative.stopRinging(notificationId: callRingId(conversationId));
+      if (ringStartedAt.isEmpty) return;
       final file = await _declineMarker(conversationId);
       await file.writeAsString(ringStartedAt, flush: true);
     } catch (e) {
@@ -693,6 +786,17 @@ class NotificationRenderer {
         description: activityChannelDescription,
         importance: Importance.defaultImportance,
         sound: RawResourceAndroidNotificationSound(_activitySound),
+      ),
+    );
+    await android.createNotificationChannel(
+      const AndroidNotificationChannel(
+        ringChannelId,
+        ringChannelName,
+        description: ringChannelDescription,
+        // Max: the heads-up banner. Silent: the app's ringer is the sound.
+        importance: Importance.max,
+        playSound: false,
+        enableVibration: false,
       ),
     );
     await android.createNotificationChannel(

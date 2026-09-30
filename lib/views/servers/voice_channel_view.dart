@@ -22,6 +22,7 @@
 
 import 'dart:async';
 
+import 'package:chatterloop_app/core/calls/call_background.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -896,46 +897,63 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
     final disabled = _joining || _error != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _Control(
-            icon: _controller.muted ? Icons.mic_off : Icons.mic,
-            label: _controller.muted ? 'Unmute' : 'Mute',
-            color: _controller.muted ? p.pink : p.text,
-            background: _controller.muted ? p.pinkSoft : p.surface2,
-            onPressed: disabled ? null : _controller.toggleMic,
-          ),
-          const SizedBox(width: 12),
-          _Control(
-            icon: _controller.cameraOff ? Icons.videocam_off : Icons.videocam,
-            label: 'Camera',
-            color: _controller.cameraOff ? p.text : p.gold,
-            background: _controller.cameraOff ? p.surface2 : p.goldSoft,
-            onPressed: disabled
-                ? null
-                : () async {
-                    await _controller.toggleCamera();
-                    await _syncRenderers();
-                  },
-          ),
-          const SizedBox(width: 12),
-          _Control(
-            icon: _controller.speakerOn ? Icons.volume_up : Icons.hearing,
-            label: _controller.speakerOn ? 'Speaker' : 'Earpiece',
-            color: _controller.speakerOn ? p.gold : p.text,
-            background: _controller.speakerOn ? p.goldSoft : p.surface2,
-            onPressed: disabled ? null : _controller.toggleSpeaker,
-          ),
-          const SizedBox(width: 12),
-          _Control(
-            icon: Icons.call_end,
-            label: 'Leave',
-            color: Colors.white,
-            background: p.pink,
-            onPressed: _leave,
-          ),
-        ],
+      // Scales down rather than overflowing on the narrowest phones - five
+      // 52px controls is right at the edge of a 320dp screen.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _Control(
+              icon: _controller.muted ? Icons.mic_off : Icons.mic,
+              label: _controller.muted ? 'Unmute' : 'Mute',
+              color: _controller.muted ? p.pink : p.text,
+              background: _controller.muted ? p.pinkSoft : p.surface2,
+              onPressed: disabled ? null : _controller.toggleMic,
+            ),
+            const SizedBox(width: 12),
+            _Control(
+              icon: _controller.cameraOff ? Icons.videocam_off : Icons.videocam,
+              label: 'Camera',
+              color: _controller.cameraOff ? p.text : p.gold,
+              background: _controller.cameraOff ? p.surface2 : p.goldSoft,
+              onPressed: disabled
+                  ? null
+                  : () async {
+                      await _controller.toggleCamera();
+                      await _syncRenderers();
+                    },
+            ),
+            const SizedBox(width: 12),
+            _Control(
+              icon: _controller.isScreenSharing
+                  ? Icons.stop_screen_share
+                  : Icons.screen_share,
+              label: _controller.isScreenSharing ? 'Stop' : 'Share',
+              color: _controller.isScreenSharing ? p.gold : p.text,
+              background: _controller.isScreenSharing ? p.goldSoft : p.surface2,
+              onPressed: disabled || !_controller.isActive
+                  ? null
+                  : CallBackground.toggleScreenShare,
+            ),
+            const SizedBox(width: 12),
+            _Control(
+              icon: _controller.speakerOn ? Icons.volume_up : Icons.hearing,
+              label: _controller.speakerOn ? 'Speaker' : 'Earpiece',
+              color: _controller.speakerOn ? p.gold : p.text,
+              background: _controller.speakerOn ? p.goldSoft : p.surface2,
+              onPressed: disabled ? null : _controller.toggleSpeaker,
+            ),
+            const SizedBox(width: 12),
+            _Control(
+              icon: Icons.call_end,
+              label: 'Leave',
+              color: Colors.white,
+              background: p.pink,
+              onPressed: _leave,
+            ),
+          ],
+        ),
       ),
     );
   }

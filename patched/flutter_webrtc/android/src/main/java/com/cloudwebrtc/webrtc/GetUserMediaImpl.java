@@ -489,6 +489,14 @@ class GetUserMediaImpl {
                             return;
                         }
 
+                        // CHATTERLOOP PATCH: the moment between consent and capture - see
+                        // ScreenCaptureHooks.
+                        ScreenCaptureHooks.Listener hooks = ScreenCaptureHooks.listener;
+                        if (hooks != null && !hooks.onCaptureConsented()) {
+                            resultError("screenRequestPermissions", "The app could not start screen capture.", result);
+                            return;
+                        }
+
                         MediaStreamTrack[] tracks = new MediaStreamTrack[1];
                         VideoCapturer videoCapturer = null;
                         videoCapturer =
@@ -498,6 +506,9 @@ class GetUserMediaImpl {
                                             @Override
                                             public void onStop() {
                                                 super.onStop();
+                                                // CHATTERLOOP PATCH - see ScreenCaptureHooks.
+                                                ScreenCaptureHooks.Listener stopHooks = ScreenCaptureHooks.listener;
+                                                if (stopHooks != null) stopHooks.onCaptureStopped();
                                                 // After Huawei P30 and Android 10 version test, the onstop method is called, which will not affect the next process, 
                                                 // and there is no need to call the resulterror method
                                                 //resultError("MediaProjection.Callback()", "User revoked permission to capture the screen.", result);

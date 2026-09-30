@@ -41,10 +41,12 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/requests/call_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/requests/webrtc_api.dart';
 import 'package:chatterloop_app/core/utils/device_token.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
+import 'package:chatterloop_app/models/call_models/call_signed_payloads_model.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -128,6 +130,10 @@ class _TransportConnectState {
 
 enum CallEngineStatus { idle, joining, active, leaving }
 
+/// How a [CallController.startScreenShare] ended. [cancelled] is the user
+/// saying no to the system's capture prompt - nothing to report.
+enum ScreenShareResult { started, cancelled, failed }
+
 class CallController extends ChangeNotifier with WidgetsBindingObserver {
   CallController._();
   static final CallController instance = CallController._();
@@ -161,6 +167,16 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   /// still a call as far as interrupting the user goes, and joinCall itself
   /// already refuses anything but idle.
   bool get isBusy => status != CallEngineStatus.idle;
+
+  /// Set while this call's Flutter engine is guaranteed to outlive its
+  /// activity (Android's ongoing-call service - see CallBackground). Then
+  /// `detached` only means the SCREEN went away - a closed PiP window, a
+  /// swipe out of recents - and the call carries on.
+  bool survivesDetach = false;
+
+  /// The camera was switched off because the app left the screen, and comes
+  /// back on when it returns. See [pauseCameraForBackground].
+  bool _cameraPausedForBackground = false;
 
   // ── State (mirrors webapp's useState, CallWindow.tsx lines 43-86) ─────
   MediaStream? mediaStream;
@@ -222,6 +238,7 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   // cleanupLocalCallResources (CallWindow.tsx lines 149-173)
   // ════════════════════════════════════════════════════════════════════
   void _cleanupLocalCallResources() {
+    _cameraPausedForBackground = false;
     for (final t in mediaStream?.getTracks() ?? const <MediaStreamTrack>[]) {
       t.stop();
     }
@@ -323,7 +340,7 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
         members: members,
         muted: !enableMic,
         cameraOff: !enableCamera,
-        username: appStore.state.userAuth.user.username,
+        username: appStore.state.userAuth.user.activeUsername,
         clientId: clientId,
       );
     } finally {
@@ -359,6 +376,7 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.detached) return;
     if (status == CallEngineStatus.idle || conversationID == null) return;
+    if (survivesDetach) return;
     if (kDebugMode) {
       print("[CallController] detached while in $conversationID - "
           "firing keepalive leave");
@@ -391,6 +409,57 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       if (kDebugMode) print("[CallController] keepalive leave failed: $e");
     }
+  }
+
+  /// Hangs up the way the end-call button does - wherever it is pressed:
+  /// the call screen, the ongoing-call notification, the PiP window.
+  ///
+  /// Only the caller ever notifies the other side explicitly (matches
+  /// webapp's CallWindow.tsx isCaller gate) - a callee hanging up just leaves
+  /// the mediasoup room, surfacing to the caller as an ordinary
+  /// participant-left roster event, nothing more.
+  Future<void> hangUp() async {
+    final current = appStore.state.currentCall;
+    if (current != null &&
+        current.isOutgoing &&
+        current.recepients.isNotEmpty) {
+      CallApi().endCallRequest(IEndCallRequest(
+        conversationID: current.conversationID,
+        conversationType: current.conversationType,
+        recepients: current.recepients,
+      ));
+    }
+    // leaveCall() clears the Redux call state AND navigates off the call
+    // screen (see _navigateAwayFromCall).
+    await leaveCall();
+  }
+
+  /// The app left the screen with the camera on - not into a PiP window,
+  /// where the call is still visible, but truly away. Android forbids a
+  /// backgrounded app the camera, so release it rather than let it fail:
+  /// the others see "camera off" instead of a frozen frame. Undone by
+  /// [resumeCameraFromBackground].
+  Future<void> pauseCameraForBackground() async {
+    if (!enableCamera || _cameraPausedForBackground) return;
+    _cameraPausedForBackground = true;
+    await toggleCamera();
+    // Detaching from the sender (toggleCamera) keeps capture running; this
+    // is what actually lets the camera go.
+    for (final track
+        in mediaStream?.getVideoTracks() ?? const <MediaStreamTrack>[]) {
+      track.enabled = false;
+    }
+  }
+
+  Future<void> resumeCameraFromBackground() async {
+    if (!_cameraPausedForBackground) return;
+    _cameraPausedForBackground = false;
+    if (status == CallEngineStatus.idle) return;
+    for (final track
+        in mediaStream?.getVideoTracks() ?? const <MediaStreamTrack>[]) {
+      track.enabled = true;
+    }
+    if (!enableCamera) await toggleCamera();
   }
 
   Future<void> leaveCall() async {
@@ -1115,11 +1184,103 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // ════════════════════════════════════════════════════════════════════
-  // useEffect #3 - screen share producing (CallWindow.tsx lines 559-620).
-  // Ported for structural fidelity; no UI control exposes this yet
-  // (out of this milestone's scope), so screenStream never actually gets
-  // set today - this only fires if/when something sets it.
+  // Screen sharing - webapp's startScreenShare / stopScreenShare
+  // (CallWindow.tsx lines 878-902) and its producing effect (lines 574-630).
   // ════════════════════════════════════════════════════════════════════
+
+  /// Shares this phone's screen with everyone in the call, as its own
+  /// "screen" producer - the others get a screen tile, exactly as they do
+  /// for a browser's share.
+  ///
+  /// Android captures the whole screen (the user picks in the system prompt,
+  /// and Android 14+ can limit it to one app); the call's ongoing-call
+  /// service carries the media projection Android requires, so sharing goes
+  /// on while the user is in other apps. iOS, without a broadcast extension,
+  /// can share only this app's own screen, and only while it is open.
+  Future<ScreenShareResult> startScreenShare() async {
+    if (!isActive || isScreenSharing || sendTransport == null) {
+      return ScreenShareResult.failed;
+    }
+    final MediaStream stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia(<String, dynamic>{
+        'video': true,
+        // Mobile captures pictures only - no system-audio capture here.
+        'audio': false,
+      });
+    } catch (e) {
+      final reason = e.toString().toLowerCase();
+      if (kDebugMode) print("[CallController] getDisplayMedia failed: $e");
+      final refused = reason.contains('permission') ||
+          reason.contains('declined') ||
+          reason.contains('denied') ||
+          reason.contains('notallowed');
+      return refused ? ScreenShareResult.cancelled : ScreenShareResult.failed;
+    }
+
+    // The call ended while the system prompt was up.
+    if (!isActive) {
+      for (final track in stream.getTracks()) {
+        await track.stop();
+      }
+      await stream.dispose();
+      return ScreenShareResult.failed;
+    }
+
+    screenStream = stream;
+    isScreenSharing = true;
+    // A share ended from outside the app (iOS's recording indicator; Android
+    // reports through CallBackground instead) still has to reach the others.
+    for (final track in stream.getVideoTracks()) {
+      track.onEnded = () => unawaited(stopScreenShare());
+    }
+    notifyListeners();
+    _maybeProduceScreenShare();
+    return ScreenShareResult.started;
+  }
+
+  /// Stops sharing: the others' screen tile goes away (producer-closed), and
+  /// the capture itself stops. Safe to call when not sharing.
+  Future<void> stopScreenShare() async {
+    final stream = screenStream;
+    if (!isScreenSharing && stream == null) return;
+    isScreenSharing = false;
+    screenStream = null;
+    _notifyProducerClosed(_screenProducer?.id);
+    _notifyProducerClosed(_screenAudioProducer?.id);
+    _screenProducer?.close();
+    _screenProducer = null;
+    _screenAudioProducer?.close();
+    _screenAudioProducer = null;
+    _pendingProduceTracks.removeWhere(
+        (t) => t.source == 'screen' || t.source == 'screen-audio');
+    notifyListeners();
+    for (final track in stream?.getTracks() ?? const <MediaStreamTrack>[]) {
+      track.onEnded = null;
+      await track.stop();
+    }
+    await stream?.dispose();
+  }
+
+  void _handleScreenProducerCreated(Producer producer) {
+    // The share was stopped while this producer was still being created:
+    // close it straight away, or the others would keep a frozen screen tile.
+    if (!isScreenSharing) {
+      _notifyProducerClosed(producer.id);
+      producer.close();
+      return;
+    }
+    if (producer.source == 'screen') {
+      _screenProducer = producer;
+    } else {
+      _screenAudioProducer = producer;
+    }
+    if (kDebugMode) {
+      print("[CallController] ${producer.source} producer created! "
+          "${producer.id}");
+    }
+  }
+
   void _maybeProduceScreenShare() {
     if (sendTransport == null ||
         screenStream == null ||
@@ -1165,8 +1326,7 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
       }
     } catch (e) {
       if (kDebugMode) print("[CallController] Screen share produce failed: $e");
-      isScreenSharing = false;
-      notifyListeners();
+      unawaited(stopScreenShare());
     }
   }
 
@@ -1390,7 +1550,6 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   // ════════════════════════════════════════════════════════════════════
   // notifyProducerClosed (CallWindow.tsx lines 835-860)
   // ════════════════════════════════════════════════════════════════════
-  // ignore: unused_element
   void _notifyProducerClosed(String? producerId) {
     if (producerId == null || conversationID == null) return;
     _webrtcApi.closeProducerRequest(
@@ -1825,6 +1984,10 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   // transport aren't SSE-scoped the same way as produce/consume, but
   // still need correlating to the async REST calls that kick them off).
   void _handleProducerCreated(Producer producer) {
+    if (producer.source == 'screen' || producer.source == 'screen-audio') {
+      _handleScreenProducerCreated(producer);
+      return;
+    }
     if (producer.kind == 'audio') {
       _audioProducer = producer;
       if (_pauseAudioOnNextProducer) {
@@ -1923,7 +2086,7 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
         members: members,
         muted: !enableMic,
         cameraOff: !enableCamera,
-        username: appStore.state.userAuth.user.username,
+        username: appStore.state.userAuth.user.activeUsername,
         clientId: clientId,
       );
       if (!joinOk) throw StateError("join-room request failed");

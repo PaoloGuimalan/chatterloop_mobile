@@ -78,8 +78,42 @@ class IncomingCallAlerts {
     if (_inForeground) {
       _pushScreen(alert);
     } else {
-      NotificationRenderer.showCallRing(alert.toPushData());
+      _ringInBackground(alert);
     }
+  }
+
+  /// How long a ring that arrived over the live connection waits for its push
+  /// before ringing without it.
+  static const Duration _pushGrace = Duration(seconds: 4);
+
+  /// The app is in the background and this ring came over the live
+  /// connection. On Android the PUSH for the same ring should draw it instead:
+  /// only a push lets Android start the app's own ringer from the background,
+  /// and the server sends every call to every device. So give the push a
+  /// moment, and ring from here only if it never came - then through the
+  /// notification's own sound.
+  static void _ringInBackground(IncomingCallAlert alert) {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      NotificationRenderer.showCallRing(alert.toPushData());
+      return;
+    }
+    Future<void>.delayed(_pushGrace, () async {
+      // Answered, declined or taken back in the meantime.
+      if (appStore.state.pendingIncomingCall?.conversationID !=
+          alert.conversationID) {
+        return;
+      }
+      if (_inForeground) {
+        // The in-app screen rings instead of the tray.
+        await NotificationRenderer.cancelCallRing(alert.conversationID);
+        _pushScreen(alert);
+        return;
+      }
+      if (await NotificationRenderer.isCallRinging(alert.conversationID)) {
+        return;
+      }
+      await NotificationRenderer.showCallRing(alert.toPushData());
+    });
   }
 
   /// The ringing notification's body was tapped: open the in-app ringing

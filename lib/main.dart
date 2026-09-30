@@ -6,6 +6,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/utils/app_messenger.dart';
 import 'package:chatterloop_app/core/utils/gallery_picker.dart';
+import 'package:chatterloop_app/core/calls/call_background.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/notifications/push_notification_service.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
@@ -148,6 +149,9 @@ class _MyAppState extends State<MyApp> {
     // handlers. The permission prompt is triggered later, from the logged-in
     // shell, not here.
     PushNotificationService.instance.init();
+    // Carries a live call into the background: the ongoing-call
+    // notification, picture-in-picture, and their Hang up / Mute buttons.
+    CallBackground.instance.init();
     _authController.resolve();
     _themeController.load();
   }

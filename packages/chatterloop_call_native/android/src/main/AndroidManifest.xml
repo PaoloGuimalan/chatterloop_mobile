@@ -1,0 +1,29 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- OngoingCallService: keeps the mic open for a call with the app in the
+         background. Declared as "microphone" in Play Console's foreground
+         service form - the task is an ongoing voice/video call. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- The same service, while the user shares their screen in a call.
+         Declared as "mediaProjection" in Play Console - the task is sharing
+         the screen with the other people in a call the user is in. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!-- CallRingService vibrates in the ring pattern itself. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application>
+        <!-- Plays an incoming call's ringtone for at most 45s. shortService:
+             a brief, user-visible task with no special permission. -->
+        <service
+            android:name=".CallRingService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+        <service
+            android:name=".OngoingCallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|mediaProjection" />
+        <receiver
+            android:name=".CallActionReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

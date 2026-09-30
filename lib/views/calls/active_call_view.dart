@@ -18,11 +18,10 @@
 
 import 'dart:async';
 
+import 'package:chatterloop_app/core/calls/call_background.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
-import 'package:chatterloop_app/core/redux/store.dart';
-import 'package:chatterloop_app/core/requests/call_api.dart';
-import 'package:chatterloop_app/models/call_models/call_signed_payloads_model.dart';
+import 'package:chatterloop_call_native/chatterloop_call_native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -68,6 +67,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
 
   @override
   void dispose() {
+    CallBackground.instance.setPipEligible(false);
     _durationTicker?.cancel();
     _localRenderer.dispose();
     for (final renderer in _remoteRenderers.values) {
@@ -161,25 +161,11 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     if (_endingOrGone) return;
     setState(() => _endingOrGone = true);
 
-    final current = appStore.state.currentCall;
-    // Only the caller ever notifies the other side explicitly (matches
-    // webapp's CallWindow.tsx isCaller gate) - a callee hanging up just
-    // leaves the mediasoup room below, surfacing to the caller as an
-    // ordinary participant-left roster event, nothing more.
-    if (current != null &&
-        current.isOutgoing &&
-        current.recepients.isNotEmpty) {
-      CallApi().endCallRequest(IEndCallRequest(
-        conversationID: current.conversationID,
-        conversationType: current.conversationType,
-        recepients: current.recepients,
-      ));
-    }
-
-    // leaveCall() clears the Redux call state AND navigates off this
-    // screen (see CallController._navigateAwayFromCall) - no need to
-    // duplicate either here, which would double-pop.
-    await CallController.instance.leaveCall();
+    // Notifies the other side if we placed the call, then leaves - which
+    // clears the Redux call state AND navigates off this screen (see
+    // CallController.hangUp) - no need to duplicate either here, which would
+    // double-pop.
+    await CallController.instance.hangUp();
 
     if (!mounted) return;
     _closeCallScreen();
@@ -201,86 +187,175 @@ class _ActiveCallViewState extends State<ActiveCallView> {
         if (didPop) return;
         if (!_endingOrGone) _endCall();
       },
-      child: ListenableBuilder(
-        listenable: CallController.instance,
-        builder: (context, _) {
-          final controller = CallController.instance;
-          _syncRenderers(controller);
+      // The whole app is what shrinks into a PiP window, so while it is one,
+      // this screen draws the compact PiP layout instead.
+      child: ValueListenableBuilder<bool>(
+        valueListenable: CallNative.inPip,
+        builder: (context, inPip, _) => ListenableBuilder(
+          listenable: CallController.instance,
+          builder: (context, _) {
+            final controller = CallController.instance;
+            _syncRenderers(controller);
 
-          // Navigation away when the call ends is now driven centrally by
-          // CallController.leaveCall() (via the global router), so every
-          // end path - the button, callreject, transport-close, the
-          // single-call auto-end, the media watchdog - leaves this screen
-          // reliably without depending on this widget being the mounted,
-          // rebuilding one at the instant status flips to idle (which was
-          // unreliable for the auto-end path). Nothing to do here.
+            // Navigation away when the call ends is now driven centrally by
+            // CallController.leaveCall() (via the global router), so every
+            // end path - the button, callreject, transport-close, the
+            // single-call auto-end, the media watchdog - leaves this screen
+            // reliably without depending on this widget being the mounted,
+            // rebuilding one at the instant status flips to idle (which was
+            // unreliable for the auto-end path). Nothing to do here.
 
-          final connecting = controller.status == CallEngineStatus.joining;
-          final statusText = connecting
-              ? "Connecting..."
-              : controller.joinedParticipants.isEmpty
-                  ? "Ringing..."
-                  : "Connected";
+            final connecting = controller.status == CallEngineStatus.joining;
+            final statusText = connecting
+                ? "Connecting..."
+                : controller.joinedParticipants.isEmpty
+                    ? "Ringing..."
+                    : "Connected";
 
-          final hasAnyVideo =
-              !controller.cameraOff || _remoteRenderers.isNotEmpty;
+            final hasAnyVideo =
+                !controller.cameraOff || _remoteRenderers.isNotEmpty;
 
-          final hasRemote = controller.joinedParticipants.isNotEmpty;
-          if (hasRemote) _hadRemoteParticipant = true;
+            // Leaving the app turns the call into a PiP window only while this
+            // screen is the one showing and there is video in it - a voice call
+            // has only the ongoing-call notification.
+            final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+            CallBackground.instance.setPipEligible(
+              isCurrent && hasAnyVideo && !_endingOrGone,
+              wide: _hasRemoteScreen(controller),
+            );
 
-          final shouldAutoCloseSingle = !controller.isGroup &&
-              _hadRemoteParticipant &&
-              controller.joinedParticipants.isEmpty &&
-              controller.status != CallEngineStatus.joining;
+            final hasRemote = controller.joinedParticipants.isNotEmpty;
+            if (hasRemote) _hadRemoteParticipant = true;
 
-          if (shouldAutoCloseSingle && !_endingOrGone) {
-            WidgetsBinding.instance.addPostFrameCallback((_) async {
-              if (!mounted || _endingOrGone) return;
-              final navigator = Navigator.of(context);
+            final shouldAutoCloseSingle = !controller.isGroup &&
+                _hadRemoteParticipant &&
+                controller.joinedParticipants.isEmpty &&
+                controller.status != CallEngineStatus.joining;
 
-              setState(() => _endingOrGone = true);
-              await controller.leaveCall();
+            if (shouldAutoCloseSingle && !_endingOrGone) {
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                if (!mounted || _endingOrGone) return;
+                final navigator = Navigator.of(context);
 
-              if (!mounted) return;
-              if (navigator.canPop()) navigator.pop();
-            });
-          }
+                setState(() => _endingOrGone = true);
+                await controller.leaveCall();
 
-          // The duration in the header only starts once there is a call to
-          // time - "00:00 · connecting" would be counting nothing.
-          if (controller.isActive && _connectedAt == null) {
-            _connectedAt = DateTime.now();
-            _durationTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
-              if (mounted) setState(() {});
-            });
-          }
+                if (!mounted) return;
+                if (navigator.canPop()) navigator.pop();
+              });
+            }
 
-          return Scaffold(
-            backgroundColor: CLColors.callBg,
-            body: SafeArea(
-              // One structure for both layouts, from the design: a header
-              // strip, the stage, then the controls - each a rounded panel
-              // with a 10 gap. The audio/video difference is only what fills
-              // the stage, not the frame around it.
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
-                child: Column(
-                  children: [
-                    _header(controller, statusText),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: hasAnyVideo
-                          ? _buildVideoLayout(controller, statusText)
-                          : _buildAudioLayout(controller, statusText),
-                    ),
-                    const SizedBox(height: 10),
-                    _buildControls(controller),
-                  ],
+            // The duration in the header only starts once there is a call to
+            // time - "00:00 · connecting" would be counting nothing.
+            if (controller.isActive && _connectedAt == null) {
+              _connectedAt = DateTime.now();
+              _durationTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+                if (mounted) setState(() {});
+              });
+            }
+
+            if (inPip) return _buildPipLayout(controller);
+
+            return Scaffold(
+              backgroundColor: CLColors.callBg,
+              body: SafeArea(
+                // One structure for both layouts, from the design: a header
+                // strip, the stage, then the controls - each a rounded panel
+                // with a 10 gap. The audio/video difference is only what fills
+                // the stage, not the frame around it.
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+                  child: Column(
+                    children: [
+                      _header(controller, statusText),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: hasAnyVideo
+                            ? _buildVideoLayout(controller, statusText)
+                            : _buildAudioLayout(controller, statusText),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildControls(controller),
+                    ],
+                  ),
                 ),
               ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  bool _hasRemoteScreen(CallController controller) =>
+      controller.consumers.entries.any((e) =>
+          e.value.kind == 'video' &&
+          e.value.source == 'screen' &&
+          _remoteRenderers.containsKey(e.key));
+
+  /// The PiP window: the one picture that matters most - a shared screen,
+  /// else someone else's camera, else your own, else who the call is with -
+  /// and nothing else. The window's own buttons (mute, hang up) are native.
+  Widget _buildPipLayout(CallController controller) {
+    final remote = controller.consumers.entries
+        .where((e) =>
+            e.value.kind == 'video' && _remoteRenderers.containsKey(e.key))
+        .toList();
+    final screens = remote.where((e) => e.value.source == 'screen');
+    final main = screens.isNotEmpty
+        ? screens.first
+        : (remote.isNotEmpty ? remote.first : null);
+
+    final Widget stage;
+    if (main != null) {
+      stage = RTCVideoView(
+        _remoteRenderers[main.key]!,
+        objectFit: main.value.source == 'screen'
+            ? RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
+            : RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+      );
+    } else if (!controller.cameraOff && _localRendererReady) {
+      stage = RTCVideoView(_localRenderer,
+          mirror: true,
+          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover);
+    } else {
+      final peer = controller.joinedParticipants
+          .where((p) => p.clientId != controller.clientId)
+          .map((p) => p.username)
+          .where((name) => name.isNotEmpty)
+          .firstOrNull;
+      final name = controller.isGroup ? "Group call" : (peer ?? "Call");
+      stage = Center(
+        child: CircleAvatar(
+          radius: 28,
+          backgroundColor: CLColors.brand300,
+          child: Text(name[0].toUpperCase(),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700)),
+        ),
+      );
+    }
+
+    return ColoredBox(
+      color: CLColors.callBg,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          stage,
+          if (controller.muted)
+            Positioned(
+              left: 6,
+              bottom: 6,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                    color: Colors.black54, shape: BoxShape.circle),
+                child: const Icon(Icons.mic_off, size: 14, color: Colors.white),
+              ),
             ),
-          );
-        },
+        ],
       ),
     );
   }
@@ -774,45 +849,63 @@ class _ActiveCallViewState extends State<ActiveCallView> {
         color: CLColors.callPanel,
         borderRadius: BorderRadius.circular(CLColors.callRadius),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _CallControlButton(
-            icon: controller.muted ? Icons.mic_off : Icons.mic,
-            label: "Mute",
-            off: controller.muted,
-            onPressed:
-                controller.isActive ? () => controller.toggleMic() : null,
-          ),
-          const SizedBox(width: 12),
-          _CallControlButton(
-            icon: controller.cameraOff ? Icons.videocam_off : Icons.videocam,
-            label: "Camera",
-            off: controller.cameraOff,
-            onPressed:
-                controller.isActive ? () => controller.toggleCamera() : null,
-          ),
-          const SizedBox(width: 12),
-          // Camera-flip moved to the header, where the design puts it - the
-          // control row is a FIXED four now, so it no longer reflows every
-          // time the camera is toggled.
-          _CallControlButton(
-            icon: controller.speakerOn ? Icons.volume_up : Icons.hearing,
-            label: "Speaker",
-            off: false,
-            accent: controller.speakerOn,
-            onPressed:
-                controller.isActive ? () => controller.toggleSpeaker() : null,
-          ),
-          const SizedBox(width: 12),
-          _CallControlButton(
-            icon: Icons.call_end,
-            label: "End",
-            off: false,
-            danger: true,
-            onPressed: _endingOrGone ? null : _endCall,
-          ),
-        ],
+      // Scales down rather than overflowing on the narrowest phones - five
+      // 52px controls is right at the edge of a 320dp screen.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _CallControlButton(
+              icon: controller.muted ? Icons.mic_off : Icons.mic,
+              label: "Mute",
+              off: controller.muted,
+              onPressed:
+                  controller.isActive ? () => controller.toggleMic() : null,
+            ),
+            const SizedBox(width: 12),
+            _CallControlButton(
+              icon: controller.cameraOff ? Icons.videocam_off : Icons.videocam,
+              label: "Camera",
+              off: controller.cameraOff,
+              onPressed:
+                  controller.isActive ? () => controller.toggleCamera() : null,
+            ),
+            const SizedBox(width: 12),
+            // Accent while sharing, like speakerphone: it is on, and worth
+            // noticing - everyone can see this screen.
+            _CallControlButton(
+              icon: controller.isScreenSharing
+                  ? Icons.stop_screen_share
+                  : Icons.screen_share,
+              label: controller.isScreenSharing ? "Stop" : "Share",
+              off: false,
+              accent: controller.isScreenSharing,
+              onPressed:
+                  controller.isActive ? CallBackground.toggleScreenShare : null,
+            ),
+            const SizedBox(width: 12),
+            // Camera-flip moved to the header, where the design puts it - the
+            // control row is a FIXED five now, so it no longer reflows every
+            // time the camera is toggled.
+            _CallControlButton(
+              icon: controller.speakerOn ? Icons.volume_up : Icons.hearing,
+              label: "Speaker",
+              off: false,
+              accent: controller.speakerOn,
+              onPressed:
+                  controller.isActive ? () => controller.toggleSpeaker() : null,
+            ),
+            const SizedBox(width: 12),
+            _CallControlButton(
+              icon: Icons.call_end,
+              label: "End",
+              off: false,
+              danger: true,
+              onPressed: _endingOrGone ? null : _endCall,
+            ),
+          ],
+        ),
       ),
     );
   }

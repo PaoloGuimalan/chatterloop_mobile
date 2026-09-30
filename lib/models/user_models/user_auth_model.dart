@@ -155,9 +155,12 @@ class UserAccount {
       ? (activeEntity?.name ?? personalDisplayName)
       : personalDisplayName;
 
-  String get activeHandle => isActingAsEntity
-      ? "@${activeEntity?.slug ?? activeEntity?.id ?? ''}"
-      : "@$username";
+  String get activeHandle => "@$activeUsername";
+
+  /// [activeHandle] without the "@" - the name a call joins the room under.
+  String get activeUsername => isActingAsEntity
+      ? (activeEntity?.slug ?? activeEntity?.id ?? '')
+      : username;
 
   String? get activeAvatarSrc => isActingAsEntity
       ? activeEntity?.profile

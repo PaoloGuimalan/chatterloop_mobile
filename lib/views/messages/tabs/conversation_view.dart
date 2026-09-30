@@ -1037,9 +1037,12 @@ class ConversationStateView extends State<ConversationView> {
     }
 
     final me = appStore.state.userAuth.user;
-    final caller = CallerInfo(name: me.firstname, entityId: me.entityId);
+    // A switched-to page calls as the page, not as the person behind it.
+    final callerName =
+        me.isActingAsEntity ? me.activeDisplayName : me.firstname;
+    final caller = CallerInfo(name: callerName, entityId: me.entityId);
     final callDisplayName = _conversationType == "single"
-        ? me.firstname
+        ? callerName
         : "$_headerDisplayName (Group)";
 
     // Fire-and-forget - the callee's incoming-call screen is driven by the

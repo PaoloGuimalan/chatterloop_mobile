@@ -1,7 +1,13 @@
 package com.chatterloop.app
 
+import android.content.Context
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import com.chatterloop.callnative.CallEngineKeeper
+import com.chatterloop.callnative.CallPip
+import com.chatterloop.callnative.CallScreenShare
+import com.cloudwebrtc.webrtc.ScreenCaptureHooks
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 
@@ -35,6 +41,13 @@ class MainActivity : FlutterActivity() {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false
         }
+
+        // Screen sharing in calls: flutter_webrtc captures, the call's own
+        // foreground service makes Android allow it. See CallScreenShare.
+        ScreenCaptureHooks.listener = object : ScreenCaptureHooks.Listener {
+            override fun onCaptureConsented() = CallScreenShare.onConsented()
+            override fun onCaptureStopped() = CallScreenShare.onStopped()
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -47,6 +60,32 @@ class MainActivity : FlutterActivity() {
         // download needs WRITE_EXTERNAL_STORAGE, and a runtime permission can
         // only be requested from an Activity.
         mediaSaver.register(this, flutterEngine.dartExecutor.binaryMessenger)
+    }
+
+    // ── Calls ───────────────────────────────────────────────────────────────
+    // A call must outlive this activity: closing its PiP window or swiping the
+    // app out of recents destroys the activity, and by default the engine
+    // (and the Dart running the call) with it. See CallEngineKeeper.
+
+    /** The engine still running a call from a previous activity, if any. */
+    override fun provideFlutterEngine(context: Context): FlutterEngine? =
+        CallEngineKeeper.take()
+
+    override fun shouldDestroyEngineWithHost(): Boolean =
+        !CallEngineKeeper.isRetained(flutterEngine)
+
+    override fun onDestroy() {
+        CallEngineKeeper.retainIfInCall(flutterEngine, isChangingConfigurations)
+        super.onDestroy()
+    }
+
+    /** Dart swaps the call screen for its compact PiP layout on this. */
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        CallPip.onModeChanged(isInPictureInPictureMode)
     }
 
     /**
