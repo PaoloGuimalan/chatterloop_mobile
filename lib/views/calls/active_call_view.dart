@@ -20,8 +20,9 @@ import 'dart:async';
 
 import 'package:chatterloop_app/core/calls/call_background.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
+import 'package:chatterloop_app/core/calls/call_screens.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
-import 'package:chatterloop_call_native/chatterloop_call_native.dart';
+import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -60,6 +61,8 @@ class _ActiveCallViewState extends State<ActiveCallView> {
   @override
   void initState() {
     super.initState();
+    // The floating window brings the call back here.
+    CallScreens.register(() => appRouter.push('/call/active'));
     _localRenderer.initialize().then((_) {
       if (mounted) setState(() => _localRendererReady = true);
     });
@@ -67,7 +70,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
 
   @override
   void dispose() {
-    CallBackground.instance.setPipEligible(false);
+    CallScreens.report(this, visible: false);
     _durationTicker?.cancel();
     _localRenderer.dispose();
     for (final renderer in _remoteRenderers.values) {
@@ -153,7 +156,7 @@ class _ActiveCallViewState extends State<ActiveCallView> {
     if (nav.canPop()) {
       nav.pop();
     } else {
-      nav.pushNamedAndRemoveUntil('/messages', (route) => false);
+      appRouter.go('/messages');
     }
   }
 
@@ -174,188 +177,101 @@ class _ActiveCallViewState extends State<ActiveCallView> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // Back press triggers the same hangup flow as the end-call button,
-      // rather than either silently leaving the call running in the
-      // background (canPop: true with no side effect) or permanently
-      // trapping the user on this screen if the automatic idle-detection
-      // below ever has a gap for any reason (confirmed on a real device:
-      // Android's own back-key handling reported the press as
-      // "intercepted by the app" with no visible effect, while the call
-      // was actually already stuck).
+      // Back leaves the call SCREEN, not the call: it carries on in the
+      // floating window (CallOverlayHost) and comes back with a tap. Only End
+      // ends it. Intercepted rather than a plain pop so that a call screen
+      // with nothing under it (answered from a notification) lands on the
+      // chats instead of closing the app.
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (!_endingOrGone) _endCall();
+        _closeCallScreen();
       },
-      // The whole app is what shrinks into a PiP window, so while it is one,
-      // this screen draws the compact PiP layout instead.
-      child: ValueListenableBuilder<bool>(
-        valueListenable: CallNative.inPip,
-        builder: (context, inPip, _) => ListenableBuilder(
-          listenable: CallController.instance,
-          builder: (context, _) {
-            final controller = CallController.instance;
-            _syncRenderers(controller);
+      child: ListenableBuilder(
+        listenable: CallController.instance,
+        builder: (context, _) {
+          final controller = CallController.instance;
+          _syncRenderers(controller);
 
-            // Navigation away when the call ends is now driven centrally by
-            // CallController.leaveCall() (via the global router), so every
-            // end path - the button, callreject, transport-close, the
-            // single-call auto-end, the media watchdog - leaves this screen
-            // reliably without depending on this widget being the mounted,
-            // rebuilding one at the instant status flips to idle (which was
-            // unreliable for the auto-end path). Nothing to do here.
+          // Navigation away when the call ends is now driven centrally by
+          // CallController.leaveCall() (via the global router), so every
+          // end path - the button, callreject, transport-close, the
+          // single-call auto-end, the media watchdog - leaves this screen
+          // reliably without depending on this widget being the mounted,
+          // rebuilding one at the instant status flips to idle (which was
+          // unreliable for the auto-end path). Nothing to do here.
 
-            final connecting = controller.status == CallEngineStatus.joining;
-            final statusText = connecting
-                ? "Connecting..."
-                : controller.joinedParticipants.isEmpty
-                    ? "Ringing..."
-                    : "Connected";
+          final connecting = controller.status == CallEngineStatus.joining;
+          final statusText = connecting
+              ? "Connecting..."
+              : controller.joinedParticipants.isEmpty
+                  ? "Ringing..."
+                  : "Connected";
 
-            final hasAnyVideo =
-                !controller.cameraOff || _remoteRenderers.isNotEmpty;
+          final hasAnyVideo =
+              !controller.cameraOff || _remoteRenderers.isNotEmpty;
 
-            // Leaving the app turns the call into a PiP window only while this
-            // screen is the one showing and there is video in it - a voice call
-            // has only the ongoing-call notification.
-            final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
-            CallBackground.instance.setPipEligible(
-              isCurrent && hasAnyVideo && !_endingOrGone,
-              wide: _hasRemoteScreen(controller),
-            );
+          // Whether this is the screen on top - the floating window stays
+          // out of the way while it is.
+          CallScreens.report(this,
+              visible: ModalRoute.of(context)?.isCurrent ?? true);
 
-            final hasRemote = controller.joinedParticipants.isNotEmpty;
-            if (hasRemote) _hadRemoteParticipant = true;
+          final hasRemote = controller.joinedParticipants.isNotEmpty;
+          if (hasRemote) _hadRemoteParticipant = true;
 
-            final shouldAutoCloseSingle = !controller.isGroup &&
-                _hadRemoteParticipant &&
-                controller.joinedParticipants.isEmpty &&
-                controller.status != CallEngineStatus.joining;
+          final shouldAutoCloseSingle = !controller.isGroup &&
+              _hadRemoteParticipant &&
+              controller.joinedParticipants.isEmpty &&
+              controller.status != CallEngineStatus.joining;
 
-            if (shouldAutoCloseSingle && !_endingOrGone) {
-              WidgetsBinding.instance.addPostFrameCallback((_) async {
-                if (!mounted || _endingOrGone) return;
-                final navigator = Navigator.of(context);
+          if (shouldAutoCloseSingle && !_endingOrGone) {
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              if (!mounted || _endingOrGone) return;
+              final navigator = Navigator.of(context);
 
-                setState(() => _endingOrGone = true);
-                await controller.leaveCall();
+              setState(() => _endingOrGone = true);
+              await controller.leaveCall();
 
-                if (!mounted) return;
-                if (navigator.canPop()) navigator.pop();
-              });
-            }
+              if (!mounted) return;
+              if (navigator.canPop()) navigator.pop();
+            });
+          }
 
-            // The duration in the header only starts once there is a call to
-            // time - "00:00 · connecting" would be counting nothing.
-            if (controller.isActive && _connectedAt == null) {
-              _connectedAt = DateTime.now();
-              _durationTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
-                if (mounted) setState(() {});
-              });
-            }
+          // The duration in the header only starts once there is a call to
+          // time - "00:00 · connecting" would be counting nothing.
+          if (controller.isActive && _connectedAt == null) {
+            _connectedAt = controller.connectedAt ?? DateTime.now();
+            _durationTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+              if (mounted) setState(() {});
+            });
+          }
 
-            if (inPip) return _buildPipLayout(controller);
-
-            return Scaffold(
-              backgroundColor: CLColors.callBg,
-              body: SafeArea(
-                // One structure for both layouts, from the design: a header
-                // strip, the stage, then the controls - each a rounded panel
-                // with a 10 gap. The audio/video difference is only what fills
-                // the stage, not the frame around it.
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
-                  child: Column(
-                    children: [
-                      _header(controller, statusText),
-                      const SizedBox(height: 10),
-                      Expanded(
-                        child: hasAnyVideo
-                            ? _buildVideoLayout(controller, statusText)
-                            : _buildAudioLayout(controller, statusText),
-                      ),
-                      const SizedBox(height: 10),
-                      _buildControls(controller),
-                    ],
-                  ),
+          return Scaffold(
+            backgroundColor: CLColors.callBg,
+            body: SafeArea(
+              // One structure for both layouts, from the design: a header
+              // strip, the stage, then the controls - each a rounded panel
+              // with a 10 gap. The audio/video difference is only what fills
+              // the stage, not the frame around it.
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+                child: Column(
+                  children: [
+                    _header(controller, statusText),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: hasAnyVideo
+                          ? _buildVideoLayout(controller, statusText)
+                          : _buildAudioLayout(controller, statusText),
+                    ),
+                    const SizedBox(height: 10),
+                    _buildControls(controller),
+                  ],
                 ),
               ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  bool _hasRemoteScreen(CallController controller) =>
-      controller.consumers.entries.any((e) =>
-          e.value.kind == 'video' &&
-          e.value.source == 'screen' &&
-          _remoteRenderers.containsKey(e.key));
-
-  /// The PiP window: the one picture that matters most - a shared screen,
-  /// else someone else's camera, else your own, else who the call is with -
-  /// and nothing else. The window's own buttons (mute, hang up) are native.
-  Widget _buildPipLayout(CallController controller) {
-    final remote = controller.consumers.entries
-        .where((e) =>
-            e.value.kind == 'video' && _remoteRenderers.containsKey(e.key))
-        .toList();
-    final screens = remote.where((e) => e.value.source == 'screen');
-    final main = screens.isNotEmpty
-        ? screens.first
-        : (remote.isNotEmpty ? remote.first : null);
-
-    final Widget stage;
-    if (main != null) {
-      stage = RTCVideoView(
-        _remoteRenderers[main.key]!,
-        objectFit: main.value.source == 'screen'
-            ? RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
-            : RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-      );
-    } else if (!controller.cameraOff && _localRendererReady) {
-      stage = RTCVideoView(_localRenderer,
-          mirror: true,
-          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover);
-    } else {
-      final peer = controller.joinedParticipants
-          .where((p) => p.clientId != controller.clientId)
-          .map((p) => p.username)
-          .where((name) => name.isNotEmpty)
-          .firstOrNull;
-      final name = controller.isGroup ? "Group call" : (peer ?? "Call");
-      stage = Center(
-        child: CircleAvatar(
-          radius: 28,
-          backgroundColor: CLColors.brand300,
-          child: Text(name[0].toUpperCase(),
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700)),
-        ),
-      );
-    }
-
-    return ColoredBox(
-      color: CLColors.callBg,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          stage,
-          if (controller.muted)
-            Positioned(
-              left: 6,
-              bottom: 6,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(
-                    color: Colors.black54, shape: BoxShape.circle),
-                child: const Icon(Icons.mic_off, size: 14, color: Colors.white),
-              ),
             ),
-        ],
+          );
+        },
       ),
     );
   }

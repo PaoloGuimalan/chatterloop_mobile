@@ -4,10 +4,9 @@
 //   connected   -> the ongoing-call notification (Android: a microphone
 //                  foreground service, which is what keeps the mic open and
 //                  the process alive in the background).
-//   video on    -> picture-in-picture, when the call screen is what's showing
-//                  (the screen tells us via [setPipEligible]) - but not while
-//                  sharing the screen, where the PiP window would float over
-//                  the very thing being shared, and be shared with it.
+//   leaving the app, from anywhere in it -> picture-in-picture, for every
+//                  call and voice channel: video, a shared screen, or who the
+//                  call is with (CallOverlayHost draws it).
 //   backgrounded, not in PiP -> the camera is released until the app is back.
 //   ended       -> all of it taken down, PiP window included.
 //
@@ -16,6 +15,7 @@
 import 'dart:async';
 
 import 'package:chatterloop_app/core/calls/call_controller.dart';
+import 'package:chatterloop_app/core/calls/call_screens.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:chatterloop_call_native/chatterloop_call_native.dart';
 import 'package:flutter/foundation.dart';
@@ -34,9 +34,6 @@ class CallBackground with WidgetsBindingObserver {
   bool? _shownMuted;
   bool _shownSharing = false;
 
-  bool _pipEligible = false;
-  bool _pipWide = false;
-
   /// What PiP was last told, so an unchanged state is never re-sent - the
   /// call screen reports on every rebuild.
   String? _pipSent;
@@ -47,16 +44,6 @@ class CallBackground with WidgetsBindingObserver {
     CallNative.setActionHandler(_onAction);
     CallController.instance.addListener(_sync);
     WidgetsBinding.instance.addObserver(this);
-  }
-
-  /// Whether leaving the app should turn the call into a PiP window. The call
-  /// screen sets this: true while it is the screen on top and there is video
-  /// to show; [wide] for a shared screen, which is landscape.
-  void setPipEligible(bool eligible, {bool wide = false}) {
-    if (_pipEligible == eligible && _pipWide == wide) return;
-    _pipEligible = eligible;
-    _pipWide = wide;
-    _applyPip();
   }
 
   void _sync() {
@@ -79,12 +66,12 @@ class CallBackground with WidgetsBindingObserver {
 
   Future<void> _start(CallController call) async {
     _starting = true;
-    final title = _title(call);
+    final title = CallScreens.title(call);
     final started = await CallNative.startOngoingCall(
       title: title,
       text: 'Tap to return to the call',
       muted: call.muted,
-      startedAt: DateTime.now(),
+      startedAt: call.connectedAt ?? DateTime.now(),
     );
     _starting = false;
     // The call ended while the notification was starting.
@@ -102,7 +89,7 @@ class CallBackground with WidgetsBindingObserver {
   }
 
   void _refresh(CallController call) {
-    final title = _title(call);
+    final title = CallScreens.title(call);
     final sharing = call.isScreenSharing;
     if (title == _shownTitle &&
         call.muted == _shownMuted &&
@@ -129,39 +116,33 @@ class CallBackground with WidgetsBindingObserver {
     _shownMuted = null;
     _shownSharing = false;
     call.survivesDetach = false;
-    _pipEligible = false;
+    CallScreens.clear();
     unawaited(CallNative.stopOngoingCall());
     // A call that ended as a PiP window takes the window with it.
     unawaited(CallNative.exitPip());
   }
 
+  /// Any live call becomes a PiP window when the user leaves the app. Its
+  /// shape follows what it shows: a shared screen is landscape, video is
+  /// portrait, and a call with no video is a square around who it is with.
   void _applyPip() {
     final call = CallController.instance;
-    final enabled = _pipEligible &&
-        call.status == CallEngineStatus.active &&
-        !call.isScreenSharing;
-    final key = '$enabled|${call.muted}|$_pipWide';
+    final enabled = call.status == CallEngineStatus.active;
+    final video = call.consumers.values.where((c) => c.kind == 'video');
+    final (w, h) = video.any((c) => c.source == 'screen')
+        ? (16, 9)
+        : (video.isNotEmpty || !call.cameraOff)
+            ? (9, 16)
+            : (1, 1);
+    final key = '$enabled|${call.muted}|$w:$h';
     if (key == _pipSent) return;
     _pipSent = key;
     unawaited(CallNative.updatePip(
       enabled: enabled,
       muted: call.muted,
-      aspectWidth: _pipWide ? 16 : 9,
-      aspectHeight: _pipWide ? 9 : 16,
+      aspectWidth: w,
+      aspectHeight: h,
     ));
-  }
-
-  /// Who the notification says the call is with.
-  String _title(CallController call) {
-    if (call.conversationType == 'single') {
-      final peer = call.joinedParticipants
-          .where((p) => p.clientId != call.clientId && p.username.isNotEmpty)
-          .map((p) => p.username)
-          .firstOrNull;
-      return peer != null ? 'Call with @$peer' : 'Call';
-    }
-    if (call.conversationType == 'group') return 'Group call';
-    return 'Voice channel';
   }
 
   /// The Share button on both call screens: starts or stops sharing, and says

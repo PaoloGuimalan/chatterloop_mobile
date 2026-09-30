@@ -168,6 +168,10 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   /// already refuses anything but idle.
   bool get isBusy => status != CallEngineStatus.idle;
 
+  /// When this call connected. Here rather than on a screen: a call screen can
+  /// now close and reopen mid-call, and the duration must not restart.
+  DateTime? connectedAt;
+
   /// Set while this call's Flutter engine is guaranteed to outlive its
   /// activity (Android's ongoing-call service - see CallBackground). Then
   /// `detached` only means the SCREEN went away - a closed PiP window, a
@@ -239,6 +243,7 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   // ════════════════════════════════════════════════════════════════════
   void _cleanupLocalCallResources() {
     _cameraPausedForBackground = false;
+    connectedAt = null;
     for (final t in mediaStream?.getTracks() ?? const <MediaStreamTrack>[]) {
       t.stop();
     }
@@ -851,6 +856,7 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
           track: audioTrack,
           stream: mediaStream!,
           source: "microphone",
+          appData: const {'source': 'microphone'},
           // Kept false, though this project no longer calls
           // Producer.pause()/.resume() at all (see _setSenderTrack's doc
           // comment for why - the short version: with this false, those
@@ -914,6 +920,7 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
       track: videoTrack,
       stream: mediaStream!,
       source: "camera",
+      appData: const {'source': 'camera'},
       disableTrackOnPause: false, // see the audio produce() call above
     );
     if (callType != "video" && _videoProduceAttempts == 0) {
@@ -1299,21 +1306,21 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
       if (screenTrack != null) {
         _pendingProduceTracks.add(_PendingProduceTrack(
             kind: 'video', track: screenTrack, source: 'screen'));
-        final screenEncodings =
-            (_encodings?['screenshare'] as List?) ?? const [];
         sendTransport!.produce(
           track: screenTrack,
           stream: screenStream!,
           source: "screen",
-          encodings: screenEncodings
-              .whereType<Map>()
-              .map((e) => RtpEncodingParameters(
-                    rid: e['rid']?.toString(),
-                    maxBitrate: (e['maxBitrate'] as num?)?.toInt(),
-                    scaleResolutionDownBy:
-                        (e['scaleResolutionDownBy'] as num?)?.toDouble(),
-                  ))
-              .toList(),
+          // `source` above is only this package's local label - it never
+          // leaves the phone. appData is what the server records as the
+          // producer's source and hands every other member with it, and it is
+          // how they know this is a SCREEN: without it the share arrived
+          // looking like a second camera. Webapp sends the same.
+          appData: const {'source': 'screen'},
+          // No `encodings`: passing the server's screenshare layers crashes
+          // produce() inside this package's FlexQueue without a word - the
+          // same failure the camera hit (see _produceVideoTrack) - so the
+          // share silently never started. One layer; the server still gives
+          // a screen its own higher bitrate range by that appData source.
         );
       }
       if (screenAudioTrack != null) {
@@ -1322,7 +1329,8 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
         sendTransport!.produce(
             track: screenAudioTrack,
             stream: screenStream!,
-            source: "screen-audio");
+            source: "screen-audio",
+            appData: const {'source': 'screen-audio'});
       }
     } catch (e) {
       if (kDebugMode) print("[CallController] Screen share produce failed: $e");
@@ -2105,6 +2113,7 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       status = CallEngineStatus.active;
+      connectedAt = DateTime.now();
       notifyListeners();
       _startMediaWatchdog();
       _startRingingWatch();

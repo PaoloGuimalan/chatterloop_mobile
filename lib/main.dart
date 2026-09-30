@@ -7,6 +7,7 @@ import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/utils/app_messenger.dart';
 import 'package:chatterloop_app/core/utils/gallery_picker.dart';
 import 'package:chatterloop_app/core/calls/call_background.dart';
+import 'package:chatterloop_app/core/calls/call_overlay.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/notifications/push_notification_service.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
@@ -196,8 +197,13 @@ class _MyAppState extends State<MyApp> {
                 routerConfig: _router,
                 // Notices sit OVER the Navigator, not inside any screen, so
                 // no tab, sheet or dialog can cover one. See CLAlertHost.
-                builder: (context, child) =>
-                    CLAlertHost(child: child ?? const SizedBox.shrink()),
+                // The live call floats above every screen (and fills the PiP
+                // window); notices float above that.
+                builder: (context, child) => CLAlertHost(
+                  child: CallOverlayHost(
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                ),
               ),
             ),
           );

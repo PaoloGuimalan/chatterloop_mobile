@@ -322,16 +322,18 @@ class _IncomingCallViewState extends State<IncomingCallView> {
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        // Join on the left, Decline on the right - the same order as the
+        // ringing notification's buttons.
         children: [
           _CallActionButton(
-            icon: Icons.call_end,
-            color: CLColors.callEnd,
-            label: "Decline",
-            onPressed: _resolving ? null : _decline,
+            icon: Icons.call,
+            color: CLColors.callAccept,
+            label: "Join",
+            onPressed: _resolving ? null : _accept,
           ),
           // Only on a VIDEO call - answering a voice call "audio only" is
           // answering it normally, so the button would be a third way to do
-          // what Accept already does.
+          // what Join already does.
           if (alert.callType == "video")
             _CallActionButton(
               icon: Icons.videocam_off,
@@ -340,10 +342,10 @@ class _IncomingCallViewState extends State<IncomingCallView> {
               onPressed: _resolving ? null : () => _accept(cameraOff: true),
             ),
           _CallActionButton(
-            icon: Icons.call,
-            color: CLColors.callAccept,
-            label: "Accept",
-            onPressed: _resolving ? null : _accept,
+            icon: Icons.call_end,
+            color: CLColors.callEnd,
+            label: "Decline",
+            onPressed: _resolving ? null : _decline,
           ),
         ],
       ),

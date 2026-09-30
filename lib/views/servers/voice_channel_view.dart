@@ -24,6 +24,8 @@ import 'dart:async';
 
 import 'package:chatterloop_app/core/calls/call_background.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
+import 'package:chatterloop_app/core/calls/call_screens.dart';
+import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
@@ -147,28 +149,12 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
   void dispose() {
     _controller.removeListener(_onEngine);
 
-    // AUTO-LEAVE. This screen is going away and the engine is still in THIS
-    // room, so leave it.
-    //
-    // The single exit point, covering every way out: the Leave control (which
-    // has already left by the time it pops), the back button, the system
-    // gesture, and a route removed with no pop at all - a `go()` that replaces
-    // the stack, the server shell swapping its pane, a deep link landing
-    // elsewhere. Previously only the Leave control left, so any other exit
-    // stranded the engine: still joined and audible with nothing on screen
-    // driving it, and re-entering then tried to join a call it was already in.
-    //
-    // Scoped to this conversation on purpose: leaving unconditionally would
-    // tear down a DIFFERENT call, since the engine is a singleton that outlives
-    // this screen. Idempotent by the same check - the Leave control's teardown
-    // has already set the engine idle, so this finds nothing to do.
-    //
-    // Not awaited: dispose cannot be async. leaveCall's teardown does not need
-    // this widget, and _popOnce is a no-op once unmounted.
-    if (_controller.conversationID == widget.conversationId &&
-        _controller.status != CallEngineStatus.idle) {
-      unawaited(_controller.leaveCall());
-    }
+    // Leaving this screen does NOT leave the room - only Leave does. Every
+    // other way out (back, the system gesture, the server shell swapping its
+    // pane, a deep link landing elsewhere) minimizes it: the room carries on
+    // in the floating window, which brings this screen back with a tap - and
+    // re-entering attaches to the room instead of joining it again (_join).
+    CallScreens.report(this, visible: false);
 
     for (final renderer in _remote.values) {
       renderer.srcObject = null;
@@ -189,7 +175,40 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
     setState(() {});
   }
 
+  /// The floating window's way back to this room.
+  void _registerAsCallScreen() {
+    final id = widget.conversationId;
+    final name = widget.channelName;
+    final private = widget.isPrivate;
+    CallScreens.register(
+      () => appRouter.routerDelegate.navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => VoiceChannelScreen(
+            conversationId: id,
+            channelName: name,
+            isPrivate: private,
+          ),
+        ),
+      ),
+      roomName: (name == null || name.isEmpty) ? null : '# $name',
+    );
+  }
+
   Future<void> _join() async {
+    // Back in a room this phone is already in - reopened from the floating
+    // window, or from the channel list. Attach to it; joining again would be
+    // refused.
+    if (_controller.status != CallEngineStatus.idle &&
+        _controller.conversationID == widget.conversationId) {
+      _registerAsCallScreen();
+      _syncRenderers();
+      setState(() {
+        _joining = false;
+        _joined = true;
+        _error = null;
+      });
+      return;
+    }
     if (_controller.status != CallEngineStatus.idle) {
       setState(() {
         _joining = false;
@@ -217,6 +236,7 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
       startMuted: true,
     );
     if (!mounted) return;
+    if (ok) _registerAsCallScreen();
     _syncRenderers();
     setState(() {
       _joining = false;
@@ -384,16 +404,11 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
         .where((participant) => participant.clientId != _controller.clientId)
         .toList();
 
-    // Leaving this screen leaves the ROOM - see dispose(), which is the single
-    // place that happens.
-    //
-    // Deliberately NOT a PopScope. The obvious version (canPop: false, leave,
-    // then pop) deadlocks: _popOnce calls Navigator.pop, but PopScope reads
-    // canPop from the last build, so without a rebuild in between that pop is
-    // intercepted too and the screen never goes anywhere. dispose() has no such
-    // problem and fires on every exit - back, the system gesture, a route
-    // replaced out from under this one - rather than only the ones that offer a
-    // pop to intercept.
+    // Leaving this screen minimizes the room rather than leaving it - see
+    // dispose(). While this is the screen on top, and the room is the live
+    // call, the floating window stays out of the way.
+    CallScreens.report(this,
+        visible: _joined && (ModalRoute.of(context)?.isCurrent ?? true));
     return CLScreen(
       backgroundColor: p.bg,
       body: SafeArea(
