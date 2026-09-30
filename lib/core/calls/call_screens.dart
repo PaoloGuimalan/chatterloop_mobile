@@ -53,14 +53,12 @@ class CallScreens {
   static String title(CallController call) {
     final room = _roomName;
     if (room != null && room.isNotEmpty) return room;
-    if (call.conversationType == 'single') {
-      final peer = call.joinedParticipants
-          .where((p) => p.clientId != call.clientId && p.username.isNotEmpty)
-          .map((p) => p.username)
-          .firstOrNull;
-      return peer != null ? '@$peer' : 'Call';
-    }
-    if (call.conversationType == 'group') return 'Group call';
-    return 'Voice channel';
+    final name = call.displayName;
+    if (name != null && name.isNotEmpty) return name;
+    final peer = call.joinedParticipants
+        .where((p) => p.clientId != call.clientId && p.username.isNotEmpty)
+        .map((p) => p.username)
+        .firstOrNull;
+    return peer != null ? '@$peer' : 'Call';
   }
 }

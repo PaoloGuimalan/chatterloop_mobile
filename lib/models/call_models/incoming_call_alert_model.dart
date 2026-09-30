@@ -44,6 +44,11 @@ class IncomingCallAlert {
   /// so it's just displayed as-is here.
   final String callDisplayName;
 
+  /// Group calls used to be announced as "{group name} (Group)"; the name
+  /// alone is what every screen shows now, whatever an older app sent.
+  static String _withoutGroupSuffix(Object? name) =>
+      (name ?? '').toString().replaceFirst(RegExp(r'\s*\(Group\)$'), '');
+
   final CallerInfo caller;
 
   /// Every OTHER participant's entityID - used by the caller's own
@@ -77,7 +82,7 @@ class IncomingCallAlert {
       conversationID: (json['conversationID'] ?? '').toString(),
       conversationType: (json['conversationType'] ?? 'single').toString(),
       callType: (json['callType'] ?? 'audio').toString(),
-      callDisplayName: (json['callDisplayName'] ?? '').toString(),
+      callDisplayName: _withoutGroupSuffix(json['callDisplayName']),
       caller: json['caller'] is Map
           ? CallerInfo.fromJson(Map<String, dynamic>.from(json['caller']))
           : const CallerInfo(name: '', entityId: ''),
@@ -106,7 +111,7 @@ class IncomingCallAlert {
       conversationID: (data['conversationID'] ?? '').toString(),
       conversationType: (data['conversationType'] ?? 'single').toString(),
       callType: (data['callType'] ?? 'audio').toString(),
-      callDisplayName: (data['callDisplayName'] ?? '').toString(),
+      callDisplayName: _withoutGroupSuffix(data['callDisplayName']),
       caller: CallerInfo(
         name: (data['callerName'] ?? '').toString(),
         entityId: (data['callerEntityID'] ?? '').toString(),

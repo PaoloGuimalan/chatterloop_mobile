@@ -168,6 +168,15 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   /// already refuses anything but idle.
   bool get isBusy => status != CallEngineStatus.idle;
 
+  /// Who this call is with, as every screen outside the media shows it: the
+  /// group for a group call, the other person for a direct one. From the
+  /// conversation for a call placed here, from the ring for one answered.
+  /// Null for a voice channel, whose screen names the room itself.
+  String? displayName;
+
+  /// That group's or person's picture; null when they have none (initials).
+  String? displayImage;
+
   /// When this call connected. Here rather than on a screen: a call screen can
   /// now close and reopen mid-call, and the duration must not restart.
   DateTime? connectedAt;
@@ -244,6 +253,8 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
   void _cleanupLocalCallResources() {
     _cameraPausedForBackground = false;
     connectedAt = null;
+    displayName = null;
+    displayImage = null;
     for (final t in mediaStream?.getTracks() ?? const <MediaStreamTrack>[]) {
       t.stop();
     }
@@ -2047,12 +2058,22 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
     List<String> recepients = const [],
     bool startMuted = false,
     bool startCameraOff = true,
+    String? displayName,
+    String? displayImage,
   }) async {
     if (status != CallEngineStatus.idle) return false;
     status = CallEngineStatus.joining;
     this.conversationID = conversationID;
     this.conversationType = conversationType;
     this.callType = callType;
+    this.displayName =
+        displayName == null || displayName.isEmpty ? null : displayName;
+    this.displayImage = (displayImage == null ||
+            displayImage.isEmpty ||
+            displayImage == 'none' ||
+            displayImage == 'N/A')
+        ? null
+        : displayImage;
     this.isOutgoing = isOutgoing;
     endCallRecepients = recepients;
     members = recepients;

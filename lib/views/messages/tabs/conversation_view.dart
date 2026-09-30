@@ -1020,6 +1020,8 @@ class ConversationStateView extends State<ConversationView> {
         isOutgoing: false,
         recepients: recipients,
         startCameraOff: callType != "video",
+        displayName: _headerDisplayName,
+        displayImage: _headerAvatarSrc,
       );
       if (!joinedOngoing) return;
 
@@ -1041,9 +1043,9 @@ class ConversationStateView extends State<ConversationView> {
     final callerName =
         me.isActingAsEntity ? me.activeDisplayName : me.firstname;
     final caller = CallerInfo(name: callerName, entityId: me.entityId);
-    final callDisplayName = _conversationType == "single"
-        ? callerName
-        : "$_headerDisplayName (Group)";
+    // A group call is announced as the group - its name alone.
+    final callDisplayName =
+        _conversationType == "single" ? callerName : _headerDisplayName;
 
     // Fire-and-forget - the callee's incoming-call screen is driven by the
     // "incomingcall" SSE event this triggers, not by anything in this
@@ -1067,11 +1069,13 @@ class ConversationStateView extends State<ConversationView> {
       // Empty collapses to "none" rather than being sent through: the alert
       // screen only checks for the literal "none" before handing the value to
       // NetworkImage, so an empty string would reach it as a URL.
+      //
+      // A group call shows the GROUP's picture - initials when it has none.
       displayImage: _conversationType == "single"
           ? ((me.activeAvatarSrc ?? '').isNotEmpty
               ? me.activeAvatarSrc!
               : "none")
-          : "none",
+          : (_headerAvatarSrc.isNotEmpty ? _headerAvatarSrc : "none"),
     ));
 
     final joined = await CallController.instance.joinCall(
@@ -1081,6 +1085,8 @@ class ConversationStateView extends State<ConversationView> {
       isOutgoing: true,
       recepients: recipients,
       startCameraOff: callType != "video",
+      displayName: _headerDisplayName,
+      displayImage: _headerAvatarSrc,
     );
     if (!joined) return;
 

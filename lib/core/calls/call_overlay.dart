@@ -12,6 +12,7 @@ import 'dart:math' as math;
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/calls/call_screens.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_call_native/chatterloop_call_native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -278,17 +279,11 @@ class _CallStageState extends State<CallStage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircleAvatar(
-              radius: radius,
-              backgroundColor: CLColors.brand300,
-              child: Text(
-                initial.isEmpty ? '?' : initial[0].toUpperCase(),
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: radius * 0.75,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+            CLAvatar(
+              id: _call.conversationID,
+              name: initial,
+              src: _call.displayImage,
+              size: radius * 2,
             ),
             const SizedBox(height: 6),
             Text(

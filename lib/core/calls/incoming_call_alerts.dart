@@ -167,6 +167,12 @@ class IncomingCallAlerts {
       isOutgoing: false,
       recepients: recepients,
       startCameraOff: cameraOff || alert.callType != "video",
+      // The ring's own identity: the caller for a direct call, the group for
+      // a group call.
+      displayName: alert.callDisplayName.isNotEmpty
+          ? alert.callDisplayName
+          : alert.caller.name,
+      displayImage: alert.displayImage,
     );
     if (!joined) return false;
     // Any other call still ringing here would ring over this one.

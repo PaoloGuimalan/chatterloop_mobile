@@ -22,6 +22,7 @@ import 'package:chatterloop_app/core/calls/call_background.dart';
 import 'package:chatterloop_app/core/calls/call_controller.dart';
 import 'package:chatterloop_app/core/calls/call_screens.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -289,20 +290,11 @@ class _ActiveCallViewState extends State<ActiveCallView> {
 
   /// Who you are talking to, how long for, and the way to flip the camera.
   ///
-  /// The peer's name comes from the joined participants rather than the
-  /// conversation, because that is the identity the media layer actually has -
-  /// and a group call has no single peer to name, so it says so.
+  /// Who the call is with - the group, or the other person - by name and
+  /// picture (initials when there is none), as the conversation or the ring
+  /// named it. See CallScreens.title for the fallbacks.
   Widget _header(CallController controller, String statusText) {
-    final peers = controller.joinedParticipants
-        .where((p) => p.clientId != controller.clientId)
-        .toList();
-    final title = controller.isGroup
-        ? "Group call"
-        : peers.isNotEmpty
-            ? (peers.first.username.isNotEmpty ? peers.first.username : "Call")
-            : "Call";
-
-    final initial = title.isNotEmpty ? title[0].toUpperCase() : "?";
+    final title = CallScreens.title(controller);
     final elapsed = _elapsedLabel();
     final subtitle = elapsed == null
         ? statusText.toLowerCase()
@@ -316,14 +308,11 @@ class _ActiveCallViewState extends State<ActiveCallView> {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: CLColors.brand300,
-            child: Text(initial,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700)),
+          CLAvatar(
+            id: controller.conversationID,
+            name: title.replaceFirst('@', ''),
+            src: controller.displayImage,
+            size: 36,
           ),
           const SizedBox(width: 10),
           Expanded(
