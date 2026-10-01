@@ -13,6 +13,7 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
+import 'package:chatterloop_app/models/messages_models/conversation_files_model.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/messages_models/send_post_targets_model.dart';
@@ -360,6 +361,43 @@ class ConversationsApi {
         print("failed to load the command menu: $e");
       }
       return const [];
+    }
+  }
+
+  /// One page of the files shared in a conversation, for the info screen's
+  /// media strip and the Photos/Videos/Audio/Files screen behind it.
+  ///
+  /// Its own endpoint, fetched only when one of those is open: the list used
+  /// to ride along, whole, on every /conversationinfo call. Plain JSON.
+  ///
+  /// [cursor] is the previous page's `nextCursor`. Null on any failure, so
+  /// the caller can tell "failed" from "nothing shared".
+  Future<ConversationFilesPage?> getConversationFilesRequest({
+    required String conversationID,
+    required String conversationType,
+    required List<ConversationFileKind> kinds,
+    String? cursor,
+    int? limit,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '${_endpoints.getConversationFiles}$conversationID/$conversationType',
+        queryParameters: {
+          'types': kinds.map((kind) => kind.wire).join(','),
+          if (limit != null) 'limit': limit,
+          if (cursor != null) 'cursor': cursor,
+        },
+      );
+      if (response.data is! Map || response.data["status"] != true) {
+        return null;
+      }
+      return ConversationFilesPage.fromJson(
+          Map<String, dynamic>.from(response.data));
+    } catch (e) {
+      if (kDebugMode) {
+        print("failed to load conversation files: $e");
+      }
+      return null;
     }
   }
 

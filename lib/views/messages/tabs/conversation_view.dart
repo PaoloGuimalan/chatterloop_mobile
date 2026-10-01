@@ -444,6 +444,7 @@ class ConversationStateView extends State<ConversationView> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ConversationInfoScreen(
         info: info,
+        conversationId: widget.conversationId,
         title: _headerDisplayName,
         profile: _headerAvatarSrc.isEmpty ? null : _headerAvatarSrc,
         conversationType: _conversationType,

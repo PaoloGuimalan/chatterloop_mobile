@@ -19,6 +19,13 @@ import 'package:flutter/material.dart';
 const int _barCount = 40;
 const double _minBarHeight = 0.12;
 
+// A full-width player's bars: thin and evenly gapped like the bubble's, with
+// as many as the row has room for - rather than the bubble's 40 stretched into
+// slabs. One bar plus its gap, and the bounds on how many.
+const double _fullWidthBarPitch = 5;
+const int _fullWidthMinBars = 24;
+const int _fullWidthMaxBars = 120;
+
 List<double> _fallbackBars(String seed, int count) {
   int h = 0;
   for (final codeUnit in seed.codeUnits) {
@@ -44,11 +51,23 @@ class VoiceMessagePlayer extends StatefulWidget {
   final bool isSender;
   final bool isLocalFile;
 
+  /// Stretches to its parent's width - a list row (the shared files screen's
+  /// Audio tab) rather than a bubble capped at 270.
+  final bool fullWidth;
+
+  /// Override the fill and outline. A received bubble is [CLPalette.surface],
+  /// which is invisible on a surface-coloured screen.
+  final Color? background;
+  final Color? borderColor;
+
   const VoiceMessagePlayer(
       {super.key,
       required this.src,
       required this.isSender,
-      this.isLocalFile = false});
+      this.isLocalFile = false,
+      this.fullWidth = false,
+      this.background,
+      this.borderColor});
 
   @override
   State<VoiceMessagePlayer> createState() => _VoiceMessagePlayerState();
@@ -57,6 +76,9 @@ class VoiceMessagePlayer extends StatefulWidget {
 class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
   late final AudioPlayer _player;
   late final List<double> _bars;
+
+  /// Full-width bars, per count - the row's width only changes on rotation.
+  final Map<int, List<double>> _barsByCount = {};
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
@@ -125,8 +147,8 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
     // Falls back to p.brand on its own wherever no CLAccent is in scope - the
     // composer's pre-send preview, for one.
     final accent = CLAccent.of(context);
-    final bg = widget.isSender ? accent : p.surface;
-    final border = widget.isSender ? accent : p.border;
+    final bg = widget.background ?? (widget.isSender ? accent : p.surface);
+    final border = widget.borderColor ?? (widget.isSender ? accent : p.border);
     final textColor = widget.isSender ? Colors.white : p.text;
     final trackColor =
         widget.isSender ? Colors.white.withValues(alpha: 0.35) : p.border2;
@@ -134,8 +156,38 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
         ? _position.inMilliseconds / _duration.inMilliseconds
         : 0.0;
 
+    Widget waveform(List<double> bars, {required bool thin}) => Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(bars.length, (index) {
+            final barPosition = index / bars.length;
+            // Strictly past the start: with `<=` alone the first bar (at 0)
+            // read as played before anything was, a dark tick at the head of
+            // every untouched waveform.
+            final isPlayed = progress > 0 && barPosition <= progress;
+            final bar = Container(
+              width: thin ? 3 : null,
+              height: math.max(2, 28 * bars[index]),
+              decoration: BoxDecoration(
+                color: isPlayed ? textColor : trackColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+            return thin
+                ? bar
+                : Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 1),
+                      child: bar,
+                    ),
+                  );
+          }),
+        );
+
     return Container(
-      constraints: const BoxConstraints(minWidth: 220, maxWidth: 270),
+      constraints: widget.fullWidth
+          ? const BoxConstraints(minWidth: double.infinity)
+          : const BoxConstraints(minWidth: 220, maxWidth: 270),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: bg,
@@ -178,25 +230,18 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
                   child: SizedBox(
                     key: _waveformKey,
                     height: 28,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: List.generate(_bars.length, (index) {
-                        final barPosition = index / _bars.length;
-                        final isPlayed = barPosition <= progress;
-                        return Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 1),
-                            child: Container(
-                              height: math.max(2, 28 * _bars[index]),
-                              decoration: BoxDecoration(
-                                color: isPlayed ? textColor : trackColor,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
+                    child: widget.fullWidth
+                        ? LayoutBuilder(builder: (context, box) {
+                            final count = (box.maxWidth / _fullWidthBarPitch)
+                                .floor()
+                                .clamp(_fullWidthMinBars, _fullWidthMaxBars);
+                            return waveform(
+                              _barsByCount.putIfAbsent(count,
+                                  () => _fallbackBars(widget.src, count)),
+                              thin: true,
+                            );
+                          })
+                        : waveform(_bars, thin: false),
                   ),
                 ),
                 const SizedBox(height: 2),

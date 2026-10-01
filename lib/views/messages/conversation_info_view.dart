@@ -9,10 +9,10 @@
 // A pushed screen rather than a modal: web's is a full-height panel, which on
 // a phone is a screen wearing a modal's clothes.
 //
-// SCOPE: identity and members. Web's modal also carries a shared-files browser
-// with Media / Audio / Files tabs - deliberately left out for now, so this
-// screen stays the thing it does well. The data for it (conversationfiles) is
-// already on the model when it is wanted.
+// SCOPE: identity, shared media and members. Shared media is the one part NOT
+// built from the model: it pages from /m/conversationfiles (see
+// conversation_files_view.dart), and only once this screen is open - it used
+// to ride along, whole, on every /conversationinfo call.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -22,11 +22,16 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
+import 'package:chatterloop_app/views/messages/conversation_files_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 
 class ConversationInfoScreen extends StatelessWidget {
   final ConversationInfoModel info;
+
+  /// The id and type the conversation was opened with - the pair its info
+  /// was fetched with, and what its shared files are paged by.
+  final String conversationId;
 
   /// Display name for the conversation - resolved by the screen behind this
   /// one, which already does that work for its own header.
@@ -34,12 +39,17 @@ class ConversationInfoScreen extends StatelessWidget {
   final String? profile;
   final String conversationType;
 
+  /// Overrides the shared-media fetch - for tests.
+  final ConversationFilesFetch? filesFetch;
+
   const ConversationInfoScreen({
     super.key,
     required this.info,
+    required this.conversationId,
     required this.title,
     required this.conversationType,
     this.profile,
+    this.filesFetch,
   });
 
   bool get _isSingle => conversationType == 'single';
@@ -183,6 +193,17 @@ class ConversationInfoScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
+
+          // Above the members, as phone messengers order it: a member list can
+          // run long, and the media is what this screen is most often opened
+          // for.
+          ConversationMediaPreview(
+            conversationId: conversationId,
+            conversationType: conversationType,
+            title: title,
+            fetch: filesFetch,
+          ),
+          const SizedBox(height: 22),
 
           // Members. Web shows this for everything except a single
           // conversation, where the "members" are just the two of you.

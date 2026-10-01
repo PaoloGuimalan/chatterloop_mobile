@@ -14,6 +14,7 @@ import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/models/messages_models/conversation_files_model.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_info_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
@@ -44,7 +45,6 @@ ConversationInfoModel _info(List<UsersContactPreview> people, String type) =>
       const [],
       type,
       people,
-      const [],
     );
 
 Future<void> _pump(
@@ -77,6 +77,10 @@ Future<void> _pump(
       theme: buildCLTheme(Brightness.light),
       home: ConversationInfoScreen(
         info: _info(people, type),
+        conversationId: 'conv-1',
+        // No server in a widget test: an empty shared-media section.
+        filesFetch: (_, __, ___) async =>
+            const ConversationFilesPage(items: []),
         title: 'Ada Lovelace',
         conversationType: type,
       ),

@@ -278,6 +278,12 @@ class Endpoints {
   String initConversation = '/u/initConversation/'; // :conversationID
   String getConversationInfo =
       '/m/conversationinfo/'; // :conversationID/:conversationType (single, group, server)
+
+  /// One page of a conversation's shared files - the info screen's media
+  /// strip and its Photos/Videos/Audio/Files screen.
+  /// :conversationID/:conversationType ?types=image,video,audio,file &limit
+  /// &cursor. Plain JSON; no longer part of /m/conversationinfo.
+  String getConversationFiles = '/m/conversationfiles/';
   String seenNewMessages = '/u/seenNewMessages';
   String postIsTyping = '/m/istypingbroadcast';
   String sendNewMessage = '/u/sendMessage';

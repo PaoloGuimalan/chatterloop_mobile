@@ -121,3 +121,21 @@ String timeSince(DateTime past) =>
 String timeSinceShort(DateTime past) =>
     _relativeTimeSince(past) ??
     "${_monthAbbreviations[past.month - 1]} ${past.day}, ${past.year}";
+
+/// A heading for one calendar day: "Today", "Yesterday", else "Jul 8, 2026"
+/// (timeSinceShort's absolute format). Mirrors the day labels of webapp's
+/// shared-files Audio tab.
+///
+/// Compared by calendar date, not by elapsed hours: something from 23:50
+/// last night is "Yesterday" at 00:10, not "Today".
+String dayLabel(DateTime date, {DateTime? now}) {
+  final today = now ?? DateTime.now();
+  bool sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+  if (sameDay(date, today)) return "Today";
+  // Day 0 rolls back into the previous month/year, so this is safe on the 1st.
+  if (sameDay(date, DateTime(today.year, today.month, today.day - 1))) {
+    return "Yesterday";
+  }
+  return "${_monthAbbreviations[date.month - 1]} ${date.day}, ${date.year}";
+}

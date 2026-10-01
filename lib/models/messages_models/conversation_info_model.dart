@@ -1,4 +1,3 @@
-import 'package:chatterloop_app/models/file_models/file_info_models.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 
 class ConversationInfoModel {
@@ -9,7 +8,6 @@ class ConversationInfoModel {
   List<UserIDObject> users;
   String type;
   List<UsersContactPreview> usersWithInfo;
-  List<ConversationFilesModel> conversationfiles;
 
   /// Whether this conversation is archived for the current user - drives the
   /// Archive/Unarchive toggle in the conversation menu (webapp reads
@@ -38,7 +36,6 @@ class ConversationInfoModel {
       this.users,
       this.type,
       this.usersWithInfo,
-      this.conversationfiles,
       {this.isArchived = false,
       this.isAdmin = false,
       this.isPrivate = false});
@@ -69,13 +66,6 @@ class ConversationInfoModel {
                 .whereType<Map>()
                 .map((user) => UsersContactPreview.fromJson(
                     Map<String, dynamic>.from(user)))
-                .toList()
-            : [],
-        json["conversationfiles"] is List
-            ? (json["conversationfiles"] as List)
-                .whereType<Map>()
-                .map((file) => ConversationFilesModel.fromJson(
-                    Map<String, dynamic>.from(file)))
                 .toList()
             : [],
         isArchived: (json["chatHistory"] is Map &&

@@ -320,6 +320,7 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ConversationInfoScreen(
         info: info,
+        conversationId: widget.conversationId,
         title: widget.channelName ?? 'Voice channel',
         conversationType: 'voice',
       ),
