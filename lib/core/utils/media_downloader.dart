@@ -52,6 +52,14 @@ String chatMediaFileName(String content,
   return _sanitizeFileName(segments.isEmpty ? "" : segments.last, fallback);
 }
 
+/// What to call a saved file that carries a real [name] of its own outside a
+/// message (a diary attachment's file_name): made safe for disk the same way,
+/// with the link's last segment standing in when there is none.
+String mediaFileName(String url, {String? name, String fallback = "file"}) =>
+    (name != null && name.trim().isNotEmpty)
+        ? _sanitizeFileName(name, fallback)
+        : chatMediaFileName(url, fallback: fallback);
+
 String _sanitizeFileName(String raw, String fallback) {
   var name = raw.trim();
   try {
