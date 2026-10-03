@@ -113,7 +113,7 @@ class _MediaTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    final url = chatMediaUrl(item.content);
+    final url = chatMediaUrl(item.content, item.attachment);
 
     return Semantics(
       button: true,
@@ -772,7 +772,7 @@ class _AudioRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = cl(context);
     return VoiceMessagePlayer(
-      src: chatMediaUrl(item.content),
+      src: chatMediaUrl(item.content, item.attachment),
       isSender: false,
       fullWidth: true,
       background: _audioFill(p),
@@ -817,19 +817,27 @@ class _FileRow extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => MediaDownloader.instance
-            .download(item.content, mimeType: item.mimeType),
+            .download(
+              chatMediaUrl(item.content, item.attachment),
+              mimeType: item.attachment?.mime ?? item.mimeType,
+              fileName: item.attachment == null
+                  ? null
+                  : chatMediaFileName(item.content,
+                      attachment: item.attachment),
+            ),
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Row(
             children: [
-              _FileGlyph(content: item.content),
+              _FileGlyph(content: chatMediaUrl(item.content, item.attachment)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      chatMediaFileName(item.content),
+                      // Name and size come from the message's attachment.
+                      item.attachment?.name ?? "File",
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -837,9 +845,16 @@ class _FileRow extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           color: p.text),
                     ),
-                    if (sentAt != null)
+                    if (sentAt != null || item.attachment != null)
                       Text(
-                        timeSince(sentAt),
+                        [
+                          if (item.attachment?.available == false)
+                            "No longer available"
+                          else if (item.attachment?.sizeLabel.isNotEmpty ==
+                              true)
+                            item.attachment!.sizeLabel,
+                          if (sentAt != null) timeSince(sentAt),
+                        ].join(" · "),
                         style:
                             TextStyle(fontSize: CLType.caption, color: p.text2),
                       ),

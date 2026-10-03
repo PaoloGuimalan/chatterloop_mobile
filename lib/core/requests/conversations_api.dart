@@ -4,13 +4,16 @@
 import 'dart:convert';
 
 import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
+import 'package:chatterloop_app/core/media/media_uploader.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/reported_action.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:chatterloop_app/core/utils/chat_commands.dart';
 import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
+import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_files_model.dart';
@@ -545,17 +548,12 @@ class ConversationsApi {
     );
   }
 
-  /// Matches webapp's SendFilesRequest (ConversationV2.tsx) exactly - one
-  /// multipart/form-data POST that both uploads the attachment(s) AND
-  /// creates the message document server-side (unlike sendMessageRequest
-  /// above, this is plain form fields, not a JWT-signed token body).
-  /// pendingIDs must be index-aligned with filePaths (server pairs them up
-  /// positionally) and JSON-encoded as a string, matching
-  /// `formData.append("pendingIDs", JSON.stringify(...))` on the web side.
-  /// Used for images, arbitrary files, and voice messages alike - the
-  /// server infers messageType from each part's content-type
-  /// ("image" for image/*, the raw mimetype string otherwise, e.g.
-  /// "audio/m4a" for a voice recording).
+  /// Matches webapp's SendFilesRequest (ConversationV2.tsx). The files go
+  /// straight to storage first (core/media/media_uploader.dart), each pending
+  /// bubble showing its own progress through UploadProgress (keyed by its
+  /// pending id); then the server turns each upload into a message, under the
+  /// message id it reserved for it. pendingIDs are index-aligned with
+  /// filePaths. [voiceNote] uploads under the voice note limit.
   Future<bool> sendFilesRequest({
     required String conversationID,
     required bool isReply,
@@ -563,23 +561,28 @@ class ConversationsApi {
     required String conversationType,
     required List<String> pendingIDs,
     required List<String> filePaths,
+    bool voiceNote = false,
   }) async {
     ContentValidator().printer('${_endpoints.apiUrl}${_endpoints.sendFiles}');
     try {
-      final formData = FormData.fromMap({
+      final uploaded = await MediaUploader(api: _dio).upload(
+        purpose: voiceNote ? UploadFeature.voiceNote : UploadFeature.message,
+        paths: filePaths,
+        context: {'conversationID': conversationID},
+        progressKeys: pendingIDs,
+      );
+      final response = await _dio.post(_endpoints.sendFiles, data: {
         'conversationID': conversationID,
-        'isReply': isReply.toString(),
+        'uploadIDs': [for (final u in uploaded) u.uploadId],
+        'pendingIDs': pendingIDs,
+        'isReply': isReply,
         'replyingTo': replyingTo,
         'conversationType': conversationType,
-        'pendingIDs': jsonEncode(pendingIDs),
-        'files': [
-          for (final path in filePaths)
-            await MultipartFile.fromFile(path,
-                filename: path.split(RegExp(r'[\\/]')).last),
-        ],
       });
-      final response = await _dio.post(_endpoints.sendFiles, data: formData);
       return response.data["status"] != false;
+    } on UploadFailure catch (e) {
+      CLAlerts.error(e.message);
+      return false;
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

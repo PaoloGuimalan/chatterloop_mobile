@@ -13,6 +13,8 @@ import 'package:chatterloop_app/core/notifications/push_notification_service.dar
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
+import 'package:chatterloop_app/core/utils/endpoints.dart';
+import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/foundation.dart';
@@ -82,6 +84,10 @@ void main() async {
 
   // Picking photos and videos opens the gallery, not the file browser.
   useGalleryPicker();
+
+  // Upload limits per feature, from the server - refreshed every launch,
+  // in the background (the last known values apply meanwhile).
+  unawaited(UploadLimits.load(apiUrl: Endpoints().apiUrl));
 
   // The bundled Inter font's licence (SIL OFL 1.1), listed with every
   // package's - the licence asks to travel with the font.

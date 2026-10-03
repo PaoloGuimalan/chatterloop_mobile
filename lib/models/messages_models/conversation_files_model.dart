@@ -1,3 +1,5 @@
+import 'package:chatterloop_app/models/messages_models/message_attachment_model.dart';
+
 /// What /m/conversationfiles can be filtered by - one per tab of the shared
 /// files screen.
 ///
@@ -36,9 +38,11 @@ class ConversationFileItem {
   /// The message's messageType - "image", or a real mime type.
   final String mimeType;
 
-  /// The RAW stored reference - a bare URL, or the legacy "url%%%name". Read
-  /// it through chatMediaUrl / chatMediaFileName, like a message's content.
+  /// The stored value - the file's URL. Show the file through [attachment].
   final String content;
+
+  /// Name, link, size - see MessageAttachment.
+  final MessageAttachment? attachment;
   final DateTime? sentAt;
 
   const ConversationFileItem({
@@ -47,6 +51,7 @@ class ConversationFileItem {
     required this.kind,
     required this.mimeType,
     required this.content,
+    this.attachment,
     this.sentAt,
   });
 
@@ -57,6 +62,7 @@ class ConversationFileItem {
       kind: ConversationFileKind.fromWire(json["kind"]?.toString()),
       mimeType: (json["mimeType"] ?? "").toString(),
       content: (json["content"] ?? "").toString(),
+      attachment: MessageAttachment.tryParse(json["attachment"]),
       sentAt: DateTime.tryParse((json["sentAt"] ?? "").toString())?.toLocal(),
     );
   }

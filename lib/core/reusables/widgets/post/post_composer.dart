@@ -267,7 +267,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
     for (final file in picked) {
       final path = file.path;
       final size = await File(path).length();
-      if (size > kMaxUploadBytes) {
+      if (size > UploadLimits.of(UploadFeature.postMedia).maxBytes) {
         rejected.add(file.name);
         continue;
       }
@@ -283,7 +283,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
 
     setState(() {});
     if (rejected.isNotEmpty) {
-      _toast("Skipped ${rejected.length} file(s) over $kMaxUploadLabel",
+      _toast("Skipped ${rejected.length} file(s) over ${UploadLimits.of(UploadFeature.postMedia).label}",
           type: CLAlertType.warning);
     }
   }

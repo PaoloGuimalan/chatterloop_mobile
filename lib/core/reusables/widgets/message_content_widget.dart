@@ -14,6 +14,7 @@ import 'package:chatterloop_app/core/reusables/widgets/reply_target_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/core/utils/media_downloader.dart';
+import 'package:chatterloop_app/models/messages_models/message_attachment_model.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
@@ -383,25 +384,6 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     _onPressed = widget.onPressed;
   }
 
-  /// Matches webapp's ContentHandler.tsx exactly: the "url%%%filename"
-  /// encoding is only ever used for legacy Google Cloud Storage uploads
-  /// (storage.googleapis.com) - every other upload (e.g. the DigitalOcean
-  /// Spaces URLs this backend actually uses now) is just a plain URL with
-  /// no delimiter, and the filename is its last "/"-segment. Blindly
-  /// splitting on "%%%" for all content both threw (no [1] to index into)
-  /// and, after the earlier crash fix's "File" fallback, silently hid the
-  /// real filename that was sitting right there in the URL the whole time.
-  String _fileNamePart(String content) {
-    if (content.contains("storage.googleapis.com")) {
-      final parts = content.split("%%%");
-      return parts.length > 1 ? parts[1] : "File";
-    }
-    final segments = content.split("/");
-    return segments.isNotEmpty && segments.last.isNotEmpty
-        ? segments.last
-        : "File";
-  }
-
   /// Shared reply-assist checkbox handler - was copy-pasted near-identically
   /// across every content-type branch (text/image/video/audio/file/etc.)
   /// in this widget's build method.
@@ -551,8 +533,15 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   /// Fetches an attachment and files it away on the device. Fire-and-forget:
   /// it keeps running after this bubble (or the whole conversation) is gone,
   /// and reports where the file landed through the app-wide messenger.
-  void _downloadAttachment(String content, String messageType) {
-    MediaDownloader.instance.download(content, mimeType: messageType);
+  void _downloadAttachment(String content, String messageType,
+      [MessageAttachment? attachment]) {
+    MediaDownloader.instance.download(
+      chatMediaUrl(content, attachment),
+      mimeType: attachment?.mime ?? messageType,
+      fileName: attachment == null
+          ? null
+          : chatMediaFileName(content, attachment: attachment),
+    );
   }
 
   /// What "Copy" puts on the clipboard.
@@ -560,16 +549,14 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   /// A text message copies its words. Anything with a file behind it copies
   /// the file's URL - that is the only thing about such a message that can BE
   /// text, and a link is what someone reaching for Copy on a photo wants. It
-  /// goes through [chatMediaUrl] rather than the raw field so the copied link
-  /// is the one that actually resolves: the stored value can carry the legacy
-  /// "url%%%filename" suffix, and an unescaped "###" inside a storage key
-  /// turns everything after it into a fragment.
+  /// goes through [chatMediaUrl], the attachment's link, rather than the raw
+  /// stored value.
   ///
   /// A system notice ("notif") is excluded by [_isCopyable] rather than
   /// handled here - it is the app talking, not a message anyone wrote.
   String get _copyText => _messageContent.messageType == "text"
       ? _messageContent.content
-      : chatMediaUrl(_messageContent.content);
+      : chatMediaUrl(_messageContent.content, _messageContent.attachment);
 
   /// Whether the menu offers Copy at all. There is nothing to put on a
   /// clipboard for an empty message or a system notice.
@@ -647,7 +634,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
       bool isCurrentUser,
       bool isReply,
       bool isHoverPreview,
-      bool isMarkingEnabled) {
+      bool isMarkingEnabled,
+      {MessageAttachment? attachment}) {
     final p = cl(context);
 
     // Reactions belong to the REAL bubble only. Both preview modes render a
@@ -1048,7 +1036,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       // quote does, which is nothing.
                       onTap: isReply || isHoverPreview
                           ? null
-                          : () => _openInViewer(content, messageType),
+                          : () => _openInViewer(chatMediaUrl(content, attachment), messageType),
                       child: Container(
                         decoration: BoxDecoration(
                             color: p.surface3,
@@ -1059,12 +1047,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                           child: Padding(
                             padding: EdgeInsets.all(0),
                             child: CLNetworkImage(
-                              // Normalised, like every other attachment: the
-                              // raw content of a legacy Google Cloud Storage
-                              // upload is "url%%%filename", which is not a url
-                              // and does not load. A no-op on the plain urls
-                              // every current upload produces.
-                              src: chatMediaUrl(content),
+                              // The attachment's link, like every other file.
+                              src: chatMediaUrl(content, attachment),
                             ),
                           ),
                         ),
@@ -1267,12 +1251,12 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   child: Container(
                     color: Colors.black,
                     child: VideoPlayerScreen(
-                      videoUrl: chatMediaUrl(content),
+                      videoUrl: chatMediaUrl(content, attachment),
                       // Expanding lands in the same viewer a photo opens into,
                       // so the save action sits in one place for both kinds of
                       // media - rather than in the bare full-screen player,
                       // which has no actions at all.
-                      onFullscreen: () => _openInViewer(content, messageType),
+                      onFullscreen: () => _openInViewer(chatMediaUrl(content, attachment), messageType),
                     ),
                   ),
                 ),
@@ -1467,7 +1451,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                   : CrossAxisAlignment.start,
               children: [
                 VoiceMessagePlayer(
-                  src: content.split("%%%")[0].replaceAll("###", "%23%23%23"),
+                  src: chatMediaUrl(content, attachment),
                   isSender: isCurrentUser,
                 ),
                 showReactions
@@ -1716,7 +1700,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     // previewing.
                     onPressed: isReply || isHoverPreview
                         ? () {}
-                        : () => _downloadAttachment(content, messageType),
+                        : () => _downloadAttachment(
+                            content, messageType, attachment),
                     child: Container(
                       decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10)),
@@ -1727,17 +1712,36 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                           mainAxisAlignment: MainAxisAlignment.start,
                           mainAxisSize: MainAxisSize.max,
                           children: [
-                            _AttachmentDownloadIcon(content: content),
+                            _AttachmentDownloadIcon(
+                                content: chatMediaUrl(content, attachment)),
                             SizedBox(
                               width: 10,
                             ),
                             Expanded(
-                                child: Text(
-                              _fileNamePart(content),
-                              style: TextStyle(
-                                  fontSize: CLType.title, color: p.text),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                                child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Name and size come from the message's
+                                // attachment - see MessageAttachment.
+                                Text(
+                                  attachment?.name ?? "File",
+                                  style: TextStyle(
+                                      fontSize: CLType.title, color: p.text),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (attachment != null &&
+                                    (!attachment.available ||
+                                        attachment.sizeLabel.isNotEmpty))
+                                  Text(
+                                    attachment.available
+                                        ? attachment.sizeLabel
+                                        : "No longer available",
+                                    style: TextStyle(
+                                        fontSize: CLType.meta, color: p.text3),
+                                  ),
+                              ],
                             ))
                           ],
                         ),
@@ -1998,6 +2002,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                       _repliedTo!.sender == _currentUserID,
                                       true)
                                   : messageTypeSwitch(
+                                      attachment: _repliedTo!.attachment,
                                       _quotedContent,
                                       _repliedTo!.messageType,
                                       _repliedTo!.messageID,
@@ -2088,6 +2093,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                                   _messageContent.sender ==
                                                       _currentUserID)
                                           : messageTypeSwitch(
+                                              attachment:
+                                                  _messageContent.attachment,
                                               _bubbleContent,
                                               _bubbleType,
                                               _messageContent.messageID,
@@ -2118,7 +2125,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                       // overlay.
                                       _downloadAttachment(
                                           _messageContent.content,
-                                          _messageContent.messageType);
+                                          _messageContent.messageType,
+                                          _messageContent.attachment);
                                     } else if (menuItem.label == "Delete") {
                                       // Was unhandled - the entry rendered and
                                       // did nothing when tapped. Same call the
@@ -2168,6 +2176,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                     ? _replyTargetBlock(_ownCard!,
                                         asMessage: true)
                                     : messageTypeSwitch(
+                                        attachment: _messageContent.attachment,
                                         _bubbleContent,
                                         _bubbleType,
                                         _messageContent.messageID,

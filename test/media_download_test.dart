@@ -17,6 +17,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/reusables/widgets/media_viewer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/message_content_widget.dart';
 import 'package:chatterloop_app/core/utils/media_downloader.dart';
+import 'package:chatterloop_app/models/messages_models/message_attachment_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:flutter/material.dart';
@@ -33,7 +34,10 @@ final Finder _fileCard = find.ancestor(
   matching: find.byType(ElevatedButton),
 );
 
-MessageContent _message({required String type, required String content}) =>
+/// A file message carries its [name] in an `attachment`, as the server
+/// writes it; nothing reads names out of the URL.
+MessageContent _message(
+        {required String type, required String content, String? name}) =>
     MessageContent.fromJson({
       "messageID": "m1",
       "conversationID": "c1",
@@ -41,6 +45,8 @@ MessageContent _message({required String type, required String content}) =>
       "content": content,
       "messageType": type,
       "messageDate": "2026-01-01T00:00:00.000Z",
+      if (name != null)
+        "attachment": {"url": content, "name": name, "size": 2048},
     });
 
 void main() {
@@ -53,21 +59,29 @@ void main() {
       expect(chatMediaUrl(_spacesFile), _spacesFile);
     });
 
-    test('the legacy url%%%filename encoding keeps only the url', () {
+    test("a message file's link and name come from its attachment", () {
+      const attachment = MessageAttachment(
+        url: 'https://media.example.invalid/uploads/messages/c/1/Q3%20report.pdf',
+        name: 'Q3 report.pdf',
+        size: 2048,
+      );
+      // The stored content is never parsed, whatever shape it has.
       const content =
           'https://storage.googleapis.com/bucket/abc123%%%quarterly.pdf';
-      expect(chatMediaUrl(content),
-          'https://storage.googleapis.com/bucket/abc123');
-      // The name is the half after the delimiter - the key itself carries no
-      // readable one.
-      expect(chatMediaFileName(content), 'quarterly.pdf');
+      expect(chatMediaUrl(content, attachment), attachment.url);
+      expect(
+          chatMediaFileName(content, attachment: attachment), 'Q3 report.pdf');
     });
 
-    test('a literal ### in a key is escaped back into a percent-encoded #', () {
-      expect(
-        chatMediaUrl('https://cdn.example.invalid/a###b.mp4'),
-        'https://cdn.example.invalid/a%23%23%23b.mp4',
-      );
+    test('without an attachment the stored content is used as it is', () {
+      const content = 'https://cdn.example.invalid/a###b.mp4%%%x.mp4';
+      expect(chatMediaUrl(content), content);
+    });
+
+    test("an attachment's name is still made safe for disk", () {
+      const attachment =
+          MessageAttachment(url: 'https://m.invalid/x', name: 'a/b:c?.txt');
+      expect(chatMediaFileName('ignored', attachment: attachment), 'a_b_c_.txt');
     });
 
     test('a name comes from the last path segment, percent-decoded', () {
@@ -242,7 +256,8 @@ void main() {
       // It used to render with `onPressed: () {}` - a card that looked like a
       // button and did nothing at all when tapped.
       await pumpBubble(
-          tester, _message(type: "application/pdf", content: _spacesFile));
+          tester, _message(
+              type: "application/pdf", content: _spacesFile, name: "report.pdf"));
 
       expect(find.text('report.pdf'), findsOneWidget);
       // By name, not byType: the bubble also carries the reply affordance,
@@ -255,7 +270,8 @@ void main() {
         (tester) async {
       MediaDownloader.instance.progress.value = {_spacesFile: 0.25};
       await pumpBubble(
-          tester, _message(type: "application/pdf", content: _spacesFile));
+          tester, _message(
+              type: "application/pdf", content: _spacesFile, name: "report.pdf"));
 
       expect(find.byIcon(Icons.file_copy_outlined), findsNothing);
       final indicator = tester.widget<CircularProgressIndicator>(
@@ -265,7 +281,8 @@ void main() {
 
     testWidgets('long-pressing an attachment offers Save', (tester) async {
       await pumpBubble(
-          tester, _message(type: "application/pdf", content: _spacesFile));
+          tester, _message(
+              type: "application/pdf", content: _spacesFile, name: "report.pdf"));
 
       await tester.longPress(_fileCard);
       await tester.pumpAndSettle();

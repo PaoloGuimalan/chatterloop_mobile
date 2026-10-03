@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/media/media_uploader.dart';
 import 'package:flutter/material.dart';
 
 class PendingContentWidget extends StatefulWidget {
@@ -21,21 +22,6 @@ class PendingContentWidget extends StatefulWidget {
 }
 
 class PendingContentWidgetState extends State<PendingContentWidget> {
-  /// Matches webapp's ContentHandler.tsx: "url%%%filename" is only used
-  /// for legacy Google Cloud Storage uploads - every other upload (e.g.
-  /// the DigitalOcean Spaces URLs this backend actually uses) is a plain
-  /// URL with no delimiter, whose filename is just its last "/"-segment.
-  String _fileNamePart(String content) {
-    if (content.contains("storage.googleapis.com")) {
-      final parts = content.split("%%%");
-      return parts.length > 1 ? parts[1] : "File";
-    }
-    final segments = content.split("/");
-    return segments.isNotEmpty && segments.last.isNotEmpty
-        ? segments.last
-        : "File";
-  }
-
   Widget messageTypeSwitch(String content, String messageType, String messageID,
       bool isParentSenderCurrentUser, bool isCurrentUser, bool isReply) {
     if (messageType == "text") {
@@ -356,17 +342,12 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
               borderRadius: BorderRadius.circular(10),
               child: Container(
                 color: Colors.black,
-                // A pending video's content is always a local path (the
-                // file being uploaded) - no %%%/### legacy-URL handling
-                // applies to it, unlike a confirmed message's content.
-                // While it sends it is a still with a play badge, as it was
-                // in the picked-files strip; the player comes with the sent
-                // message.
+                // A pending video's content is the local file being
+                // uploaded. While it sends it is a still with a play badge,
+                // as it was in the picked-files strip; the player comes with
+                // the sent message.
                 child: content.startsWith('http')
-                    ? VideoPlayerScreen(
-                        videoUrl: content
-                            .split("%%%")[0]
-                            .replaceAll("###", "%23%23%23"))
+                    ? VideoPlayerScreen(videoUrl: content)
                     : _PendingVideo(path: content),
               ),
             ),
@@ -650,7 +631,8 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                         ),
                         Expanded(
                             child: Text(
-                          _fileNamePart(content),
+                          // The picked file's own name - it's still local.
+                          fileNameOf(content),
                           style: TextStyle(
                               fontSize: CLType.title, color: Colors.black),
                           maxLines: 1,
@@ -731,13 +713,21 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      "...sending",
-                      style: TextStyle(
-                        fontSize: CLType.caption,
-                        color: Color(0xFF565656),
+                    // The upload's progress while the bytes go up
+                    // (MediaUploader, keyed by this pending id), then
+                    // "...sending" while the server makes the message.
+                    ValueListenableBuilder<double?>(
+                      valueListenable: UploadProgress.of(widget.messageID),
+                      builder: (context, progress, _) => Text(
+                        progress == null
+                            ? "...sending"
+                            : "Uploading ${(progress * 100).round()}%",
+                        style: TextStyle(
+                          fontSize: CLType.caption,
+                          color: Color(0xFF565656),
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     )
                   ],
                 ),

@@ -140,7 +140,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     for (final file in result.files) {
       final path = file.path;
       if (path == null) continue;
-      if (file.size > kMaxUploadBytes) {
+      if (file.size > UploadLimits.of(UploadFeature.diary).maxBytes) {
         rejected.add(file.name);
         continue;
       }
@@ -150,7 +150,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
     setState(() {});
     if (rejected.isNotEmpty && mounted) {
-      _toast("Skipped ${rejected.length} file(s) over $kMaxUploadLabel",
+      _toast("Skipped ${rejected.length} file(s) over ${UploadLimits.of(UploadFeature.diary).label}",
           type: CLAlertType.warning);
     }
   }
@@ -558,7 +558,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
               ],
             ),
             if (_attachments.isEmpty)
-              Text("Up to $kMaxUploadLabel per file",
+              Text("Up to ${UploadLimits.of(UploadFeature.diary).label} per file",
                   style: TextStyle(color: p.text3, fontSize: CLType.caption))
             else
               ..._attachments.map((a) => Padding(

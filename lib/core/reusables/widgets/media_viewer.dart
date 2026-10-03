@@ -20,10 +20,8 @@ import 'package:flutter/material.dart';
 
 /// One thing the viewer can show.
 ///
-/// [source] is the RAW content string, not a resolved URL: the downloader
-/// needs the original to recover a legacy "url%%%filename" name, and
-/// [chatMediaUrl] normalises it for playback and fetching. For a post
-/// reference the two are the same string.
+/// [source] is the file's link - for a message, its attachment's (callers
+/// resolve it through [chatMediaUrl]); for a post, the reference itself.
 class MediaViewerItem {
   final String source;
   final bool isVideo;

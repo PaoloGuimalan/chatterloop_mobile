@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
+import 'package:chatterloop_app/models/messages_models/message_attachment_model.dart';
 import 'package:chatterloop_app/models/messages_models/conversation_files_model.dart';
 import 'package:chatterloop_app/views/messages/conversation_files_view.dart';
 
@@ -40,7 +41,7 @@ class _FakeServer {
 }
 
 ConversationFileItem _item(ConversationFileKind kind, int i,
-        {String? content}) =>
+        {String? content, MessageAttachment? attachment}) =>
     ConversationFileItem(
       messageID: '${kind.wire}-$i',
       sender: 'them',
@@ -52,6 +53,7 @@ ConversationFileItem _item(ConversationFileKind kind, int i,
         ConversationFileKind.file => 'application/pdf',
       },
       content: content ?? 'https://cdn.example.invalid/${kind.wire}-$i',
+      attachment: attachment,
       sentAt: DateTime.now().subtract(Duration(hours: i)),
     );
 
@@ -153,7 +155,7 @@ void main() {
     expect(server.calls[1].cursor, 'cursor-2');
   });
 
-  testWidgets('the Files tab lists names, legacy and current alike',
+  testWidgets("the Files tab shows each file's name, size and state",
       (tester) async {
     final server = _FakeServer();
     await _pumpScreen(tester, server);
@@ -172,17 +174,33 @@ void main() {
       tester,
       filesCall,
       ConversationFilesPage(items: [
+        // Names come from the attachment, never the URL.
         _item(ConversationFileKind.file, 0,
             content:
-                'https://storage.googleapis.com/bucket/files/IMG_abc%%%Quarterly report.pdf'),
+                'https://storage.googleapis.com/bucket/files/IMG_abc%%%Quarterly report.pdf',
+            attachment: const MessageAttachment(
+                url: 'https://storage.googleapis.com/bucket/files/IMG_abc',
+                name: 'Quarterly report.pdf',
+                available: false)),
         _item(ConversationFileKind.file, 1,
             content:
-                'https://bucket.cdn.example.invalid/uploads/messages/conv-1/AB12_notes.pdf'),
+                'https://media.example.invalid/uploads/messages/conv-1/1/notes.pdf',
+            attachment: const MessageAttachment(
+                url:
+                    'https://media.example.invalid/uploads/messages/conv-1/1/notes.pdf',
+                name: 'notes.pdf',
+                size: 2516582)),
+        // No attachment: no name is guessed.
+        _item(ConversationFileKind.file, 2,
+            content: 'https://cdn.example.invalid/uploads/1234567890_old.pdf'),
       ]),
     );
 
     expect(find.text('Quarterly report.pdf'), findsOneWidget);
-    expect(find.text('AB12_notes.pdf'), findsOneWidget);
+    expect(find.textContaining('No longer available'), findsOneWidget);
+    expect(find.text('notes.pdf'), findsOneWidget);
+    expect(find.textContaining('2.4 MB'), findsOneWidget);
+    expect(find.text('File'), findsOneWidget);
   });
 
   testWidgets('a failed first page offers a retry, not an empty tab',

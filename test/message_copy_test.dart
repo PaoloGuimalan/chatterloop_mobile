@@ -25,6 +25,7 @@ import 'package:flutter_test/flutter_test.dart';
 MessageContent _message({
   required String content,
   String type = 'text',
+  Map<String, dynamic>? attachment,
 }) =>
     MessageContent.fromJson({
       "messageID": "m1",
@@ -33,6 +34,7 @@ MessageContent _message({
       "content": content,
       "messageType": type,
       "messageDate": "2026-01-01T00:00:00.000Z",
+      if (attachment != null) "attachment": attachment,
     });
 
 void main() {
@@ -118,6 +120,10 @@ void main() {
         _message(
           content: 'https://cdn.example.com/files/report.pdf',
           type: 'application/pdf',
+          attachment: {
+            'url': 'https://cdn.example.com/files/report.pdf',
+            'name': 'report.pdf',
+          },
         ));
 
     await openMenu(tester, find.text('report.pdf').first);
@@ -126,10 +132,11 @@ void main() {
     expect(copied, 'https://cdn.example.com/files/report.pdf');
   });
 
-  testWidgets('a legacy attachment copies the URL, not the stored field',
+  testWidgets("an attachment copies its own link, not the stored field",
       (tester) async {
-    // "url%%%filename" is the old Google Cloud Storage encoding. Copying the
-    // raw field would hand out a link with the filename glued to its end.
+    // An old Firebase-era message stores "url%%%filename"; its attachment
+    // (from the server's backfill) holds the clean link, which is what Copy
+    // must hand out - nothing parses the stored field any more.
     //
     // Exercised on a FILE card rather than a photo, deliberately: the encoding
     // is a property of the stored URL, not of the media type, and a file card
@@ -141,6 +148,11 @@ void main() {
         _message(
           content: 'https://storage.googleapis.com/b/k%%%holiday.jpg',
           type: 'application/octet-stream',
+          attachment: {
+            'url': 'https://storage.googleapis.com/b/k',
+            'name': 'holiday.jpg',
+            'status': 'unavailable',
+          },
         ));
 
     await openMenu(tester, find.text('holiday.jpg').first);

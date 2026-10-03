@@ -22,47 +22,34 @@ import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:chatterloop_app/core/utils/app_messenger.dart';
 import 'package:chatterloop_app/core/utils/gallery_saver.dart';
 import 'package:dio/dio.dart';
+import 'package:chatterloop_app/models/messages_models/message_attachment_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
-/// The URL half of a message's `content`.
-///
-/// Same normalisation the players already do inline (see
-/// message_content_widget's video/audio branches), in one place so the
-/// download of an attachment and the playback of it can never disagree about
-/// which URL they mean:
-///
-///   %%%   legacy "url%%%filename" encoding, Google Cloud Storage only
-///   ###   a literal "###" inside a Spaces key, which has to be escaped back
-///         into a percent-encoded "#" or everything after it reads as a
-///         fragment and the request misses
-///
-/// Both are no-ops on a plain URL, which is what every current upload is.
-String chatMediaUrl(String content) =>
-    content.split("%%%")[0].replaceAll("###", "%23%23%23");
+/// Where a message's file lives: its [attachment]'s link (see
+/// MessageAttachment), else the stored [content] as it is. Nothing is parsed
+/// out of the content any more - older messages got their attachment from a
+/// one-time server backfill. One function so the download of a file and the
+/// playback of it can never disagree about which URL they mean.
+String chatMediaUrl(String content, [MessageAttachment? attachment]) =>
+    attachment?.url ?? content;
 
-/// What to call the saved file.
+/// What to call the saved file: a message file's real name from its
+/// [attachment]. Media that isn't a message's (a post's, a moment's) has no
+/// attachment; its link ends in the file's name, which stands in.
 ///
-/// Mirrors message_content_widget's `_fileNamePart` for where the name comes
-/// from, and then does two things that only matter once it becomes a real
-/// filename on disk: percent-decodes it (a Spaces key with an encoded space
-/// would otherwise save as "my%20photo.jpg") and strips the characters
-/// Android and iOS will not accept in one.
-String chatMediaFileName(String content, {String fallback = "file"}) {
-  if (content.contains("storage.googleapis.com")) {
-    final parts = content.split("%%%");
-    if (parts.length > 1 && parts[1].trim().isNotEmpty) {
-      return _sanitizeFileName(parts[1], fallback);
-    }
-  }
-  final url = chatMediaUrl(content);
+/// Either way the name is made safe for disk: percent-decoded (an encoded
+/// space would otherwise save as "my%20photo.jpg") and stripped of the
+/// characters Android and iOS will not accept in one.
+String chatMediaFileName(String content,
+    {MessageAttachment? attachment, String fallback = "file"}) {
+  if (attachment != null) return _sanitizeFileName(attachment.name, fallback);
   // Uri.parse rather than a raw split, so a query string
   // ("?X-Amz-Signature=...") never ends up in the filename.
-  final path = Uri.tryParse(url)?.path ?? url;
+  final path = Uri.tryParse(content)?.path ?? content;
   final segments = path.split("/").where((s) => s.isNotEmpty).toList();
-  final last = segments.isEmpty ? "" : segments.last;
-  return _sanitizeFileName(last, fallback);
+  return _sanitizeFileName(segments.isEmpty ? "" : segments.last, fallback);
 }
 
 String _sanitizeFileName(String raw, String fallback) {

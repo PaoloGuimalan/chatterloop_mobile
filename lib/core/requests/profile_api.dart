@@ -2,6 +2,9 @@
 // Split out from AuthApi since these aren't session/credential concerns.
 
 import 'package:chatterloop_app/core/errors/request_errors.dart';
+import 'package:chatterloop_app/core/media/media_uploader.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
+import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
@@ -641,9 +644,10 @@ class ProfileApi {
     );
   }
 
-  /// Replaces a realm's avatar or cover. One multipart POST to NODE, unlike a
-  /// user's avatar which goes through /posts/upload and then a post - a realm
-  /// has no feed post to file, so this endpoint does the whole job.
+  /// Replaces a realm's avatar or cover, unlike a user's avatar which becomes
+  /// a post - a realm has no feed post to file. The image goes straight to
+  /// storage, uploaded for this realm; the realm is then pointed at it by
+  /// upload id.
   ///
   /// [mediaType] is "profile" or "cover_photo", matching the content_type
   /// values the personal-account flow uses.
@@ -653,15 +657,27 @@ class ProfileApi {
     required String mediaType,
     required String filePath,
   }) async {
-    final fileName = filePath.split(RegExp(r'[\\/]')).last;
-    final form = FormData.fromMap({
-      'realm_id': realmId,
-      'realm_type': realmType,
-      'media_type': mediaType,
-      'image': await MultipartFile.fromFile(filePath, filename: fileName),
-    });
+    final UploadedFile uploaded;
+    try {
+      [uploaded] = await MediaUploader().upload(
+        purpose:
+            mediaType == 'profile' ? UploadFeature.avatar : UploadFeature.cover,
+        paths: [filePath],
+        context: {'realmID': realmId},
+      );
+    } on UploadFailure catch (e) {
+      CLAlerts.error(e.message);
+      return false;
+    } catch (e) {
+      CLAlerts.requestError(e, fallback: "We couldn't upload that image.");
+      return false;
+    }
     return reportedAction(
-      () => _mainDio.post(_endpoints.realmUploadMedia, data: form),
+      () => _mainDio.post(_endpoints.realmUploadMedia, data: {
+        'realm_id': realmId,
+        'media_type': mediaType,
+        'uploadID': uploaded.uploadId,
+      }),
       failure: "We couldn't upload that image.",
       accepted: (r) => r.data is Map && r.data['status'] == true,
     );
@@ -680,53 +696,52 @@ class ProfileApi {
   /// Distinct from [mediaType], which is the file's MIME type. Both travel on
   /// the same request and neither substitutes for the other.
   ///
-  /// Sent as a PLAIN field value, unlike the sibling `captions` and
-  /// `referenceMediaTypes` fields - those are genuine JSON arrays (one entry
-  /// per file), while this is a single scalar. The `[0]` the server indexes is
-  /// multiparty wrapping every field in an array, not an encoding.
+  /// The file goes straight to storage (core/media/media_uploader.dart); the
+  /// result keeps the shape callers always had. A refusal (too big, a type
+  /// this feature doesn't take) is shown here and resolves null.
   Future<({String url, String mediaType, String fileName, String? fileId})?>
       uploadMediaRequest(
     String filePath,
     String mediaType, {
     required String action,
-  }) {
-    final fileName = filePath.split(RegExp(r'[\\/]')).last;
-    return reportedRequest(
-      () async => _mainDio.post('/posts/upload',
-          data: FormData.fromMap({
-            'media':
-                await MultipartFile.fromFile(filePath, filename: fileName),
-            'captions': '[""]',
-            'referenceMediaTypes': '["$mediaType"]',
-            'action': action,
-          })),
-      // Too large, a type the server won't take, a moment upload the server
-      // refused - all reasons it states.
-      failure: "We couldn't upload $fileName.",
-      parse: (response) {
-        final result = response.data["result"];
-        if (result is! List || result.isEmpty) return null;
-
-        final first = Map<String, dynamic>.from(result[0]);
-        final fileDetails = first["fileDetails"] is Map
-            ? Map<String, dynamic>.from(first["fileDetails"])
-            : const {};
-        final url = fileDetails["data"]?.toString();
-        if (url == null) return null;
-
-        return (
-          url: url,
-          mediaType: (first["fileType"] ?? mediaType).toString(),
-          fileName: (first["fileName"] ?? fileName).toString(),
-          // Diary attachments persist this as Attachment.file_id (see
-          // diary/models.py); the profile/cover flow ignores it. Nullable
-          // because only the diary path actually depends on it - a missing
-          // fileID shouldn't fail an avatar upload.
-          fileId: first["fileID"]?.toString(),
-        );
-      },
-    );
+    void Function(double fraction)? onProgress,
+  }) async {
+    final fileName = fileNameOf(filePath);
+    try {
+      final [uploaded] = await MediaUploader().upload(
+        purpose: _actionFeature[action] ?? UploadFeature.postMedia,
+        paths: [filePath],
+        // The caller's type beats the extension when it's a real one
+        // ("video/mp4"); a bare kind ("image") falls back to the extension.
+        types: [mediaType.contains('/') ? mediaType : null],
+        onProgress: onProgress,
+      );
+      return (
+        url: uploaded.fileUrl,
+        mediaType: uploaded.mime,
+        fileName: uploaded.name,
+        // Diary attachments persist this as Attachment.file_id (see
+        // diary/models.py); the profile/cover flow ignores it.
+        fileId: uploaded.uploadId,
+      );
+    } on UploadFailure catch (e) {
+      CLAlerts.error(e.message);
+      return null;
+    } catch (e) {
+      CLAlerts.requestError(e, fallback: "We couldn't upload $fileName.");
+      return null;
+    }
   }
+
+  /// What each upload `action` counts against in the server's upload limits.
+  static const _actionFeature = {
+    'post': UploadFeature.postMedia,
+    'entry': UploadFeature.diary,
+    'profile': UploadFeature.avatar,
+    'cover_photo': UploadFeature.cover,
+    'moment': UploadFeature.moment,
+    'moment_poster': UploadFeature.momentPoster,
+  };
 
   Future<bool> setProfileOrCoverMediaRequest({
     required String url,

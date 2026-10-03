@@ -2015,7 +2015,8 @@ class ConversationStateView extends State<ConversationView> {
       String conversationType,
       List<({String path, String messageType})> files,
       bool isReplyingProp,
-      String replyingToProp) async {
+      String replyingToProp,
+      {bool voiceNote = false}) async {
     if (files.isEmpty) return;
 
     setState(() {
@@ -2049,12 +2050,14 @@ class ConversationStateView extends State<ConversationView> {
       conversationType: conversationType,
       pendingIDs: pendingIDs,
       filePaths: files.map((f) => f.path).toList(),
+      voiceNote: voiceNote,
     );
   }
 
-  void _attachmentTooLarge() {
+  void _attachmentTooLarge([UploadFeature feature = UploadFeature.message]) {
     if (!mounted) return;
-    CLAlerts.show("Cannot upload files greater than $kMaxUploadLabel",
+    CLAlerts.show(
+        "Cannot upload files greater than ${UploadLimits.of(feature).label}",
         type: CLAlertType.warning);
   }
 
@@ -2069,7 +2072,8 @@ class ConversationStateView extends State<ConversationView> {
     var droppedAny = false;
     final accepted = <({String path, String messageType})>[];
     for (final file in picked) {
-      if (await File(file.path).length() > kMaxUploadBytes) {
+      if (await File(file.path).length() >
+          UploadLimits.of(UploadFeature.message).maxBytes) {
         droppedAny = true;
         continue;
       }
@@ -2096,7 +2100,8 @@ class ConversationStateView extends State<ConversationView> {
     for (final file in files) {
       final path = file.path;
       if (path == null) continue;
-      if (await File(path).length() > kMaxUploadBytes) {
+      if (await File(path).length() >
+          UploadLimits.of(UploadFeature.message).maxBytes) {
         droppedAny = true;
         continue;
       }
@@ -2214,8 +2219,9 @@ class ConversationStateView extends State<ConversationView> {
     if (!mounted) return;
     setState(() => _isRecordingVoice = false);
     if (path == null || conversationInfo == null) return;
-    if (await File(path).length() > kMaxUploadBytes) {
-      _attachmentTooLarge();
+    if (await File(path).length() >
+        UploadLimits.of(UploadFeature.voiceNote).maxBytes) {
+      _attachmentTooLarge(UploadFeature.voiceNote);
       return;
     }
     await sendFilesProcess(
@@ -2225,6 +2231,7 @@ class ConversationStateView extends State<ConversationView> {
       [(path: path, messageType: "audio/m4a")],
       isReplying.isReply,
       isReplying.replyingTo,
+      voiceNote: true,
     );
   }
 

@@ -1,4 +1,5 @@
 import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
+import 'package:chatterloop_app/models/messages_models/message_attachment_model.dart';
 import 'package:chatterloop_app/models/messages_models/message_item_model.dart';
 import 'package:chatterloop_app/models/messages_models/reply_target_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
@@ -31,6 +32,9 @@ class MessageContent {
   /// IS the message. Its content is the post id.
   ReplyTarget? postcard;
 
+  /// A file message's file: name, link, size. See MessageAttachment.
+  MessageAttachment? attachment;
+
   MessageContent(
       this.messageID,
       this.conversationID,
@@ -50,7 +54,8 @@ class MessageContent {
       this.reactionsWithInfo,
       this.linkPreview,
       {this.replyedtarget,
-      this.postcard});
+      this.postcard,
+      this.attachment});
 
   /// Every field is defensive - a real persisted message threw here (Null
   /// is not a subtype of String) despite matching the Mongoose schema on
@@ -106,6 +111,7 @@ class MessageContent {
                 Map<String, dynamic>.from(json["linkPreview"]))
             : null,
         replyedtarget: ReplyTarget.tryParse(json["replyedtarget"]),
-        postcard: ReplyTarget.tryParse(json["postcard"]));
+        postcard: ReplyTarget.tryParse(json["postcard"]),
+        attachment: MessageAttachment.tryParse(json["attachment"]));
   }
 }
