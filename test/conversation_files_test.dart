@@ -297,7 +297,8 @@ void main() {
   });
 
   // The Audio tab's day groups. Pinned on the grouping rather than the widget:
-  // a rendered clip opens a real audio player, which a widget test cannot.
+  // a rendered clip opens a real audio player, whose platform channels need
+  // stubbing (voice_note_accent_test.dart does, for the clips' colours).
   group('audio grouped by day', () {
     final now = DateTime(2026, 10, 1, 9, 30);
     ConversationFileItem at(String id, DateTime sentAt) => ConversationFileItem(

@@ -1,10 +1,12 @@
 // Direct uploads: the bytes go straight from the phone to storage, never
 // through our server.
 //
+//   0. strip a photo's location and camera details (image_metadata.dart)
 //   1. ask   POST /media/uploads - one signed link, or one per part for big
 //            files (server/routes/media/index.js)
 //   2. send  PUT each link - several parts at once, each retried on its own
 //   3. done  POST /media/uploads/complete - the server checks what arrived
+//            and joins a big file's parts from storage's own list of them
 //
 // The links point at the storage provider, not at us, so they're sent with a
 // bare Dio: none of ApiClient's headers (token, nonce, device) ever reach it.
@@ -12,6 +14,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:chatterloop_app/core/media/image_metadata.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:dio/dio.dart';
@@ -140,6 +143,9 @@ class MediaUploader {
   /// through [UploadProgress]; [onProgress] gets the overall fraction.
   /// [types] overrides the declared type per file (otherwise from the
   /// extension).
+  ///
+  /// A photo goes up without its metadata: a stripped copy under the same
+  /// name is uploaded instead, and deleted once this finishes either way.
   Future<List<UploadedFile>> upload({
     required UploadFeature purpose,
     required List<String> paths,
@@ -149,12 +155,52 @@ class MediaUploader {
     void Function(double fraction)? onProgress,
     CancelToken? cancelToken,
   }) async {
+    final mimes = [
+      for (var i = 0; i < paths.length; i++)
+        (i < types.length ? types[i] : null) ?? mimeForPath(paths[i]),
+    ];
+    final copies = <File>[];
+    try {
+      final sources = <String>[];
+      for (var i = 0; i < paths.length; i++) {
+        final copy = await stripImageMetadataToCopy(paths[i], mimes[i]);
+        if (copy != null) copies.add(copy);
+        sources.add(copy?.path ?? paths[i]);
+      }
+      return await _upload(
+        purpose: purpose,
+        paths: sources,
+        mimes: mimes,
+        context: context,
+        progressKeys: progressKeys,
+        onProgress: onProgress,
+        cancelToken: cancelToken,
+      );
+    } finally {
+      for (final copy in copies) {
+        try {
+          await copy.parent.delete(recursive: true);
+        } catch (_) {
+          // The temp directory is the OS's to reclaim.
+        }
+      }
+    }
+  }
+
+  Future<List<UploadedFile>> _upload({
+    required UploadFeature purpose,
+    required List<String> paths,
+    required List<String> mimes,
+    Map<String, String>? context,
+    List<String?> progressKeys = const [],
+    void Function(double fraction)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
     final limit = UploadLimits.of(purpose);
     final sizes = <int>[];
-    final mimes = <String>[];
     for (var i = 0; i < paths.length; i++) {
       final size = await File(paths[i]).length();
-      final mime = (i < types.length ? types[i] : null) ?? mimeForPath(paths[i]);
+      final mime = mimes[i];
       if (size > limit.maxBytes) {
         throw UploadFailure('Files here can be at most ${limit.label}', 413);
       }
@@ -162,7 +208,6 @@ class MediaUploader {
         throw const UploadFailure("This type of file can't be uploaded here", 415);
       }
       sizes.add(size);
-      mimes.add(mime);
     }
 
     List<Map<String, dynamic>> asked;
@@ -195,10 +240,7 @@ class MediaUploader {
       final finished = await Future.wait([
         for (var i = 0; i < asked.length; i++)
           _sendFile(asked[i], paths[i], sizes[i], (n) => tick(i, n), cancelToken)
-              .then((parts) => {
-                    'uploadID': asked[i]['uploadID'],
-                    if (parts != null) 'parts': parts,
-                  }),
+              .then((_) => {'uploadID': asked[i]['uploadID']}),
       ]);
 
       final List results;
@@ -242,8 +284,8 @@ class MediaUploader {
     return UploadFailure(message, e.response?.statusCode);
   }
 
-  /// One PUT of [length] bytes starting at [start]; resolves the ETag.
-  Future<String> _put(
+  /// One PUT of [length] bytes starting at [start].
+  Future<void> _put(
     Map target,
     String path,
     int start,
@@ -256,21 +298,20 @@ class MediaUploader {
       Headers.contentLengthHeader: length,
     };
     try {
-      final response = await _storage.request(
+      await _storage.request(
         target['url'] as String,
         data: File(path).openRead(start, start + length),
         options: Options(method: (target['method'] ?? 'PUT') as String, headers: headers),
         onSendProgress: (sent, _) => onBytes(sent),
         cancelToken: cancelToken,
       );
-      return response.headers.value('etag') ?? '';
     } on DioException catch (e) {
       throw UploadFailure('Upload failed', e.response?.statusCode);
     }
   }
 
-  /// Sends one file; resolves the parts' ETags for a multipart upload.
-  Future<List<Map<String, dynamic>>?> _sendFile(
+  /// Sends one file.
+  Future<void> _sendFile(
     Map<String, dynamic> asked,
     String path,
     int size,
@@ -279,14 +320,13 @@ class MediaUploader {
   ) async {
     if (asked['mode'] != 'multipart') {
       await _put(asked, path, 0, size, onBytes, cancelToken);
-      return null;
+      return;
     }
 
     final partSize = (asked['partSize'] as num).toInt();
     final queue = [...(asked['parts'] as List).cast<Map>()];
     final loaded = <int, int>{};
     void report() => onBytes(loaded.values.fold(0, (a, b) => a + b));
-    final etags = <Map<String, dynamic>>[];
 
     Future<void> sendPart(Map part) async {
       final n = (part['n'] as num).toInt();
@@ -294,11 +334,10 @@ class MediaUploader {
       var target = part;
       for (var attempt = 1;; attempt++) {
         try {
-          final etag = await _put(target, path, (n - 1) * partSize, length, (b) {
+          await _put(target, path, (n - 1) * partSize, length, (b) {
             loaded[n] = b;
             report();
           }, cancelToken);
-          etags.add({'n': n, 'etag': etag});
           return;
         } on UploadFailure catch (e) {
           if (cancelToken?.isCancelled == true || attempt >= _partAttempts) rethrow;
@@ -327,6 +366,5 @@ class MediaUploader {
         await sendPart(queue.removeAt(0));
       }
     }));
-    return etags;
   }
 }

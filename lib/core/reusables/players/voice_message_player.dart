@@ -55,8 +55,7 @@ class VoiceMessagePlayer extends StatefulWidget {
   /// Audio tab) rather than a bubble capped at 270.
   final bool fullWidth;
 
-  /// Override the fill and outline. A received bubble is [CLPalette.surface],
-  /// which is invisible on a surface-coloured screen.
+  /// Override the fill and outline (by default see [receivedFill]).
   final Color? background;
   final Color? borderColor;
 
@@ -68,6 +67,16 @@ class VoiceMessagePlayer extends StatefulWidget {
       this.fullWidth = false,
       this.background,
       this.borderColor});
+
+  /// A received clip's fill and outline: a tint of the conversation's
+  /// [accent] - brand blue, or a channel's gold. It used to be plain
+  /// [CLPalette.surface], which is the chat's own background, so in both
+  /// themes the clip showed as an outline only. Same mix as webapp's
+  /// AUDIO_ROW_STYLE.
+  static Color receivedFill(CLPalette p, Color accent) =>
+      Color.alphaBlend(accent.withValues(alpha: 0.09), p.surface);
+  static Color receivedOutline(CLPalette p, Color accent) =>
+      Color.alphaBlend(accent.withValues(alpha: 0.24), p.border);
 
   @override
   State<VoiceMessagePlayer> createState() => _VoiceMessagePlayerState();
@@ -147,8 +156,12 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
     // Falls back to p.brand on its own wherever no CLAccent is in scope - the
     // composer's pre-send preview, for one.
     final accent = CLAccent.of(context);
-    final bg = widget.background ?? (widget.isSender ? accent : p.surface);
-    final border = widget.borderColor ?? (widget.isSender ? accent : p.border);
+    final bg = widget.background ??
+        (widget.isSender ? accent : VoiceMessagePlayer.receivedFill(p, accent));
+    final border = widget.borderColor ??
+        (widget.isSender
+            ? accent
+            : VoiceMessagePlayer.receivedOutline(p, accent));
     final textColor = widget.isSender ? Colors.white : p.text;
     final trackColor =
         widget.isSender ? Colors.white.withValues(alpha: 0.35) : p.border2;

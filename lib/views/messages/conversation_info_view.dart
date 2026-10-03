@@ -57,8 +57,7 @@ class ConversationInfoScreen extends StatelessWidget {
   /// A channel is a room, not a person - so it shows its TYPE, the same way the
   /// conversation header and the channels list do, rather than an avatar with
   /// initials standing in for a face it never had.
-  bool get _isChannel =>
-      conversationType == 'channel' || conversationType == 'server';
+  bool get _isChannel => isChannelConversation(conversationType);
 
   /// Same matrix as the channels list: lock for private, hash for public.
   IconData get _channelIcon => info.isPrivate ? Icons.lock : Icons.tag;
@@ -96,156 +95,162 @@ class ConversationInfoScreen extends StatelessWidget {
     final p = cl(context);
     final people = info.usersWithInfo;
 
-    return CLScreen(
-      // p.surface, not p.bg: the AppBar is surface (see appBarTheme) and this
-      // screen is one continuous panel of identity - a bg-coloured body under
-      // a surface-coloured header draws a seam across it for no reason. Other
-      // screens keep bg because their content sits in surface CARDS, which
-      // need something to sit against; nothing here is a card.
-      backgroundColor: p.surface,
-      // No title. The screen opens with the conversation's own name at 84px
-      // right below it - a header saying "Conversation info" above that is
-      // labelling something already unmistakable, and it competes with the
-      // name for the eye. The back button is what the bar is here for.
-      appBar: AppBar(),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-            CLSpacing.contentGutter, 16, CLSpacing.contentGutter, 24),
-        children: [
-          Center(
-            child: Column(
-              children: [
-                if (_isChannel)
-                  Container(
-                    width: 84,
-                    height: 84,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: p.surface2,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: p.border),
-                    ),
-                    child: Icon(_channelIcon, size: 34, color: p.text2),
-                  )
-                else
-                  CLAvatar(
-                    id: info.contactID,
-                    // Null for a group: a group is not an entity and has no
-                    // presence of its own, which is why the label below reads
-                    // "Members are Active" rather than naming anyone.
-                    entityId: _counterpart?.entityID,
-                    name: title,
-                    src: clCleanMediaSrc(profile),
-                    size: 84,
-                    // A group reads as a room, not a person - the same squared
-                    // treatment the messages list gives group rows.
-                    cornerRadius: _isSingle ? null : CLRadii.lg,
-                  ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        title,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: CLType.screenTitle,
-                            fontWeight: FontWeight.w800,
-                            color: p.text),
+    // In the conversation's accent - a channel's gold - like the chat.
+    return ConversationAccentScope(
+      conversationType: conversationType,
+      child: CLScreen(
+        // p.surface, not p.bg: the AppBar is surface (see appBarTheme) and this
+        // screen is one continuous panel of identity - a bg-coloured body under
+        // a surface-coloured header draws a seam across it for no reason. Other
+        // screens keep bg because their content sits in surface CARDS, which
+        // need something to sit against; nothing here is a card.
+        backgroundColor: p.surface,
+        // No title. The screen opens with the conversation's own name at 84px
+        // right below it - a header saying "Conversation info" above that is
+        // labelling something already unmistakable, and it competes with the
+        // name for the eye. The back button is what the bar is here for.
+        appBar: AppBar(),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(
+              CLSpacing.contentGutter, 16, CLSpacing.contentGutter, 24),
+          children: [
+            Center(
+              child: Column(
+                children: [
+                  if (_isChannel)
+                    Container(
+                      width: 84,
+                      height: 84,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: p.surface2,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: p.border),
                       ),
-                    ),
-                    // Bigger, and a wider gap, than a list row's - this is
-                    // a screen title. The glyphs and their order are the
-                    // shared part.
-                    ...clEntityMarkers(
-                      context,
-                      isVerified: _counterpart?.isVerified == true,
-                      isPage: _counterpart?.isPage == true,
-                      isBot: _counterpart?.isBot == true,
-                      badgeSize: 17,
-                      kindSize: 15,
-                      gap: 5,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                // For a DM this slot carries PRESENCE, not the kind label.
-                //
-                // Two reasons. It is the slot the conversation header itself
-                // uses for presence, so arriving here from that header finds
-                // the same fact in the same place rather than losing it; and
-                // "Direct message" is the one line on this screen that tells
-                // a reader nothing they cannot see - there is a single face
-                // above it and no member list below it.
-                //
-                // Every other kind keeps its label: a channel's private/public
-                // distinction and a group's "Group Chat" are not derivable
-                // from the rest of the screen.
-                if (_isSingle)
-                  _PresenceLine(entityId: _counterpart?.entityID)
-                else
-                  Text(_kindLabel,
-                      style:
-                          TextStyle(fontSize: CLType.caption, color: p.text2)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Above the members, as phone messengers order it: a member list can
-          // run long, and the media is what this screen is most often opened
-          // for.
-          ConversationMediaPreview(
-            conversationId: conversationId,
-            conversationType: conversationType,
-            title: title,
-            fetch: filesFetch,
-          ),
-          const SizedBox(height: 22),
-
-          // Members. Web shows this for everything except a single
-          // conversation, where the "members" are just the two of you.
-          if (!_isSingle) ...[
-            Text(
-              people.length == 1 ? '1 member' : '${people.length} members',
-              style: TextStyle(
-                  fontSize: CLType.sectionTitle,
-                  fontWeight: FontWeight.w700,
-                  color: p.text),
-            ),
-            const SizedBox(height: 8),
-            // A panel, like the profile screen's details and diary sections -
-            // it gives the list somewhere to live instead of floating on the
-            // page. surface2 rather than CLCard: this screen's background is
-            // already surface (see above), so a surface card on it would be
-            // an outline around nothing.
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: p.surface2,
-                border: Border.all(color: p.border),
-                borderRadius: BorderRadius.circular(CLRadii.md),
-              ),
-              child: people.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: CLSectionEmpty(
-                        icon: Icons.group_outlined,
-                        title: 'No members listed',
-                        subtitle:
-                            'Nobody could be resolved for this conversation.',
-                      ),
+                      child: Icon(_channelIcon, size: 34, color: p.text2),
                     )
-                  : Column(
-                      children: [
-                        for (final person in people) _PersonRow(person: person),
-                      ],
+                  else
+                    CLAvatar(
+                      id: info.contactID,
+                      // Null for a group: a group is not an entity and has no
+                      // presence of its own, which is why the label below reads
+                      // "Members are Active" rather than naming anyone.
+                      entityId: _counterpart?.entityID,
+                      name: title,
+                      src: clCleanMediaSrc(profile),
+                      size: 84,
+                      // A group reads as a room, not a person - the same squared
+                      // treatment the messages list gives group rows.
+                      cornerRadius: _isSingle ? null : CLRadii.lg,
                     ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: CLType.screenTitle,
+                              fontWeight: FontWeight.w800,
+                              color: p.text),
+                        ),
+                      ),
+                      // Bigger, and a wider gap, than a list row's - this is
+                      // a screen title. The glyphs and their order are the
+                      // shared part.
+                      ...clEntityMarkers(
+                        context,
+                        isVerified: _counterpart?.isVerified == true,
+                        isPage: _counterpart?.isPage == true,
+                        isBot: _counterpart?.isBot == true,
+                        badgeSize: 17,
+                        kindSize: 15,
+                        gap: 5,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  // For a DM this slot carries PRESENCE, not the kind label.
+                  //
+                  // Two reasons. It is the slot the conversation header itself
+                  // uses for presence, so arriving here from that header finds
+                  // the same fact in the same place rather than losing it; and
+                  // "Direct message" is the one line on this screen that tells
+                  // a reader nothing they cannot see - there is a single face
+                  // above it and no member list below it.
+                  //
+                  // Every other kind keeps its label: a channel's private/public
+                  // distinction and a group's "Group Chat" are not derivable
+                  // from the rest of the screen.
+                  if (_isSingle)
+                    _PresenceLine(entityId: _counterpart?.entityID)
+                  else
+                    Text(_kindLabel,
+                        style: TextStyle(
+                            fontSize: CLType.caption, color: p.text2)),
+                ],
+              ),
             ),
+            const SizedBox(height: 20),
+
+            // Above the members, as phone messengers order it: a member list can
+            // run long, and the media is what this screen is most often opened
+            // for.
+            ConversationMediaPreview(
+              conversationId: conversationId,
+              conversationType: conversationType,
+              title: title,
+              fetch: filesFetch,
+            ),
+            const SizedBox(height: 22),
+
+            // Members. Web shows this for everything except a single
+            // conversation, where the "members" are just the two of you.
+            if (!_isSingle) ...[
+              Text(
+                people.length == 1 ? '1 member' : '${people.length} members',
+                style: TextStyle(
+                    fontSize: CLType.sectionTitle,
+                    fontWeight: FontWeight.w700,
+                    color: p.text),
+              ),
+              const SizedBox(height: 8),
+              // A panel, like the profile screen's details and diary sections -
+              // it gives the list somewhere to live instead of floating on the
+              // page. surface2 rather than CLCard: this screen's background is
+              // already surface (see above), so a surface card on it would be
+              // an outline around nothing.
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: p.surface2,
+                  border: Border.all(color: p.border),
+                  borderRadius: BorderRadius.circular(CLRadii.md),
+                ),
+                child: people.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: CLSectionEmpty(
+                          icon: Icons.group_outlined,
+                          title: 'No members listed',
+                          subtitle:
+                              'Nobody could be resolved for this conversation.',
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          for (final person in people)
+                            _PersonRow(person: person),
+                        ],
+                      ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

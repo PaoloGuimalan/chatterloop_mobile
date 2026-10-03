@@ -11,6 +11,7 @@ import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/models/messages_models/message_attachment_model.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 
 /// Answers requests from a handler and records each one, body included.
 class _FakeAdapter implements HttpClientAdapter {
@@ -233,10 +234,68 @@ void main() {
         final n = int.parse(r.options.uri.queryParameters['part']!);
         expect(r.body, bytes.sublist((n - 1) * 10, (n - 1) * 10 + (n < 3 ? 10 : 5)));
       }
-      final parts = ((completed!['uploads'] as List).single['parts'] as List)
-          .map((p) => (p['n'], p['etag']))
-          .toSet();
-      expect(parts, {(1, '"etag1"'), (2, '"etag2"'), (3, '"etag3"')});
+      // The server joins the parts from storage's own list: no ETags sent.
+      expect((completed!['uploads'] as List).single, {'uploadID': 'FILE_2'});
+    });
+
+    test('a photo goes up without its location, from a copy that is cleaned up',
+        () async {
+      final dir = await Directory.systemTemp.createTemp('uploader_photo');
+      addTearDown(() => dir.delete(recursive: true));
+      final photo = img.Image(width: 8, height: 8);
+      photo.exif.imageIfd.orientation = 6;
+      photo.exif.gpsIfd.gpsLatitudeRef = 'N';
+      photo.exif.gpsIfd.gpsLatitude = 14.5995;
+      final path = '${dir.path}/beach.jpg';
+      File(path).writeAsBytesSync(img.encodeJpg(photo));
+      final tempBefore = Directory.systemTemp
+          .listSync()
+          .where((e) => e.path.contains('cl_upload_'))
+          .length;
+
+      final storage = _FakeAdapter((o, body) => ResponseBody.fromString('', 200));
+      final api = _FakeAdapter((o, body) {
+        if (o.path == '/media/uploads') {
+          return _json({
+            'uploads': [
+              {
+                'uploadID': 'FILE_5',
+                'name': 'beach.jpg',
+                'fileUrl': 'u',
+                'mode': 'single',
+                'method': 'PUT',
+                'url': 'https://storage.invalid/x',
+                'headers': {'Content-Type': 'image/jpeg'},
+              }
+            ]
+          });
+        }
+        return _json({
+          'results': [
+            {'ok': true, 'uploadID': 'FILE_5', 'fileUrl': 'u', 'name': 'beach.jpg', 'mime': 'image/jpeg', 'kind': 'image', 'size': 1}
+          ]
+        });
+      });
+
+      await MediaUploader(api: _dio(api), storage: _dio(storage)).upload(
+        purpose: UploadFeature.postMedia,
+        paths: [path],
+      );
+
+      final sent = storage.requests.single.body;
+      final exif = img.decodeJpgExif(sent)!;
+      expect(exif.gpsIfd.isEmpty, isTrue);
+      expect(exif.imageIfd.orientation, 6);
+      // The size and name declared are the stripped copy's.
+      final asked = (_bodyOf(api.requests.first.options)['files'] as List).single;
+      expect(asked['size'], sent.length);
+      expect(asked['name'], 'beach.jpg');
+      // The original is untouched; the copy is gone.
+      expect(img.decodeJpgExif(File(path).readAsBytesSync())!.gpsIfd.isEmpty, isFalse);
+      expect(
+        Directory.systemTemp.listSync().where((e) => e.path.contains('cl_upload_')).length,
+        tempBefore,
+      );
     });
 
     test('an expired part link is refreshed and retried', () async {

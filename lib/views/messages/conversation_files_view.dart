@@ -308,7 +308,7 @@ class _SectionHeading extends StatelessWidget {
               style: TextStyle(
                   fontSize: CLType.label,
                   fontWeight: FontWeight.w600,
-                  color: p.brand),
+                  color: CLAccent.textOf(context)),
             ),
           ),
         ),
@@ -344,11 +344,38 @@ class _InlineRetry extends StatelessWidget {
             style: TextStyle(
                 fontSize: CLType.label,
                 fontWeight: FontWeight.w600,
-                color: p.brand),
+                color: CLAccent.textOf(context)),
           ),
         ),
       ],
     );
+  }
+}
+
+/// Whether [conversationType] is a server's channel - the conversations
+/// painted gold instead of the brand blue.
+bool isChannelConversation(String conversationType) =>
+    conversationType == 'channel' || conversationType == 'server';
+
+/// A conversation's own screens (its info, its shared files) in its accent,
+/// as the chat itself is - conversation_view wraps the thread in the same
+/// CLAccent. A channel is gold, with the darker gold for anything drawn as
+/// text; every other conversation keeps the brand blue.
+class ConversationAccentScope extends StatelessWidget {
+  final String conversationType;
+  final Widget child;
+
+  const ConversationAccentScope({
+    super.key,
+    required this.conversationType,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isChannelConversation(conversationType)) return child;
+    final p = cl(context);
+    return CLAccent(color: p.gold, onSurface: p.goldText, child: child);
   }
 }
 
@@ -376,7 +403,13 @@ class ConversationFilesScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ConversationAccentScope(
+        conversationType: conversationType,
+        // A Builder, so what follows reads the scope's accent.
+        child: Builder(builder: _build),
+      );
+
+  Widget _build(BuildContext context) {
     final p = cl(context);
     final load =
         fetch ?? conversationFilesFetcher(conversationId, conversationType);
@@ -393,7 +426,7 @@ class ConversationFilesScreen extends StatelessWidget {
           bottom: TabBar(
             labelColor: p.text,
             unselectedLabelColor: p.text2,
-            indicatorColor: p.brand,
+            indicatorColor: CLAccent.of(context),
             indicatorSize: TabBarIndicatorSize.tab,
             dividerColor: p.border,
             labelStyle: const TextStyle(
@@ -674,7 +707,7 @@ class _CenteredMessage extends StatelessWidget {
               style: TextStyle(
                   fontSize: CLType.label,
                   fontWeight: FontWeight.w600,
-                  color: p.brand),
+                  color: CLAccent.textOf(context)),
             ),
           ),
         ),
@@ -751,18 +784,9 @@ class _DayHeading extends StatelessWidget {
   }
 }
 
-/// An Audio-tab clip's fill and outline: a tint of the brand. The player's own
-/// received-bubble fill is [CLPalette.surface] - this screen's background
-/// exactly - and surface2 is within a shade of it in the light theme, so the
-/// clip disappeared into the page either way. Same values as webapp's
-/// AUDIO_ROW_STYLE.
-Color _audioFill(CLPalette p) =>
-    Color.alphaBlend(p.brand.withValues(alpha: 0.09), p.surface);
-Color _audioOutline(CLPalette p) =>
-    Color.alphaBlend(p.brand.withValues(alpha: 0.24), p.border);
-
-/// A shared audio clip: the chat's own voice-note player as a received one,
-/// stretched to the row like a Files row. Its day heading carries the date.
+/// A shared audio clip: the chat's own voice-note player as a received one -
+/// tinted with the conversation's accent, exactly as in the chat - stretched
+/// to the row like a Files row. Its day heading carries the date.
 class _AudioRow extends StatelessWidget {
   final ConversationFileItem item;
 
@@ -770,13 +794,10 @@ class _AudioRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = cl(context);
     return VoiceMessagePlayer(
       src: chatMediaUrl(item.content, item.attachment),
       isSender: false,
       fullWidth: true,
-      background: _audioFill(p),
-      borderColor: _audioOutline(p),
     );
   }
 }
@@ -816,15 +837,13 @@ class _FileRow extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => MediaDownloader.instance
-            .download(
-              chatMediaUrl(item.content, item.attachment),
-              mimeType: item.attachment?.mime ?? item.mimeType,
-              fileName: item.attachment == null
-                  ? null
-                  : chatMediaFileName(item.content,
-                      attachment: item.attachment),
-            ),
+        onTap: () => MediaDownloader.instance.download(
+          chatMediaUrl(item.content, item.attachment),
+          mimeType: item.attachment?.mime ?? item.mimeType,
+          fileName: item.attachment == null
+              ? null
+              : chatMediaFileName(item.content, attachment: item.attachment),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Row(
@@ -893,14 +912,15 @@ class _FileGlyph extends StatelessWidget {
         builder: (context, running, _) {
           final value = running[chatMediaUrl(content)];
           if (value == null) {
-            return Icon(Icons.description_outlined, size: 20, color: p.brand);
+            return Icon(Icons.description_outlined,
+                size: 20, color: CLAccent.textOf(context));
           }
           return SizedBox(
             width: 20,
             height: 20,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: p.brand,
+              color: CLAccent.textOf(context),
               // 0 = no Content-Length to measure against: spin instead.
               value: value > 0 ? value : null,
             ),
