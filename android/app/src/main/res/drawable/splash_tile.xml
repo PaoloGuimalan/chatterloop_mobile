@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launch icon as a rounded square. Drawn at 120dp by both
+     launch_background.xml (Android 11 and older) and splash_icon.xml
+     (Android 12+), so the corner radius is a fixed dp: 24dp, the same 20% of
+     the side as the in-app CLLogoTile.
+
+     Light: splash_logo is a white disc with the arrows on it - laid edge to
+     edge on the white square, the disc vanishes and the square shows.
+     Dark: drawable-night-nodpi/splash_logo is the dark logo, the arrows on the
+     dark background, and @color/splash_tile turns that same colour - so, like
+     the welcome screen, only the arrows show. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/splash_tile" />
+            <corners android:radius="24dp" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/splash_logo" />
+</layer-list>

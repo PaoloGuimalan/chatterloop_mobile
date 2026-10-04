@@ -1,4 +1,5 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:flutter/material.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -13,10 +14,7 @@ class WelcomeScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 120, maxWidth: 120),
-              child: Image.asset(clLogoAsset(context), fit: BoxFit.contain),
-            ),
+            const CLLogoTile(size: 120),
             const SizedBox(height: 16),
             Text(
               "Chatterloop",

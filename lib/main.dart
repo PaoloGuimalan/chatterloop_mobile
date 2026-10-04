@@ -13,6 +13,7 @@ import 'package:chatterloop_app/core/notifications/push_notification_service.dar
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
+import 'package:chatterloop_app/core/ui/system_update_host.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'dart:ui' show DartPluginRegistrant;
@@ -204,10 +205,21 @@ class _MyAppState extends State<MyApp> {
                 // Notices sit OVER the Navigator, not inside any screen, so
                 // no tab, sheet or dialog can cover one. See CLAlertHost.
                 // The live call floats above every screen (and fills the PiP
-                // window); notices float above that.
-                builder: (context, child) => CLAlertHost(
-                  child: CallOverlayHost(
-                    child: child ?? const SizedBox.shrink(),
+                // window); notices float above that, and an update screen
+                // above everything.
+                //
+                // The Actions override reaches every text field in the app,
+                // dialogs and sheets included - see _UnfocusOnTapOutside.
+                builder: (context, child) => Actions(
+                  actions: <Type, Action<Intent>>{
+                    EditableTextTapOutsideIntent: _UnfocusOnTapOutside(),
+                  },
+                  child: SystemUpdateHost(
+                    child: CLAlertHost(
+                      child: CallOverlayHost(
+                        child: child ?? const SizedBox.shrink(),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -217,4 +229,20 @@ class _MyAppState extends State<MyApp> {
       ),
     );
   }
+}
+
+/// Tapping anywhere outside a text field lets go of it, closing the keyboard.
+///
+/// Flutter only does this for a mouse or on desktop: on a phone, a touch
+/// outside leaves the field focused and the keyboard up. Overriding the
+/// default action changes that for every field at once rather than one
+/// `onTapOutside` at a time.
+///
+/// A field's own controls - a composer's send button, its suggestion list -
+/// are not "outside": they sit in a TextFieldTapRegion, so sending does not
+/// drop the keyboard between messages.
+class _UnfocusOnTapOutside extends Action<EditableTextTapOutsideIntent> {
+  @override
+  void invoke(EditableTextTapOutsideIntent intent) =>
+      intent.focusNode.unfocus();
 }

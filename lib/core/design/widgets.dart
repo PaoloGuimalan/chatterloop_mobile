@@ -1858,3 +1858,48 @@ class CLBrandPanel extends StatelessWidget {
     );
   }
 }
+
+/// The app icon as it opens the app, as a rounded square.
+///
+/// Light: chatterloop.png is a white disc with the arrows on it, which is why
+/// the icon read as a circle everywhere it was shown bare. Drawn edge to edge
+/// on a white tile, the disc disappears into it and the square remains.
+///
+/// Dark: chatterloop-dark.png, the orange arrows on a square of the dark
+/// theme's own background (CLColors.bgDark) - so on a dark screen only the
+/// arrows show, as the dark icon always has.
+///
+/// The corner radius (20% of the side) matches the native launch tile in
+/// android/app/src/main/res/drawable/splash_tile.xml, so the native splash and
+/// the first Flutter frame show the same mark.
+class CLLogoTile extends StatelessWidget {
+  final double size;
+
+  const CLLogoTile({super.key, this.size = 120});
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: size,
+      height: size,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: dark ? null : Colors.white,
+        borderRadius: BorderRadius.circular(size * 0.2),
+        // Separates white from the light theme's near-white background. The
+        // dark tile is meant to melt into its background, so it has none.
+        boxShadow: dark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: size * 0.12,
+                  offset: Offset(0, size * 0.04),
+                ),
+              ],
+      ),
+      child: Image.asset(clLogoAsset(context), fit: BoxFit.cover),
+    );
+  }
+}

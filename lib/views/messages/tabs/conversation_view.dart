@@ -128,6 +128,11 @@ class ConversationStateView extends State<ConversationView> {
   /// newest message by hand is a chore.
   bool _showJumpToBottom = false;
   final TextEditingController _controller = TextEditingController();
+
+  /// The composer field's focus. While it has it, the attach/photo/mic
+  /// buttons fold away so the text gets their width - see _composerCollapsed.
+  final FocusNode _composerFocus = FocusNode();
+  bool _composerFocused = false;
   final AudioRecorder _voiceRecorder = AudioRecorder();
   bool _isRecordingVoice = false;
 
@@ -172,6 +177,7 @@ class ConversationStateView extends State<ConversationView> {
   @override
   void initState() {
     super.initState();
+    _composerFocus.addListener(_onComposerFocusChange);
     // appStore (a plain global, not StoreProvider.of(context)) - the
     // latter calls dependOnInheritedWidgetOfExactType, which asserts if
     // used before initState() completes.
@@ -309,6 +315,7 @@ class ConversationStateView extends State<ConversationView> {
     _eventBusSubscription?.cancel();
     _seenDebounceTimer?.cancel();
     _scrollController.dispose();
+    _composerFocus.dispose();
     _voiceRecorder.dispose();
     super.dispose();
   }
@@ -574,6 +581,37 @@ class ConversationStateView extends State<ConversationView> {
   /// you leave a voice message for. Aliased rather than reusing the call getter
   /// at the call site, so the composer reads as gating a mic and not a phone.
   bool get _showsVoiceNote => _showsCallButtons;
+
+  /// Whether the attach/photo/mic buttons are folded into
+  /// [_composerExpandButton] - while typing, so the field gets their width.
+  /// Never mid-recording: the buttons there are cancel and stop.
+  bool get _composerCollapsed => _composerFocused && !_isRecordingVoice;
+
+  // A setState only when focus actually changes - not per keystroke, which is
+  // what the field's onChanged deliberately avoids.
+  void _onComposerFocusChange() {
+    if (!mounted || _composerFocused == _composerFocus.hasFocus) return;
+    setState(() => _composerFocused = _composerFocus.hasFocus);
+  }
+
+  /// Stands in for the folded composer buttons. Lets go of the field, which
+  /// puts the keyboard away and brings the buttons back.
+  Widget _composerExpandButton(CLPalette p) => ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 40, maxHeight: 40),
+        child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                padding: EdgeInsets.zero),
+            onPressed: _composerFocus.unfocus,
+            child: Center(
+              child: Icon(
+                Icons.chevron_right_rounded,
+                color: _accentFor(p),
+                size: 26,
+              ),
+            )),
+      );
 
   /// Anything you can be a MEMBER of can be left - except a PUBLIC channel,
   /// whose membership follows the server rather than being yours to drop. That
@@ -3493,7 +3531,8 @@ class ConversationStateView extends State<ConversationView> {
                               // (each chip has its own remove "x") before
                               // hitting send, rather than uploading the
                               // instant something's picked.
-                              AnimatedContainer(
+                              TextFieldTapRegion(
+                                child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 250),
                                 curve: Curves.easeInOut,
                                 height: _stagedFiles.isEmpty ? 0 : 76,
@@ -3509,14 +3548,22 @@ class ConversationStateView extends State<ConversationView> {
                                         ),
                                 ),
                               ),
+                              ),
                               // Sits ABOVE the input bar as its sibling, not
                               // inside it: that bar is a fixed height: 55, so a
                               // list nested within it overflows instead of
                               // growing. Rendering nothing when there are no
                               // suggestions keeps the bar flush with the messages.
-                              _commandSuggestionList(p),
-                              _mentionSuggestionList(p),
-                              Container(
+                              // TextFieldTapRegion, here and around the bar:
+                              // part of the field as far as tapping outside
+                              // goes, so picking a suggestion or pressing send
+                              // keeps the keyboard up.
+                              TextFieldTapRegion(
+                                  child: _commandSuggestionList(p)),
+                              TextFieldTapRegion(
+                                  child: _mentionSuggestionList(p)),
+                              TextFieldTapRegion(
+                                child: Container(
                                 decoration: BoxDecoration(
                                   color: p.surface,
                                   border: Border(
@@ -3527,18 +3574,33 @@ class ConversationStateView extends State<ConversationView> {
                                   ),
                                 ),
                                 width: MediaQuery.of(context).size.width,
-                                height: 55,
+                                // A floor, not a height: the field grows with
+                                // what is typed, and the bar with it.
+                                constraints:
+                                    const BoxConstraints(minHeight: 55),
                                 child: Padding(
                                   padding: EdgeInsets.only(left: 5, right: 2),
                                   child: Center(
                                     child: Row(
+                                      // The buttons stay on the bottom line
+                                      // as the field grows upward.
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
                                       children: [
-                                        Row(
+                                        AnimatedSize(
+                                          duration:
+                                              const Duration(milliseconds: 150),
+                                          curve: Curves.easeOut,
+                                          child: SizedBox(
+                                        height: 55,
+                                        child: Row(
                                           mainAxisAlignment:
                                               MainAxisAlignment.center,
                                           crossAxisAlignment:
                                               CrossAxisAlignment.center,
                                           children: [
+                                            if (_composerCollapsed)
+                                              _composerExpandButton(p),
                                             if (!_conversationReady) ...[
                                               _controlSkeletonBox(),
                                               _controlSkeletonBox(),
@@ -3548,7 +3610,8 @@ class ConversationStateView extends State<ConversationView> {
                                               // the shape a conversation has.
                                               _controlSkeletonBox(),
                                             ],
-                                            if (_conversationReady)
+                                            if (_conversationReady &&
+                                                !_composerCollapsed)
                                               ConstrainedBox(
                                                 constraints: BoxConstraints(
                                                     maxWidth: 40,
@@ -3576,7 +3639,8 @@ class ConversationStateView extends State<ConversationView> {
                                                       ),
                                                     )),
                                               ),
-                                            if (_conversationReady)
+                                            if (_conversationReady &&
+                                                !_composerCollapsed)
                                               ConstrainedBox(
                                                 constraints: BoxConstraints(
                                                     maxWidth: 40,
@@ -3632,7 +3696,8 @@ class ConversationStateView extends State<ConversationView> {
                                                       ),
                                                     )),
                                               ),
-                                            if (_showsVoiceNote)
+                                            if (_showsVoiceNote &&
+                                                !_composerCollapsed)
                                               ConstrainedBox(
                                                 constraints: BoxConstraints(
                                                     maxWidth: 40,
@@ -3670,12 +3735,18 @@ class ConversationStateView extends State<ConversationView> {
                                               )
                                           ],
                                         ),
+                                          ),
+                                        ),
                                         SizedBox(
                                           width: 0,
                                         ),
                                         Expanded(
                                             child: Padding(
-                                          padding: EdgeInsets.all(5),
+                                          // 3.5 vertically, not 5: one line of
+                                          // the field is the decorator's own
+                                          // 48, so the bar stays 55 tall.
+                                          padding: EdgeInsets.symmetric(
+                                              horizontal: 5, vertical: 3.5),
                                           // A bar of the same height and corner
                                           // radius as the input it stands in
                                           // for. Rendering the real field
@@ -3685,11 +3756,13 @@ class ConversationStateView extends State<ConversationView> {
                                           child: !_conversationReady
                                               ? CLSkeleton(
                                                   width: double.infinity,
-                                                  height: 45,
+                                                  height: 48,
                                                   borderRadius:
                                                       BorderRadius.circular(10))
+                                              // No height of its own: the
+                                              // field sets it - 48 for one
+                                              // line, growing to five.
                                               : Container(
-                                                  height: 45,
                                                   decoration: BoxDecoration(
                                                       color: p.input,
                                                       borderRadius:
@@ -3697,6 +3770,14 @@ class ConversationStateView extends State<ConversationView> {
                                                               10)),
                                                   child: TextField(
                                                     controller: _controller,
+                                                    focusNode: _composerFocus,
+                                                    // Enter is a new line and
+                                                    // the button sends. Five
+                                                    // lines, then it scrolls -
+                                                    // the comment composer's
+                                                    // limit.
+                                                    minLines: 1,
+                                                    maxLines: 5,
                                                     onChanged: (value) {
                                                       if (!mounted) return;
                                                       // Plain assignment, NOT setState:
@@ -3754,10 +3835,15 @@ class ConversationStateView extends State<ConversationView> {
                                         SizedBox(
                                           width: 0,
                                         ),
-                                        if (!_conversationReady)
-                                          _controlSkeletonBox(),
-                                        if (_conversationReady)
-                                          ConstrainedBox(
+                                        // A bar-high box, so the button sits
+                                        // on the bottom line like the ones on
+                                        // the left as the field grows.
+                                        SizedBox(
+                                          height: 55,
+                                          child: Center(
+                                            child: !_conversationReady
+                                                ? _controlSkeletonBox()
+                                                : ConstrainedBox(
                                             constraints: BoxConstraints(
                                                 maxWidth: 45, maxHeight: 40),
                                             child: ElevatedButton(
@@ -3851,12 +3937,15 @@ class ConversationStateView extends State<ConversationView> {
                                                     size: 24,
                                                   ),
                                                 )),
-                                          )
+                                          ),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
                                 ),
-                              )
+                              ),
+                              ),
                             ],
                           ),
                         ],

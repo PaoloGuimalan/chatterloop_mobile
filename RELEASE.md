@@ -17,7 +17,7 @@ and then fails in the user's hands.
 | Release signing | **configured** (upload keystore) | not configured |
 | Push notifications | working (FCM) | **not configured** — no APNs key, no entitlement |
 | Google Sign-In | see [Blockers](#blockers) | **not configured** — no iOS OAuth client |
-| Endpoints | production (`realtime.chatterloop.app`, `user.chatterloop.app`) | same |
+| Endpoints | production (`api.chatterloop.app/rt`, `api.chatterloop.app/us`) | same |
 
 Public store-required pages are live on the webapp:
 

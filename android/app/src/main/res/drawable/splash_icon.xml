@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ splash icon (windowSplashScreenAnimatedIcon). The system draws
+     it in a 288dp box and crops it to a 192dp circle - which is what turned
+     the old icon into a disc. 84dp of inset leaves the 120dp tile - the size
+     the welcome screen draws it at - and even its rounded corners stay
+     inside that circle, so nothing gets cropped. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/splash_tile"
+    android:inset="84dp" />

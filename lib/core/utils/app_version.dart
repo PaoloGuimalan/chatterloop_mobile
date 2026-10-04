@@ -58,6 +58,9 @@ class AppVersion {
   /// whose version simply could not be read.
   static int get build => int.tryParse(_info?.buildNumber ?? '') ?? 0;
 
+  /// Application id, e.g. `com.chatterloop.app`. Empty until loaded.
+  static String get packageName => _info?.packageName ?? '';
+
   /// Wire form for X-App-Version: `1.0.0+1`, mirroring pubspec's notation.
   /// Null when unknown, so the caller can leave the header off entirely rather
   /// than send a placeholder the server would have to special-case.

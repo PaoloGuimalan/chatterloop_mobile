@@ -30,11 +30,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class ApiClient {
   ApiClient._(this.baseUrl);
 
-  /// Node backend - realtime.chatterloop.app (messages, contacts,
+  /// Node backend - api.chatterloop.app/rt (messages, contacts,
   /// notifications, jwtchecker, media upload/post creation).
   static final ApiClient instance = ApiClient._(Endpoints().apiUrl);
 
-  /// Django backend - user.chatterloop.app (auth, signup, profile, search).
+  /// Django backend - api.chatterloop.app/us (auth, signup, profile, search).
   static final ApiClient userService = ApiClient._(Endpoints().userApiUrl);
 
   final String baseUrl;

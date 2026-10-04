@@ -1467,7 +1467,11 @@ class _CommentComposerState extends State<CommentComposer> {
     final p = cl(context);
     final replyingTo = widget.replyingToName;
 
-    return Container(
+    // Part of the field as far as tapping outside it goes (main.dart's
+    // _UnfocusOnTapOutside), so posting or picking a mention keeps the
+    // keyboard up.
+    return TextFieldTapRegion(
+      child: Container(
       decoration: BoxDecoration(
         color: p.surface,
         border: Border(top: BorderSide(color: p.border)),
@@ -1565,6 +1569,7 @@ class _CommentComposerState extends State<CommentComposer> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

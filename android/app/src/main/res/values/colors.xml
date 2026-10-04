@@ -1,3 +1,8 @@
 <resources>
     <color name="icon_background">#FFFFFF</color>
+    <!-- CLColors.bgLight - the welcome screen's background. -->
+    <color name="splash_background">#EEF1F5</color>
+    <!-- The launch tile's fill (splash_tile.xml). White for the light logo,
+         whose white disc it absorbs. -->
+    <color name="splash_tile">#FFFFFF</color>
 </resources>

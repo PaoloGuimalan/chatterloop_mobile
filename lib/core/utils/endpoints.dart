@@ -3,8 +3,8 @@ class Endpoints {
   /// requests with no Origin at all (checked for presence only, not value).
   static const String origin = 'https://chatterloop.app';
 
-  String apiUrl = 'https://realtime.chatterloop.app';
-  String userApiUrl = 'https://user.chatterloop.app';
+  String apiUrl = 'https://api.chatterloop.app/rt';
+  String userApiUrl = 'https://api.chatterloop.app/us';
   String sseRoute = '/u/sseNotifications/';
 
   /// Live activity on ONE post - comments as they are written, and who is
@@ -48,6 +48,10 @@ class Endpoints {
   /// POST with an empty body records acceptance of ALL pending consents for
   /// the account. Mirrors webapp's AcceptPoliciesRequest.
   String acceptPolicies = '/api/user/policies/accept';
+
+  /// GET ?platform=&build= (public) - the update this build should be offered,
+  /// or null. See SystemUpdateApi.
+  String systemUpdate = '/api/user/system-update';
 
   // ─── Settings sections (Django user service) ─────────────────────────────
   /// Device sessions: GET lists them, DELETE {sessionID} signs one out.

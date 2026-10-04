@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ draws its own splash and ignores windowBackground for it:
+         left alone, it shows the launcher icon cropped to a circle. These set
+         the rounded-square tile instead. A copy exists in values-night-v31,
+         which a dark-mode device picks over this file. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+    </style>
+    <style name="NormalTheme" parent="Theme.MaterialComponents.Light.NoActionBar" >
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
+</resources>
