@@ -212,6 +212,10 @@ class Endpoints {
   /// Saved posts. POST {post_id} saves, DELETE {post_id} unsaves.
   String newsfeedSaves = '/api/newsfeed/saves';
 
+  /// DELETE {post_id, entity_id} takes one tag off a post - your own, or any
+  /// on a post you wrote. Answers with the tags that remain.
+  String newsfeedTags = '/api/newsfeed/tags';
+
   /// The reaction palette. Plain list, no pagination envelope.
   String newsfeedEmojis = '/api/newsfeed/emojis';
 

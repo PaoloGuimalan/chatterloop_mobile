@@ -506,6 +506,34 @@ class NewsfeedApi {
     );
   }
 
+  /// Takes one tag off a post: your own (you were tagged), or anyone's on a
+  /// post you wrote - the server refuses anyone else. Resolves the tags that
+  /// remain, or null when it failed (already shown).
+  Future<List<PostPreviewAuthor>?> removePostTagRequest({
+    required String postId,
+    required String entityId,
+  }) {
+    return reportedRequest<List<PostPreviewAuthor>>(
+      () => _dio.delete(
+        _endpoints.newsfeedTags,
+        data: {'post_id': postId, 'entity_id': entityId},
+      ),
+      failure: "We couldn't remove that tag.",
+      // The post payload's own `tagging` shape, parsed the way
+      // PostPreview.fromJson parses it.
+      parse: (response) {
+        final data = response.data?['data'];
+        if (data is! List) return null;
+        return data
+            .whereType<Map>()
+            .map((item) => PostPreviewAuthor.fromEntityJson(
+                Map<String, dynamic>.from(item)['entity']))
+            .where((entity) => entity.displayName.isNotEmpty)
+            .toList();
+      },
+    );
+  }
+
   /// Archive / unarchive - AUTHOR only (the server enforces it too).
   ///
   /// Goes through the generic post update, which takes a `fields` map rather

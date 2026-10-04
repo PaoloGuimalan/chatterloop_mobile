@@ -11,6 +11,10 @@
 //     Report            everyone EXCEPT the author. The report lands on the
 //                       post's authoring entity, so reporting your own post
 //                       would be reporting yourself, which the server rejects.
+//     Remove tag        whoever is TAGGED, on someone else's post - untags
+//                       them, which also takes the post off their profile.
+//     Edit tags         AUTHOR only, once the post has tags: a sheet listing
+//                       them, each removable.
 //   COMMENT
 //     Delete            its AUTHOR only. (Web exposes no edit, though the
 //                       endpoint has a PUT - so neither does this.)
@@ -24,6 +28,7 @@
 // the same rules; these gates only avoid offering a button that would 403.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
@@ -45,7 +50,23 @@ bool isOwnComment(PostPreviewAuthor commentAuthor) {
   return me.isNotEmpty && commentAuthor.entityId == me;
 }
 
-enum _PostOption { save, unsave, archive, unarchive, delete, report }
+/// True when the acting entity is tagged on [post] - a page's tag while
+/// acting as the page, like everything else here.
+bool isTaggedInPost(PostPreview post) {
+  final me = _actingEntityId();
+  return me.isNotEmpty && post.tagged.any((tag) => tag.entityId == me);
+}
+
+enum _PostOption {
+  save,
+  unsave,
+  removeTag,
+  editTags,
+  archive,
+  unarchive,
+  delete,
+  report
+}
 
 class PostOptionsButton extends StatefulWidget {
   final PostPreview post;
@@ -138,6 +159,43 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
     }
   }
 
+  /// Untags the acting entity. Optimistic like save/archive; the server's
+  /// answer then becomes the list, and a failure puts the old one back.
+  Future<void> _removeMyTag() async {
+    final before = widget.post.tagged;
+    final me = _actingEntityId();
+    setState(() => _busy = true);
+    widget.onChanged?.call(widget.post
+        .copyWith(tagged: before.where((tag) => tag.entityId != me).toList()));
+    final remaining = await NewsfeedApi()
+        .removePostTagRequest(postId: widget.post.postId, entityId: me);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    widget.onChanged?.call(widget.post.copyWith(tagged: remaining ?? before));
+  }
+
+  /// The author's sheet of who the post is tagged with.
+  Future<void> _editTags() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: cl(context).surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _EditTagsSheet(
+        postId: widget.post.postId,
+        tagged: widget.post.tagged,
+        // widget.post read at call time: the post underneath has already
+        // been redrawn by the previous removal.
+        onChanged: (remaining) {
+          if (!mounted) return;
+          widget.onChanged?.call(widget.post.copyWith(tagged: remaining));
+        },
+      ),
+    );
+  }
+
   /// Report the post. Sends the POST id, not the author's entity id - the
   /// server resolves the authoring entity itself, which is what keeps a report
   /// on a page's post landing on the page rather than on whoever runs it.
@@ -180,6 +238,10 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
             _setSaved(true);
           case _PostOption.unsave:
             _setSaved(false);
+          case _PostOption.removeTag:
+            _removeMyTag();
+          case _PostOption.editTags:
+            _editTags();
           case _PostOption.archive:
             _setArchived(true);
           case _PostOption.unarchive:
@@ -199,6 +261,20 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
             value: post.isSaved ? _PostOption.unsave : _PostOption.save,
             icon: post.isSaved ? Icons.bookmark_remove : Icons.bookmark_outline,
             label: post.isSaved ? "Unsave" : "Save",
+          ),
+        if (!mine && isTaggedInPost(post))
+          _item(
+            p,
+            value: _PostOption.removeTag,
+            icon: Icons.label_off_outlined,
+            label: "Remove tag",
+          ),
+        if (mine && post.tagged.isNotEmpty)
+          _item(
+            p,
+            value: _PostOption.editTags,
+            icon: Icons.people_outline,
+            label: "Edit tags",
           ),
         if (mine)
           _item(
@@ -248,6 +324,119 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
           Icon(icon, size: 18, color: color),
           const SizedBox(width: 10),
           Text(label, style: TextStyle(fontSize: CLType.bodySm, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The author's list of who a post is tagged with, each one removable.
+///
+/// Every removal is its own request and answers with the tags that remain, so
+/// the post's "is with ..." line follows along underneath - and the sheet
+/// closes itself once nobody is left to list.
+class _EditTagsSheet extends StatefulWidget {
+  final String postId;
+  final List<PostPreviewAuthor> tagged;
+  final ValueChanged<List<PostPreviewAuthor>> onChanged;
+
+  const _EditTagsSheet({
+    required this.postId,
+    required this.tagged,
+    required this.onChanged,
+  });
+
+  @override
+  State<_EditTagsSheet> createState() => _EditTagsSheetState();
+}
+
+class _EditTagsSheetState extends State<_EditTagsSheet> {
+  late List<PostPreviewAuthor> _tagged = widget.tagged;
+
+  /// The tag being removed. One at a time: each answer is the whole remaining
+  /// list, and two in flight could land in either order.
+  String? _removingId;
+
+  Future<void> _remove(PostPreviewAuthor entity) async {
+    setState(() => _removingId = entity.entityId);
+    final remaining = await NewsfeedApi().removePostTagRequest(
+        postId: widget.postId, entityId: entity.entityId);
+    if (!mounted) return;
+    setState(() => _removingId = null);
+    if (remaining == null) return; // Already reported by the request.
+    widget.onChanged(remaining);
+    if (remaining.isEmpty) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() => _tagged = remaining);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 18, 20, clSheetBottomGap(context, minimum: 20)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.people_outline, color: p.text, size: 20),
+            const SizedBox(width: 8),
+            Text("Tagged people",
+                style: TextStyle(
+                    fontSize: CLType.sectionTitle,
+                    fontWeight: FontWeight.w700,
+                    color: p.text)),
+          ]),
+          const SizedBox(height: 10),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.5),
+            child: ListView(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              children: [
+                for (final entity in _tagged)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(children: [
+                      CLAvatar(
+                        id: entity.handle,
+                        name: entity.displayName,
+                        src: entity.profile,
+                        kind: entity.type,
+                        entityId: entity.entityId,
+                        size: 36,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          entity.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: CLType.title,
+                              fontWeight: FontWeight.w600,
+                              color: p.text),
+                        ),
+                      ),
+                      CLBtn(
+                        label: _removingId == entity.entityId
+                            ? "Removing…"
+                            : "Remove",
+                        variant: CLBtnVariant.soft,
+                        size: CLBtnSize.sm,
+                        onPressed:
+                            _removingId == null ? () => _remove(entity) : null,
+                      ),
+                    ]),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );

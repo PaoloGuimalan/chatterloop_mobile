@@ -272,6 +272,7 @@ class PostPreview {
     bool? isArchived,
     String? privacyStatus,
     String? contentType,
+    List<PostPreviewAuthor>? tagged,
   }) =>
       PostPreview(
         postId: postId,
@@ -291,10 +292,10 @@ class PostPreview {
         isArchived: isArchived ?? this.isArchived,
         privacyStatus: privacyStatus ?? this.privacyStatus,
         contentType: contentType ?? this.contentType,
-        tagged: tagged,
-        // Carried through like `tagged`: reacting to a post does not change
-        // why it reached you, and dropping it here would make the caption
-        // vanish the moment the row updated itself.
+        tagged: tagged ?? this.tagged,
+        // Carried through: reacting to a post does not change why it reached
+        // you, and dropping it here would make the caption vanish the moment
+        // the row updated itself.
         feedReason: feedReason,
       );
 
