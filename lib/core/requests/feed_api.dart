@@ -19,12 +19,22 @@ class FeedApi {
 
   /// One post in full, for the read-only preview opened from an Explore
   /// content card. Plain serializer body, no {status, result} envelope.
+  ///
+  /// Null for a post that is gone as well as one that failed to load. The
+  /// endpoint still answers 200 for a deleted or archived post - its caption
+  /// emptied, the rest intact - so without this a comment notification opened
+  /// a deleted post that could still be reacted to and shared. Every caller
+  /// already shows null as unavailable; webapp's PostPage applies the same
+  /// rule.
   Future<PostPreview?> getPostPreviewRequest(String postId) async {
     try {
       final response = await _userDio.get('${_endpoints.postPreview}$postId/');
-      if (response.data is! Map) return null;
-      return PostPreview.fromJson(
-          Map<String, dynamic>.from(response.data as Map));
+      final data = response.data;
+      if (data is! Map) return null;
+      if (data['deleted_at'] != null || data['is_archived'] == true) {
+        return null;
+      }
+      return PostPreview.fromJson(Map<String, dynamic>.from(data));
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");
