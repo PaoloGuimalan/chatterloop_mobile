@@ -11,6 +11,7 @@ import 'package:chatterloop_app/core/utils/system_entity.dart';
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
 import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/core/utils/message_runs.dart';
+import 'package:chatterloop_app/core/reusables/widgets/seen_faces.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
@@ -91,25 +92,60 @@ typedef _ConvoVm = ({
 class _ConversationTypingIndicator extends StatelessWidget {
   final String conversationId;
   final CLPalette p;
+
+  /// Turns this conversation's typers into faces - set for a group or a
+  /// channel, null for a DM, which keeps the bare bubble.
+  final List<TypingFace> Function(List<IsTypingMetaData> typers)? facesFor;
+
   const _ConversationTypingIndicator(
-      {required this.conversationId, required this.p});
+      {required this.conversationId, required this.p, this.facesFor});
 
   @override
   Widget build(BuildContext context) {
-    return StoreConnector<AppState, bool>(
+    return StoreConnector<AppState, _TypersVm>(
       distinct: true,
-      converter: (store) => store.state.isTypingList
-          .any((typing) => typing.conversationID == conversationId),
+      converter: (store) => _TypersVm(store.state.isTypingList
+          .where((typing) => typing.conversationID == conversationId)
+          .toList()),
       // left: aligns the loader's bubble with the received message bubbles
       // above it (which sit at the message list's horizontal inset). bottom:
       // only applied while actually typing, so there's no permanent gap above
       // the input bar when no one is typing.
-      builder: (context, isTyping) => Padding(
-        padding: EdgeInsets.only(left: 10, bottom: isTyping ? 8 : 0),
-        child: TypingIndicator(isTyping: isTyping, p: p),
-      ),
+      builder: (context, vm) {
+        final isTyping = vm.typers.isNotEmpty;
+        return Padding(
+          padding: EdgeInsets.only(left: 10, bottom: isTyping ? 8 : 0),
+          child: TypingIndicator(
+            isTyping: isTyping,
+            p: p,
+            faces: isTyping && facesFor != null
+                ? facesFor!(vm.typers)
+                : const [],
+          ),
+        );
+      },
     );
   }
+}
+
+/// This conversation's typers, compared by what they would draw - the store
+/// hands back a fresh list on every dispatch, and identity equality would
+/// rebuild the indicator for each one.
+class _TypersVm {
+  final List<IsTypingMetaData> typers;
+  _TypersVm(this.typers);
+
+  String get _signature => typers
+      .map((t) =>
+          "${t.key}/${t.displayName ?? ""}/${t.profile ?? ""}/${t.entityType ?? ""}")
+      .join(",");
+
+  @override
+  bool operator ==(Object other) =>
+      other is _TypersVm && other._signature == _signature;
+
+  @override
+  int get hashCode => _signature.hashCode;
 }
 
 class ConversationView extends StatefulWidget {
@@ -1202,6 +1238,28 @@ class ConversationStateView extends State<ConversationView> {
     return null;
   }
 
+  /// The faces beside the typing bubble in a group or channel. The ping's own
+  /// identity first (newer servers send the typer's name and picture), the
+  /// member row second. An older server's ping names only the ACCOUNT, which
+  /// no member row here carries, so it falls back to initials.
+  List<TypingFace> _typingFaces(List<IsTypingMetaData> typers) =>
+      typers.map((typer) {
+        final member = typer.entityID == null
+            ? null
+            : _resolveSenderMember(typer.entityID!);
+        final memberSrc =
+            member != null && member.profile != "none" ? member.profile : null;
+        return TypingFace(
+          key: typer.key,
+          name: typer.displayName ?? member?.displayName ?? "Someone",
+          // The entity id, like the message avatars, so a face keeps its
+          // colour between the typing bubble and the thread.
+          colorKey: typer.entityID ?? typer.userID,
+          src: typer.profile ?? memberSrc,
+          kind: typer.entityType ?? member?.entityType,
+        );
+      }).toList();
+
   /// Resolves message.sender (an entity id) to something worth showing a
   /// human - "You" for the current account, else the matching participant's
   /// name from conversationInfo.usersWithInfo, falling back to the raw id
@@ -1429,8 +1487,106 @@ class ConversationStateView extends State<ConversationView> {
         none: Colors.transparent,
       );
 
-  String _seenersLabel(List<String> seeners) =>
-      seeners.map(_resolveSenderName).join(", ");
+  /// Remembers where each member's seen face was last drawn, so a face that
+  /// moves to a newer message can slide down to it (see SeenFacesRow).
+  late final SeenFaceTracker _seenFaceTracker =
+      SeenFaceTracker(scrollController: _scrollController);
+
+  /// seenFaceAnchors for the loaded thread, recomputed only when the list is
+  /// replaced - a refetch (which is what someone reading a message triggers,
+  /// over the messages_list SSE event) always builds a new one - or when the
+  /// member list it folds old account ids through arrives or changes.
+  Map<String, List<String>> _seenAnchors = const {};
+  List<MessageContent>? _seenAnchorsFor;
+  int _seenAnchorsLength = -1;
+  Object? _seenAnchorsMembers;
+
+  Map<String, List<String>> _currentSeenAnchors(UserAuth userAuth) {
+    final list = conversationContentList;
+    final members = conversationInfo?.usersWithInfo;
+    if (!identical(list, _seenAnchorsFor) ||
+        list.length != _seenAnchorsLength ||
+        !identical(members, _seenAnchorsMembers)) {
+      // Account id -> entity id, for seeners recorded the old way.
+      final entityOfAccount = <String, String>{
+        for (final member
+            in conversationInfo?.usersWithInfo ?? const <UsersContactPreview>[])
+          if (member.accountId != null) member.accountId!: member.entityID
+      };
+      _seenAnchors = seenFaceAnchors(
+        list,
+        [
+          userAuth.user.entityId,
+          userAuth.user.personalEntityId ?? "",
+          userAuth.user.id,
+        ],
+        canonical: (id) => entityOfAccount[id] ?? id,
+      );
+      _seenAnchorsFor = list;
+      _seenAnchorsLength = list.length;
+      _seenAnchorsMembers = members;
+    }
+    return _seenAnchors;
+  }
+
+  /// What sits under a message to say who has seen it.
+  ///
+  /// A group or channel: the faces of everyone whose newest seen message is
+  /// this one - every seener but you, the sender included - on every message
+  /// that has any, and they slide down as people read further. A DM keeps its "Seen" under the newest message once the
+  /// other person has seen it, as before.
+  Widget _seenRow(MessageContent item, int index, UserAuth userAuth) {
+    if (item.messageType == "notif") return const SizedBox.shrink();
+
+    if (_conversationType != "single") {
+      final ids = _currentSeenAnchors(userAuth)[item.messageID];
+      if (ids == null) return const SizedBox.shrink();
+      // Everyone who has seen it gets a face - a seener missing from the
+      // member list (left since, or a list that has not loaded yet) is drawn
+      // from initials rather than dropped.
+      final faces = <SeenFace>[
+        for (final id in ids)
+          () {
+            final member = _resolveSenderMember(id);
+            return SeenFace(
+              entityId: id,
+              name: member?.displayName ?? _resolveSenderName(id),
+              src: member != null && member.profile != "none"
+                  ? member.profile
+                  : null,
+              kind: member?.entityType,
+            );
+          }()
+      ];
+      return SeenFacesRow(
+          messageId: item.messageID,
+          faces: faces,
+          tracker: _seenFaceTracker);
+    }
+
+    final info = conversationInfo;
+    if (info == null ||
+        index - pendingMessagesList.length != 0 ||
+        item.seeners.length != info.users.length) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 2, left: 7, right: 7),
+      child: SizedBox(
+        width: double.infinity,
+        child: Text(
+          "Seen",
+          textAlign: item.sender == userAuth.user.entityId
+              ? TextAlign.end
+              : TextAlign.start,
+          style: TextStyle(
+            fontSize: CLType.caption,
+            color: Color(0xFF565656),
+          ),
+        ),
+      ),
+    );
+  }
 
   /// Returns whether messages actually loaded - used by _startLoading to
   /// tell "failed" apart from "still in flight" so a failure on the first
@@ -2894,6 +3050,11 @@ class ConversationStateView extends State<ConversationView> {
                                                                           // nothing is drawn above it.
                                                                           startsRun:
                                                                               true,
+                                                                          // Only the sole loaded item
+                                                                          // has nothing newer below it.
+                                                                          endsRun: endsSenderRun(
+                                                                              (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent),
+                                                                              index > 0 ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - index] : null),
                                                                           currentUserID: state
                                                                               .userAuth
                                                                               .user
@@ -2925,46 +3086,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                             1 -
                                                                             index]
                                                                         is MessageContent)
-                                                                      (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).messageType !=
-                                                                              "notif"
-                                                                          ? conversationInfo != null
-                                                                              ? (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners.length == conversationInfo?.users.length
-                                                                                  ? index - pendingMessagesList.length == 0
-                                                                                      ? Padding(
-                                                                                          padding: EdgeInsets.symmetric(vertical: 4, horizontal: 7),
-                                                                                          child: SizedBox(
-                                                                                            width: double.infinity,
-                                                                                            child: Text(
-                                                                                              _conversationType == "single" ? "Seen" : "Seen by everyone",
-                                                                                              textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
-                                                                                              style: TextStyle(
-                                                                                                fontSize: CLType.caption,
-                                                                                                color: Color(0xFF565656),
-                                                                                              ),
-                                                                                            ),
-                                                                                          ),
-                                                                                        )
-                                                                                      : SizedBox.shrink()
-                                                                                  : index - pendingMessagesList.length == 0
-                                                                                      ? _conversationType != "single"
-                                                                                          ? Padding(
-                                                                                              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 7),
-                                                                                              child: SizedBox(
-                                                                                                width: double.infinity,
-                                                                                                child: Text(
-                                                                                                  "Seen by ${_seenersLabel((combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).seeners)}",
-                                                                                                  textAlign: (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent).sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
-                                                                                                  style: TextStyle(
-                                                                                                    fontSize: CLType.caption,
-                                                                                                    color: Color(0xFF565656),
-                                                                                                  ),
-                                                                                                ),
-                                                                                              ),
-                                                                                            )
-                                                                                          : SizedBox.shrink()
-                                                                                      : SizedBox.shrink()
-                                                                              : SizedBox.shrink()
-                                                                          : SizedBox.shrink(),
+                                                                      _seenRow((combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent), index,
+                                                                          state.userAuth),
                                                                     if (index ==
                                                                         0)
                                                                       const SizedBox
@@ -3056,6 +3179,17 @@ class ConversationStateView extends State<ConversationView> {
                                                                             2 -
                                                                             index]);
 
+                                                            // The item drawn just BELOW: one
+                                                            // place later, or nothing for the
+                                                            // newest (index 0).
+                                                            final endsRun = endsSenderRun(
+                                                                contentItem,
+                                                                index > 0
+                                                                    ? combinedPendingAndMessagesList[
+                                                                        combinedPendingAndMessagesList.length -
+                                                                            index]
+                                                                    : null);
+
                                                             return Column(
                                                               children: [
                                                                 _seenTrackedMessage(
@@ -3070,6 +3204,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                         key: ValueKey(contentItem.messageID),
                                                                         messageContent: contentItem,
                                                                         startsRun: startsRun,
+                                                                        endsRun: endsRun,
                                                                         currentUserID: state.userAuth.user.entityId,
                                                                         resolveSenderName: _resolveSenderName,
                                                                         resolveSenderMember: _resolveSenderMember,
@@ -3089,60 +3224,7 @@ class ConversationStateView extends State<ConversationView> {
                                                                         }),
                                                                   ),
                                                                 ),
-                                                                contentItem.messageType !=
-                                                                        "notif"
-                                                                    ? conversationInfo !=
-                                                                            null
-                                                                        ? contentItem.seeners.length ==
-                                                                                conversationInfo?.users.length
-                                                                            ? index - pendingMessagesList.length == 0
-                                                                                ? Padding(
-                                                                                    padding: EdgeInsets.only(top: 4, bottom: 2, left: 7, right: 7),
-                                                                                    child: SizedBox(
-                                                                                      width: double.infinity,
-                                                                                      child: Text(
-                                                                                        _conversationType == "single" ? "Seen" : "Seen by everyone",
-                                                                                        textAlign: contentItem.sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
-                                                                                        style: TextStyle(
-                                                                                          fontSize: CLType.caption,
-                                                                                          color: Color(0xFF565656),
-                                                                                        ),
-                                                                                      ),
-                                                                                    ),
-                                                                                  )
-                                                                                : SizedBox(
-                                                                                    height: 0,
-                                                                                  )
-                                                                            : index - pendingMessagesList.length == 0
-                                                                                ? _conversationType != "single"
-                                                                                    ? Padding(
-                                                                                        padding: EdgeInsets.only(top: 4, bottom: 2, left: 7, right: 7),
-                                                                                        child: SizedBox(
-                                                                                          width: double.infinity,
-                                                                                          child: Text(
-                                                                                            "Seen by ${_seenersLabel(contentItem.seeners)}",
-                                                                                            textAlign: contentItem.sender == state.userAuth.user.entityId ? TextAlign.end : TextAlign.start,
-                                                                                            style: TextStyle(
-                                                                                              fontSize: CLType.caption,
-                                                                                              color: Color(0xFF565656),
-                                                                                            ),
-                                                                                          ),
-                                                                                        ),
-                                                                                      )
-                                                                                    : SizedBox(
-                                                                                        height: 0,
-                                                                                      )
-                                                                                : SizedBox(
-                                                                                    height: 0,
-                                                                                  )
-                                                                        : SizedBox(
-                                                                            height:
-                                                                                0,
-                                                                          )
-                                                                    : SizedBox(
-                                                                        height:
-                                                                            0,
-                                                                      ),
+                                                                _seenRow(contentItem, index, state.userAuth),
                                                                 index == 0
                                                                     ? const SizedBox
                                                                         .shrink()
@@ -3239,6 +3321,9 @@ class ConversationStateView extends State<ConversationView> {
                               _ConversationTypingIndicator(
                                 conversationId: widget.conversationId,
                                 p: p,
+                                facesFor: _conversationType == "single"
+                                    ? null
+                                    : _typingFaces,
                               ),
                               AnimatedContainer(
                                 duration: const Duration(milliseconds: 500),

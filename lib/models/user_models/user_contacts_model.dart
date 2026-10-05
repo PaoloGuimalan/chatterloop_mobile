@@ -103,6 +103,11 @@ class UsersContactPreview {
   /// realm, so realmType is null for one.
   bool get isBot => entityType == 'bot';
 
+  /// The account/realm/bot row's own pk - the payload's `_id`, kept only when
+  /// it differs from [entityID]. Older messages recorded their seeners by this
+  /// id, so it is what lets those be matched back to the member.
+  final String? accountId;
+
   const UsersContactPreview(
     this.userID,
     this.entityID,
@@ -113,6 +118,7 @@ class UsersContactPreview {
     this.isVerified, {
     this.entityType = '',
     this.realmType,
+    this.accountId,
   });
 
   String get displayName {
@@ -136,6 +142,9 @@ class UsersContactPreview {
       json["isVerified"] ?? false,
       entityType: (json["entityType"] ?? "").toString(),
       realmType: (realmType == null || realmType.isEmpty) ? null : realmType,
+      accountId: json["entityID"] != null && json["_id"] != null
+          ? json["_id"].toString()
+          : null,
     );
   }
 }

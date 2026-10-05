@@ -64,19 +64,19 @@ class ReduxActions {
 
   AppState setIsTypingList(AppState state, DispatchModel action) {
     switch (action.type) {
+      // Keyed by IsTypingMetaData.key - the entity when the ping names one -
+      // so a page typing and its owner typing are two typers, not one.
       case setIsTypingListT:
         IsTypingMetaData payload = action.payload;
         List<IsTypingMetaData> currentList = state.isTypingList
-            .where((typing) => !(typing.userID == payload.userID &&
-                typing.conversationID == payload.conversationID))
+            .where((typing) => typing.key != payload.key)
             .toList();
 
         return AppState(isTypingList: [...currentList, payload]);
       case removeIsTypingListT:
         IsTypingMetaData payload = action.payload;
         List<IsTypingMetaData> currentList = state.isTypingList
-            .where((typing) => !(typing.userID == payload.userID &&
-                typing.conversationID == payload.conversationID))
+            .where((typing) => typing.key != payload.key)
             .toList();
 
         return AppState(isTypingList: currentList);

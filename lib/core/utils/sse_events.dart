@@ -302,7 +302,7 @@ class SseEvents {
 
             appStore.dispatch(DispatchModel(setIsTypingListT, finalTyperData));
 
-            // Debounced per (userID, conversationID) - a person actively
+            // Debounced per typer (IsTypingMetaData.key) - a person actively
             // typing re-broadcasts every few seconds, and each broadcast
             // used to schedule its own independent 5s removal with nothing
             // cancelling earlier ones. An earlier broadcast's timer firing
@@ -312,8 +312,7 @@ class SseEvents {
             // randomly disappearing/reappearing. Cancel any pending
             // removal for this pair before scheduling the new one, so only
             // the most recent broadcast's timer ever actually fires.
-            final key =
-                "${finalTyperData.userID}|${finalTyperData.conversationID}";
+            final key = finalTyperData.key;
             _typingRemovalTimers[key]?.cancel();
             _typingRemovalTimers[key] =
                 Timer(const Duration(milliseconds: 5000), () {

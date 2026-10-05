@@ -5,6 +5,8 @@ import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/core/utils/typing_label.dart';
+import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:flutter/material.dart';
@@ -46,12 +48,15 @@ class MessageItemView extends StatelessWidget {
 
   bool get _isCurrentUserSender => message.sender == userID;
 
-  String _previewText(bool isTyping) {
-    if (isTyping) {
-      return message.conversationType == "single"
-          ? "is typing…"
-          : "someone is typing…";
-    }
+  String? _typingLineFor(List<IsTypingMetaData> typers) => typers.isEmpty
+      ? null
+      : typingLabel(typers,
+          isGroupLike: message.conversationType != "single");
+
+  /// [typingLine] is who is typing here, already worded (see
+  /// utils/typing_label) - null when nobody is.
+  String _previewText(String? typingLine) {
+    if (typingLine != null) return typingLine;
     final prefix =
         _isCurrentUserSender && message.messageType != "notif" ? "you: " : "";
     // Matches webapp's lastMessagePreview() exactly, including that a
@@ -152,7 +157,7 @@ class MessageItemView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    return StoreConnector<AppState, ({bool isTyping, bool online})>(
+    return StoreConnector<AppState, ({String? typingLine, bool online})>(
         // Without distinct, this row rebuilds on EVERY store dispatch (each
         // presence/typing/message event across the whole app). The converter
         // already returns a small record with value equality, so distinct
@@ -227,7 +232,7 @@ class MessageItemView extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 2),
-                        Text(_previewText(data.isTyping),
+                        Text(_previewText(data.typingLine),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -281,8 +286,13 @@ class MessageItemView extends StatelessWidget {
         },
         converter: (store) {
           return (
-            isTyping: store.state.isTypingList.any(
-                (typing) => typing.conversationID == message.conversationID),
+            // The worded line rather than the typers, so the record's value
+            // equality still holds and distinct keeps this row still until
+            // what it SAYS changes.
+            typingLine: _typingLineFor(store.state.isTypingList
+                .where((typing) =>
+                    typing.conversationID == message.conversationID)
+                .toList()),
             // Only single conversations map to one actual person - a group's
             // avatar has no single "online" state to show, matches webapp's
             // activeuserSpecific gating on conversationType === "single".

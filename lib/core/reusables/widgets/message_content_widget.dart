@@ -189,10 +189,12 @@ Widget buildReactionPill(List<ReactionItem> reactions, CLPalette p) {
 class MessageContentWidget extends StatefulWidget {
   final MessageContent messageContent;
 
-  /// Whether this message opens its sender's run (see utils/message_runs). In
-  /// a group-like conversation only the first message of a run carries the
-  /// sender's avatar and name; the rest are indented under them.
+  /// Whether this message opens / closes its sender's run (see
+  /// utils/message_runs). In a group-like conversation the first message of a
+  /// run carries the sender's name and the last carries their avatar; every
+  /// message in the run is indented to line up with the others.
   final bool startsRun;
+  final bool endsRun;
   final String currentUserID;
   final void Function(bool, String) onPressed;
 
@@ -237,6 +239,7 @@ class MessageContentWidget extends StatefulWidget {
       {super.key,
       required this.messageContent,
       this.startsRun = true,
+      this.endsRun = true,
       required this.currentUserID,
       required this.onPressed,
       required this.resolveSenderName,
@@ -2257,20 +2260,21 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
       _currentUserID != _messageContent.sender;
 
   /// Puts the sender avatar column beside [body]. Every message in a run
-  /// reserves the column and only the first fills it, which is what keeps the
-  /// rest of the run's bubbles lined up under the first one.
+  /// reserves the column and only the LAST fills it, pinned to the bottom so
+  /// it sits level with that message's bubble - which is what keeps the run's
+  /// bubbles lined up with each other.
   Widget _withSenderColumn(Widget body) {
     if (!_showsSenderIdentity) return body;
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Padding(
-          // Level with the name: the body opens with the reply gap (7) and
-          // the run's 5px lead-in before the name row.
+          // The reactions pill hangs under the bubble (4px gap + 20px pill,
+          // see buildReactionPill), so lift the avatar past it to sit by the
+          // bubble rather than the pill.
           padding: EdgeInsets.only(
-              top: widget.startsRun ? (_messageContent.isReply ? 7 : 0) + 5 : 0,
-              right: 3),
-          child: widget.startsRun
+              bottom: widget.endsRun && _hasReactionPill ? 24 : 0, right: 3),
+          child: widget.endsRun
               ? _senderAvatar()
               : const SizedBox(width: _senderAvatarSize),
         ),
@@ -2278,6 +2282,13 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
       ],
     );
   }
+
+  /// Whether the bubble draws its reactions pill underneath it - the same
+  /// condition messageTypeSwitch uses for the real (non-preview) bubble.
+  bool get _hasReactionPill =>
+      _messageContent.isDeleted != true &&
+      !_isCardOnly &&
+      (_messageContent.reactions?.isNotEmpty ?? false);
 
   Widget _senderAvatar() {
     final sender = _messageContent.sender;
