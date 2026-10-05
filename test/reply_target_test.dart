@@ -290,7 +290,6 @@ void main() {
             body: SingleChildScrollView(
               child: MessageContentWidget(
                 messageContent: content,
-                previousContentUserID: 'end',
                 currentUserID: 'me',
                 onPressed: (_, __) {},
                 resolveSenderName: (id) => id == 'them' ? 'Theo' : id,

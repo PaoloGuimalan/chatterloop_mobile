@@ -71,7 +71,6 @@ void main() {
           body: SingleChildScrollView(
             child: MessageContentWidget(
               messageContent: message,
-              previousContentUserID: "end",
               currentUserID: "me",
               onPressed: (_, __) {},
               resolveSenderName: (id) => id,

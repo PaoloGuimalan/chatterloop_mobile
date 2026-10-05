@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/utils/chat_commands.dart';
 import 'package:chatterloop_app/core/utils/system_entity.dart';
 import 'package:chatterloop_app/core/utils/chat_mentions.dart';
 import 'package:chatterloop_app/core/utils/message_format.dart';
+import 'package:chatterloop_app/core/utils/message_runs.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
@@ -1187,6 +1188,18 @@ class ConversationStateView extends State<ConversationView> {
     if (info.online) return "Active Now";
     if (info.lastSeen != null) return "Active ${timeSince(info.lastSeen!)}";
     return "Recently Active";
+  }
+
+  /// The conversationInfo member behind message.sender (an entity id), for the
+  /// sender avatar beside a group or channel message. Null until
+  /// conversationInfo has loaded, or for a sender who is not a member (System)
+  /// - the avatar then falls back to initials from [_resolveSenderName].
+  UsersContactPreview? _resolveSenderMember(String entityId) {
+    for (final member
+        in conversationInfo?.usersWithInfo ?? const <UsersContactPreview>[]) {
+      if (member.entityID == entityId) return member;
+    }
+    return null;
   }
 
   /// Resolves message.sender (an entity id) to something worth showing a
@@ -2877,17 +2890,18 @@ class ConversationStateView extends State<ConversationView> {
                                                                           messageContent: combinedPendingAndMessagesList[combinedPendingAndMessagesList.length -
                                                                               1 -
                                                                               index] as MessageContent,
-                                                                          previousContentUserID: index > 0 && index < combinedPendingAndMessagesList.length - 1
-                                                                              ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index - 1].sender
-                                                                              : index == 0
-                                                                                  ? "start"
-                                                                                  : "end",
+                                                                          // The OLDEST loaded item -
+                                                                          // nothing is drawn above it.
+                                                                          startsRun:
+                                                                              true,
                                                                           currentUserID: state
                                                                               .userAuth
                                                                               .user
                                                                               .entityId,
                                                                           resolveSenderName:
                                                                               _resolveSenderName,
+                                                                          resolveSenderMember:
+                                                                              _resolveSenderMember,
                                                                           isSingleConversation:
                                                                               _conversationType == "single",
                                                                           conversationID:
@@ -3020,20 +3034,27 @@ class ConversationStateView extends State<ConversationView> {
                                                                             .length -
                                                                         1 -
                                                                         index];
-                                                            String previousContentUserID = index >
-                                                                        0 &&
-                                                                    index <
+                                                            // `reverse: true` over an
+                                                            // oldest-first list, so the
+                                                            // item drawn just ABOVE this
+                                                            // one sits one place earlier.
+                                                            // This branch never sees the
+                                                            // oldest item (handled above),
+                                                            // so that slot always exists.
+                                                            //
+                                                            // Was a sender id with "start"
+                                                            // standing in for index 0 -
+                                                            // which made the NEWEST message
+                                                            // always open a run, repeating
+                                                            // the sender's name under their
+                                                            // own previous message.
+                                                            final startsRun =
+                                                                startsSenderRun(
+                                                                    contentItem,
+                                                                    combinedPendingAndMessagesList[
                                                                         combinedPendingAndMessagesList.length -
-                                                                            1
-                                                                ? combinedPendingAndMessagesList[
-                                                                        combinedPendingAndMessagesList.length -
-                                                                            1 -
-                                                                            index -
-                                                                            1]
-                                                                    .sender
-                                                                : index == 0
-                                                                    ? "start"
-                                                                    : "end";
+                                                                            2 -
+                                                                            index]);
 
                                                             return Column(
                                                               children: [
@@ -3048,9 +3069,10 @@ class ConversationStateView extends State<ConversationView> {
                                                                         commandNames: _commandNames,
                                                                         key: ValueKey(contentItem.messageID),
                                                                         messageContent: contentItem,
-                                                                        previousContentUserID: previousContentUserID,
+                                                                        startsRun: startsRun,
                                                                         currentUserID: state.userAuth.user.entityId,
                                                                         resolveSenderName: _resolveSenderName,
+                                                                        resolveSenderMember: _resolveSenderMember,
                                                                         isSingleConversation: _conversationType == "single",
                                                                         conversationID: widget.conversationId,
                                                                         mentionMembers: _mentionHighlightMembers,

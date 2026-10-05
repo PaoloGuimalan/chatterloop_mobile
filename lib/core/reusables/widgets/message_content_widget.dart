@@ -14,6 +14,7 @@ import 'package:chatterloop_app/core/reusables/widgets/reply_target_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/core/utils/media_downloader.dart';
+import 'package:chatterloop_app/core/utils/system_entity.dart';
 import 'package:chatterloop_app/models/messages_models/message_attachment_model.dart';
 import 'package:chatterloop_app/models/http_models/request_models.dart';
 import 'package:chatterloop_app/models/messages_models/message_content_model.dart';
@@ -26,6 +27,7 @@ import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:go_router/go_router.dart';
 
 /// Mirrors webapp's EmojiPickerHandler.tsx QUICK_REACTIONS exactly. The
 /// "more emojis" affordance is NOT in this list - the package renders every
@@ -186,7 +188,11 @@ Widget buildReactionPill(List<ReactionItem> reactions, CLPalette p) {
 
 class MessageContentWidget extends StatefulWidget {
   final MessageContent messageContent;
-  final String previousContentUserID;
+
+  /// Whether this message opens its sender's run (see utils/message_runs). In
+  /// a group-like conversation only the first message of a run carries the
+  /// sender's avatar and name; the rest are indented under them.
+  final bool startsRun;
   final String currentUserID;
   final void Function(bool, String) onPressed;
 
@@ -197,6 +203,11 @@ class MessageContentWidget extends StatefulWidget {
   /// initState, since conversationInfo only arrives after messages already
   /// have (see conversation_view.dart's _startLoading sequencing).
   final String Function(String entityId) resolveSenderName;
+
+  /// Resolves an entity id (message.sender) to its conversationInfo member,
+  /// for the sender avatar's picture, kind and profile route. Null, or a null
+  /// result, still draws the avatar - from the name, with no tap target.
+  final UsersContactPreview? Function(String entityId)? resolveSenderMember;
 
   /// The conversation's actual type, from conversationMetaData - not
   /// messageContent.conversationType, which is set per-message by whichever
@@ -225,10 +236,11 @@ class MessageContentWidget extends StatefulWidget {
   const MessageContentWidget(
       {super.key,
       required this.messageContent,
-      required this.previousContentUserID,
+      this.startsRun = true,
       required this.currentUserID,
       required this.onPressed,
       required this.resolveSenderName,
+      this.resolveSenderMember,
       required this.isSingleConversation,
       required this.conversationID,
       this.mentionMembers = const [],
@@ -240,7 +252,6 @@ class MessageContentWidget extends StatefulWidget {
 
 class MessageContentWidgetState extends State<MessageContentWidget> {
   late MessageContent _messageContent;
-  late String _previousContentUserID;
   late String _currentUserID;
   late void Function(bool, String) _onPressed;
 
@@ -368,7 +379,6 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
   void initState() {
     super.initState();
     _messageContent = widget.messageContent;
-    _previousContentUserID = widget.previousContentUserID;
     _currentUserID = widget.currentUserID;
     _onPressed = widget.onPressed;
   }
@@ -379,7 +389,6 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
     // The cached fields above go stale on rebuild otherwise - ListView.builder
     // can reuse this State for a different index's message content.
     _messageContent = widget.messageContent;
-    _previousContentUserID = widget.previousContentUserID;
     _currentUserID = widget.currentUserID;
     _onPressed = widget.onPressed;
   }
@@ -879,7 +888,12 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             ? SizedBox(
                                 height: 0,
                               )
-                            : ConstrainedBox(
+                            : Flexible(
+                                // Shrinks rather than overflows when a
+                                // group's sender avatar column and a
+                                // full-width bubble leave it less than
+                                // its 40px on a narrow phone.
+                                child: ConstrainedBox(
                                 constraints:
                                     BoxConstraints(maxWidth: 40, maxHeight: 40),
                                 child: ElevatedButton(
@@ -901,7 +915,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                         size: 20,
                                       ),
                                     )),
-                              )
+                              ))
                       ],
                     ))
               : SizedBox(
@@ -1111,7 +1125,12 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             ? SizedBox(
                                 height: 0,
                               )
-                            : ConstrainedBox(
+                            : Flexible(
+                                // Shrinks rather than overflows when a
+                                // group's sender avatar column and a
+                                // full-width bubble leave it less than
+                                // its 40px on a narrow phone.
+                                child: ConstrainedBox(
                                 constraints:
                                     BoxConstraints(maxWidth: 40, maxHeight: 40),
                                 child: ElevatedButton(
@@ -1133,7 +1152,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                         size: 20,
                                       ),
                                     )),
-                              )
+                              ))
                       ],
                     ))
               : SizedBox(
@@ -1315,7 +1334,12 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             ? SizedBox(
                                 height: 0,
                               )
-                            : ConstrainedBox(
+                            : Flexible(
+                                // Shrinks rather than overflows when a
+                                // group's sender avatar column and a
+                                // full-width bubble leave it less than
+                                // its 40px on a narrow phone.
+                                child: ConstrainedBox(
                                 constraints:
                                     BoxConstraints(maxWidth: 40, maxHeight: 40),
                                 child: ElevatedButton(
@@ -1337,7 +1361,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                         size: 20,
                                       ),
                                     )),
-                              )
+                              ))
                       ],
                     ))
               : SizedBox(
@@ -1509,7 +1533,12 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             ? SizedBox(
                                 height: 0,
                               )
-                            : ConstrainedBox(
+                            : Flexible(
+                                // Shrinks rather than overflows when a
+                                // group's sender avatar column and a
+                                // full-width bubble leave it less than
+                                // its 40px on a narrow phone.
+                                child: ConstrainedBox(
                                 constraints:
                                     BoxConstraints(maxWidth: 40, maxHeight: 40),
                                 child: ElevatedButton(
@@ -1531,7 +1560,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                         size: 20,
                                       ),
                                     )),
-                              )
+                              ))
                       ],
                     ))
               : SizedBox(
@@ -1802,7 +1831,12 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             ? SizedBox(
                                 height: 0,
                               )
-                            : ConstrainedBox(
+                            : Flexible(
+                                // Shrinks rather than overflows when a
+                                // group's sender avatar column and a
+                                // full-width bubble leave it less than
+                                // its 40px on a narrow phone.
+                                child: ConstrainedBox(
                                 constraints:
                                     BoxConstraints(maxWidth: 40, maxHeight: 40),
                                 child: ElevatedButton(
@@ -1824,7 +1858,7 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                         size: 20,
                                       ),
                                     )),
-                              )
+                              ))
                       ],
                     ))
               : SizedBox(
@@ -1910,38 +1944,49 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
           final accentOnSurface = CLAccent.textOf(context);
           return Padding(
             padding: EdgeInsets.only(top: 2, bottom: 2, left: 0, right: 0),
-            child: Column(
+            child: _withSenderColumn(Column(
               children: [
                 SizedBox(
                   height: _messageContent.isReply ? 7 : 0,
                 ),
-                _previousContentUserID != _messageContent.sender ||
-                        _previousContentUserID == "end"
+                widget.startsRun
                     ? Column(
                         children: [
                           SizedBox(
                             height: 5,
                           ),
-                          !widget.isSingleConversation &&
-                                  _messageContent.messageType != "notif" &&
-                                  _currentUserID != _messageContent.sender
+                          _showsSenderIdentity
                               ? Row(
-                                  mainAxisAlignment:
-                                      _messageContent.sender == _currentUserID
-                                          ? MainAxisAlignment.end
-                                          : MainAxisAlignment.start,
                                   children: [
-                                    Padding(
-                                      padding: EdgeInsets.only(
-                                          left: 7, right: 7, bottom: 2),
-                                      child: Text(
-                                        widget.resolveSenderName(
-                                            _messageContent.sender),
-                                        style: TextStyle(
-                                          fontSize: CLType.caption,
-                                          color: Color(0xFF565656),
+                                    // Flexible, or a long name overflows the
+                                    // row now that the avatar column takes a
+                                    // share of the width - ellipsis alone
+                                    // needs a bounded parent to cut against.
+                                    Flexible(
+                                      child: Padding(
+                                        padding: EdgeInsets.only(
+                                            left: 7, right: 7, bottom: 2),
+                                        child: Text(
+                                          widget.resolveSenderName(
+                                              _messageContent.sender),
+                                          style: TextStyle(
+                                            fontSize: CLType.caption,
+                                            // Was a fixed #565656, near
+                                            // invisible on the dark thread.
+                                            // Same call as the webapp's
+                                            // .span_sender_label: secondary
+                                            // text in light, full text in
+                                            // dark, where text2 at this size
+                                            // reads as greyed-out.
+                                            color: Theme.of(context)
+                                                        .brightness ==
+                                                    Brightness.dark
+                                                ? cl(context).text
+                                                : cl(context).text2,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     )
                                   ],
@@ -2195,12 +2240,89 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                             )),
                       )
               ],
-            ),
+            )),
           );
         },
         converter: (store) => store.state.isUsingReplyAssist);
   }
+
+  /// Someone else's message in a group-like conversation (a group, a server
+  /// channel) - the only kind that carries a sender avatar and name. Your own
+  /// messages carry neither, and neither does a DM, whose header already says
+  /// who the other person is. System lines ("X joined") are centred across
+  /// the whole row and take no column.
+  bool get _showsSenderIdentity =>
+      !widget.isSingleConversation &&
+      _messageContent.messageType != "notif" &&
+      _currentUserID != _messageContent.sender;
+
+  /// Puts the sender avatar column beside [body]. Every message in a run
+  /// reserves the column and only the first fills it, which is what keeps the
+  /// rest of the run's bubbles lined up under the first one.
+  Widget _withSenderColumn(Widget body) {
+    if (!_showsSenderIdentity) return body;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          // Level with the name: the body opens with the reply gap (7) and
+          // the run's 5px lead-in before the name row.
+          padding: EdgeInsets.only(
+              top: widget.startsRun ? (_messageContent.isReply ? 7 : 0) + 5 : 0,
+              right: 3),
+          child: widget.startsRun
+              ? _senderAvatar()
+              : const SizedBox(width: _senderAvatarSize),
+        ),
+        Expanded(child: body),
+      ],
+    );
+  }
+
+  Widget _senderAvatar() {
+    final sender = _messageContent.sender;
+    final isSystem = isSystemBot(sender);
+    final member = isSystem ? null : widget.resolveSenderMember?.call(sender);
+    final name = widget.resolveSenderName(sender);
+    final avatar = CLAvatar(
+      // Same gradient key as the conversation info member rows, so a member
+      // without a picture gets the same colour in both places.
+      id: sender,
+      // Presence: lights for members who are in your presence scope (a
+      // contact or a DM counterpart) - the server's rule, see
+      // conversation_info_view.
+      entityId: sender,
+      name: name,
+      src: member != null && member.profile != "none" ? member.profile : null,
+      kind: isSystem ? 'bot' : member?.entityType,
+      size: _senderAvatarSize,
+    );
+
+    // Routed by kind, the way contacts_item does it: `userID` holds the
+    // username, the page's slug or the bot's handle, and each lives on its
+    // own screen.
+    final handle = member?.userID ?? "";
+    if (member == null || handle.isEmpty) return avatar;
+    final route = switch (member.entityType) {
+      'bot' => '/bot/$handle',
+      'realm' => '/realm/$handle',
+      _ => '/user/$handle',
+    };
+    return Semantics(
+      button: true,
+      label: "Open $name's profile",
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => context.push(route),
+        child: avatar,
+      ),
+    );
+  }
 }
+
+/// Diameter of the sender avatar beside a group-like conversation's messages.
+/// Matches the webapp's full conversation (ConversationV2's avatarSize).
+const double _senderAvatarSize = 32;
 
 /// The file card's leading glyph: the file icon normally, a progress ring
 /// while that file is being downloaded.
