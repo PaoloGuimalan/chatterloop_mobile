@@ -5,6 +5,8 @@
 // Required updates cover the app with no way past. Optional ones can be
 // skipped, and stay skipped for that build.
 
+import 'dart:math' as math;
+
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/system_update_api.dart';
@@ -139,84 +141,101 @@ class _SystemUpdateScreen extends StatelessWidget {
             'version ${update.version} to keep using the app.'
         : 'Version ${update.version} of Chatterloop is available.';
 
+    const pad = 24.0;
+
     return Material(
       color: p.bg,
       child: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-              child: Column(
-                children: [
-                  const Spacer(),
-                  const CLLogoTile(size: 88),
-                  const SizedBox(height: 24),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: CLType.hero,
-                      fontWeight: FontWeight.w800,
-                      color: p.text,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: CLType.body,
-                      color: p.text2,
-                      height: 1.4,
-                    ),
-                  ),
-                  if (update.details.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    // Scrolls inside its card when the release notes are
-                    // long, so the buttons can never be pushed off-screen.
-                    Flexible(
-                      flex: 4,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: p.surface,
-                          borderRadius: BorderRadius.circular(CLRadii.md),
-                          border: Border.all(color: p.border),
+        // Centred as ONE block - logo, words, notes and buttons together -
+        // rather than spread by Spacers, which parked the buttons at the
+        // bottom edge, far from what they act on.
+        //
+        // At least the screen's height, so a short page sits in the middle;
+        // anything taller (landscape, long notes) scrolls instead of being
+        // squeezed into the height that is there.
+        child: LayoutBuilder(
+          builder: (context, viewport) => SingleChildScrollView(
+            padding: const EdgeInsets.all(pad),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                  minHeight: math.max(0, viewport.maxHeight - pad * 2)),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CLLogoTile(size: 88),
+                      const SizedBox(height: 24),
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: CLType.hero,
+                          fontWeight: FontWeight.w800,
+                          color: p.text,
+                          letterSpacing: -0.3,
                         ),
-                        child: SingleChildScrollView(
-                          child: Text(
-                            update.details,
-                            style: TextStyle(
-                              fontSize: CLType.bodySm,
-                              color: p.text2,
-                              height: 1.45,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: CLType.body,
+                          color: p.text2,
+                          height: 1.4,
+                        ),
+                      ),
+                      if (update.details.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        // Capped, and scrolls inside its card past that: long
+                        // release notes must not push the buttons a page away.
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                              maxHeight:
+                                  math.min(240, viewport.maxHeight * 0.4)),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: p.surface,
+                              borderRadius: BorderRadius.circular(CLRadii.md),
+                              border: Border.all(color: p.border),
+                            ),
+                            child: SingleChildScrollView(
+                              child: Text(
+                                update.details,
+                                style: TextStyle(
+                                  fontSize: CLType.bodySm,
+                                  color: p.text2,
+                                  height: 1.45,
+                                ),
+                              ),
                             ),
                           ),
                         ),
+                      ],
+                      const SizedBox(height: 28),
+                      CLBtn(
+                        label: 'Update now',
+                        onPressed: onUpdate,
+                        size: CLBtnSize.lg,
+                        block: true,
                       ),
-                    ),
-                  ],
-                  const Spacer(),
-                  CLBtn(
-                    label: 'Update now',
-                    onPressed: onUpdate,
-                    size: CLBtnSize.lg,
-                    block: true,
+                      if (onSkip != null) ...[
+                        const SizedBox(height: 8),
+                        CLBtn(
+                          label: 'Not now',
+                          onPressed: onSkip,
+                          variant: CLBtnVariant.ghost,
+                          size: CLBtnSize.lg,
+                          block: true,
+                        ),
+                      ],
+                    ],
                   ),
-                  if (onSkip != null) ...[
-                    const SizedBox(height: 8),
-                    CLBtn(
-                      label: 'Not now',
-                      onPressed: onSkip,
-                      variant: CLBtnVariant.ghost,
-                      size: CLBtnSize.lg,
-                      block: true,
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
           ),

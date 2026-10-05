@@ -148,8 +148,10 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                       iconColor: p.text2,
                       iconBorderColor: p.border,
                       title: "Post unavailable",
+                      // Broken by hand at the comma: as one run it wrapped on
+                      // a phone with "it." alone on the second line.
                       subtitle:
-                          "It may have been deleted, or you may not have access to it.",
+                          "It may have been deleted,\nor you may not have access to it.",
                     ),
                   ),
                 )
