@@ -59,12 +59,17 @@ class _FakeInvites implements InvitesApi {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-Widget _app(_FakeInvites api) {
+Widget _app(_FakeInvites api, {Future<bool> Function(Uri)? openExternal}) {
   final router = GoRouter(initialLocation: '/invite/tok1', routes: [
     GoRoute(
       path: '/invite/:token',
-      builder: (c, s) =>
-          RealmInviteScreen(token: s.pathParameters['token']!, api: api),
+      builder: (c, s) => openExternal == null
+          ? RealmInviteScreen(token: s.pathParameters['token']!, api: api)
+          : RealmInviteScreen(
+              token: s.pathParameters['token']!,
+              api: api,
+              openExternal: openExternal,
+            ),
     ),
     GoRoute(
       path: '/conversation/:id',
@@ -112,6 +117,18 @@ void main() {
       // Conferences live on the web.
       expect(RealmInvite.fromJson(_json(type: 'conference', slug: 'sync'))
           .destination, isNull);
+    });
+
+    test('a conference invite leads to its lobby on the web', () {
+      final invite =
+          RealmInvite.fromJson(_json(type: 'conference', slug: 'team-sync'));
+      expect(invite.conferenceUrl,
+          'https://chatterloop.app/conference/team-sync?invite_token=tok1');
+      expect(invite.conferenceAddress, 'chatterloop.app/conference/team-sync');
+      expect(RealmInvite.fromJson(_json()).conferenceUrl, isNull);
+      expect(RealmInvite.fromJson(_json(type: 'conference')).conferenceUrl,
+          isNull,
+          reason: 'no slug, no address');
     });
 
     test('"none" for a picture means no picture', () {
@@ -162,6 +179,54 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('This invite was withdrawn.'), findsOneWidget);
       expect(find.text('Accept'), findsNothing);
+    });
+
+    testWidgets('a conference invite has a way in: Join conference, and the '
+        'address to tap or copy', (tester) async {
+      final opened = <Uri>[];
+      final api = _FakeInvites(
+          RealmInvite.fromJson(_json(type: 'conference', slug: 'team-sync')));
+      await tester.pumpWidget(_app(api, openExternal: (uri) async {
+        opened.add(uri);
+        return true;
+      }));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Join conference'), findsOneWidget);
+      expect(find.text('Accept'), findsNothing,
+          reason: 'it is accepted in the lobby, where joining happens');
+      expect(find.text('chatterloop.app/conference/team-sync'), findsOneWidget);
+
+      await tester.tap(find.text('Join conference'));
+      await tester.pump();
+      expect(opened.single.toString(),
+          'https://chatterloop.app/conference/team-sync?invite_token=tok1');
+
+      await tester.tap(find.text('chatterloop.app/conference/team-sync'));
+      await tester.pump();
+      expect(opened, hasLength(2));
+      expect(api.answers, isEmpty, reason: 'opening it answers nothing');
+    });
+
+    testWidgets('an accepted conference invite still says where to go',
+        (tester) async {
+      final api = _FakeInvites(RealmInvite.fromJson(
+          _json(type: 'conference', slug: 'team-sync', status: 'accepted')));
+      await tester.pumpWidget(_app(api, openExternal: (_) async => true));
+      await tester.pumpAndSettle();
+      expect(find.text('You accepted this invite.'), findsOneWidget);
+      expect(find.text('Open conference'), findsOneWidget);
+      expect(find.text('chatterloop.app/conference/team-sync'), findsOneWidget);
+    });
+
+    testWidgets('a declined conference invite offers no way in',
+        (tester) async {
+      final api = _FakeInvites(RealmInvite.fromJson(
+          _json(type: 'conference', slug: 'team-sync', status: 'declined')));
+      await tester.pumpWidget(_app(api, openExternal: (_) async => true));
+      await tester.pumpAndSettle();
+      expect(find.text('Open conference'), findsNothing);
+      expect(find.text('chatterloop.app/conference/team-sync'), findsNothing);
     });
 
     testWidgets('a broken link, or a join request, says it cannot open',

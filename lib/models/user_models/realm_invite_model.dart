@@ -4,6 +4,8 @@
 // the same rules in both, and the server's own copy is
 // community/invite_rules.py.
 
+import 'package:chatterloop_app/core/utils/endpoints.dart';
+
 /// Someone on an invite - the inviter or the invitee - as EntitySerializer
 /// writes them: `{id, type, details}`, where details is a user's or a realm's
 /// own fields.
@@ -153,8 +155,23 @@ class RealmInvite {
           ? (role == 'admin' ? 'as an admin' : 'as a moderator')
           : 'to join';
 
+  /// A conference invite's way in: the conference's lobby on the WEB, with
+  /// the token - the lobby shows the invite, takes the answer and lets you
+  /// join. The app has no conference screens, so this is opened in the
+  /// browser. Null for any other realm.
+  String? get conferenceUrl => realmType == 'conference' && realmSlug != null
+      ? '${Endpoints.origin}/conference/${Uri.encodeComponent(realmSlug!)}'
+          '?invite_token=${Uri.encodeQueryComponent(token)}'
+      : null;
+
+  /// The address to show for [conferenceUrl] - without the token, which is
+  /// long and means nothing to read.
+  String? get conferenceAddress => conferenceUrl == null
+      ? null
+      : '${Uri.parse(Endpoints.origin).host}/conference/$realmSlug';
+
   /// Where an ACCEPTED invite takes you in the app, or null where the app has
-  /// no screen for it (a conference - those live on the web).
+  /// no screen for it (a conference - see [conferenceUrl]).
   String? get destination {
     switch (realmType) {
       case 'group':

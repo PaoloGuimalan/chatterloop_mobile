@@ -5,13 +5,29 @@
 // web opens a conference's own lobby instead). It says who invited you to
 // what, and takes the answer; accepting goes on to the realm when the app has
 // a screen for it. Counterpart of the webapp's InvitePage.
+//
+// A CONFERENCE has no screen in the app. Its invite leads to the conference's
+// lobby on the web - "Join conference" opens it in the browser, and the
+// address is spelled out underneath to tap or copy - so nobody is left
+// wondering where to go.
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/invites_api.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:chatterloop_app/models/user_models/realm_invite_model.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+Future<bool> _launchInBrowser(Uri uri) async {
+  try {
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    return false;
+  }
+}
 
 class RealmInviteScreen extends StatefulWidget {
   final String token;
@@ -19,7 +35,15 @@ class RealmInviteScreen extends StatefulWidget {
   /// Injectable for tests.
   final InvitesApi? api;
 
-  const RealmInviteScreen({super.key, required this.token, this.api});
+  /// Opens a web address outside the app. Injectable for tests.
+  final Future<bool> Function(Uri uri) openExternal;
+
+  const RealmInviteScreen({
+    super.key,
+    required this.token,
+    this.api,
+    this.openExternal = _launchInBrowser,
+  });
 
   @override
   State<RealmInviteScreen> createState() => _RealmInviteScreenState();
@@ -68,6 +92,23 @@ class _RealmInviteScreenState extends State<RealmInviteScreen> {
     }
   }
 
+  /// The conference's lobby, in the browser. When it cannot be opened, the
+  /// link is copied instead, so it can be pasted into one.
+  Future<void> _openConference(String url) async {
+    final opened = await widget.openExternal(Uri.parse(url));
+    if (opened) return;
+    await Clipboard.setData(ClipboardData(text: url));
+    CLAlerts.show(
+      "Couldn't open your browser - the conference link is copied.",
+      type: CLAlertType.warning,
+    );
+  }
+
+  Future<void> _copyConference(String url) async {
+    await Clipboard.setData(ClipboardData(text: url));
+    CLAlerts.show('Conference link copied.', type: CLAlertType.success);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
@@ -102,6 +143,8 @@ class _RealmInviteScreenState extends State<RealmInviteScreen> {
               invite: invite,
               answering: _answering,
               onAnswer: _answer,
+              onOpenConference: _openConference,
+              onCopyConference: _copyConference,
             ),
         ],
       ),
@@ -113,11 +156,15 @@ class _InviteCard extends StatelessWidget {
   final RealmInvite invite;
   final String? answering;
   final ValueChanged<String> onAnswer;
+  final ValueChanged<String> onOpenConference;
+  final ValueChanged<String> onCopyConference;
 
   const _InviteCard({
     required this.invite,
     required this.answering,
     required this.onAnswer,
+    required this.onOpenConference,
+    required this.onCopyConference,
   });
 
   @override
@@ -125,6 +172,10 @@ class _InviteCard extends StatelessWidget {
     final p = cl(context);
     final inviter = invite.inviter;
     final destination = invite.destination;
+    final conferenceUrl = invite.conferenceUrl;
+    final showsConference = conferenceUrl != null &&
+        invite.status != 'declined' &&
+        invite.status != 'revoked';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 26, 20, 22),
@@ -201,12 +252,26 @@ class _InviteCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: CLBtn(
-                    label: answering == 'accepted' ? 'Accepting…' : 'Accept',
-                    block: true,
-                    onPressed:
-                        answering != null ? null : () => onAnswer('accepted'),
-                  ),
+                  // A conference is answered in its lobby, where joining
+                  // happens - so its button goes there.
+                  child: conferenceUrl != null
+                      ? CLBtn(
+                          label: 'Join conference',
+                          iconL: Icons.videocam_outlined,
+                          block: true,
+                          onPressed: answering != null
+                              ? null
+                              : () => onOpenConference(conferenceUrl),
+                        )
+                      : CLBtn(
+                          label: answering == 'accepted'
+                              ? 'Accepting…'
+                              : 'Accept',
+                          block: true,
+                          onPressed: answering != null
+                              ? null
+                              : () => onAnswer('accepted'),
+                        ),
                 ),
               ],
             )
@@ -227,9 +292,7 @@ class _InviteCard extends StatelessWidget {
                     Flexible(
                       child: Text(
                         switch (invite.status) {
-                          'accepted' => invite.realmType == 'conference'
-                              ? 'You accepted. Conferences open on the web.'
-                              : 'You accepted this invite.',
+                          'accepted' => 'You accepted this invite.',
                           'declined' => 'You declined this invite.',
                           _ => 'This invite was withdrawn.',
                         },
@@ -239,7 +302,15 @@ class _InviteCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (invite.status == 'accepted' && destination != null) ...[
+                if (invite.status == 'accepted' && conferenceUrl != null) ...[
+                  const SizedBox(height: 12),
+                  CLBtn(
+                    label: 'Open conference',
+                    iconL: Icons.videocam_outlined,
+                    onPressed: () => onOpenConference(conferenceUrl),
+                  ),
+                ] else if (invite.status == 'accepted' &&
+                    destination != null) ...[
                   const SizedBox(height: 12),
                   CLBtn(
                     label: 'Open',
@@ -249,6 +320,73 @@ class _InviteCard extends StatelessWidget {
                 ],
               ],
             ),
+          if (showsConference) ...[
+            const SizedBox(height: 16),
+            _ConferenceLink(
+              address: invite.conferenceAddress!,
+              onOpen: () => onOpenConference(conferenceUrl),
+              onCopy: () => onCopyConference(conferenceUrl),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The conference's address, to tap (it opens in the browser) or to copy.
+class _ConferenceLink extends StatelessWidget {
+  final String address;
+  final VoidCallback onOpen;
+  final VoidCallback onCopy;
+
+  const _ConferenceLink({
+    required this.address,
+    required this.onOpen,
+    required this.onCopy,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: p.surface2,
+        border: Border.all(color: p.border),
+        borderRadius: BorderRadius.circular(CLRadii.sm),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.link, size: 17, color: p.text3),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Semantics(
+              link: true,
+              child: InkWell(
+                onTap: onOpen,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    address,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: CLType.caption,
+                      color: p.brand,
+                      decoration: TextDecoration.underline,
+                      decorationColor: p.brand,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Copy link',
+            icon: Icon(Icons.copy_rounded, size: 18, color: p.text2),
+            onPressed: onCopy,
+          ),
         ],
       ),
     );
