@@ -335,33 +335,125 @@ List<T> _parsePlatformList<T>(
       .toList();
 }
 
-class NotificationSectionData {
+/// One row of the grouped notifications list: a single notification, or
+/// several of the same action on the same thing - "Maya and 4 others reacted
+/// to your post". What may group (and why rows whose buttons differ never do)
+/// is the server's call: server/reusables/models/notificationgroups.js.
+class NotificationGroup {
+  /// Stable across refetches, so an expanded group stays expanded.
+  final String key;
+  final int count;
+
+  /// Unread NOTIFICATIONS in the group.
+  final int unread;
+
+  /// Distinct people behind it.
+  final int actorCount;
+
+  /// The sentence after the people ("reacted to your post"); null for a
+  /// single, which keeps its own stored sentence.
+  final String? action;
+
+  /// Newest first, at most 20 - [count] says how many there are in all.
   final List<NotificationV2> items;
+
+  const NotificationGroup({
+    required this.key,
+    required this.count,
+    required this.unread,
+    required this.actorCount,
+    this.action,
+    required this.items,
+  });
+
+  /// A notification on its own - what an ungrouped answer becomes.
+  factory NotificationGroup.single(NotificationV2 item) => NotificationGroup(
+        key: item.notificationID,
+        count: 1,
+        unread: item.isRead ? 0 : 1,
+        actorCount: 1,
+        items: [item],
+      );
+
+  bool get isGroup => count > 1 && items.isNotEmpty;
+
+  NotificationGroup mapItems(NotificationV2 Function(NotificationV2) transform,
+          {bool zeroUnread = false}) =>
+      NotificationGroup(
+        key: key,
+        count: count,
+        unread: zeroUnread ? 0 : unread,
+        actorCount: actorCount,
+        action: action,
+        items: items.map(transform).toList(),
+      );
+
+  factory NotificationGroup.fromJson(Map<String, dynamic> json) {
+    final raw = json["items"];
+    final items = raw is List
+        ? raw
+            .whereType<Map>()
+            .map((item) =>
+                NotificationV2.fromJson(Map<String, dynamic>.from(item)))
+            .toList()
+        : <NotificationV2>[];
+    int count(String field, int fallback) =>
+        json[field] is num ? (json[field] as num).toInt() : fallback;
+    return NotificationGroup(
+      key: (json["key"] ?? (items.isNotEmpty ? items.first.notificationID : ""))
+          .toString(),
+      count: count("count", items.length),
+      unread: count("unread", items.where((n) => !n.isRead).length),
+      actorCount: count("actorCount", 1),
+      action: json["action"]?.toString(),
+      items: items,
+    );
+  }
+}
+
+/// One section, as ROWS - [NotificationGroup]s. Parses both answers:
+/// the grouped endpoints' `groups`, and the ungrouped `items` of an older
+/// server, every notification its own group - so the screens have one shape
+/// to render either way.
+class NotificationSectionData {
+  final List<NotificationGroup> groups;
+
+  /// GROUPS when grouped, notifications when not - it drives paging.
   final int total;
+
+  /// NOTIFICATIONS, either way.
   final int unread;
   final bool hasNext;
 
   const NotificationSectionData({
-    required this.items,
+    required this.groups,
     required this.total,
     required this.unread,
     required this.hasNext,
   });
 
   static const empty =
-      NotificationSectionData(items: [], total: 0, unread: 0, hasNext: false);
+      NotificationSectionData(groups: [], total: 0, unread: 0, hasNext: false);
 
   factory NotificationSectionData.fromJson(dynamic data) {
     if (data is! Map) return empty;
-    final raw = data["items"];
+    final rawGroups = data["groups"];
+    final rawItems = data["items"];
+    final groups = rawGroups is List
+        ? rawGroups
+            .whereType<Map>()
+            .map((g) => NotificationGroup.fromJson(Map<String, dynamic>.from(g)))
+            .where((g) => g.items.isNotEmpty)
+            .toList()
+        : rawItems is List
+            ? rawItems
+                .whereType<Map>()
+                .map((item) => NotificationGroup.single(
+                    NotificationV2.fromJson(Map<String, dynamic>.from(item))))
+                .toList()
+            : <NotificationGroup>[];
     return NotificationSectionData(
-      items: raw is List
-          ? raw
-              .whereType<Map>()
-              .map((item) =>
-                  NotificationV2.fromJson(Map<String, dynamic>.from(item)))
-              .toList()
-          : const [],
+      groups: groups,
       total: data["total"] is num ? (data["total"] as num).toInt() : 0,
       unread: data["unread"] is num ? (data["unread"] as num).toInt() : 0,
       hasNext: data["next"] == true,

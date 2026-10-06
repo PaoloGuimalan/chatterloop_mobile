@@ -352,6 +352,13 @@ class Endpoints {
   /// GET lists followers; DELETE {realm_id, follow_id} drops one.
   String realmFollowers = '/api/realm/realm-followers';
 
+  /// DJANGO realm invites (community/invites.py). POST {realm_id, target |
+  /// target_entity_id, purpose?, role?} invites by email or username; GET
+  /// ?invite_token= reads one, ?realm_id=&kind=invite&status=pending lists a
+  /// realm's; PATCH {invite_token, status} answers (accepted/declined) or
+  /// withdraws (revoked) one. Same endpoint as webapp's *RealmInviteRequest.
+  String realmInvites = '/api/realm/invites';
+
   /// NODE. DELETE {realm_id, account_ids} - a LIST, even for one person.
   String realmRemoveUser = '/realms/remove-user';
 

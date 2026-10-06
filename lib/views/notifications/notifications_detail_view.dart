@@ -32,7 +32,9 @@ class NotificationsDetailScreen extends StatefulWidget {
 
 class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
     with PaginatedScrollMixin<NotificationsDetailScreen> {
-  final List<NotificationV2> _items = [];
+  /// Rows: groups of several, or notifications on their own.
+  final List<NotificationGroup> _groups = [];
+  final Set<String> _expanded = <String>{};
 
   int _page = 0;
   int? _total;
@@ -71,8 +73,11 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
 
     setState(() {
       if (result != null) {
-        if (page == 1) _items.clear();
-        _items.addAll(result.items);
+        if (page == 1) _groups.clear();
+        // A notification arriving between pages can move a group onto the
+        // next page - it is already here, so skip it.
+        final have = _groups.map((g) => g.key).toSet();
+        _groups.addAll(result.groups.where((g) => !have.contains(g.key)));
         _total = result.total;
         _hasNext = result.hasNext;
         _page = page;
@@ -120,11 +125,7 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
     setState(() {
       _pendingActions.remove(item.referenceID);
       if (ok) {
-        for (var i = 0; i < _items.length; i++) {
-          if (_items[i].referenceID == item.referenceID) {
-            _items[i] = _items[i].copyWith(referenceStatus: true);
-          }
-        }
+        _settle(item.referenceID);
       }
     });
 
@@ -138,7 +139,7 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
   }
 
   /// Server-driven action - see notifications_view.dart's _runAction, which
-  /// this mirrors against this screen's flat `_items` list.
+  /// this mirrors against this screen's rows.
   Future<void> _runAction(
       NotificationV2 item, NotificationAction action) async {
     final isCall =
@@ -160,17 +161,22 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
     setState(() {
       if (isCall) _pendingActions.remove(item.referenceID);
       if (outcome.ok) {
-        for (var i = 0; i < _items.length; i++) {
-          if (_items[i].referenceID == item.referenceID) {
-            _items[i] = _items[i].copyWith(referenceStatus: true);
-          }
-        }
+        _settle(item.referenceID);
       }
     });
 
     if (!outcome.ok) {
       CLAlerts.show(outcome.message ?? "Couldn't complete that action.",
           type: CLAlertType.warning);
+    }
+  }
+
+  /// Hides the buttons on every row answering [referenceID], inside groups too.
+  void _settle(String referenceID) {
+    for (var i = 0; i < _groups.length; i++) {
+      _groups[i] = _groups[i].mapItems((n) => n.referenceID == referenceID
+          ? n.copyWith(referenceStatus: true)
+          : n);
     }
   }
 
@@ -224,7 +230,7 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
               itemBuilder: (_, __) =>
                   const CLNotificationRowSkeleton(detail: true),
             )
-          : _items.isEmpty
+          : _groups.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
@@ -241,14 +247,34 @@ class _NotificationsDetailScreenState extends State<NotificationsDetailScreen>
               : ListView.separated(
                   controller: paginationController,
                   padding: const EdgeInsets.all(14),
-                  itemCount: _items.length + (_isLoadingMore ? 1 : 0),
+                  itemCount: _groups.length + (_isLoadingMore ? 1 : 0),
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
-                    if (index >= _items.length) {
+                    if (index >= _groups.length) {
                       return const CLLoadMoreIndicator();
                     }
-                    final item = _items[index];
+                    final group = _groups[index];
+                    if (group.isGroup) {
+                      return CLGroupedNotificationRow(
+                        key: ValueKey(group.key),
+                        group: group,
+                        detail: true,
+                        expanded: _expanded.contains(group.key),
+                        onToggle: (key) => setState(() {
+                          if (!_expanded.remove(key)) _expanded.add(key);
+                        }),
+                        busy: (item) =>
+                            _pendingActions.contains(item.referenceID),
+                        onAccept: (target) => _respond(target, accept: true),
+                        onDecline: (target) =>
+                            _respond(target, accept: false),
+                        onAction: _runAction,
+                        onOpen: _openNotification,
+                      );
+                    }
+                    final item = group.items.first;
                     return CLNotificationRow(
+                      key: ValueKey(group.key),
                       notification: item,
                       detail: true,
                       busy: _pendingActions.contains(item.referenceID),

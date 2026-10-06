@@ -13,13 +13,23 @@
 // The payload it produces is still web's exactly - see RealmMemberInvite,
 // which carries both the account id and the entity id because the endpoint
 // reads both.
+//
+// A group, a server or a page INVITES rather than adds (realmInvitesMembers):
+// the people picked get an invite they accept or decline (Django
+// community/invites.py), an email address can be invited whether or not
+// anyone has signed up with it, and the invites still waiting are listed with
+// a way to withdraw them. A channel or voice room still adds directly - it
+// takes people already in its server, who said yes once.
 
 import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/requests/invites_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
+import 'package:chatterloop_app/models/user_models/realm_invite_model.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
@@ -32,6 +42,14 @@ bool realmAcceptsNewMembers(RealmProfile realm) {
   final followsParent = kind == 'channel' || kind == 'voice';
   return !(followsParent && !realm.isPrivate);
 }
+
+/// Whether picking people for this realm sends them an INVITE rather than
+/// adding them - every kind the server takes invites for that the app manages
+/// (a conference is managed on the web). Matches the webapp's Members tab.
+bool realmInvitesMembers(RealmProfile realm) =>
+    const {'group', 'server', 'page'}.contains(realmFormKind(realm));
+
+final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
 /// "First Middle Last", skipping the literal "N/A" the API uses for an absent
 /// middle name. Matches how web builds `fullName` for this payload - and it
@@ -87,11 +105,84 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
   bool _adding = false;
   bool _searched = false;
 
+  final InvitesApi _invitesApi = InvitesApi();
+
+  /// Invites still waiting for an answer - shown before a search, with a way
+  /// to withdraw each.
+  List<RealmInvite> _pending = const [];
+  String? _withdrawing;
+  bool _emailing = false;
+
+  /// What a page invites people to do: follow it, or help run it as a
+  /// moderator or an admin. Every other realm has one purpose.
+  String _pageChoice = 'moderator';
+
+  bool get _invites => realmInvitesMembers(widget.realm);
+  bool get _isPage => widget.realm.type == 'page';
+
+  Map<String, String> get _purpose => !_isPage
+      ? const {}
+      : _pageChoice == 'follow'
+          ? const {'purpose': 'follow'}
+          : {'purpose': 'manage', 'role': _pageChoice};
+
   @override
   void initState() {
     super.initState();
     // Nothing to type for a server-sourced list - show it immediately.
     if (_fromParentServer) _search();
+    if (_invites) _loadPending();
+  }
+
+  Future<void> _loadPending() async {
+    final pending = await _invitesApi.pending(widget.realm.id);
+    if (!mounted) return;
+    setState(() => _pending = pending);
+  }
+
+  Future<void> _withdraw(RealmInvite invite) async {
+    setState(() => _withdrawing = invite.token);
+    final settled = await _invitesApi.answer(invite.token, 'revoked');
+    if (!mounted) return;
+    setState(() {
+      _withdrawing = null;
+      if (settled != null) {
+        _pending = _pending.where((i) => i.id != invite.id).toList();
+      }
+    });
+  }
+
+  /// The query as an email address, when it is one - offered as "invite by
+  /// email", which works whether or not anyone has signed up with it.
+  String? get _typedEmail {
+    final text = _query.text.trim();
+    return _invites && _emailPattern.hasMatch(text) ? text : null;
+  }
+
+  Future<void> _inviteEmail(String email) async {
+    if (_emailing) return;
+    setState(() => _emailing = true);
+    final sent = await _invitesApi.create(
+      realmId: widget.realm.id,
+      target: email,
+      purpose: _purpose['purpose'],
+      role: _purpose['role'],
+    );
+    if (!mounted) return;
+    setState(() => _emailing = false);
+    if (sent == null) return;
+    CLAlerts.show(
+      sent.alreadyInvited
+          ? '$email already has an invite waiting.'
+          : 'Invite emailed to $email.',
+      type: sent.alreadyInvited ? CLAlertType.info : CLAlertType.success,
+    );
+    _query.clear();
+    setState(() {
+      _results.clear();
+      _searched = false;
+    });
+    _loadPending();
   }
 
   @override
@@ -174,8 +265,42 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
         .toList();
   }
 
+  /// Invites everyone picked, one each. Leaves the screen once any went out;
+  /// a refusal has already said why.
+  Future<void> _invite() async {
+    setState(() => _adding = true);
+    var sent = 0;
+    for (final entity in _selected.values.toList()) {
+      final result = await _invitesApi.create(
+        realmId: widget.realm.id,
+        targetEntityId: entity.entityId,
+        purpose: _purpose['purpose'],
+        role: _purpose['role'],
+      );
+      if (result != null) {
+        sent++;
+        _selected.remove(entity.entityId);
+      }
+    }
+    if (!mounted) return;
+    setState(() => _adding = false);
+    if (sent == 0) return;
+    CLAlerts.show(
+      sent == 1 ? 'Invite sent.' : '$sent invites sent.',
+      type: CLAlertType.success,
+    );
+    // Nobody joined yet - they will once they accept - so the roster behind
+    // this screen has nothing new to show.
+    if (_selected.isEmpty) {
+      Navigator.of(context).pop(false);
+    } else {
+      _loadPending();
+    }
+  }
+
   Future<void> _add() async {
     if (_selected.isEmpty || _adding) return;
+    if (_invites) return _invite();
     setState(() => _adding = true);
 
     final ok = await ProfileApi().addRealmMembersRequest(
@@ -209,7 +334,8 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text('Add members')),
+      appBar: AppBar(
+          title: Text(_invites ? 'Invite people' : 'Add members')),
       body: Column(
         children: [
           Padding(
@@ -219,11 +345,37 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
               controller: _query,
               placeholder: _fromParentServer
                   ? 'Search server members'
-                  : 'Search people and pages',
+                  : _invites
+                      ? 'Search, or type an email'
+                      : 'Search people and pages',
               icon: Icons.search,
               onChanged: _onQueryChanged,
             ),
           ),
+
+          // A page invites to follow it or to help run it; everything else
+          // has one kind of invite.
+          if (_invites && _isPage)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  CLSpacing.contentGutter, 0, CLSpacing.contentGutter, 6),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final choice in const [
+                    ('follow', 'To follow'),
+                    ('moderator', 'As moderator'),
+                    ('admin', 'As admin'),
+                  ])
+                    CLChip(
+                      label: choice.$2,
+                      active: _pageChoice == choice.$1,
+                      onTap: () => setState(() => _pageChoice = choice.$1),
+                    ),
+                ],
+              ),
+            ),
 
           // The running selection, so you can see what you are about to add
           // without scrolling back through the results to find the ticks.
@@ -263,13 +415,21 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
             padding: const EdgeInsets.fromLTRB(
                 CLSpacing.contentGutter, 8, CLSpacing.contentGutter, 12),
             child: CLBtn(
-              label: _adding
-                  ? 'Adding…'
-                  : selected.isEmpty
-                      ? 'Select someone to add'
-                      : selected.length == 1
-                          ? 'Add 1 member'
-                          : 'Add ${selected.length} members',
+              label: _invites
+                  ? (_adding
+                      ? 'Inviting…'
+                      : selected.isEmpty
+                          ? 'Select someone to invite'
+                          : selected.length == 1
+                              ? 'Invite 1 person'
+                              : 'Invite ${selected.length} people')
+                  : _adding
+                      ? 'Adding…'
+                      : selected.isEmpty
+                          ? 'Select someone to add'
+                          : selected.length == 1
+                              ? 'Add 1 member'
+                              : 'Add ${selected.length} members',
               iconL: Icons.person_add_alt,
               block: true,
               size: CLBtnSize.lg,
@@ -297,18 +457,43 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
       );
     }
 
+    final email = _typedEmail;
+
     if (!_searched) {
-      return Center(
+      final empty = Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: CLSectionEmpty(
             icon: Icons.person_search_outlined,
-            title: 'Search to add',
-            subtitle: 'Anyone you can find can be added to this '
-                '${realmKindNoun(widget.realm)} - they do not have to be a '
-                'contact.',
+            title: _invites ? 'Search to invite' : 'Search to add',
+            subtitle: _invites
+                ? 'Anyone you can find can be invited to this '
+                    '${realmKindNoun(widget.realm)}, or type an email to invite '
+                    'someone who is not on Chatterloop yet. They join once they '
+                    'accept.'
+                : 'Anyone you can find can be added to this '
+                    '${realmKindNoun(widget.realm)} - they do not have to be a '
+                    'contact.',
           ),
         ),
+      );
+      if (_pending.isEmpty && email == null) return empty;
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(
+            CLSpacing.contentGutter, 4, CLSpacing.contentGutter, 8),
+        children: [
+          if (email != null) _emailTile(p, email),
+          if (_pending.isNotEmpty) ..._pendingRows(p),
+          if (_pending.isEmpty) empty,
+        ],
+      );
+    }
+
+    if (_results.isEmpty && email != null) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(
+            CLSpacing.contentGutter, 4, CLSpacing.contentGutter, 8),
+        children: [_emailTile(p, email)],
       );
     }
 
@@ -327,12 +512,14 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
       );
     }
 
+    final lead = email != null ? 1 : 0;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(
           CLSpacing.contentGutter, 4, CLSpacing.contentGutter, 8),
-      itemCount: _results.length,
+      itemCount: _results.length + lead,
       itemBuilder: (context, index) {
-        final entity = _results[index];
+        if (index < lead) return _emailTile(p, email!);
+        final entity = _results[index - lead];
         final already = widget.existingEntityIds.contains(entity.entityId);
         final picked = _selected.containsKey(entity.entityId);
         final name = inviteFullName(entity);
@@ -412,4 +599,104 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
       },
     );
   }
+
+  /// "Invite x@y.com by email" - on top of whatever the search found.
+  Widget _emailTile(CLPalette p, String email) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(CLRadii.md),
+      onTap: _emailing ? null : () => _inviteEmail(email),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
+              decoration:
+                  BoxDecoration(color: p.brandSoft, shape: BoxShape.circle),
+              child: Icon(Icons.mail_outline, size: 19, color: p.brand),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_emailing ? 'Sending…' : 'Invite by email',
+                      style: TextStyle(
+                          fontSize: CLType.body,
+                          fontWeight: FontWeight.w600,
+                          color: p.text)),
+                  Text(email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          TextStyle(fontSize: CLType.caption, color: p.text2)),
+                ],
+              ),
+            ),
+            Icon(Icons.send, size: 18, color: p.brand),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _pendingRows(CLPalette p) => [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 10, 4, 4),
+          child: Text('WAITING FOR AN ANSWER',
+              style: TextStyle(
+                  fontSize: CLType.meta,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                  color: p.text3)),
+        ),
+        for (final invite in _pending)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            child: Row(
+              children: [
+                CLAvatar(
+                  id: invite.targetEntity?.id ?? invite.targetEmail ?? invite.id,
+                  name: invite.targetEntity?.name ?? invite.targetEmail,
+                  src: invite.targetEntity?.profile,
+                  kind: invite.targetEntity?.type,
+                  size: 34,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                          invite.targetEntity?.name ??
+                              invite.targetEmail ??
+                              'Someone',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: CLType.bodySm,
+                              fontWeight: FontWeight.w600,
+                              color: p.text)),
+                      Text(
+                          'Invited ${invite.purposeLabel}'
+                          '${invite.targetEntity == null ? ' · by email' : ''}',
+                          style: TextStyle(
+                              fontSize: CLType.meta, color: p.text3)),
+                    ],
+                  ),
+                ),
+                CLBtn(
+                  label: 'Withdraw',
+                  size: CLBtnSize.sm,
+                  variant: CLBtnVariant.outline,
+                  onPressed: _withdrawing == invite.token
+                      ? null
+                      : () => _withdraw(invite),
+                ),
+              ],
+            ),
+          ),
+      ];
 }

@@ -179,6 +179,8 @@ class PushPayload {
     '/moments/',
     // Voice channel joins: the server the channel belongs to.
     '/server/',
+    // Realm invites: the invite, with its Accept / Decline.
+    '/invite/',
   ];
 
   /// [route] if it's one we recognise, otherwise null.

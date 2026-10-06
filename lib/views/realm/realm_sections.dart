@@ -349,7 +349,10 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
           // membership follows the parent server (web's `addableMember`).
           if (widget.members && realmAcceptsNewMembers(widget.realm))
             IconButton(
-              tooltip: 'Add members',
+              // A group, server or page invites; a channel adds directly.
+              tooltip: realmInvitesMembers(widget.realm)
+                  ? 'Invite people'
+                  : 'Add members',
               icon: const Icon(Icons.person_add_alt),
               onPressed: () async {
                 final added = await Navigator.of(context).push<bool>(

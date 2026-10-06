@@ -32,6 +32,7 @@ import 'package:chatterloop_app/views/notifications/notifications_view.dart';
 import 'package:chatterloop_app/views/profile/profile_edit_view.dart';
 import 'package:chatterloop_app/views/profile/realm_profile_view.dart';
 import 'package:chatterloop_app/views/profile/bot_profile_view.dart';
+import 'package:chatterloop_app/views/realm/realm_invite_view.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
 import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/post_preview_view.dart';
@@ -520,6 +521,13 @@ GoRouter buildAppRouter(AuthController authController) {
             path: '/post/:postId',
             pageBuilder: (c, s) => _clPage(
                 s, PostPreviewScreen(postId: s.pathParameters['postId']!)),
+          ),
+          // An invite into a group, server, conference or page - where its
+          // notification and push lead. Accept / Decline live here too.
+          GoRoute(
+            path: '/invite/:token',
+            pageBuilder: (c, s) => _clPage(
+                s, RealmInviteScreen(token: s.pathParameters['token']!)),
           ),
           // Diary. Gated on module.diary.access, mirroring webapp's
           // ProfileContainer.tsx: while acting as a page the module simply

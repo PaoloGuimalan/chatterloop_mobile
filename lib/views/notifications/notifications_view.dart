@@ -64,6 +64,14 @@ class _NotificationsViewState extends State<NotificationsView> {
   /// the buttons on every other one.
   final Set<String> _pendingActions = <String>{};
 
+  /// Which grouped rows are open, by group key - which the server keeps stable
+  /// across refetches, so a new reaction does not snap an open group shut.
+  final Set<String> _expanded = <String>{};
+
+  void _toggleGroup(String key) => setState(() {
+        if (!_expanded.remove(key)) _expanded.add(key);
+      });
+
   @override
   void initState() {
     super.initState();
@@ -107,7 +115,9 @@ class _NotificationsViewState extends State<NotificationsView> {
     if (overview == null) return;
     NotificationSectionData patch(NotificationSectionData section) =>
         NotificationSectionData(
-          items: section.items.map(transform).toList(),
+          groups: section.groups
+              .map((g) => g.mapItems(transform, zeroUnread: zeroUnread))
+              .toList(),
           total: section.total,
           unread: zeroUnread ? 0 : section.unread,
           hasNext: section.hasNext,
@@ -257,6 +267,33 @@ class _NotificationsViewState extends State<NotificationsView> {
     context.push(route);
   }
 
+  /// One row: a group of several, or a notification on its own.
+  Widget _row(NotificationGroup group) {
+    if (group.isGroup) {
+      return CLGroupedNotificationRow(
+        key: ValueKey(group.key),
+        group: group,
+        expanded: _expanded.contains(group.key),
+        onToggle: _toggleGroup,
+        busy: (item) => _pendingActions.contains(item.referenceID),
+        onAccept: (target) => _respond(target, accept: true),
+        onDecline: (target) => _respond(target, accept: false),
+        onAction: _runAction,
+        onOpen: _openNotification,
+      );
+    }
+    final item = group.items.first;
+    return CLNotificationRow(
+      key: ValueKey(group.key),
+      notification: item,
+      busy: _pendingActions.contains(item.referenceID),
+      onAccept: (target) => _respond(target, accept: true),
+      onDecline: (target) => _respond(target, accept: false),
+      onAction: _runAction,
+      onOpen: _openNotification,
+    );
+  }
+
   // -------- sections ---------------------------------------------------------
 
   ({IconData icon, Color color, String emptyText}) _chrome(
@@ -305,7 +342,7 @@ class _NotificationsViewState extends State<NotificationsView> {
   Widget _sectionCard(NotificationSection section, CLPalette p) {
     final data = _overview?.section(section) ?? NotificationSectionData.empty;
     final chrome = _chrome(section, p);
-    final visible = data.items.take(_kPreviewRows).toList();
+    final visible = data.groups.take(_kPreviewRows).toList();
 
     return CLCard(
       child: Column(
@@ -359,17 +396,10 @@ class _NotificationsViewState extends State<NotificationsView> {
               ),
             )
           else
-            ...visible.map((item) => Padding(
+            ...visible.map((group) => Padding(
                   padding:
-                      EdgeInsets.only(bottom: item == visible.last ? 0 : 8),
-                  child: CLNotificationRow(
-                    notification: item,
-                    busy: _pendingActions.contains(item.referenceID),
-                    onAccept: (target) => _respond(target, accept: true),
-                    onDecline: (target) => _respond(target, accept: false),
-                    onAction: _runAction,
-                    onOpen: _openNotification,
-                  ),
+                      EdgeInsets.only(bottom: group == visible.last ? 0 : 8),
+                  child: _row(group),
                 )),
           if (!_isLoading && data.total > visible.length) ...[
             const SizedBox(height: 12),

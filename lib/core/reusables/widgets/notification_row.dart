@@ -27,6 +27,7 @@ import 'package:flutter/material.dart';
     "info_contact_accept" => (icon: Icons.how_to_reg, color: (p) => p.green),
     "info_contact_decline" => (icon: Icons.close, color: (p) => p.text3),
     "poke" => (icon: Icons.touch_app, color: (p) => p.gold),
+    "realm_invite" => (icon: Icons.group_add, color: (p) => p.brand),
     _ => (icon: Icons.notifications, color: (p) => p.text3),
   };
 }
@@ -419,6 +420,354 @@ class _PressableRowState extends State<_PressableRow> {
         splashColor: widget.pressedOverlay.withValues(alpha: 0.14),
         child: widget.child,
       ),
+    );
+  }
+}
+
+/// Several notifications of the same action on the same thing, as one row -
+/// "Maya, Leo and 3 others reacted to your post" - that expands to the
+/// notifications themselves. In Connections, one person's requests, accepts
+/// and approvals: "Juan sent you a contact request and accepted your request".
+/// Counterpart of the webapp's GroupedNotificationRow.
+///
+/// The server decides what groups (notificationgroups.js). The group's own row
+/// NEVER carries buttons: each stays on the member it belongs to, answered
+/// there once expanded - two contact requests from one person are two
+/// Confirms, each for its own connection. So a group holding something to
+/// answer says so, and its row opens the group rather than leaving the screen.
+class CLGroupedNotificationRow extends StatelessWidget {
+  final NotificationGroup group;
+  final bool detail;
+  final bool expanded;
+  final ValueChanged<String> onToggle;
+
+  /// Whether a member's accept/decline is in flight - keyed per member, as on
+  /// the plain rows.
+  final bool Function(NotificationV2) busy;
+  final ValueChanged<NotificationV2> onAccept;
+  final ValueChanged<NotificationV2> onDecline;
+  final void Function(NotificationV2, NotificationAction)? onAction;
+  final ValueChanged<NotificationV2>? onOpen;
+
+  const CLGroupedNotificationRow({
+    super.key,
+    required this.group,
+    this.detail = false,
+    required this.expanded,
+    required this.onToggle,
+    required this.busy,
+    required this.onAccept,
+    required this.onDecline,
+    this.onAction,
+    this.onOpen,
+  });
+
+  static String _nameOf(NotificationV2 n) =>
+      (n.fromUser?.displayName.isNotEmpty == true)
+          ? n.fromUser!.displayName
+          : (n.headline.isNotEmpty ? n.headline : "Someone");
+
+  /// The distinct people in the group, newest first.
+  List<NotificationV2> get _actors {
+    final seen = <String>{};
+    final actors = <NotificationV2>[];
+    for (final n in group.items) {
+      final id = n.fromUser?.entityId ?? n.fromUserID;
+      if (seen.add(id)) actors.add(n);
+    }
+    return actors;
+  }
+
+  /// Members still waiting on an answer - the test the member rows use to
+  /// show buttons, plus the open flag that answering flips locally.
+  int get _toAnswer => group.items
+      .where((n) =>
+          n.referenceStatus != true &&
+          (n.actions.any(isRunnableAction) || n.isActionable))
+      .length;
+
+  /// Where the group's own row goes when every member goes to the same place
+  /// - a post, whatever comment each one scrolls to. Reactions on a post open
+  /// the post; follows open different profiles, so that row only expands.
+  NotificationV2? get _sharedDestination {
+    String? base(NotificationV2 n) {
+      final route = n.redirect?.route;
+      if (route == null || route.isEmpty) return null;
+      return route.split('?').first.split('#').first;
+    }
+
+    final first = base(group.items.first);
+    if (first == null) return null;
+    return group.items.every((n) => base(n) == first)
+        ? group.items.first
+        : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = cl(context);
+    final actors = _actors;
+    final shown =
+        actors.take(group.actorCount >= 3 ? 2 : group.actorCount).toList();
+    final others =
+        (group.actorCount - shown.length).clamp(0, group.actorCount).toInt();
+    final toAnswer = _toAnswer;
+    // Something inside to answer: the row opens the group, where the buttons
+    // are, instead of going somewhere without them.
+    final destination =
+        onOpen == null || toAnswer > 0 ? null : _sharedDestination;
+    final unread = group.unread > 0;
+    final latest = group.items.first;
+    final parsedAt = _parseNotificationAt(latest);
+    final timeLabel = parsedAt != null ? timeSince(parsedAt) : latest.date;
+    final avatarSize = detail ? 44.0 : 38.0;
+
+    final bold = TextStyle(fontWeight: FontWeight.w700, color: p.text);
+    final spans = <InlineSpan>[];
+    for (var i = 0; i < shown.length; i++) {
+      if (i > 0) {
+        spans.add(TextSpan(
+            text: i == shown.length - 1 && others == 0 ? " and " : ", "));
+      }
+      spans.add(TextSpan(text: _nameOf(shown[i]), style: bold));
+    }
+    if (others > 0) {
+      spans.add(const TextSpan(text: " and "));
+      spans.add(TextSpan(
+          text: "$others ${others == 1 ? 'other' : 'others'}", style: bold));
+    }
+    spans.add(TextSpan(
+        text: " ${group.action ?? ''}", style: TextStyle(color: p.text2)));
+
+    // Two faces, the second tucked behind the first.
+    final faces = SizedBox(
+      width: avatarSize + (actors.length > 1 ? 12 : 0),
+      height: avatarSize,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          if (actors.length > 1)
+            Positioned(
+              left: 12,
+              top: 0,
+              child: CLAvatar(
+                id: actors[1].fromUser?.entityId ?? actors[1].fromUserID,
+                name: _nameOf(actors[1]),
+                src: actors[1].fromUser?.profile,
+                kind: actors[1].fromUser?.type,
+                size: avatarSize - 8,
+              ),
+            ),
+          Positioned(
+            left: 0,
+            top: actors.length > 1 ? 6 : 0,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: actors.length > 1
+                    ? Border.all(color: p.surface, width: 2)
+                    : null,
+              ),
+              child: CLAvatar(
+                id: actors.first.fromUser?.entityId ?? actors.first.fromUserID,
+                name: _nameOf(actors.first),
+                src: actors.first.fromUser?.profile,
+                kind: actors.first.fromUser?.type,
+                size: actors.length > 1 ? avatarSize - 6 : avatarSize,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final toggle = Semantics(
+      button: true,
+      expanded: expanded,
+      label: expanded ? "Collapse" : "Show all ${group.count}",
+      child: InkWell(
+        onTap: () => onToggle(group.key),
+        borderRadius: BorderRadius.circular(CLRadii.pill),
+        child: Container(
+          height: 28,
+          padding: const EdgeInsets.only(left: 9, right: 4),
+          decoration: BoxDecoration(
+            color: p.surface,
+            border: Border.all(color: p.border),
+            borderRadius: BorderRadius.circular(CLRadii.pill),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("${group.count}",
+                  style: TextStyle(
+                      fontSize: CLType.meta,
+                      fontWeight: FontWeight.w700,
+                      color: p.text2)),
+              AnimatedRotation(
+                turns: expanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: Icon(Icons.expand_more, size: 18, color: p.text2),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final header = Padding(
+      padding: EdgeInsets.all(detail ? 10 : 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          faces,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text.rich(TextSpan(children: spans),
+                    style: TextStyle(
+                        fontSize: detail ? 13.5 : 13,
+                        height: 1.35,
+                        color: p.text2)),
+                const SizedBox(height: 2),
+                Text.rich(
+                  TextSpan(children: [
+                    TextSpan(
+                        text: group.actorCount < group.count
+                            ? "$timeLabel · ${group.count} notifications"
+                            : timeLabel),
+                    if (toAnswer > 0)
+                      TextSpan(
+                        text: " · $toAnswer to answer",
+                        style: TextStyle(
+                            color: p.brand, fontWeight: FontWeight.w600),
+                      ),
+                  ]),
+                  style: TextStyle(fontSize: CLType.meta, color: p.text3),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Padding(padding: const EdgeInsets.only(top: 4), child: toggle),
+        ],
+      ),
+    );
+
+    final radius = BorderRadius.circular(detail ? CLRadii.md : CLRadii.sm);
+    final background = unread ? p.brandSoft : p.surface;
+    final borderSide = detail
+        ? BorderSide(color: unread ? Colors.transparent : p.border)
+        : BorderSide.none;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _PressableRow(
+          background: background,
+          pressedOverlay: p.brand,
+          radius: radius,
+          borderSide: borderSide,
+          onTap: destination != null
+              ? () => onOpen!(destination)
+              : () => onToggle(group.key),
+          child: header,
+        ),
+        _Expandable(
+          expanded: expanded,
+          child: Container(
+            margin: const EdgeInsets.only(left: 22, top: 4, bottom: 2),
+            padding: const EdgeInsets.only(left: 10),
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: p.border, width: 2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < group.items.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 4),
+                  CLNotificationRow(
+                    notification: group.items[i],
+                    busy: busy(group.items[i]),
+                    onAccept: onAccept,
+                    onDecline: onDecline,
+                    onAction: onAction,
+                    onOpen: onOpen,
+                  ),
+                ],
+                if (group.count > group.items.length)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(9, 4, 9, 6),
+                    child: Text(
+                      "and ${group.count - group.items.length} earlier",
+                      style: TextStyle(fontSize: CLType.meta, color: p.text3),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Opens and closes its child by height, and keeps the child while it closes
+/// - a group collapsing shows its rows going away, not an emptied box
+/// shrinking.
+class _Expandable extends StatefulWidget {
+  final bool expanded;
+  final Widget child;
+
+  const _Expandable({required this.expanded, required this.child});
+
+  @override
+  State<_Expandable> createState() => _ExpandableState();
+}
+
+class _ExpandableState extends State<_Expandable>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    value: widget.expanded ? 1 : 0,
+  );
+  late final Animation<double> _curve = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic);
+
+  @override
+  void didUpdateWidget(covariant _Expandable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded != oldWidget.expanded) {
+      widget.expanded ? _controller.forward() : _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) => _controller.isDismissed
+          ? const SizedBox.shrink()
+          : SizeTransition(
+              sizeFactor: _curve,
+              alignment: Alignment.topCenter,
+              child: FadeTransition(opacity: _curve, child: child),
+            ),
+      child: widget.child,
     );
   }
 }
