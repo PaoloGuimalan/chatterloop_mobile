@@ -11,11 +11,16 @@ class PendingContentWidget extends StatefulWidget {
   final String messageID;
   final String content;
   final String contentType;
+
+  /// "replied to X" and the quote, over a reply that is still sending - the
+  /// conversation builds it, since the quoted message lives there.
+  final Widget? replyHeader;
   const PendingContentWidget(
       {super.key,
       required this.messageID,
       required this.content,
-      required this.contentType});
+      required this.contentType,
+      this.replyHeader});
 
   @override
   PendingContentWidgetState createState() => PendingContentWidgetState();
@@ -696,6 +701,7 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
           SizedBox(
             height: 5,
           ),
+          if (widget.replyHeader != null) widget.replyHeader!,
           Column(
             children: [
               Opacity(

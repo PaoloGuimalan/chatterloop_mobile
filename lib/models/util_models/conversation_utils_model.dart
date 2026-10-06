@@ -15,11 +15,17 @@ class PendingMessages {
   String content;
   String type;
 
-  PendingMessages(this.conversationID, this.pendingID, this.content, this.type);
+  /// The message this send replies to, "" for none - so the pending bubble
+  /// shows its quote while it sends instead of growing one on confirm.
+  String replyingTo;
+
+  PendingMessages(this.conversationID, this.pendingID, this.content, this.type,
+      {this.replyingTo = ""});
 
   factory PendingMessages.fromJson(Map<String, dynamic> json) {
     return PendingMessages(json["conversationID"], json["pendingID"],
-        json["content"], json["type"]);
+        json["content"], json["type"],
+        replyingTo: (json["replyingTo"] ?? "").toString());
   }
 }
 

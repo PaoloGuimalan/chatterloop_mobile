@@ -12,6 +12,8 @@ import 'package:chatterloop_app/core/utils/chat_mentions.dart';
 import 'package:chatterloop_app/core/utils/message_format.dart';
 import 'package:chatterloop_app/core/utils/message_runs.dart';
 import 'package:chatterloop_app/core/reusables/widgets/seen_faces.dart';
+import 'package:chatterloop_app/core/reusables/widgets/thread_motion.dart';
+import 'package:chatterloop_app/core/utils/unread_divider.dart';
 import 'package:chatterloop_app/models/user_models/user_contacts_model.dart';
 import 'package:chatterloop_app/core/reusables/widgets/conversation_options.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
@@ -1756,6 +1758,252 @@ class ConversationStateView extends State<ConversationView> {
         _unreadMessageIds.where((id) => !seen.contains(id)).toList();
   }
 
+  // --- Thread rows: identity, slide-in, the unread divider -----------------
+
+  /// Where reading stopped when this visit opened the thread - see
+  /// utils/unread_divider.dart. Recorded from the first load on.
+  final UnreadVisit _unreadVisit = UnreadVisit();
+  UnreadDivider? _unreadDivider;
+
+  /// Every row key this screen has drawn. A row whose key is not in here yet
+  /// is new; the new ones at the BOTTOM, while the reader is there, slide in
+  /// (ThreadEntry). [_slideInKeys] holds those until the frame that builds
+  /// them is over.
+  final Set<String> _knownRowKeys = {};
+  bool _rowsPrimed = false;
+  Set<String> _slideInKeys = {};
+
+  /// Row keys by position in [combinedPendingAndMessagesList], and list
+  /// indexes (reversed) by key, for findChildIndexCallback.
+  List<String> _rowKeys = const [];
+  Map<String, int> _rowIndexByKey = const {};
+
+  /// A row's identity, stable across the pending -> sent swap. A sent message
+  /// carries the pendingID it was sent under, so it takes over its pending's
+  /// row - which is left with nothing to draw, under its own "settled" key -
+  /// and the row only changes height, instead of one vanishing and another
+  /// arriving.
+  String _rowKeyOf(Object? item) {
+    if (item is PendingMessages) {
+      final settled = conversationContentList
+          .any((message) => message.pendingID == item.pendingID);
+      return settled ? "settled:${item.pendingID}" : "p:${item.pendingID}";
+    }
+    if (item is MessageContent) {
+      final pendingID = item.pendingID ?? "";
+      return pendingID.isNotEmpty ? "p:$pendingID" : "m:${item.messageID}";
+    }
+    return "x:${item.hashCode}";
+  }
+
+  Set<String> _selfIdsOf(UserAuth userAuth) => {
+        userAuth.user.entityId,
+        userAuth.user.personalEntityId ?? "",
+        userAuth.user.id,
+      }..remove("");
+
+  /// Once per build, before the list: row keys, which rows are new at the
+  /// bottom, and the unread divider.
+  void _prepareThreadRows(UserAuth userAuth) {
+    final list = combinedPendingAndMessagesList;
+    final keys = List<String>.filled(list.length, "");
+    final byKey = <String, int>{};
+    for (var position = list.length - 1; position >= 0; position--) {
+      var key = _rowKeyOf(list[position]);
+      // Two rows claiming one key (a server echo with a reused pendingID)
+      // would hand both to one element. The older one falls back.
+      if (byKey.containsKey(key)) {
+        final item = list[position];
+        key = item is MessageContent
+            ? "m:${item.messageID}"
+            : "dup:$key:$position";
+      }
+      keys[position] = key;
+      byKey[key] = list.length - 1 - position;
+    }
+
+    // New at the bottom: everything newer than the newest row already drawn.
+    // Not on the first load, and not for older pages coming in at the top.
+    final following = !_scrollController.hasClients ||
+        _scrollController.position.pixels <= 100;
+    final arrived = <String>{};
+    if (_rowsPrimed) {
+      for (var position = list.length - 1; position >= 0; position--) {
+        final key = keys[position];
+        if (_knownRowKeys.contains(key)) break;
+        if (!key.startsWith("settled:")) arrived.add(key);
+      }
+    }
+    if (isInitialized) _rowsPrimed = true;
+    _knownRowKeys.addAll(keys);
+    _rowKeys = keys;
+    _rowIndexByKey = byKey;
+
+    if (arrived.isNotEmpty && following) {
+      _slideInKeys = {..._slideInKeys, ...arrived};
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _slideInKeys = {};
+        // A little way up when it arrived: come down to it, as the webapp
+        // does inside the same 100px.
+        if (mounted &&
+            _scrollController.hasClients &&
+            _scrollController.position.pixels > 0) {
+          _scrollController.animateTo(0,
+              duration: kThreadEntryDuration, curve: Curves.easeOutCubic);
+        }
+      });
+    }
+
+    if (isInitialized) {
+      final newestFirst = conversationContentList.reversed;
+      recordFirstSight(newestFirst, _unreadVisit, _selfIdsOf(userAuth));
+      _unreadDivider =
+          unreadDividerOf(newestFirst, _unreadVisit, range < totalMessages);
+    }
+  }
+
+  int? _threadChildIndex(Key key) =>
+      key is ValueKey<String> ? _rowIndexByKey[key.value] : null;
+
+  /// Whether the unread divider sits right above [item].
+  bool _dividerAbove(Object? item) =>
+      item is MessageContent &&
+      _unreadDivider != null &&
+      item.messageID == _unreadDivider!.messageID;
+
+  /// One list row, keyed and wrapped for its entrance - and with the unread
+  /// divider over it when it is the oldest unread message.
+  Widget _threadRow(int index, Widget row) {
+    final list = combinedPendingAndMessagesList;
+    final position = list.length - 1 - index;
+    if (position < 0 || position >= list.length) return row;
+    final key = position < _rowKeys.length
+        ? _rowKeys[position]
+        : _rowKeyOf(list[position]);
+    final divider = _unreadDivider;
+    return ThreadEntry(
+      key: ValueKey<String>(key),
+      animateIn: _slideInKeys.contains(key),
+      child: _dividerAbove(list[position]) && divider != null
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                UnreadDividerLine(label: unreadDividerLabel(divider.count)),
+                row,
+              ],
+            )
+          : row,
+    );
+  }
+
+  /// "replied to X" and the quote over a reply that is still sending - the
+  /// same label and quote its sent copy carries (MessageContentWidget), so
+  /// the row only eases a few pixels when that copy replaces it. Null when it
+  /// is not a reply, or the quoted message is not in the loaded thread.
+  Widget? _pendingReplyHeader(PendingMessages pending) {
+    if (pending.replyingTo.isEmpty) return null;
+    MessageContent? target;
+    for (final message in conversationContentList) {
+      if (message.messageID == pending.replyingTo) {
+        target = message;
+        break;
+      }
+    }
+    if (target == null) return null;
+
+    final p = cl(context);
+    final quotedMine =
+        _selfIdsOf(appStore.state.userAuth).contains(target.sender);
+    // A message with no text of its own - a post sent with no note, a moment
+    // or thought reply - is quoted as the card it carried.
+    final card = target.messageType == "post"
+        ? target.postcard
+        : (target.messageType == "text" &&
+                target.content.toString().trim().isEmpty &&
+                target.replyedtarget != null &&
+                !target.replyedtarget!.isMessage)
+            ? target.replyedtarget
+            : null;
+
+    Widget bubble(Widget child) => Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 270),
+                child: Container(
+                  decoration: BoxDecoration(
+                      color: quotedMine ? CLAccent.of(context) : p.border2,
+                      borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.only(
+                      top: 10, bottom: 10, left: 7, right: 7),
+                  child: child,
+                ),
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+        );
+
+    final Widget quote;
+    if (card != null) {
+      quote = ReplyTargetCard(target: card, alignEnd: true);
+    } else if (target.isDeleted == true) {
+      quote = Opacity(
+        opacity: 0.6,
+        child: bubble(Text("Message deleted",
+            style: TextStyle(
+                fontSize: CLType.title, fontStyle: FontStyle.italic,
+                color: quotedMine ? Colors.white : p.text2))),
+      );
+    } else if (target.messageType == "text") {
+      quote = Opacity(
+        opacity: 0.6,
+        child: bubble(buildFormattedMessage(
+          source: target.content,
+          members: _mentionHighlightMembers,
+          commands: _commandNames,
+          style: MessageFormatStyle(
+            base: TextStyle(
+                fontSize: CLType.title,
+                color: quotedMine ? Colors.white : p.text),
+            mentionColor:
+                quotedMine ? Colors.white : CLAccent.textOf(context),
+          ),
+        )),
+      );
+    } else {
+      // Media and files: what it was, in the quote's own bubble.
+      quote = Opacity(
+        opacity: 0.6,
+        child: bubble(Text(
+          messageReplyIdentifier(target.messageType, target.content),
+          style: TextStyle(
+              fontSize: CLType.title,
+              color: quotedMine ? Colors.white : p.text),
+        )),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 7, right: 7, bottom: 7),
+          child: Text(
+            "replied to ${_resolveSenderName(target.sender)}",
+            style: TextStyle(
+                fontSize: CLType.caption,
+                color: Color(0xFF565656),
+                fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        quote,
+      ],
+    );
+  }
+
   /// Active "@..." suggestions, if any.
   ///
   /// A ValueNotifier, NOT setState: the onChanged handler below is explicit
@@ -2173,8 +2421,9 @@ class ConversationStateView extends State<ConversationView> {
 
     if (contentValue.trim() != "") {
       List<PendingMessages> newPendingMessagesList = [...pendingMessagesList];
-      newPendingMessagesList.add(
-          PendingMessages(conversationID, pendingID, contentValue, "text"));
+      newPendingMessagesList.add(PendingMessages(
+          conversationID, pendingID, contentValue, "text",
+          replyingTo: isReplyingProp ? replyingToProp : ""));
 
       ContentValidator().printer(contentValue.trim());
       // ContentValidator().printer(receivers);
@@ -2237,7 +2486,8 @@ class ConversationStateView extends State<ConversationView> {
           "${userID}_${conversationID}_${pendingMessagesList.length + i + 1}_${ContentValidator().generateRandomNumber(10)}";
       pendingIDs.add(pendingID);
       newPendingMessagesList.add(PendingMessages(
-          conversationID, pendingID, files[i].path, files[i].messageType));
+          conversationID, pendingID, files[i].path, files[i].messageType,
+          replyingTo: isReplyingProp ? replyingToProp : ""));
     }
 
     if (mounted) {
@@ -2463,6 +2713,7 @@ class ConversationStateView extends State<ConversationView> {
         // bubbles, ticks, reply rail and header icons gold in one move rather
         // than fifteen.
         final accent = _accentFor(p);
+        _prepareThreadRows(state.userAuth);
         return CLAccent(
           color: accent,
           // The label form of the same accent. A channel's gold fills bubbles
@@ -2985,8 +3236,12 @@ class ConversationStateView extends State<ConversationView> {
                                                       itemCount:
                                                           combinedPendingAndMessagesList
                                                               .length, //conversationContentList.length
-                                                      itemBuilder:
-                                                          (context, index) {
+                                                      // Rows are keyed (see _rowKeyOf), so a row keeps its element - and
+                                                      // its state - as newer rows push it up, and a pending send hands its
+                                                      // row to the sent message instead of vanishing.
+                                                      findChildIndexCallback: _threadChildIndex,
+                                                      itemBuilder: (context, index) =>
+                                                          _threadRow(index, (() {
                                                         if (index ==
                                                             combinedPendingAndMessagesList
                                                                     .length -
@@ -3053,8 +3308,9 @@ class ConversationStateView extends State<ConversationView> {
                                                                           // Only the sole loaded item
                                                                           // has nothing newer below it.
                                                                           endsRun: endsSenderRun(
-                                                                              (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent),
-                                                                              index > 0 ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - index] : null),
+                                                                                  (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent),
+                                                                                  index > 0 ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - index] : null) ||
+                                                                              _dividerAbove(index > 0 ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - index] : null),
                                                                           currentUserID: state
                                                                               .userAuth
                                                                               .user
@@ -3130,6 +3386,9 @@ class ConversationStateView extends State<ConversationView> {
                                                                                 1 -
                                                                                 index] as PendingMessages)
                                                                             .type,
+                                                                        replyHeader: _pendingReplyHeader(combinedPendingAndMessagesList[combinedPendingAndMessagesList.length -
+                                                                            1 -
+                                                                            index] as PendingMessages),
                                                                       ),
                                                                     ),
                                                                     if (index ==
@@ -3171,24 +3430,31 @@ class ConversationStateView extends State<ConversationView> {
                                                             // always open a run, repeating
                                                             // the sender's name under their
                                                             // own previous message.
+                                                            //
+                                                            // The unread divider breaks a run that
+                                                            // crosses it: the unread side opens with
+                                                            // the name, the read side closes with
+                                                            // the face.
                                                             final startsRun =
                                                                 startsSenderRun(
-                                                                    contentItem,
-                                                                    combinedPendingAndMessagesList[
-                                                                        combinedPendingAndMessagesList.length -
-                                                                            2 -
-                                                                            index]);
+                                                                        contentItem,
+                                                                        combinedPendingAndMessagesList[
+                                                                            combinedPendingAndMessagesList.length -
+                                                                                2 -
+                                                                                index]) ||
+                                                                    _dividerAbove(contentItem);
 
                                                             // The item drawn just BELOW: one
                                                             // place later, or nothing for the
                                                             // newest (index 0).
-                                                            final endsRun = endsSenderRun(
-                                                                contentItem,
-                                                                index > 0
-                                                                    ? combinedPendingAndMessagesList[
-                                                                        combinedPendingAndMessagesList.length -
-                                                                            index]
-                                                                    : null);
+                                                            final newer = index > 0
+                                                                ? combinedPendingAndMessagesList[
+                                                                    combinedPendingAndMessagesList.length -
+                                                                        index]
+                                                                : null;
+                                                            final endsRun =
+                                                                endsSenderRun(contentItem, newer) ||
+                                                                    _dividerAbove(newer);
 
                                                             return Column(
                                                               children: [
@@ -3276,6 +3542,9 @@ class ConversationStateView extends State<ConversationView> {
                                                                       contentType:
                                                                           contentItem
                                                                               .type,
+                                                                      replyHeader:
+                                                                          _pendingReplyHeader(
+                                                                              contentItem),
                                                                     ),
                                                                   ),
                                                                   index == 0
@@ -3294,7 +3563,7 @@ class ConversationStateView extends State<ConversationView> {
                                                             return SizedBox();
                                                           }
                                                         }
-                                                      },
+                                                      })()),
                                                     ),
                                     ),
                                     // JUMP TO BOTTOM. Over the list
@@ -3325,11 +3594,12 @@ class ConversationStateView extends State<ConversationView> {
                                     ? null
                                     : _typingFaces,
                               ),
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 500),
-                                curve: Curves.easeInOut,
-                                height: isReplying.isReply ? 80 : 0,
-                                width: MediaQuery.of(context).size.width,
+                              // Opens and closes with its content - see
+                              // ComposerStrip for why that is not a plain
+                              // AnimatedContainer any more.
+                              ComposerStrip(
+                                open: isReplying.isReply,
+                                height: 80,
                                 child: Padding(
                                   padding: EdgeInsets.only(
                                       top: 5, left: 5, right: 5, bottom: 2),
@@ -3490,11 +3760,9 @@ class ConversationStateView extends State<ConversationView> {
                                   ),
                                 ),
                               ),
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 500),
-                                curve: Curves.easeInOut,
-                                height: isReplying.isReply ? 50 : 0,
-                                width: MediaQuery.of(context).size.width,
+                              ComposerStrip(
+                                open: isReplying.isReply,
+                                height: 50,
                                 child: Padding(
                                   padding: EdgeInsets.only(
                                       top: 2, left: 5, right: 5, bottom: 5),
@@ -3639,22 +3907,30 @@ class ConversationStateView extends State<ConversationView> {
                               // hitting send, rather than uploading the
                               // instant something's picked.
                               TextFieldTapRegion(
-                                child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 250),
-                                curve: Curves.easeInOut,
-                                height: _stagedFiles.isEmpty ? 0 : 76,
-                                color: p.surface,
-                                child: ClipRect(
-                                  child: _stagedFiles.isEmpty
-                                      ? const SizedBox.shrink()
-                                      : ListView.builder(
-                                          scrollDirection: Axis.horizontal,
-                                          itemCount: _stagedFiles.length,
-                                          itemBuilder: (context, index) =>
-                                              _stagedAttachmentChip(index),
-                                        ),
+                                // Closes with the last files it showed - a
+                                // send or the last removal empties
+                                // _stagedFiles at once (see ComposerStrip).
+                                // The chips are built eagerly, so the held
+                                // row never asks for a file that is gone.
+                                child: ComposerStrip(
+                                  open: _stagedFiles.isNotEmpty,
+                                  height: 76,
+                                  child: ColoredBox(
+                                    color: p.surface,
+                                    child: ListView(
+                                      scrollDirection: Axis.horizontal,
+                                      // Sideways list: no inset padding from
+                                      // MediaQuery (the landscape trap).
+                                      padding: EdgeInsets.zero,
+                                      children: [
+                                        for (var i = 0;
+                                            i < _stagedFiles.length;
+                                            i++)
+                                          _stagedAttachmentChip(i),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
                               ),
                               // Sits ABOVE the input bar as its sibling, not
                               // inside it: that bar is a fixed height: 55, so a
