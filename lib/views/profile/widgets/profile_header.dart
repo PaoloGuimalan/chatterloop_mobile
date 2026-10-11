@@ -97,6 +97,8 @@ class ProfileHeader extends StatelessWidget {
   final Widget? actions;
   final bool online;
 
+  final String? type;
+
   const ProfileHeader({
     super.key,
     required this.id,
@@ -115,6 +117,7 @@ class ProfileHeader extends StatelessWidget {
     this.birthdateLabel,
     this.actions,
     this.online = false,
+    this.type,
   });
 
   Widget _coverPlaceholder(CLPalette p) => Container(
@@ -309,7 +312,10 @@ class ProfileHeader extends StatelessWidget {
                 ),
               ),
               ...clEntityMarkers(context,
-                  isVerified: isBadged, badgeSize: 18, gap: 5),
+                  isVerified: isBadged,
+                  badgeSize: 18,
+                  gap: 5,
+                  isPage: type == "page"),
               if (isPrivate) ...[
                 const SizedBox(width: 5),
                 Icon(Icons.lock, size: 16, color: p.text2),

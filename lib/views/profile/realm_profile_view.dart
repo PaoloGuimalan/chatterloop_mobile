@@ -344,6 +344,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                           avatarSrc: realm.profile,
                           coverSrc: realm.coverPhoto,
                           isBadged: realm.isVerified,
+                          type: realm.type,
                           // Same rule as everywhere else: you can change a
                           // page's picture when you ARE the page, not when you
                           // merely administer it. The server agrees - its

@@ -683,6 +683,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             isPrivate: profile!.isPrivate,
                             gender: profile!.gender,
                             online: online,
+                            type: profile!.type,
                             // OWNER ONLY, and "owner" means the acting entity
                             // IS this profile - the same rule the composer and
                             // the post options use. Everyone else gets no camera
