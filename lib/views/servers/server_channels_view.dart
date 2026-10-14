@@ -773,14 +773,15 @@ class _ServerScreenState extends State<ServerScreen> {
         _serverProfile = null;
       });
 
-  /// Back always lands on the Servers TAB, never one frame up the stack.
-  ///
-  /// go(), not pop(): this screen is reached from the tab, but the rail also
-  /// moves between servers WITHOUT pushing, so the stack depth does not track
-  /// how deep the user feels they are. Popping once could leave them on a
-  /// conversation they opened from a channel, which is not "back" from here by
-  /// any reading. One arrow, one destination.
-  void _back() => context.go('/servers');
+  /// Return to whichever screen opened the browser. Direct links have no
+  /// previous screen, so use the Servers tab as their fallback.
+  void _back() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/servers');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

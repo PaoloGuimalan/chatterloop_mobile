@@ -48,7 +48,8 @@ class UserAppShortcuts extends StatelessWidget {
             _tile(context, 'Servers', 'servers',
                 () => context.push('/server-browser')),
             _tile(context, 'Pages', 'pages', _openPages),
-            _tile(context, 'Diary', 'diary', () => context.push('/diary')),
+            if (!isActingAsPage)
+              _tile(context, 'Diary', 'diary', () => context.push('/diary')),
             _tile(context, 'Notes', 'notes', null),
             _tile(context, 'Chatterloop Extension', 'extension', null),
           ],
