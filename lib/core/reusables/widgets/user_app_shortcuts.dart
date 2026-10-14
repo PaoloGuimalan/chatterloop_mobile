@@ -25,7 +25,6 @@ class UserAppShortcuts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = cl(context);
     final textScaler = MediaQuery.textScalerOf(context);
     final tileHeight = 62 + textScaler.scale(CLType.caption) * 2.5;
     return Column(
@@ -44,18 +43,14 @@ class UserAppShortcuts extends StatelessWidget {
             mainAxisExtent: tileHeight,
           ),
           children: [
-            _tile(
-                context,
-                isActingAsPage ? 'Manage realm' : 'Settings',
-                isActingAsPage ? Icons.tune : Icons.settings_outlined,
-                p.brand,
-                onSettings),
-            _tile(context, 'Servers', Icons.dns_outlined, p.gold,
-                () => context.go('/servers')),
-            _tile(context, 'Pages', Icons.description_outlined, p.brand,
-                _openPages),
-            _tile(context, 'Chatterloop Extension', Icons.extension_outlined,
-                p.text3, null),
+            _tile(context, isActingAsPage ? 'Manage realm' : 'Settings',
+                'settings', onSettings),
+            _tile(context, 'Servers', 'servers',
+                () => context.push('/server-browser')),
+            _tile(context, 'Pages', 'pages', _openPages),
+            _tile(context, 'Diary', 'diary', () => context.push('/diary')),
+            _tile(context, 'Notes', 'notes', null),
+            _tile(context, 'Chatterloop Extension', 'extension', null),
           ],
         ),
         const SizedBox(height: 8),
@@ -63,7 +58,7 @@ class UserAppShortcuts extends StatelessWidget {
     );
   }
 
-  Widget _tile(BuildContext context, String label, IconData icon, Color color,
+  Widget _tile(BuildContext context, String label, String iconName,
       VoidCallback? onTap) {
     final p = cl(context);
     return Opacity(
@@ -83,7 +78,10 @@ class UserAppShortcuts extends StatelessWidget {
                 SizedBox(
                   width: 40,
                   height: 40,
-                  child: Icon(icon, color: color, size: 28),
+                  child: Center(
+                    child: Image.asset('assets/images/app-icon-$iconName.png',
+                        width: 28, height: 28, excludeFromSemantics: true),
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
