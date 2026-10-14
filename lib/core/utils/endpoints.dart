@@ -426,6 +426,9 @@ class Endpoints {
   /// `response.data[0].channels`).
   String initServerChannels = '/s/initserverchannels/'; // :serverID
 
+  /// Lists every page the signed-in account may act as.
+  String entityPages = '/api/user/entity/pages';
+
   /// {realm_id} -> re-issues the authtoken with a different `entity` claim
   /// (same userID, acting as the page instead). Only realms of type "page"
   /// support this; server enforces OWNER/ADMIN membership.

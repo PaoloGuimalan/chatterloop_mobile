@@ -13,6 +13,7 @@ import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 
 class EntityApi {
   final _dio = ApiClient.userService.dio;
@@ -29,6 +30,31 @@ class EntityApi {
     int pageSize = 20,
   }) async {
     try {
+      // Switching must list the account's pages, even when acting as a page.
+      if (type == 'page') {
+        try {
+          final response = await _dio.get(_endpoints.entityPages);
+          final pages = response.data['result']?['pages'];
+          if (response.data['status'] == true && pages is List) {
+            return pages
+                .whereType<Map>()
+                .map((page) => RealmSummary(
+                      id: (page['realm_id'] ?? '').toString(),
+                      name: (page['name'] ?? '').toString(),
+                      slug: page['slug']?.toString(),
+                      profile: page['profile']?.toString(),
+                      type: 'page',
+                      isAdmin: true,
+                    ))
+                .where((page) => page.id.isNotEmpty)
+                .toList();
+          }
+          return const [];
+        } on DioException catch (e) {
+          if (e.response?.statusCode != 404) rethrow;
+          // Older user services do not expose the account-wide directory.
+        }
+      }
       final response = await _dio.get(_endpoints.myRealms, queryParameters: {
         "page": 1,
         "page_size": pageSize,

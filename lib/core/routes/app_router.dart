@@ -54,6 +54,7 @@ import 'package:chatterloop_app/views/settings/personal_information_view.dart';
 import 'package:chatterloop_app/views/settings/settings_view.dart';
 import 'package:chatterloop_app/views/shell/authenticated_shell.dart';
 import 'package:chatterloop_app/views/shell/home_tab_scaffold.dart';
+import 'package:chatterloop_app/views/user/user_menu_view.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
 import 'package:chatterloop_app/views/switching/switching_view.dart';
 import 'package:flutter/foundation.dart';
@@ -348,6 +349,11 @@ GoRouter buildAppRouter(AuthController authController) {
                         s,
                         SearchScreen(
                             initialQuery: s.uri.queryParameters['q'] ?? '')))
+              ]),
+              StatefulShellBranch(routes: [
+                GoRoute(
+                    path: '/user',
+                    pageBuilder: (c, s) => _clPage(s, const UserMenuView()))
               ]),
               // No profile branch. Your own profile is not a tab: it pushes
               // /user/<your username> like any other, so one screen renders

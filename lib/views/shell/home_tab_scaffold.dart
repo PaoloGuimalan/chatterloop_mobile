@@ -7,21 +7,17 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:chatterloop_app/core/design/theme_provider.dart';
+import 'package:chatterloop_app/core/auth/logout_user.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/notifications/push_notification_service.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
-import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/contacts_api.dart';
 import 'package:chatterloop_app/core/requests/conversations_api.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/notifications_api.dart';
-import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/reusables/widgets/user_menu_popover.dart';
-import 'package:chatterloop_app/core/notifications/conversation_shortcuts.dart';
-import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
-import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/http_models/response_models.dart';
 import 'package:chatterloop_app/models/messages_models/messages_list_model.dart';
 import 'package:chatterloop_app/views/newsfeed/newsfeed_view.dart';
@@ -34,10 +30,10 @@ import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
 // The profile is not a tab - it's a pushed screen (see _openOwnProfile), so
-// the last nav button is purely a menu trigger.
+// the last nav button opens the account screen.
 //
 // Explore is not a tab either any more: it moved to a header icon beside the
-// theme toggle. It is still a shell BRANCH (index 3) so its stack survives,
+// theme toggle. It is still a shell BRANCH (index 4) so its stack survives,
 // but nothing in the bottom bar points at it - which is why this list is
 // shorter than the branch list, and why _tabTitles is indexed defensively
 // below rather than with [currentIndex].
@@ -52,7 +48,8 @@ const List<String> _tabTitles = [
   "Messages",
   "Contacts",
   "Servers",
-  "Explore"
+  "Explore",
+  "Your account"
 ];
 
 /// The shell header's title: a tab's name, or on the home tab the wordmark.
@@ -107,7 +104,7 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
   static const Offset _kTabNudge = Offset(0, 0.02);
   static const Duration _kTabSlideMs = Duration(milliseconds: 190);
 
-  final GlobalKey _profileButtonKey = GlobalKey();
+  final GlobalKey _avatarButtonKey = GlobalKey();
 
   // Detected inside the StoreConnector builder below (not didUpdateWidget -
   // this doesn't come from widget's own constructor params, it's Redux
@@ -225,29 +222,6 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
     if (user.username.isNotEmpty) context.push('/user/${user.username}');
   }
 
-  Future<void> _logout(BuildContext context) async {
-    // Explicit server logout FIRST, while still authenticated (before the
-    // local token is cleared): the /u/logout endpoint nulls THIS device's FCM
-    // push token on its session row, so it stops being a push target. The
-    // separate status=false half is handled by the SSE close below. Best-
-    // effort in a try/catch - a failed logout call must never block sign-out.
-    try {
-      await ApiClient.instance.dio.post(Endpoints().logout);
-    } catch (_) {}
-    StoreProvider.of<AppState>(context).dispatch(
-        DispatchModel(resetAppStateT, UserAuth(false, UserAccount.empty)));
-    SseConnection().closeConnection();
-    await ApiClient.instance.clearToken();
-    // Clear the tray and every stored push thread - notifications outlive the
-    // session, so without this the next account to log in on this device would
-    // see the previous one's messages sitting in the notification shade.
-    await NotificationRenderer.dismissAll();
-    // Shortcuts outlive the session too - without this the next account would
-    // see the previous one's contacts in the launcher and the shade.
-    await ConversationShortcuts.clearAll();
-    if (context.mounted) context.go('/login');
-  }
-
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
@@ -336,17 +310,14 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                               onPressed: () => context.push('/notifications'),
                             ),
                             const SizedBox(width: 4),
-                            // Logout moved into the user menu (opened from the
-                            // bottom-nav menu button) - this now shows whichever
-                            // entity is currently active (yourself, or a page
-                            // you've switched to). Tapping it goes to that same
-                            // active entity's own profile - the personal Profile
-                            // tab normally, or the switched-to page's read-only
-                            // profile screen while acting as it. The menu's own
-                            // "Profile" row (user_menu_popover.dart) mirrors this
-                            // exact same entity-aware target.
+                            // The avatar opens the account widget; profile is its first row.
                             InkWell(
-                              onTap: () => _openOwnProfile(state.userAuth.user),
+                              key: _avatarButtonKey,
+                              onTap: () => showUserMenuPopover(context,
+                                  anchorKey: _avatarButtonKey,
+                                  onOpenProfile: () =>
+                                      _openOwnProfile(state.userAuth.user),
+                                  onLogout: () => logoutUser(context)),
                               borderRadius: BorderRadius.circular(CLRadii.pill),
                               child: CLAvatar(
                                 id: state.userAuth.user.activeAvatarSeed,
@@ -418,18 +389,10 @@ class _HomeTabScaffoldState extends State<HomeTabScaffold> {
                             Icons.dns,
                             widget.navigationShell.currentIndex == 3,
                             () => widget.navigationShell.goBranch(3)),
-                        // Never "active": this opens a menu, it isn't a tab,
-                        // and there is no longer a fourth branch for it to
-                        // correspond to.
                         _navButton(
                             Icons.menu,
-                            false,
-                            () => showUserMenuPopover(context,
-                                anchorKey: _profileButtonKey,
-                                onOpenProfile: () =>
-                                    _openOwnProfile(state.userAuth.user),
-                                onLogout: () => _logout(context)),
-                            buttonKey: _profileButtonKey),
+                            widget.navigationShell.currentIndex == 5,
+                            () => widget.navigationShell.goBranch(5)),
                       ],
                     ),
                   ),

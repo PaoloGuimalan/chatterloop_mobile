@@ -1,16 +1,10 @@
-// Facebook-style account menu: a speech-bubble popover anchored above the
-// bottom-nav Profile button, pointing down at it. Combines webapp's
-// UserMenu.tsx (profile row + logout, minus the AppMenu "apps" grid, which
-// was explicitly scoped out) with EntitySwitcher.tsx's account-switching
-// list (personal + administered pages, matches its "always show every page
-// you administer, active one highlighted" behavior) inlined into one menu,
-// since webapp itself has no single unified dropdown to port 1:1 (see the
-// research this was built from: EntitySwitcher only lives in a corner
-// popover / inside UserMenu's profile row, Settings is a separate rail icon
-// or AppMenu tile, never all three together in one component).
+// Account menu anchored below the shell header avatar.
+
+import 'dart:math' as math;
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/reusables/widgets/user_app_shortcuts.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/requests/entity_api.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
@@ -34,7 +28,6 @@ void showUserMenuPopover(
   if (renderBox == null) return;
   final anchorTopLeft = renderBox.localToGlobal(Offset.zero);
   final anchorSize = renderBox.size;
-  final screenSize = MediaQuery.of(context).size;
 
   final overlay = Overlay.of(context);
   late OverlayEntry entry;
@@ -53,7 +46,6 @@ void showUserMenuPopover(
       child: _UserMenuOverlay(
         anchorTopLeft: anchorTopLeft,
         anchorSize: anchorSize,
-        screenSize: screenSize,
         onClose: () => entry.remove(),
         onOpenProfile: onOpenProfile,
         onLogout: onLogout,
@@ -66,7 +58,6 @@ void showUserMenuPopover(
 class _UserMenuOverlay extends StatefulWidget {
   final Offset anchorTopLeft;
   final Size anchorSize;
-  final Size screenSize;
   final VoidCallback onClose;
   final VoidCallback onOpenProfile;
   final VoidCallback onLogout;
@@ -74,7 +65,6 @@ class _UserMenuOverlay extends StatefulWidget {
   const _UserMenuOverlay({
     required this.anchorTopLeft,
     required this.anchorSize,
-    required this.screenSize,
     required this.onClose,
     required this.onOpenProfile,
     required this.onLogout,
@@ -121,13 +111,27 @@ class _UserMenuOverlayState extends State<_UserMenuOverlay> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
+    final screen = MediaQuery.of(context);
+    final width = math.min(_popoverWidth, screen.size.width - 16);
     final anchorCenterX = widget.anchorTopLeft.dx + widget.anchorSize.width / 2;
-    final popoverLeft = (anchorCenterX - _popoverWidth / 2)
-        .clamp(8.0, widget.screenSize.width - _popoverWidth - 8.0);
+    final popoverLeft = (anchorCenterX - width / 2)
+        .clamp(8.0, math.max(8.0, screen.size.width - width - 8))
+        .toDouble();
     final pointerLeft = (anchorCenterX - popoverLeft - _pointerSize / 2)
-        .clamp(16.0, _popoverWidth - 16.0 - _pointerSize);
-    final popoverBottom =
-        widget.screenSize.height - widget.anchorTopLeft.dy + 4;
+        .clamp(8.0, math.max(8.0, width - 8 - _pointerSize))
+        .toDouble();
+    // Keep the pointer close to the avatar; its layout adds 14px above the card.
+    final popoverTop = widget.anchorTopLeft.dy + widget.anchorSize.height - 4;
+    final maxHeight = math.max(
+        0.0,
+        math.min(
+            440.0,
+            screen.size.height -
+                screen.padding.bottom -
+                screen.viewInsets.bottom -
+                popoverTop -
+                _pointerSize -
+                8));
 
     return Stack(
       children: [
@@ -140,13 +144,31 @@ class _UserMenuOverlayState extends State<_UserMenuOverlay> {
         ),
         Positioned(
           left: popoverLeft,
-          bottom: popoverBottom,
-          width: _popoverWidth,
+          top: popoverTop,
+          width: width,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Padding(
+                padding: EdgeInsets.only(left: pointerLeft),
+                child: Transform.translate(
+                  offset: const Offset(0, _pointerSize / 2 + 1),
+                  child: Transform.rotate(
+                    angle: 0.7853981633974483, // 45deg
+                    child: Container(
+                      width: _pointerSize,
+                      height: _pointerSize,
+                      decoration: BoxDecoration(
+                        color: p.surface,
+                        border: Border.all(color: p.border),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               Container(
-                constraints: const BoxConstraints(maxHeight: 440),
+                constraints: BoxConstraints(maxHeight: maxHeight),
                 decoration: BoxDecoration(
                   color: p.surface,
                   border: Border.all(color: p.border),
@@ -159,7 +181,7 @@ class _UserMenuOverlayState extends State<_UserMenuOverlay> {
                     ),
                   ],
                 ),
-                child: _MenuContent(
+                child: UserMenuContent(
                   realms: _realms,
                   isLoadingRealms: _isLoadingRealms,
                   // Entity-aware, same target as the top-bar avatar
@@ -220,28 +242,6 @@ class _UserMenuOverlayState extends State<_UserMenuOverlay> {
                   },
                 ),
               ),
-              // Pointer triangle - a 45°-rotated square straddling the card's
-              // bottom edge, offset so its tip always lines up with the
-              // anchor button's horizontal center even if the card itself
-              // got clamped to stay on-screen.
-              Padding(
-                padding: EdgeInsets.only(left: pointerLeft),
-                child: Transform.translate(
-                  offset: const Offset(0, -_pointerSize / 2 - 1),
-                  child: Transform.rotate(
-                    angle: 0.7853981633974483, // 45deg
-                    child: Container(
-                      width: _pointerSize,
-                      height: _pointerSize,
-                      decoration: BoxDecoration(
-                        color: p.surface,
-                        border: Border.all(color: p.border),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -250,7 +250,8 @@ class _UserMenuOverlayState extends State<_UserMenuOverlay> {
   }
 }
 
-class _MenuContent extends StatelessWidget {
+class UserMenuContent extends StatelessWidget {
+  final bool showApps;
   final List<RealmSummary> realms;
   final bool isLoadingRealms;
   final VoidCallback onTapProfile;
@@ -262,7 +263,9 @@ class _MenuContent extends StatelessWidget {
   final void Function(RealmSummary) onTapSwitchToPage;
   final VoidCallback onTapLogout;
 
-  const _MenuContent({
+  const UserMenuContent({
+    super.key,
+    this.showApps = false,
     required this.realms,
     required this.isLoadingRealms,
     required this.onTapProfile,
@@ -283,6 +286,7 @@ class _MenuContent extends StatelessWidget {
         final isSwitched = user.isActingAsEntity;
 
         return SingleChildScrollView(
+          physics: showApps ? const AlwaysScrollableScrollPhysics() : null,
           padding: const EdgeInsets.all(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -418,8 +422,16 @@ class _MenuContent extends StatelessWidget {
                     ),
                   ),
               ],
+              if (showApps) ...[
+                const SizedBox(height: 18),
+                UserAppShortcuts(
+                    onSettings: user.isActingAsEntity
+                        ? onTapManageRealm
+                        : onTapSettings,
+                    isActingAsPage: user.isActingAsEntity),
+              ],
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
+                padding: EdgeInsets.only(top: showApps ? 2 : 6, bottom: 6),
                 child: Divider(height: 1, color: p.border),
               ),
               // REPLACED while acting as a page, not hidden. Settings edits
@@ -428,25 +440,27 @@ class _MenuContent extends StatelessWidget {
               // already follows the acting entity, so the slot is the natural
               // home for it. (This is what the note here used to say was
               // missing.)
-              _MenuRow(
-                onTap: user.isActingAsEntity ? onTapManageRealm : onTapSettings,
-                child: Row(
-                  children: [
-                    Icon(
-                        user.isActingAsEntity
-                            ? Icons.tune
-                            : Icons.settings_outlined,
-                        size: 18,
-                        color: p.text2),
-                    const SizedBox(width: 10),
-                    Text(user.isActingAsEntity ? "Manage realm" : "Settings",
-                        style: TextStyle(
-                            fontSize: CLType.bodySm,
-                            fontWeight: FontWeight.w600,
-                            color: p.text)),
-                  ],
+              if (!showApps)
+                _MenuRow(
+                  onTap:
+                      user.isActingAsEntity ? onTapManageRealm : onTapSettings,
+                  child: Row(
+                    children: [
+                      Icon(
+                          user.isActingAsEntity
+                              ? Icons.tune
+                              : Icons.settings_outlined,
+                          size: 18,
+                          color: p.text2),
+                      const SizedBox(width: 10),
+                      Text(user.isActingAsEntity ? "Manage realm" : "Settings",
+                          style: TextStyle(
+                              fontSize: CLType.bodySm,
+                              fontWeight: FontWeight.w600,
+                              color: p.text)),
+                    ],
+                  ),
                 ),
-              ),
               _MenuRow(
                 onTap: onTapLogout,
                 child: Row(
