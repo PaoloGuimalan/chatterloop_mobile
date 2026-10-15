@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
 import 'package:chatterloop_app/views/notes/writing_widgets.dart';
+import 'package:chatterloop_app/views/notes/writing_skeletons.dart';
 import 'dart:async';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
@@ -119,6 +120,9 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
     return CLScreen(
         backgroundColor: p.bg,
         appBar: AppBar(
+            centerTitle: false,
+            leadingWidth: 48,
+            titleSpacing: 4,
             title: Row(children: [
               Image.asset('assets/images/app-icon-diary.png',
                   width: 27, height: 27),
@@ -135,27 +139,20 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
           const WritingOwner(diary: true),
           Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Container(
-                  decoration: BoxDecoration(
-                      color: p.surface2,
-                      border: Border.all(color: p.border),
-                      borderRadius: BorderRadius.circular(10)),
-                  child: TextField(
-                      controller: _search,
-                      onChanged: (_) {
-                        setState(() {});
-                        if (_search.text.trim().isNotEmpty &&
-                            _hasNext &&
-                            !_isLoadingMore) {
-                          _loadPage(_page + 1);
-                        }
-                      },
-                      decoration: writingInput('Search diary').copyWith(
-                          prefixIcon: const Icon(Icons.search, size: 19))))),
+              child: WritingSearch(
+                  controller: _search,
+                  hint: 'Search diary',
+                  onChanged: (_) {
+                    setState(() {});
+                    if (_search.text.trim().isNotEmpty &&
+                        _hasNext &&
+                        !_isLoadingMore) {
+                      _loadPage(_page + 1);
+                    }
+                  })),
           Expanded(
               child: !_isInitialized
-                  ? const Padding(
-                      padding: EdgeInsets.all(12), child: CLListSkeleton())
+                  ? const DiaryListSkeleton()
                   : RefreshIndicator(
                       onRefresh: () => _loadPage(1),
                       child: ListView(

@@ -5,6 +5,7 @@ import 'package:chatterloop_app/core/requests/notes_api.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/notes_models/note.dart';
 import 'package:chatterloop_app/views/notes/writing_widgets.dart';
+import 'package:chatterloop_app/views/notes/writing_skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -243,6 +244,9 @@ class _NotesListScreenState extends State<NotesListScreen> {
     return CLScreen(
         backgroundColor: p.bg,
         appBar: AppBar(
+            centerTitle: false,
+            leadingWidth: 48,
+            titleSpacing: 4,
             title: Row(children: [
               Image.asset('assets/images/app-icon-notes.png',
                   width: 27, height: 27),
@@ -259,20 +263,14 @@ class _NotesListScreenState extends State<NotesListScreen> {
           const WritingOwner(),
           Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: DecoratedBox(
-                  decoration: BoxDecoration(
-                      color: p.surface2,
-                      border: Border.all(color: p.border),
-                      borderRadius: BorderRadius.circular(10)),
-                  child: TextField(
-                      controller: _search,
-                      decoration: writingInput('Search notes').copyWith(
-                          prefixIcon: const Icon(Icons.search, size: 19)),
-                      onChanged: (_) {
-                        _debounce?.cancel();
-                        _debounce = Timer(const Duration(milliseconds: 300),
-                            () => _load(reset: true));
-                      }))),
+              child: WritingSearch(
+                  controller: _search,
+                  hint: 'Search notes',
+                  onChanged: (_) {
+                    _debounce?.cancel();
+                    _debounce = Timer(const Duration(milliseconds: 300),
+                        () => _load(reset: true));
+                  })),
           Padding(
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
               child: Row(children: [
@@ -287,7 +285,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
                 onPressed: () => _load(reset: true), child: Text(_error!)),
           Expanded(
               child: _loading && _notes.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const NotesListSkeleton()
                   : _notes.isEmpty
                       ? Center(
                           child: Text(

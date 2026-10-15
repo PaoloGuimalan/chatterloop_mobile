@@ -11,6 +11,7 @@ import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:chatterloop_app/models/notes_models/note.dart';
 import 'package:chatterloop_app/views/notes/note_autosave.dart';
 import 'package:chatterloop_app/views/notes/writing_widgets.dart';
+import 'package:chatterloop_app/views/notes/writing_skeletons.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
@@ -39,7 +40,7 @@ class NoteEditorScreen extends StatefulWidget {
 class _NoteEditorScreenState extends State<NoteEditorScreen> {
   final _title = TextEditingController();
   final _focus = FocusNode();
-  FleatherController _editor = FleatherController();
+  final FleatherController _editor = FleatherController();
   NotesApi? _api;
   NoteAutosave? _save;
   String? _key;
@@ -121,10 +122,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   void _replaceEditor(NoteDraft draft) {
     _restoring = true;
     _title.text = draft.title;
-    final old = _editor;
-    old.removeListener(_changed);
-    _editor = FleatherController(document: parchmentHtml.decode(draft.content));
-    old.dispose();
+    final target = parchmentHtml.decode(draft.content);
+    _editor.compose(_editor.document.toDelta().diff(target.toDelta()),
+        selection: const TextSelection.collapsed(offset: 0),
+        source: ChangeSource.history);
+    target.close();
     _attachments = List.of(draft.attachments);
     _lastDocument = jsonEncode(_editor.document.toJson());
     _lastHtml = draft.content;
@@ -160,17 +162,16 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   void _undo(int direction) {
     final index = _historyIndex + direction;
     if (index < 0 || index >= _history.length) return;
+    FocusScope.of(context).unfocus();
     _historyIndex = index;
     final entry = _history[index];
     _restoring = true;
-    final old = _editor;
-    old.removeListener(_changed);
     final target =
         ParchmentDocument.fromJson(jsonDecode(entry.document) as List);
     var offset = 0, formatCaret = 0;
     int? textCaret;
-    for (final operation
-        in old.document.toDelta().diff(target.toDelta()).toList()) {
+    final change = _editor.document.toDelta().diff(target.toDelta());
+    for (final operation in change.toList()) {
       if (operation.isRetain) {
         offset += operation.length;
         if (operation.attributes?.isNotEmpty ?? false) formatCaret = offset;
@@ -181,14 +182,17 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       }
       if (operation.isDelete) textCaret = offset;
     }
-    _editor = FleatherController(document: target)
-      ..updateSelection(TextSelection.collapsed(
-          offset: (textCaret ?? formatCaret).clamp(0, target.length - 1)));
-    old.dispose();
+    // Keep Fleather's live document, render tree, and keyboard connection in
+    // sync. Disposing/replacing its controller leaves focused child state
+    // holding the previous document during undo/redo.
+    _editor.compose(change,
+        source: ChangeSource.history,
+        selection: TextSelection.collapsed(
+            offset: (textCaret ?? formatCaret).clamp(0, target.length - 1)));
+    target.close();
     _lastDocument = entry.document;
     _lastHtml = entry.html;
     _restoring = false;
-    _editor.addListener(_changed);
     _save!.update(_snapshot());
     setState(() {});
   }
@@ -373,6 +377,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         child: CLScreen(
             backgroundColor: p.surface,
             appBar: AppBar(
+                centerTitle: false,
+                leadingWidth: 48,
+                titleSpacing: 4,
                 backgroundColor: p.surface,
                 leading: IconButton(
                     tooltip: 'Back to notes',
@@ -426,10 +433,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
             body: _deleting
                 ? const Center(child: CircularProgressIndicator())
                 : save == null
-                    ? Center(
-                        child: _error == null
-                            ? const CircularProgressIndicator()
-                            : Text(_error!))
+                    ? _error == null
+                        ? const WritingDocumentSkeleton(
+                            editor: true,
+                            key: ValueKey('writing-editor-skeleton'))
+                        : Center(child: Text(_error!))
                     : !_api!.isCurrent
                         ? const Center(
                             child: Text(

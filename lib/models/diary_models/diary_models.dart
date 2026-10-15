@@ -9,6 +9,8 @@
 // paginated list endpoint, so one malformed row should cost that row, not the
 // whole screen.
 
+import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
+
 /// A DRF PageNumberPagination envelope: `{count, next, previous, results}`.
 ///
 /// `next`/`previous` are absolute URLs (or null). Only their presence is used -
@@ -198,6 +200,7 @@ class DiaryEntry {
     this.mapInfo,
     this.createdAt,
     this.updatedAt,
+    this.linkPreview,
   });
 
   final String id;
@@ -212,6 +215,7 @@ class DiaryEntry {
   final DiaryMapInfo? mapInfo;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final LinkPreviewData? linkPreview;
 
   /// A rough plain-text rendering for list previews. Deliberately crude - it
   /// strips tags and unescapes the handful of entities Quill actually emits,
@@ -270,6 +274,10 @@ class DiaryEntry {
           : null,
       createdAt: DateTime.tryParse((json["created_at"] ?? "").toString()),
       updatedAt: DateTime.tryParse((json["updated_at"] ?? "").toString()),
+      linkPreview: json['link_preview'] is Map
+          ? LinkPreviewData.fromJson(
+              Map<String, dynamic>.from(json['link_preview']))
+          : null,
     );
   }
 }

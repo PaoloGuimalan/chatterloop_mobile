@@ -49,8 +49,18 @@ void main() {
     controller.replaceText(0, 0, 'Body text',
         selection: const TextSelection.collapsed(offset: 9));
     await tester.pumpAndSettle();
+    tester.state<RawEditorState>(find.byType(RawEditor)).requestKeyboard();
+    await tester.pump();
+    expect(tester.testTextInput.isVisible, isTrue);
     await tester.tap(find.byTooltip('Undo'));
     await tester.pumpAndSettle();
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(
+        tester
+            .widget<FleatherEditor>(find.byType(FleatherEditor))
+            .focusNode!
+            .hasFocus,
+        isFalse);
     expect(find.text('Remember this'), findsOneWidget);
     expect(
         tester
@@ -60,8 +70,18 @@ void main() {
             .toPlainText()
             .trim(),
         isEmpty);
+    tester.state<RawEditorState>(find.byType(RawEditor)).requestKeyboard();
+    await tester.pump();
+    expect(tester.testTextInput.isVisible, isTrue);
     await tester.tap(find.byTooltip('Redo'));
     await tester.pumpAndSettle();
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(
+        tester
+            .widget<FleatherEditor>(find.byType(FleatherEditor))
+            .focusNode!
+            .hasFocus,
+        isFalse);
     expect(
         tester
             .widget<FleatherEditor>(find.byType(FleatherEditor))

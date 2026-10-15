@@ -107,6 +107,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   void _undo(int direction) {
     final index = _historyIndex + direction;
     if (index < 0 || index >= _history.length) return;
+    FocusScope.of(context).unfocus();
     _restoring = true;
     final value = _history[index];
     final old = _editor;
@@ -374,6 +375,9 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
             child: CLScreen(
               backgroundColor: p.surface,
               appBar: AppBar(
+                  centerTitle: false,
+                  leadingWidth: 48,
+                  titleSpacing: 4,
                   backgroundColor: p.surface,
                   leading: IconButton(
                       tooltip: 'Back to diary',

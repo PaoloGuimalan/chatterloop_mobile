@@ -11,6 +11,8 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:flutter/material.dart';
 import 'package:chatterloop_app/core/reusables/widgets/writing_attachment.dart';
+import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
+import 'package:chatterloop_app/views/notes/writing_skeletons.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -50,11 +52,15 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
     return CLScreen(
       backgroundColor: p.surface,
       appBar: AppBar(
+          centerTitle: false,
+          leadingWidth: 48,
+          titleSpacing: 4,
           backgroundColor: p.surface,
           title: const Text("Diary",
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
       body: _isLoading
-          ? const Padding(padding: EdgeInsets.all(12), child: CLListSkeleton())
+          ? const WritingDocumentSkeleton(
+              key: ValueKey('writing-entry-skeleton'))
           : entry == null
               ? Center(
                   child: CLEmptyState(
@@ -73,6 +79,10 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                       _header(entry, p),
                       const SizedBox(height: 10),
                       _content(entry, p),
+                      if (entry.linkPreview?.isOk ?? false) ...[
+                        const SizedBox(height: 16),
+                        LinkPreviewCard(preview: entry.linkPreview),
+                      ],
                       if (entry.tags.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         _tags(entry, p),

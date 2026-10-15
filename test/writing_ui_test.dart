@@ -9,12 +9,15 @@ import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/views/diary/diary_list_view.dart';
+import 'package:chatterloop_app/views/diary/diary_entry_view.dart';
+import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/views/diary/diary_compose_view.dart';
 import 'package:chatterloop_app/views/notes/notes_list_view.dart';
 import 'package:chatterloop_app/views/notes/note_editor_view.dart';
 import 'package:dio/dio.dart';
 import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -127,6 +130,17 @@ void main() {
         }
       } else if (options.path.contains('/entries/')) {
         data = {'count': 5, 'next': null, 'results': _entries()};
+      } else if (options.path.contains('/entry/')) {
+        data = {
+          ..._entries().first,
+          'link_preview': {
+            'status': 'ok',
+            'url': 'https://chatterloop.test/story',
+            'title': 'A story worth keeping',
+            'site_name': 'Chatterloop',
+            'description': 'A saved link preview from this diary entry.'
+          }
+        };
       } else {
         data = {'count': 0, 'next': null, 'results': []};
       }
@@ -149,8 +163,8 @@ void main() {
       ..addAll(previous);
   });
 
-  Future<void> show(
-      WidgetTester tester, Widget screen, Brightness brightness) async {
+  Future<void> show(WidgetTester tester, Widget screen, Brightness brightness,
+      {bool settle = true}) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -163,8 +177,100 @@ void main() {
         debugShowCheckedModeBanner: false,
         theme: buildCLTheme(brightness),
         routerConfig: router));
-    await tester.pumpAndSettle();
+    if (settle) await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+  }
+
+  testWidgets('Diary retains its API link preview in the entry reader',
+      (tester) async {
+    await show(
+        tester, const DiaryEntryScreen(entryId: 'entry-0'), Brightness.light);
+    expect(find.byType(LinkPreviewCard), findsOneWidget);
+    expect(find.text('A story worth keeping'), findsOneWidget);
+  });
+
+  testWidgets(
+      'saved note history hides the keyboard and resumes editing on tap',
+      (tester) async {
+    notes[5]['content'] =
+        '<p>First paragraph</p><ul><li>A list item</li><li>Another item</li></ul><p>Last paragraph</p>';
+    await show(
+        tester, NoteEditorScreen(api: api, noteId: 'note-5'), Brightness.light);
+    final editor = tester.widget<FleatherEditor>(find.byType(FleatherEditor));
+    editor.focusNode!.requestFocus();
+    await tester.pump();
+    editor.controller.replaceText(6, 0, 'edited ',
+        selection: const TextSelection.collapsed(offset: 13));
+    await tester.pump();
+    for (var i = 0; i < 3; i++) {
+      tester.state<RawEditorState>(find.byType(RawEditor)).requestKeyboard();
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+      await tester.tap(find.byTooltip('Undo'));
+      await tester.pump();
+      expect(editor.focusNode!.hasFocus, isFalse);
+      expect(tester.testTextInput.isVisible, isFalse);
+      expect(tester.takeException(), isNull);
+      tester.state<RawEditorState>(find.byType(RawEditor)).requestKeyboard();
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+      await tester.tap(find.byTooltip('Redo'));
+      await tester.pump();
+      expect(editor.focusNode!.hasFocus, isFalse);
+      expect(tester.testTextInput.isVisible, isFalse);
+      expect(tester.takeException(), isNull);
+    }
+    final current = tester.widget<FleatherEditor>(find.byType(FleatherEditor));
+    expect(current.controller.document.toPlainText(),
+        contains('First edited paragraph'));
+    expect(current.controller.selection.baseOffset, 13);
+    final input = tester.state<RawEditorState>(find.byType(RawEditor));
+    input.requestKeyboard();
+    await tester.pump();
+    input.updateEditingValueWithDeltas([
+      TextEditingDeltaInsertion(
+          oldText: current.controller.document.toPlainText(),
+          textInserted: 'again ',
+          insertionOffset: 13,
+          selection: const TextSelection.collapsed(offset: 19),
+          composing: TextRange.empty)
+    ]);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(
+        tester
+            .widget<FleatherEditor>(find.byType(FleatherEditor))
+            .controller
+            .document
+            .toPlainText(),
+        contains('First edited again paragraph'));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final screen in ['notes', 'diary', 'entry', 'editor']) {
+    testWidgets(
+        '$screen shows layout-specific skeletons while its request is pending',
+        (tester) async {
+      void hold(RequestOptions _, RequestInterceptorHandler __) {}
+      api.dio.interceptors.insert(0, InterceptorsWrapper(onRequest: hold));
+      ApiClient.userService.dio.interceptors
+          .insert(0, InterceptorsWrapper(onRequest: hold));
+      await show(
+          tester,
+          switch (screen) {
+            'notes' => NotesListScreen(api: api),
+            'diary' => const DiaryListScreen(),
+            'entry' => const DiaryEntryScreen(entryId: 'entry-0'),
+            _ => NoteEditorScreen(api: api, noteId: 'note-4'),
+          },
+          Brightness.light,
+          settle: false);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(ValueKey('writing-$screen-skeleton')), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
   }
 
   for (final brightness in Brightness.values) {
