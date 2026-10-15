@@ -1,5 +1,9 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/redux/types.dart';
+import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
+import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
 import 'package:chatterloop_app/core/reusables/widgets/user_app_shortcuts.dart';
 import 'package:chatterloop_app/views/servers/server_channels_view.dart';
 import 'package:dio/dio.dart';
@@ -22,6 +26,9 @@ GoRouter shortcutRouter({String initialLocation = '/account'}) =>
       GoRoute(
           path: '/server-browser', builder: (_, __) => const ServerScreen()),
       GoRoute(
+          path: '/notes',
+          builder: (_, __) => const Scaffold(body: Text('Notes destination'))),
+      GoRoute(
           path: '/diary',
           builder: (_, __) => const Scaffold(body: Text('Diary destination'))),
     ]);
@@ -29,6 +36,16 @@ GoRouter shortcutRouter({String initialLocation = '/account'}) =>
 void main() {
   late Map<Dio, List<Interceptor>> interceptors;
   setUp(() {
+    appStore.dispatch(DispatchModel(
+        setUserAuthT,
+        UserAuth(
+            true,
+            UserAccount(
+                '', '', '', '', '', '', false, false, null, null, null, null,
+                allowedModules: [
+                  'module.diary.access',
+                  'module.notes.access'
+                ]))));
     interceptors = {
       ApiClient.instance.dio: List.of(ApiClient.instance.dio.interceptors),
       ApiClient.userService.dio:
@@ -98,6 +115,16 @@ void main() {
   testWidgets('Diary is hidden for pages and returns for personal accounts',
       (tester) async {
     Future<void> showApps(bool isActingAsPage) async {
+      appStore.dispatch(DispatchModel(
+          setUserAuthT,
+          UserAuth(
+              true,
+              UserAccount(
+                  '', '', '', '', '', '', false, false, null, null, null, null,
+                  allowedModules: [
+                    if (!isActingAsPage) 'module.diary.access',
+                    'module.notes.access'
+                  ]))));
       await tester.pumpWidget(MaterialApp(
         theme: buildCLTheme(Brightness.light),
         home: Scaffold(
@@ -115,7 +142,8 @@ void main() {
     expect(find.text('Diary'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
   });
-  testWidgets('Diary opens and Notes remains unavailable', (tester) async {
+  testWidgets('authorized Notes launcher opens and Diary remains available',
+      (tester) async {
     final router = shortcutRouter();
     addTearDown(router.dispose);
     await tester.pumpWidget(MaterialApp.router(
@@ -123,9 +151,20 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Notes'));
     await tester.pumpAndSettle();
-    expect(find.text('Account apps'), findsOneWidget);
+    expect(find.text('Notes destination'), findsOneWidget);
+    router.pop();
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Diary'));
     await tester.pumpAndSettle();
     expect(find.text('Diary destination'), findsOneWidget);
+  });
+  testWidgets('Notes is hidden without module permission', (tester) async {
+    appStore.dispatch(
+        DispatchModel(setUserAuthT, UserAuth(true, UserAccount.empty)));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: Scaffold(body: UserAppShortcuts(onSettings: () {}))));
+    expect(find.text('Notes'), findsNothing);
+    expect(find.text('Diary'), findsNothing);
   });
 }

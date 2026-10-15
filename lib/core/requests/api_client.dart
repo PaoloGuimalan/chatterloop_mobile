@@ -43,6 +43,9 @@ class ApiClient {
 
   late final Dio dio = _build();
 
+  /// Capture the current token for work that must stay with its original entity.
+  Dio forToken(String token) => _build()..options.extra['authToken'] = token;
+
   Dio _build() {
     final d = Dio(BaseOptions(
       baseUrl: baseUrl,
@@ -50,7 +53,8 @@ class ApiClient {
     ));
     d.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
-        final token = await readToken();
+        final token =
+            options.extra['authToken'] as String? ?? await readToken();
         options.headers['origin'] = Endpoints.origin;
         options.headers['device-token'] = await resolveDeviceToken();
         options.headers['X-Nonce'] = await _buildNonce(_userIdFromToken(token));

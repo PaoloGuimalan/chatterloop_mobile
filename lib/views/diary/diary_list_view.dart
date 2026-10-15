@@ -9,7 +9,9 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
-import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/views/notes/writing_widgets.dart';
+import 'dart:async';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -31,6 +33,12 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
   final ScrollController _scrollController = ScrollController();
 
   final List<DiaryEntry> _entries = [];
+  final _search = TextEditingController();
+  StreamSubscription? _accountSubscription;
+  String get _currentAccount =>
+      '${appStore.state.userAuth.user.id}/${appStore.state.userAuth.user.entityId}';
+  late String _accountKey;
+  int _generation = 0;
   bool _isInitialized = false;
   bool _isLoadingMore = false;
   bool _hasNext = false;
@@ -39,14 +47,26 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
   @override
   void initState() {
     super.initState();
+    _accountKey = _currentAccount;
+    _accountSubscription = appStore.onChange.listen((_) {
+      if (_accountKey == _currentAccount) return;
+      _accountKey = _currentAccount;
+      _generation++;
+      _entries.clear();
+      _isLoadingMore = false;
+      _isInitialized = false;
+      _loadPage(1);
+    });
     _loadPage(1);
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _accountSubscription?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _search.dispose();
     super.dispose();
   }
 
@@ -64,10 +84,11 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
   /// page fetches shifts everything down by one and would otherwise repeat.
   Future<void> _loadPage(int page) async {
     if (_isLoadingMore) return;
+    final generation = _generation;
     setState(() => _isLoadingMore = true);
 
     final result = await DiaryApi().getEntries(page: page, range: _range);
-    if (!mounted) return;
+    if (!mounted || generation != _generation) return;
 
     setState(() {
       if (page == 1) _entries.clear();
@@ -80,6 +101,7 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
       _isLoadingMore = false;
       _isInitialized = true;
     });
+    if (_search.text.trim().isNotEmpty && _hasNext) _loadPage(_page + 1);
   }
 
   Future<void> _openCompose() async {
@@ -93,55 +115,78 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
   Widget build(BuildContext context) {
     final p = cl(context);
 
+    final groups = _groupedEntries;
     return CLScreen(
-      backgroundColor: p.bg,
-      appBar: AppBar(title: const Text("Diary")),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openCompose,
-        backgroundColor: p.brand,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
-      body: !_isInitialized
-          ? const Padding(
-              padding: EdgeInsets.all(12),
-              child: CLListSkeleton(),
-            )
-          : _entries.isEmpty
-              ? Center(
-                  child: CLEmptyState(
-                    icon: Icons.menu_book_outlined,
-                    iconBg: p.brandSoft,
-                    iconColor: p.brand,
-                    title: "No entries yet",
-                    subtitle: "Your diary is private by default.",
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: () => _loadPage(1),
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _groupedEntries.length + (_hasNext ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _groupedEntries.length) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 20),
-                          child: Center(
-                            child: SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                        );
-                      }
-                      final group = _groupedEntries[index];
-                      return _DayGroup(
-                          date: group.date, entries: group.entries);
-                    },
-                  ),
-                ),
-    );
+        backgroundColor: p.bg,
+        appBar: AppBar(
+            title: Row(children: [
+              Image.asset('assets/images/app-icon-diary.png',
+                  width: 27, height: 27),
+              const SizedBox(width: 9),
+              const Text('Diary')
+            ]),
+            actions: [
+              TextButton.icon(
+                  onPressed: _openCompose,
+                  icon: const Icon(Icons.add, size: 17),
+                  label: const Text('New entry'))
+            ]),
+        body: Column(children: [
+          const WritingOwner(diary: true),
+          Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Container(
+                  decoration: BoxDecoration(
+                      color: p.surface2,
+                      border: Border.all(color: p.border),
+                      borderRadius: BorderRadius.circular(10)),
+                  child: TextField(
+                      controller: _search,
+                      onChanged: (_) {
+                        setState(() {});
+                        if (_search.text.trim().isNotEmpty &&
+                            _hasNext &&
+                            !_isLoadingMore) {
+                          _loadPage(_page + 1);
+                        }
+                      },
+                      decoration: writingInput('Search diary').copyWith(
+                          prefixIcon: const Icon(Icons.search, size: 19))))),
+          Expanded(
+              child: !_isInitialized
+                  ? const Padding(
+                      padding: EdgeInsets.all(12), child: CLListSkeleton())
+                  : RefreshIndicator(
+                      onRefresh: () => _loadPage(1),
+                      child: ListView(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                          children: [
+                            if (groups.isEmpty)
+                              Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 60),
+                                  child: Center(
+                                      child: Text(
+                                          _entries.isEmpty
+                                              ? 'Your story starts here.\nWrite your first entry.'
+                                              : 'No matching entries',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(color: p.text3)))),
+                            for (final group in groups)
+                              _DayGroup(
+                                  date: group.date, entries: group.entries),
+                            if (_hasNext)
+                              TextButton(
+                                  onPressed: _isLoadingMore
+                                      ? null
+                                      : () => _loadPage(_page + 1),
+                                  child: Text(_isLoadingMore
+                                      ? 'Loading…'
+                                      : 'Load more entries')),
+                          ]))),
+        ]));
   }
 
   /// Same-day entries collapse into ONE list item, so the list reads day by
@@ -153,7 +198,15 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
   /// the outer list. Net effect - newest day first, and within a day the
   /// oldest entry first.
   List<({DateTime date, List<DiaryEntry> entries})> get _groupedEntries {
-    final dated = _entries.where((e) => e.entryDate != null).toList()
+    final query = _search.text.trim().toLowerCase();
+    final dated = _entries
+        .where((e) =>
+            e.entryDate != null &&
+            (query.isEmpty ||
+                '${e.title} ${e.plainTextPreview} ${e.tags.map((t) => t.name).join(' ')} ${e.mood?.name ?? ''}'
+                    .toLowerCase()
+                    .contains(query)))
+        .toList()
       ..sort((a, b) {
         final byDate = a.entryDate!.compareTo(b.entryDate!);
         if (byDate != 0) return byDate;
@@ -188,122 +241,105 @@ class _EntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    final preview = entry.plainTextPreview;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(CLRadii.md),
         onTap: () => context.push('/diary/entry/${entry.id}'),
-        child: CLCard(
+        child: Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+              color: p.surface,
+              border: Border.all(color: p.border),
+              borderRadius: BorderRadius.circular(12)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  if (entry.mood != null) ...[
-                    Text(entry.mood!.emoji,
-                        // Emoji glyph sized to its container - not a CLType step.
-                        style: const TextStyle(fontSize: 18)),
-                    const SizedBox(width: 8),
-                  ],
                   Expanded(
                     child: Text(
                       entry.title.isEmpty ? "Untitled" : entry.title,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           color: p.text,
-                          fontWeight: FontWeight.w700,
-                          fontSize: CLType.sectionTitle),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13),
                     ),
                   ),
-                  // Private is the default, so the lock marks the norm rather
-                  // than the exception - it's the PUBLIC entries that are
-                  // worth flagging, since they're readable by anyone.
-                  if (!entry.isPrivate)
-                    Icon(Icons.public, size: 16, color: p.text3),
-                ],
-              ),
-              if (preview.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  preview,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: p.text2, fontSize: CLType.bodySm, height: 1.35),
-                ),
-              ],
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Icon(Icons.calendar_today_outlined, size: 13, color: p.text3),
-                  const SizedBox(width: 5),
-                  Text(
-                    entry.entryDate != null
-                        ? _formatEntryDate(entry.entryDate!)
-                        : "",
-                    style: TextStyle(color: p.text3, fontSize: CLType.caption),
-                  ),
-                  if (entry.attachments.isNotEmpty) ...[
-                    const SizedBox(width: 12),
-                    Icon(Icons.attachment, size: 13, color: p.text3),
-                    const SizedBox(width: 4),
-                    Text("${entry.attachments.length}",
-                        style: TextStyle(
-                            color: p.text3, fontSize: CLType.caption)),
-                  ],
                   if (entry.mood != null) ...[
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: Text(
-                        entry.mood!.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style:
-                            TextStyle(color: p.text3, fontSize: CLType.caption),
-                      ),
-                    ),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 112),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text(entry.mood!.emoji,
+                              style: const TextStyle(fontSize: 12)),
+                          const SizedBox(width: 4),
+                          Flexible(
+                              child: Text(entry.mood!.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style:
+                                      TextStyle(color: p.text2, fontSize: 11))),
+                        ])),
                   ],
                 ],
               ),
               if (entry.tags.isNotEmpty) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: entry.tags
-                      .take(4)
-                      .map((tag) => CLChip(label: tag.name))
+                      .take(3)
+                      .map((tag) => Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                              color: p.brand.withValues(alpha: .14),
+                              borderRadius: BorderRadius.circular(6)),
+                          child: Text(tag.name,
+                              style: TextStyle(color: p.brand, fontSize: 11))))
                       .toList(),
                 ),
               ],
+              if (entry.plainTextPreview.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(entry.plainTextPreview,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        TextStyle(color: p.text2, fontSize: 12, height: 1.65)),
+              ],
+              const SizedBox(height: 10),
+              Row(children: [
+                Icon(entry.isPrivate ? Icons.lock_outline : Icons.public,
+                    size: 12, color: p.text2),
+                const SizedBox(width: 5),
+                Text(entry.isPrivate ? 'Private' : 'Public',
+                    style: TextStyle(color: p.text2, fontSize: 11)),
+                if (entry.attachments.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  Icon(Icons.attachment, size: 13, color: p.text3),
+                  const SizedBox(width: 4),
+                  Text('${entry.attachments.length}',
+                      style:
+                          TextStyle(color: p.text3, fontSize: CLType.caption)),
+                ],
+                const Spacer(),
+                if (entry.createdAt != null)
+                  Text(
+                      TimeOfDay.fromDateTime(entry.createdAt!.toLocal())
+                          .format(context),
+                      style: TextStyle(color: p.text2, fontSize: 11)),
+              ]),
             ],
           ),
         ),
       ),
     );
-  }
-
-  /// "3rd of March, 2026" - reuses the shared ordinalSuffix helper so diary
-  /// dates read the same as dates elsewhere in the app.
-  String _formatEntryDate(DateTime date) {
-    const months = [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-    ];
-    return "${ordinalSuffix(date.day)} of ${months[date.month - 1]}, ${date.year}";
   }
 }
 
@@ -341,17 +377,15 @@ class _DayGroup extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 4, top: 6, bottom: 6),
+          padding: const EdgeInsets.only(left: 2, top: 13, bottom: 10),
           child: Row(
             children: [
-              Icon(Icons.calendar_today_outlined, size: 13, color: p.text3),
-              const SizedBox(width: 6),
               Text(
                 _label,
                 style: TextStyle(
                   color: p.text2,
-                  fontSize: CLType.caption,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               if (entries.length > 1) ...[
@@ -359,6 +393,8 @@ class _DayGroup extends StatelessWidget {
                 Text("${entries.length} entries",
                     style: TextStyle(color: p.text3, fontSize: CLType.meta)),
               ],
+              const SizedBox(width: 10),
+              Expanded(child: Divider(color: p.border, height: 1)),
             ],
           ),
         ),

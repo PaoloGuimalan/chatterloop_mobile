@@ -158,46 +158,59 @@ class _MoodPickerSheetState extends State<_MoodPickerSheet> {
                         child: Text("No moods available",
                             style: TextStyle(color: p.text3)),
                       )
-                    : ListView.builder(
+                    : SingleChildScrollView(
                         controller: _scrollController,
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        itemCount: _moods.length + (_hasNext ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index >= _moods.length) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 16),
-                              child: Center(
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              ),
-                            );
-                          }
-                          final mood = _moods[index];
-                          final isSelected = widget.selected?.id == mood.id;
-                          return ListTile(
-                            leading: Text(mood.emoji,
-                                // Emoji glyph sized to its container - not a CLType step.
-                                style: const TextStyle(fontSize: 20)),
-                            title: Text(mood.name,
-                                style: TextStyle(
-                                    color: p.text,
-                                    fontSize: CLType.title,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w700
-                                        : FontWeight.w400)),
-                            trailing: isSelected
-                                ? Icon(Icons.check, size: 18, color: p.brand)
-                                : null,
-                            onTap: () =>
-                                Navigator.of(context).pop(MoodSelection(mood)),
-                          );
-                        },
-                      ),
+                        child: Column(children: [
+                          GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.all(16),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      mainAxisSpacing: 8,
+                                      crossAxisSpacing: 8,
+                                      mainAxisExtent: 55),
+                              itemCount: _moods.length,
+                              itemBuilder: (context, index) {
+                                final mood = _moods[index];
+                                final selected = widget.selected?.id == mood.id;
+                                return Material(
+                                    color: selected ? p.brandSoft : p.surface2,
+                                    borderRadius: BorderRadius.circular(9),
+                                    child: InkWell(
+                                        borderRadius: BorderRadius.circular(9),
+                                        onTap: () => Navigator.of(context)
+                                            .pop(MoodSelection(mood)),
+                                        child: Padding(
+                                            padding: const EdgeInsets.all(10),
+                                            child: Row(children: [
+                                              Text(mood.emoji,
+                                                  style: const TextStyle(
+                                                      fontSize: 20)),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                  child: Text(mood.name,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                          fontSize: 12,
+                                                          color: p.text))),
+                                              if (selected)
+                                                Icon(Icons.check,
+                                                    size: 15, color: p.brand),
+                                            ]))));
+                              }),
+                          if (_hasNext)
+                            TextButton(
+                                onPressed: _isLoadingMore
+                                    ? null
+                                    : () => _loadPage(_page + 1),
+                                child: Text(_isLoadingMore
+                                    ? 'Loading…'
+                                    : 'Load more moods')),
+                        ])),
           ),
           SizedBox(height: clSheetBottomGap(context, minimum: 8)),
         ],

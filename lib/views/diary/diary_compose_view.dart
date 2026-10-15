@@ -9,7 +9,10 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
-import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'dart:convert';
+import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/media/media_uploader.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:chatterloop_app/views/diary/widgets/mood_picker_sheet.dart';
@@ -37,7 +40,7 @@ class DiaryComposeScreen extends StatefulWidget {
 }
 
 class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
-  final FleatherController _editor = FleatherController();
+  FleatherController _editor = FleatherController();
   final FocusNode _editorFocus = FocusNode();
   final TextEditingController _title = TextEditingController();
   final TextEditingController _tagInput = TextEditingController();
@@ -58,9 +61,99 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
   final List<_PendingAttachment> _attachments = [];
 
+  late final String _accountKey;
+  late final Future<String?> _token;
+  final List<Map<String, dynamic>> _history = [];
+  int _historyIndex = 0;
+  bool _restoring = false;
+  bool _allowPop = false;
+  bool _confirming = false;
+  String get _currentAccount =>
+      '${appStore.state.userAuth.user.id}/${appStore.state.userAuth.user.entityId}';
+  Map<String, dynamic> _snapshot() => {
+        'title': _title.text,
+        'html': _contentAsHtml(),
+        'document': jsonDecode(jsonEncode(_editor.document.toJson())),
+        'date': _entryDateForApi(),
+        'private': _isPrivate,
+        'mood': _selectedMood,
+        'tags': List<DiaryTag>.of(_selectedTags),
+        'files': List<_PendingAttachment>.of(_attachments),
+      };
+  String _fingerprint(Map<String, dynamic> d) => jsonEncode({
+        'title': d['title'],
+        'document': d['document'],
+        'date': d['date'],
+        'private': d['private'],
+        'mood': (d['mood'] as Mood?)?.id,
+        'tags': (d['tags'] as List<DiaryTag>).map((t) => t.name).toList(),
+        'files': (d['files'] as List<_PendingAttachment>)
+            .map((f) => f.path)
+            .toList(),
+      });
+  bool get _dirty => _fingerprint(_snapshot()) != _fingerprint(_history.first);
+  void _record() {
+    if (_restoring || _history.isEmpty) return;
+    final value = _snapshot();
+    if (jsonEncode(value['document']) !=
+        jsonEncode(_history[_historyIndex]['document'])) {
+      _history.removeRange(_historyIndex + 1, _history.length);
+      _history.add(value);
+      _historyIndex++;
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _undo(int direction) {
+    final index = _historyIndex + direction;
+    if (index < 0 || index >= _history.length) return;
+    _restoring = true;
+    final value = _history[index];
+    final old = _editor;
+    old.removeListener(_record);
+    _editor = FleatherController(
+        document: ParchmentDocument.fromJson(value['document'] as List));
+    old.dispose();
+    _editor.addListener(_record);
+    _historyIndex = index;
+    _restoring = false;
+    setState(() {});
+  }
+
+  Future<void> _leave() async {
+    if (_isSaving || _confirming) return;
+    if (_dirty) {
+      _confirming = true;
+      final discard = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+                  title: const Text('Discard entry?'),
+                  content: const Text('Your unsaved changes will be lost.'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Keep writing')),
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Discard'))
+                  ]));
+      _confirming = false;
+      if (discard != true) return;
+    }
+    if (mounted) {
+      setState(() => _allowPop = true);
+      context.pop();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _accountKey = _currentAccount;
+    _token = ApiClient.userService.readToken();
+    _history.add(_snapshot());
+    _title.addListener(_record);
+    _editor.addListener(_record);
   }
 
   /// Moods are paged in by the picker itself, so nothing is fetched until it's
@@ -70,6 +163,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     final choice = await showMoodPickerSheet(context, selected: _selectedMood);
     if (choice == null || !mounted) return;
     setState(() => _selectedMood = choice.mood);
+    _record();
   }
 
   @override
@@ -121,6 +215,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
       _tagSuggestions = [];
       _typedTagIsNew = false;
     });
+    _record();
   }
 
   /// A tag the user typed that isn't in the suggestions. Sent with a null id -
@@ -148,9 +243,10 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
           _PendingAttachment(path: path, name: file.name, size: file.size));
     }
 
-    setState(() {});
+    _record();
     if (rejected.isNotEmpty && mounted) {
-      _toast("Skipped ${rejected.length} file(s) over ${UploadLimits.of(UploadFeature.diary).label}",
+      _toast(
+          "Skipped ${rejected.length} file(s) over ${UploadLimits.of(UploadFeature.diary).label}",
           type: CLAlertType.warning);
     }
   }
@@ -162,7 +258,10 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
       firstDate: DateTime(2000),
       lastDate: DateTime.now().add(const Duration(days: 1)),
     );
-    if (picked != null && mounted) setState(() => _entryDate = picked);
+    if (picked != null && mounted) {
+      setState(() => _entryDate = picked);
+      _record();
+    }
   }
 
   void _toast(String message, {CLAlertType type = CLAlertType.error}) {
@@ -183,6 +282,13 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   }
 
   Future<void> _save() async {
+    if (_currentAccount != _accountKey) {
+      _toast(
+          'Account changed. Return to the original account to save this entry.');
+      return;
+    }
+    final token = await _token;
+    if (token == null || _currentAccount != _accountKey || !mounted) return;
     final title = _title.text.trim();
     final plain = _editor.document.toPlainText().trim();
 
@@ -203,26 +309,31 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     // a failure here has to abort before anything is created.
     final uploaded = <DiaryAttachment>[];
     for (final pending in _attachments) {
-      final result = await ProfileApi().uploadMediaRequest(
-        pending.path,
-        _mediaTypeFor(pending.name),
-        action: 'entry',
-      );
-      if (result == null) {
-        if (!mounted) return;
-        setState(() => _isSaving = false);
-        // Already reported by the request (reportedAction).
+      try {
+        final files =
+            await MediaUploader(api: ApiClient.instance.forToken(token))
+                .upload(purpose: UploadFeature.diary, paths: [pending.path]);
+        final result = files.single;
+        uploaded.add(DiaryAttachment(
+            url: result.fileUrl,
+            fileId: result.uploadId,
+            fileName: result.name,
+            fileType: result.mime));
+      } catch (_) {
+        if (mounted) {
+          setState(() => _isSaving = false);
+          _toast("Couldn't upload the attachment. Try again.");
+        }
         return;
       }
-      uploaded.add(DiaryAttachment(
-        url: result.url,
-        fileId: result.fileId,
-        fileName: result.fileName,
-        fileType: result.mediaType,
-      ));
+    }
+    if (_currentAccount != _accountKey) {
+      if (mounted) setState(() => _isSaving = false);
+      return;
     }
 
-    final entry = await DiaryApi().createEntry(
+    final entry =
+        await DiaryApi(dio: ApiClient.userService.forToken(token)).createEntry(
       title: title,
       content: _contentAsHtml(),
       entryDate: _entryDateForApi(),
@@ -240,66 +351,123 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
       return;
     }
     // The list screen reloads from the top when it sees this.
+    setState(() => _allowPop = true);
     context.pop(true);
-  }
-
-  String _mediaTypeFor(String fileName) {
-    final lower = fileName.toLowerCase();
-    if (RegExp(r'\.(jpe?g|png|gif|webp|heic)$').hasMatch(lower)) return 'image';
-    if (RegExp(r'\.(mp4|mov|avi|mkv|webm)$').hasMatch(lower)) return 'video';
-    if (RegExp(r'\.(mp3|wav|m4a|aac|ogg)$').hasMatch(lower)) return 'audio';
-    return 'file';
   }
 
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-
-    return CLScreen(
-      backgroundColor: p.bg,
-      appBar: AppBar(
-        title: const Text("New entry"),
-        actions: [
-          TextButton(
-            onPressed: _isSaving ? null : _save,
-            child: _isSaving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : Text("Save",
-                    style:
-                        TextStyle(color: p.brand, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-      body: AbsorbPointer(
-        absorbing: _isSaving,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _titleAndDate(p),
-              const SizedBox(height: 10),
-              _editorCard(p),
-              const SizedBox(height: 10),
-              _moodPicker(p),
-              const SizedBox(height: 10),
-              _tagPicker(p),
-              const SizedBox(height: 10),
-              _attachmentPicker(p),
-              const SizedBox(height: 10),
-              _privacyToggle(p),
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
+    final theme = Theme.of(context);
+    return PopScope(
+        canPop: _allowPop,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop) _leave();
+        },
+        child: Theme(
+            data: theme.copyWith(
+                inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+                    focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: p.border),
+                        borderRadius: BorderRadius.circular(9)),
+                    focusColor: Colors.transparent)),
+            child: CLScreen(
+              backgroundColor: p.surface,
+              appBar: AppBar(
+                  backgroundColor: p.surface,
+                  leading: IconButton(
+                      tooltip: 'Back to diary',
+                      onPressed: _leave,
+                      icon: const Icon(Icons.arrow_back)),
+                  title: const Text('New entry',
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  actions: [
+                    TextButton(
+                        onPressed: _isSaving ? null : _save,
+                        child: _isSaving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : Text('Save',
+                                style: TextStyle(
+                                    color: p.brand,
+                                    fontWeight: FontWeight.w600)))
+                  ]),
+              body: AbsorbPointer(
+                  absorbing: _isSaving,
+                  child: Column(children: [
+                    Expanded(
+                        child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(19, 16, 19, 24),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _titleAndDate(p),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(child: _moodPicker(p)),
+                                        const SizedBox(width: 9),
+                                        Expanded(child: _privacyToggle(p))
+                                      ]),
+                                  const SizedBox(height: 12),
+                                  _tagPicker(p),
+                                  const SizedBox(height: 22),
+                                  _editorCard(p),
+                                  const SizedBox(height: 18),
+                                  _attachmentPicker(p),
+                                ]))),
+                    SafeArea(
+                        top: false,
+                        child: Container(
+                            decoration: BoxDecoration(
+                                border:
+                                    Border(top: BorderSide(color: p.border))),
+                            child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(children: [
+                                    IconButton(
+                                        tooltip: 'Undo',
+                                        onPressed: _historyIndex > 0
+                                            ? () => _undo(-1)
+                                            : null,
+                                        icon: const Icon(Icons.undo, size: 20)),
+                                    IconButton(
+                                        tooltip: 'Redo',
+                                        onPressed:
+                                            _historyIndex + 1 < _history.length
+                                                ? () => _undo(1)
+                                                : null,
+                                        icon: const Icon(Icons.redo, size: 20)),
+                                    const Spacer(),
+                                    IconButton(
+                                        tooltip: 'Attach file',
+                                        onPressed: _pickAttachments,
+                                        icon: const Icon(Icons.attach_file,
+                                            size: 20))
+                                  ]),
+                                  FleatherToolbar.basic(
+                                      controller: _editor,
+                                      hideBackgroundColor: true,
+                                      hideForegroundColor: true,
+                                      hideInlineCode: true,
+                                      hideCodeBlock: true,
+                                      hideDirection: true,
+                                      hideUndoRedo: true,
+                                      hideAlignment: true),
+                                ]))),
+                  ])),
+            )));
   }
 
-  Widget _titleAndDate(CLPalette p) => CLCard(
+  Widget _titleAndDate(CLPalette p) => Padding(
+        padding: EdgeInsets.zero,
         child: Column(
           children: [
             TextField(
@@ -312,6 +480,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                 hintText: "Title",
                 hintStyle: TextStyle(color: p.text3),
                 border: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                enabledBorder: InputBorder.none,
                 isDense: true,
               ),
             ),
@@ -334,26 +504,13 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
         ),
       );
 
-  Widget _editorCard(CLPalette p) => CLCard(
+  Widget _editorCard(CLPalette p) => Padding(
+        padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FleatherToolbar.basic(
-              controller: _editor,
-              // Trimmed to what the HTML codec represents cleanly and what
-              // webapp's own toolbar offers - the full default is far too wide
-              // for a phone.
-              hideBackgroundColor: true,
-              hideForegroundColor: true,
-              hideInlineCode: true,
-              hideCodeBlock: true,
-              hideDirection: true,
-              hideUndoRedo: true,
-              hideAlignment: true,
-            ),
-            const Divider(height: 16),
             ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 220),
+              constraints: const BoxConstraints(minHeight: 285),
               child: FleatherEditor(
                 controller: _editor,
                 focusNode: _editorFocus,
@@ -367,7 +524,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
   /// A full-width field that opens the paginated picker, matching webapp's
   /// "Select Mood" async select rather than rendering every mood inline.
-  Widget _moodPicker(CLPalette p) => CLCard(
+  Widget _moodPicker(CLPalette p) => Padding(
+        padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -421,7 +579,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
         ),
       );
 
-  Widget _tagPicker(CLPalette p) => CLCard(
+  Widget _tagPicker(CLPalette p) => Padding(
+        padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -443,7 +602,10 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                           label: t.name,
                           icon: Icons.close,
                           active: true,
-                          onTap: () => setState(() => _selectedTags.remove(t)),
+                          onTap: () {
+                            setState(() => _selectedTags.remove(t));
+                            _record();
+                          },
                         ))
                     .toList(),
               ),
@@ -456,6 +618,12 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
               textInputAction: TextInputAction.done,
               style: TextStyle(color: p.text, fontSize: CLType.title),
               decoration: InputDecoration(
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: p.border),
+                    borderRadius: BorderRadius.circular(9)),
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: p.border),
+                    borderRadius: BorderRadius.circular(9)),
                 hintText: "Search or create a tag",
                 hintStyle: TextStyle(color: p.text3, fontSize: CLType.bodySm),
                 isDense: true,
@@ -535,7 +703,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
         ),
       );
 
-  Widget _attachmentPicker(CLPalette p) => CLCard(
+  Widget _attachmentPicker(CLPalette p) => Padding(
+        padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -558,7 +727,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
               ],
             ),
             if (_attachments.isEmpty)
-              Text("Up to ${UploadLimits.of(UploadFeature.diary).label} per file",
+              Text(
+                  "Up to ${UploadLimits.of(UploadFeature.diary).label} per file",
                   style: TextStyle(color: p.text3, fontSize: CLType.caption))
             else
               ..._attachments.map((a) => Padding(
@@ -580,8 +750,10 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                                 color: p.text3, fontSize: CLType.caption)),
                         IconButton(
                           icon: Icon(Icons.close, size: 17, color: p.text3),
-                          onPressed: () =>
-                              setState(() => _attachments.remove(a)),
+                          onPressed: () => setState(() {
+                            _attachments.remove(a);
+                            _record();
+                          }),
                         ),
                       ],
                     ),
@@ -590,38 +762,36 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
         ),
       );
 
-  Widget _privacyToggle(CLPalette p) => CLCard(
-        child: Row(
-          children: [
-            Icon(_isPrivate ? Icons.lock_outline : Icons.public,
-                size: 19, color: p.text2),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_isPrivate ? "Private" : "Public",
-                      style: TextStyle(
-                          color: p.text,
-                          fontSize: CLType.title,
-                          fontWeight: FontWeight.w700)),
-                  Text(
-                    _isPrivate
-                        ? "Only you can open this entry"
-                        : "Anyone with the link can open this entry",
-                    style: TextStyle(color: p.text3, fontSize: CLType.caption),
-                  ),
-                ],
-              ),
-            ),
-            Switch(
-              value: !_isPrivate,
-              onChanged: (makePublic) =>
-                  setState(() => _isPrivate = !makePublic),
-            ),
-          ],
-        ),
-      );
+  Widget _privacyToggle(CLPalette p) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Privacy', style: TextStyle(fontSize: 11, color: p.text2)),
+        const SizedBox(height: 10),
+        Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+                color: p.surface2,
+                border: Border.all(color: p.border),
+                borderRadius: BorderRadius.circular(9)),
+            child: DropdownButtonHideUnderline(
+                child: DropdownButton<bool>(
+              value: _isPrivate,
+              isExpanded: true,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(fontSize: 12, color: p.text),
+              items: const [
+                DropdownMenuItem(value: true, child: Text('Private')),
+                DropdownMenuItem(value: false, child: Text('Public'))
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _isPrivate = value);
+                  _record();
+                }
+              },
+            ))),
+      ]);
 
   String _readableSize(int bytes) {
     if (bytes < 1024) return "$bytes B";

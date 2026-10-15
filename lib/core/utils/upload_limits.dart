@@ -68,6 +68,7 @@ enum UploadFeature {
   moment('moment'),
   momentPoster('moment_poster'),
   diary('diary'),
+  notes('notes'),
   avatar('avatar'),
   cover('cover'),
   comment('comment');
@@ -93,7 +94,9 @@ class UploadLimit {
     return types.any((pattern) {
       final p = pattern.toLowerCase();
       if (p == '*' || p == '*/*') return true;
-      if (p.endsWith('/*')) return value.startsWith(p.substring(0, p.length - 1));
+      if (p.endsWith('/*')) {
+        return value.startsWith(p.substring(0, p.length - 1));
+      }
       return value == p;
     });
   }
@@ -120,6 +123,7 @@ class UploadLimits {
     'moment': UploadLimit(100, ['image/*', 'video/mp4']),
     'moment_poster': UploadLimit(10, ['image/jpeg', 'image/png']),
     'diary': UploadLimit(100, ['*']),
+    'notes': UploadLimit(100, ['*']),
     'avatar': UploadLimit(10, ['image/*']),
     'cover': UploadLimit(10, ['image/*']),
     'comment': UploadLimit(10, ['image/*']),

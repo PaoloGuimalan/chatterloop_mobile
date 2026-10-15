@@ -9,11 +9,13 @@ import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 
 class DiaryApi {
   // userService, not instance - every diary route lives on the Django user
   // service (userApiUrl), not the Node realtime API.
-  final _dio = ApiClient.userService.dio;
+  DiaryApi({Dio? dio}) : _dio = dio ?? ApiClient.userService.dio;
+  final Dio _dio;
   final _endpoints = Endpoints();
 
   /// The signed-in account's own entries, newest first.

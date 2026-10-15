@@ -1,5 +1,6 @@
 import 'package:chatterloop_app/core/design/rails.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:flutter/material.dart';
@@ -48,9 +49,12 @@ class UserAppShortcuts extends StatelessWidget {
             _tile(context, 'Servers', 'servers',
                 () => context.push('/server-browser')),
             _tile(context, 'Pages', 'pages', _openPages),
-            if (!isActingAsPage)
+            if (appStore.state.userAuth.user.allowedModules
+                .contains('module.diary.access'))
               _tile(context, 'Diary', 'diary', () => context.push('/diary')),
-            _tile(context, 'Notes', 'notes', null),
+            if (appStore.state.userAuth.user.allowedModules
+                .contains('module.notes.access'))
+              _tile(context, 'Notes', 'notes', () => context.push('/notes')),
             _tile(context, 'Chatterloop Extension', 'extension', null),
           ],
         ),

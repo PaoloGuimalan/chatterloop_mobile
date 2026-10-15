@@ -12,6 +12,8 @@ import 'package:chatterloop_app/views/auth/login_view.dart';
 import 'package:chatterloop_app/views/diary/diary_compose_view.dart';
 import 'package:chatterloop_app/views/diary/diary_entry_view.dart';
 import 'package:chatterloop_app/views/diary/diary_list_view.dart';
+import 'package:chatterloop_app/views/notes/notes_list_view.dart';
+import 'package:chatterloop_app/views/notes/note_editor_view.dart';
 import 'package:chatterloop_app/views/auth/setup_view.dart';
 import 'package:chatterloop_app/views/calls/active_call_view.dart';
 import 'package:chatterloop_app/views/calls/incoming_call_view.dart';
@@ -535,6 +537,19 @@ GoRouter buildAppRouter(AuthController authController) {
             pageBuilder: (c, s) => _clPage(
                 s, RealmInviteScreen(token: s.pathParameters['token']!)),
           ),
+          GoRoute(
+              path: '/notes',
+              redirect: _notesGuard,
+              pageBuilder: (c, s) => _clPage(s, const NotesListScreen())),
+          GoRoute(
+              path: '/notes/new',
+              redirect: _notesGuard,
+              pageBuilder: (c, s) => _clPage(s, const NoteEditorScreen())),
+          GoRoute(
+              path: '/notes/:noteId',
+              redirect: _notesGuard,
+              pageBuilder: (c, s) => _clPage(
+                  s, NoteEditorScreen(noteId: s.pathParameters['noteId']!))),
           // Diary. Gated on module.diary.access, mirroring webapp's
           // ProfileContainer.tsx: while acting as a page the module simply
           // isn't part of that context, so the redirect goes home rather than
@@ -614,6 +629,11 @@ GoRouter buildAppRouter(AuthController authController) {
 /// entity-switch re-issues allowed_modules for the new context (see
 /// entity_api.dart), so this flips without a re-login.
 const String _diaryModule = 'module.diary.access';
+
+String? _notesGuard(BuildContext context, GoRouterState state) =>
+    appStore.state.userAuth.user.allowedModules.contains('module.notes.access')
+        ? null
+        : '/newsfeed';
 
 /// Sends the diary routes home when the current context has no diary, matching
 /// ProfileContainer.tsx's `<Navigate to="/" />` for the same case. Read from
