@@ -10,6 +10,9 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
 import 'dart:convert';
+import 'dart:async';
+import 'package:chatterloop_app/core/utils/writing_html.dart';
+import 'package:chatterloop_app/core/reusables/widgets/writing_body.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/media/media_uploader.dart';
@@ -21,7 +24,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:parchment/codecs.dart';
 
 /// A file chosen but not yet uploaded.
 class _PendingAttachment {
@@ -68,6 +70,15 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   bool _restoring = false;
   bool _allowPop = false;
   bool _confirming = false;
+  StreamSubscription? _documentSubscription;
+  void _observeEditor() {
+    _editor.addListener(_record);
+    // Fleather checkbox taps deliberately use notify:false on the controller.
+    _documentSubscription = _editor.document.changes.listen((_) {
+      if (mounted) _record();
+    });
+  }
+
   String get _currentAccount =>
       '${appStore.state.userAuth.user.id}/${appStore.state.userAuth.user.entityId}';
   Map<String, dynamic> _snapshot() => {
@@ -112,10 +123,11 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     final value = _history[index];
     final old = _editor;
     old.removeListener(_record);
+    _documentSubscription?.cancel();
     _editor = FleatherController(
         document: ParchmentDocument.fromJson(value['document'] as List));
     old.dispose();
-    _editor.addListener(_record);
+    _observeEditor();
     _historyIndex = index;
     _restoring = false;
     setState(() {});
@@ -154,7 +166,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     _token = ApiClient.userService.readToken();
     _history.add(_snapshot());
     _title.addListener(_record);
-    _editor.addListener(_record);
+    _observeEditor();
   }
 
   /// Moods are paged in by the picker itself, so nothing is fetched until it's
@@ -169,6 +181,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
   @override
   void dispose() {
+    _documentSubscription?.cancel();
     _editor.dispose();
     _editorFocus.dispose();
     _title.dispose();
@@ -271,7 +284,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
   /// Parchment document -> HTML, the format the server stores and webapp
   /// renders through dangerouslySetInnerHTML.
-  String _contentAsHtml() => parchmentHtml.encode(_editor.document);
+  String _contentAsHtml() => encodeWritingHtml(_editor.document);
 
   /// The server splits entry_date on a space and parses with "%Y-%m-%d", so a
   /// full ISO-8601 string with a "T" separator would throw. Send the date part
@@ -515,11 +528,14 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
           children: [
             ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 285),
-              child: FleatherEditor(
-                controller: _editor,
-                focusNode: _editorFocus,
-                expands: false,
-                padding: const EdgeInsets.symmetric(vertical: 4),
+              child: FleatherTheme(
+                data: writingEditorTheme(context),
+                child: FleatherEditor(
+                  controller: _editor,
+                  focusNode: _editorFocus,
+                  expands: false,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                ),
               ),
             ),
           ],

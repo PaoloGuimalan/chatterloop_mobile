@@ -190,6 +190,57 @@ void main() {
   });
 
   testWidgets(
+      'Diary handles decreasing list levels and records checkbox undo redo',
+      (tester) async {
+    await show(tester, const DiaryComposeScreen(), Brightness.dark);
+    final controller =
+        tester.widget<FleatherEditor>(find.byType(FleatherEditor)).controller;
+    controller.replaceText(0, 0, 'Indented\nNormal');
+    controller.formatText(0, 0, ParchmentAttribute.ul);
+    controller.formatText(0, 0, ParchmentAttribute.indent.withLevel(2));
+    controller.formatText(9, 0, ParchmentAttribute.ul);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    controller.formatText(9, 0, ParchmentAttribute.cl);
+    await tester.pump();
+    final checkbox = find.descendant(
+        of: find.byType(FleatherEditor),
+        matching: find.byWidgetPredicate((widget) =>
+            widget is Semantics && widget.properties.checked != null));
+    await tester.tap(checkbox);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Undo'));
+    await tester.pump();
+    var current =
+        tester.widget<FleatherEditor>(find.byType(FleatherEditor)).controller;
+    expect(current.document.toDelta().toJson().toString(),
+        isNot(contains('checked: true')));
+    await tester.tap(find.byTooltip('Redo'));
+    await tester.pump();
+    current =
+        tester.widget<FleatherEditor>(find.byType(FleatherEditor)).controller;
+    expect(current.document.toDelta().toJson().toString(),
+        contains('checked: true'));
+    // Redo replaced the controller; checkbox changes must still reach history.
+    await tester.tap(checkbox);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Undo'));
+    await tester.pump();
+    current =
+        tester.widget<FleatherEditor>(find.byType(FleatherEditor)).controller;
+    expect(current.document.toDelta().toJson().toString(),
+        contains('checked: true'));
+    final theme =
+        tester.state<RawEditorState>(find.byType(RawEditor)).themeData;
+    expect(theme.paragraph.style.fontFamily, 'Inter');
+    expect(theme.paragraph.style.fontSize, 14);
+    expect(theme.paragraph.style.height, 1.8);
+    expect(theme.heading1.style.fontSize, 24);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
       'checklist changes autosave without controller notification and Save flushes immediately',
       (tester) async {
     final writes = <Map<String, dynamic>>[];

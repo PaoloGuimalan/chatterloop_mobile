@@ -17,8 +17,9 @@ import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:chatterloop_app/views/notes/note_html.dart';
+import 'package:chatterloop_app/core/utils/writing_html.dart';
 import 'package:chatterloop_app/core/reusables/widgets/writing_attachment.dart';
+import 'package:chatterloop_app/core/reusables/widgets/writing_body.dart';
 
 class _RetainedDraft {
   const _RetainedDraft(this.draft, this.saved);
@@ -130,7 +131,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   void _replaceEditor(NoteDraft draft) {
     _restoring = true;
     _title.text = draft.title;
-    final target = decodeNoteHtml(draft.content);
+    final target = decodeWritingHtml(draft.content);
     _editor.compose(_editor.document.toDelta().diff(target.toDelta()),
         selection: const TextSelection.collapsed(offset: 0),
         source: ChangeSource.history);
@@ -144,7 +145,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   NoteDraft _snapshot() {
     final document = jsonEncode(_editor.document.toJson());
     if (document != _lastDocument) {
-      _lastHtml = encodeNoteHtml(_editor.document);
+      _lastHtml = encodeWritingHtml(_editor.document);
       _lastDocument = document;
     }
     return NoteDraft(
@@ -508,11 +509,14 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                                           ConstrainedBox(
                                               constraints: const BoxConstraints(
                                                   minHeight: 285),
-                                              child: FleatherEditor(
-                                                  controller: _editor,
-                                                  focusNode: _focus,
-                                                  padding: EdgeInsets.zero,
-                                                  expands: false)),
+                                              child: FleatherTheme(
+                                                  data: writingEditorTheme(
+                                                      context),
+                                                  child: FleatherEditor(
+                                                      controller: _editor,
+                                                      focusNode: _focus,
+                                                      padding: EdgeInsets.zero,
+                                                      expands: false))),
                                           const SizedBox(height: 16),
                                           for (final attachment in _attachments)
                                             Padding(

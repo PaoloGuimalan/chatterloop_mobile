@@ -13,8 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:chatterloop_app/core/reusables/widgets/writing_attachment.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/views/notes/writing_skeletons.dart';
-import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:chatterloop_app/core/reusables/widgets/writing_body.dart';
 
 class DiaryEntryScreen extends StatefulWidget {
   const DiaryEntryScreen({super.key, required this.entryId});
@@ -168,15 +167,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
         padding: EdgeInsets.zero,
         child: SizedBox(
           width: double.infinity,
-          child: HtmlWidget(
-            entry.content,
-            textStyle: TextStyle(color: p.text, fontSize: 14, height: 1.8),
-            onTapUrl: (url) async {
-              final uri = Uri.tryParse(url);
-              if (uri == null) return false;
-              return launchUrl(uri, mode: LaunchMode.externalApplication);
-            },
-          ),
+          child: WritingHtmlBody(html: entry.content),
         ),
       );
 
