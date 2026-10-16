@@ -704,11 +704,14 @@ class ProfileApi {
     String filePath,
     String mediaType, {
     required String action,
+    String? authToken,
     void Function(double fraction)? onProgress,
   }) async {
     final fileName = fileNameOf(filePath);
     try {
-      final [uploaded] = await MediaUploader().upload(
+      final [uploaded] = await MediaUploader(
+        api: authToken == null ? null : ApiClient.instance.forToken(authToken),
+      ).upload(
         purpose: _actionFeature[action] ?? UploadFeature.postMedia,
         paths: [filePath],
         // The caller's type beats the extension when it's a real one

@@ -7,6 +7,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
+import 'package:chatterloop_app/core/utils/post_updates.dart';
 import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -547,7 +548,11 @@ class SearchContentCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+      listenable: PostUpdates.instance,
+      builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final p = cl(context);
 
     return SizedBox(
@@ -607,7 +612,7 @@ class SearchContentCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  post.caption,
+                  PostUpdates.instance.captionFor(post.postId, post.caption),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   softWrap: true,

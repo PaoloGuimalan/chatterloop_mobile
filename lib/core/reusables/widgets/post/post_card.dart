@@ -27,6 +27,7 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_share.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/hashtags.dart';
+import 'package:chatterloop_app/core/utils/post_updates.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/gestures.dart';
@@ -105,7 +106,18 @@ class _PostCardState extends State<PostCard> {
   @override
   void initState() {
     super.initState();
+    PostUpdates.instance.addListener(_postUpdated);
     _syncSharedPostFuture();
+  }
+
+  void _postUpdated() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    PostUpdates.instance.removeListener(_postUpdated);
+    super.dispose();
   }
 
   @override
@@ -134,7 +146,7 @@ class _PostCardState extends State<PostCard> {
     _sharedPostFuture = null;
   }
 
-  PostPreview get _post => widget.post;
+  PostPreview get _post => PostUpdates.instance.resolve(widget.post);
 
   Future<void> _react() async {
     if (_reactionBusy) return;
@@ -422,6 +434,8 @@ class _PostCardState extends State<PostCard> {
                               ],
                               if (post.datePosted != null)
                                 TextSpan(text: timeSince(post.datePosted!)),
+                              if (post.isEdited)
+                                const TextSpan(text: ' · Edited'),
                               // Archiving doesn't remove the row from the
                               // author's own profile, so without this the
                               // menu's only feedback would be the label

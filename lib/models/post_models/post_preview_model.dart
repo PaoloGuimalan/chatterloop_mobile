@@ -178,6 +178,8 @@ class PostPreview {
   final String postId;
   final String caption;
   final DateTime? datePosted;
+  final DateTime? updatedAt;
+  final bool isEdited;
   final List<PostReference> references;
   final List<PostReactionCount> reactions;
   final PostPreviewAuthor author;
@@ -233,6 +235,8 @@ class PostPreview {
     required this.postId,
     required this.caption,
     this.datePosted,
+    this.updatedAt,
+    this.isEdited = false,
     required this.references,
     required this.reactions,
     required this.author,
@@ -264,6 +268,10 @@ class PostPreview {
       reactions.fold(0, (sum, reaction) => sum + reaction.count);
 
   PostPreview copyWith({
+    String? caption,
+    List<PostReference>? references,
+    DateTime? updatedAt,
+    bool? isEdited,
     List<PostReactionCount>? reactions,
     String? entityReaction,
     bool clearEntityReaction = false,
@@ -276,9 +284,11 @@ class PostPreview {
   }) =>
       PostPreview(
         postId: postId,
-        caption: caption,
+        caption: caption ?? this.caption,
         datePosted: datePosted,
-        references: references,
+        updatedAt: updatedAt ?? this.updatedAt,
+        isEdited: isEdited ?? this.isEdited,
+        references: references ?? this.references,
         reactions: reactions ?? this.reactions,
         author: author,
         likesCount: likesCount,
@@ -299,6 +309,48 @@ class PostPreview {
         feedReason: feedReason,
       );
 
+  /// The edit endpoint returns canonical content, not a full serializer.
+  /// Keep author, engagement, tags, shared pointer and original date intact.
+  PostPreview applyPatch(Map<String, dynamic> patch) => PostPreview(
+        postId: postId,
+        caption: patch['caption'] is String ? patch['caption'] : caption,
+        datePosted: datePosted,
+        updatedAt: patch.containsKey('updated_at')
+            ? DateTime.tryParse((patch['updated_at'] ?? '').toString())
+            : updatedAt,
+        isEdited: patch['is_edited'] is bool
+            ? patch['is_edited']
+            : patch.containsKey('updated_at')
+                ? patch['updated_at'] != null
+                : isEdited,
+        references: patch['references'] is List
+            ? (patch['references'] as List)
+                .whereType<Map>()
+                .map((ref) =>
+                    PostReference.fromJson(Map<String, dynamic>.from(ref)))
+                .toList()
+            : references,
+        reactions: reactions,
+        author: author,
+        likesCount: likesCount,
+        commentsCount: commentsCount,
+        isShared: isShared,
+        linkPreview: patch.containsKey('link_preview')
+            ? patch['link_preview'] is Map
+                ? LinkPreviewData.fromJson(
+                    Map<String, dynamic>.from(patch['link_preview']))
+                : null
+            : linkPreview,
+        entityReaction: entityReaction,
+        isSaved: isSaved,
+        isArchived:
+            patch['is_archived'] is bool ? patch['is_archived'] : isArchived,
+        privacyStatus: patch['privacy_status']?.toString() ?? privacyStatus,
+        contentType: patch['content_type']?.toString() ?? contentType,
+        tagged: tagged,
+        feedReason: feedReason,
+      );
+
   factory PostPreview.fromJson(Map<String, dynamic> json) {
     final references = json["references"];
     final reactions = json["preview"];
@@ -310,6 +362,10 @@ class PostPreview {
       postId: (json["post_id"] ?? "").toString(),
       caption: (json["caption"] ?? "").toString(),
       datePosted: DateTime.tryParse((json["date_posted"] ?? "").toString()),
+      updatedAt: DateTime.tryParse((json['updated_at'] ?? '').toString()),
+      isEdited: json['is_edited'] is bool
+          ? json['is_edited']
+          : json['updated_at'] != null,
       references: references is List
           ? references
               .whereType<Map>()

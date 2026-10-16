@@ -32,6 +32,8 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_edit.dart';
+import 'package:chatterloop_app/core/utils/post_updates.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
 
@@ -58,6 +60,8 @@ bool isTaggedInPost(PostPreview post) {
 }
 
 enum _PostOption {
+  edit,
+  audience,
   save,
   unsave,
   removeTag,
@@ -91,6 +95,15 @@ class PostOptionsButton extends StatefulWidget {
 
 class _PostOptionsButtonState extends State<PostOptionsButton> {
   bool _busy = false;
+
+  Future<void> _edit({bool audience = false}) async {
+    final updated = audience
+        ? await showPostAudienceSheet(context, widget.post)
+        : await openPostEditor(context, widget.post);
+    if (mounted && updated != null) {
+      widget.onChanged?.call(PostUpdates.instance.resolve(widget.post));
+    }
+  }
 
   Future<void> _setSaved(bool saved) async {
     setState(() => _busy = true);
@@ -211,7 +224,6 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
@@ -234,6 +246,10 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
       splashRadius: 20,
       onSelected: (option) {
         switch (option) {
+          case _PostOption.edit:
+            _edit();
+          case _PostOption.audience:
+            _edit(audience: true);
           case _PostOption.save:
             _setSaved(true);
           case _PostOption.unsave:
@@ -253,6 +269,17 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
         }
       },
       itemBuilder: (context) => [
+        if (mine) ...[
+          _item(p,
+              value: _PostOption.edit,
+              icon: Icons.edit_outlined,
+              label: 'Edit post'),
+          _item(p,
+              value: _PostOption.audience,
+              icon: Icons.people_outline,
+              label: 'Change audience'),
+          const PopupMenuDivider(height: 12),
+        ],
         // Save is for everyone, but an archived post isn't a thing you can
         // bookmark - it isn't in anyone's feed to come back to.
         if (!post.isArchived)
@@ -359,8 +386,8 @@ class _EditTagsSheetState extends State<_EditTagsSheet> {
 
   Future<void> _remove(PostPreviewAuthor entity) async {
     setState(() => _removingId = entity.entityId);
-    final remaining = await NewsfeedApi().removePostTagRequest(
-        postId: widget.postId, entityId: entity.entityId);
+    final remaining = await NewsfeedApi()
+        .removePostTagRequest(postId: widget.postId, entityId: entity.entityId);
     if (!mounted) return;
     setState(() => _removingId = null);
     if (remaining == null) return; // Already reported by the request.

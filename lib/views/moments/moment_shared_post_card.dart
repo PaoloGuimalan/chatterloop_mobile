@@ -2,6 +2,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
+import 'package:chatterloop_app/core/utils/post_updates.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -49,7 +50,18 @@ class _MomentSharedPostCardState extends State<MomentSharedPostCard> {
   @override
   void initState() {
     super.initState();
+    PostUpdates.instance.addListener(_postUpdated);
     _loadOriginal();
+  }
+
+  void _postUpdated() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    PostUpdates.instance.removeListener(_postUpdated);
+    super.dispose();
   }
 
   @override
@@ -76,7 +88,7 @@ class _MomentSharedPostCardState extends State<MomentSharedPostCard> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    final post = widget.post;
+    final post = PostUpdates.instance.resolve(widget.post);
     final isReshare = post.isShared;
     // A reshare's own reference is the original, not media.
     final media = isReshare

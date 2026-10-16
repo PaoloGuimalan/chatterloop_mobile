@@ -20,6 +20,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
+import 'package:chatterloop_app/core/utils/post_updates.dart';
 import 'package:chatterloop_app/models/post_models/saved_post_model.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -222,10 +223,23 @@ class _SavedPostRow extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+      listenable: PostUpdates.instance,
+      builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final p = cl(context);
+    final display = SavedPost(
+      id: item.id,
+      postId: item.postId,
+      caption: PostUpdates.instance.captionFor(item.postId, item.caption),
+      contentType:
+          PostUpdates.instance.contentTypeFor(item.postId, item.contentType),
+      author: item.author,
+      savedAt: item.savedAt,
+    );
     final meta = [
-      if (item.contentTypeLabel.isNotEmpty) item.contentTypeLabel,
+      if (display.contentTypeLabel.isNotEmpty) display.contentTypeLabel,
       if (item.author.displayName.isNotEmpty) item.author.displayName,
     ].join(' · ');
 
@@ -258,7 +272,7 @@ class _SavedPostRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.title,
+                  display.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

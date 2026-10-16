@@ -534,6 +534,29 @@ class NewsfeedApi {
     );
   }
 
+  /// Content or audience changes return a canonical partial post patch.
+  Future<Map<String, dynamic>?> updatePostRequest({
+    required String postId,
+    required Map<String, dynamic> fields,
+    String? authToken,
+  }) =>
+      reportedRequest<Map<String, dynamic>>(
+        () => _dio.put(_endpoints.newsfeedPost,
+            data: {'post_id': postId, 'fields': fields},
+            options: authToken == null
+                ? null
+                : Options(extra: {'authToken': authToken})),
+        failure: "We couldn't save your changes.",
+        parse: (response) {
+          final body = response.data;
+          if (body is! Map || body['status'] != true || body['post'] is! Map) {
+            return null;
+          }
+          final patch = Map<String, dynamic>.from(body['post']);
+          return patch['post_id']?.toString() == postId ? patch : null;
+        },
+      );
+
   /// Archive / unarchive - AUTHOR only (the server enforces it too).
   ///
   /// Goes through the generic post update, which takes a `fields` map rather
