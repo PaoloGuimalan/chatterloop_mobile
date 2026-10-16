@@ -1,5 +1,6 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/views/notes/notes_masonry.dart';
 import 'package:flutter/material.dart';
 
 class _Line extends StatelessWidget {
@@ -31,7 +32,7 @@ class _BodyLines extends StatelessWidget {
       ]);
 }
 
-/// Mirrors the two-column, 235px note cards including their footer controls.
+/// Varied content previews use the same measured masonry as loaded note cards.
 class NotesListSkeleton extends StatelessWidget {
   const NotesListSkeleton(
       {super.key = const ValueKey('writing-notes-skeleton')});
@@ -41,39 +42,39 @@ class NotesListSkeleton extends StatelessWidget {
     return Semantics(
         label: 'Loading notes',
         child: ExcludeSemantics(
-            child: GridView.builder(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 90),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              mainAxisExtent: 235),
-          itemCount: 8,
-          itemBuilder: (_, index) => Container(
-              padding: const EdgeInsets.fromLTRB(12, 13, 8, 5),
-              decoration: BoxDecoration(
-                  color: p.surface,
-                  border: Border.all(color: p.border),
-                  borderRadius: BorderRadius.circular(14)),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _Line(.82, height: 15),
-                    const SizedBox(height: 12),
-                    _BodyLines(lines: index.isEven ? 6 : 4),
-                    const Spacer(),
-                    const SizedBox(
-                        height: 48,
-                        child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              CLSkeleton(width: 38, height: 10),
-                              Padding(
-                                  padding: EdgeInsets.only(right: 12),
-                                  child: CLSkeleton(width: 12, height: 18))
-                            ])),
-                  ])),
-        )));
+            child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 90),
+                child: NotesMasonry(
+                  ids: List.generate(8, (index) => 'skeleton-$index'),
+                  itemBuilder: (_, index, __, ___) => Container(
+                      padding: const EdgeInsets.fromLTRB(12, 13, 8, 5),
+                      decoration: BoxDecoration(
+                          color: p.surface,
+                          border: Border.all(color: p.border),
+                          borderRadius: BorderRadius.circular(14)),
+                      child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const _Line(.82, height: 15),
+                            const SizedBox(height: 12),
+                            // Stable variation avoids jumping sizes on pulse frames.
+                            _BodyLines(
+                                lines: const [2, 5, 3, 6, 4, 2, 7, 4][index]),
+                            const SizedBox(
+                                height: 48,
+                                child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      CLSkeleton(width: 38, height: 10),
+                                      Padding(
+                                          padding: EdgeInsets.only(right: 12),
+                                          child:
+                                              CLSkeleton(width: 12, height: 18))
+                                    ])),
+                          ])),
+                ))));
   }
 }
 

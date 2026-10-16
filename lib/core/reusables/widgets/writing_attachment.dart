@@ -1,6 +1,6 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
-import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
+import 'package:chatterloop_app/core/reusables/players/writing_audio_preview.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/reusables/widgets/media_viewer.dart';
 import 'package:chatterloop_app/core/utils/media_downloader.dart';
@@ -48,36 +48,15 @@ class WritingAttachment extends StatelessWidget {
     }
 
     if (a.isAudio) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: p.surface2,
-          borderRadius: BorderRadius.circular(CLRadii.sm),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // isSender only picks the player's colour scheme; the diary has no
-            // sender/receiver distinction, so it uses the received styling.
-            VoiceMessagePlayer(src: a.url, isSender: false),
-            Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 4),
-                    child: Text(a.fileName ?? "",
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: p.text3, fontSize: CLType.caption)),
-                  ),
-                ),
-                _AttachmentDownloadButton(attachment: a),
-              ],
-            ),
-          ],
-        ),
-      );
+      return Align(
+          alignment: Alignment.centerLeft,
+          child: Stack(children: [
+            WritingAudioPreview(src: a.url, fileName: a.fileName),
+            Positioned(
+                top: 0,
+                right: 0,
+                child: _AttachmentDownloadButton(attachment: a)),
+          ]));
     }
 
     return InkWell(

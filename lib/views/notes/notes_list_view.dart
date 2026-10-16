@@ -6,6 +6,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/notes_models/note.dart';
 import 'package:chatterloop_app/views/notes/writing_widgets.dart';
 import 'package:chatterloop_app/views/notes/writing_skeletons.dart';
+import 'package:chatterloop_app/views/notes/notes_masonry.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -29,6 +30,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
   bool _loading = true;
   bool _reordering = false;
   final _gridKey = GlobalKey();
+  Map<String, Rect> _cardRects = {};
   List<Note>? _beforeDrag;
   String? _dragId;
   StreamSubscription? _accountSubscription;
@@ -146,12 +148,19 @@ class _NotesListScreenState extends State<NotesListScreen> {
     final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || _dragId == null) return;
     final local = box.globalToLocal(global);
-    final column = (local.dx / ((box.size.width + 10) / 2)).floor().clamp(0, 1);
-    final row =
-        (local.dy / 245).floor().clamp(0, (_notes.length / 2).ceil() - 1);
-    final target = (row * 2 + column).clamp(0, _notes.length - 1);
+    if (_cardRects.isEmpty) return;
+    final hit = _cardRects.entries
+        .where((entry) => entry.value.contains(local))
+        .firstOrNull;
+    final nearest = hit ??
+        _cardRects.entries.reduce((a, b) =>
+            (a.value.center - local).distanceSquared <=
+                    (b.value.center - local).distanceSquared
+                ? a
+                : b);
+    final target = _notes.indexWhere((note) => note.id == nearest.key);
     final current = _notes.indexWhere((note) => note.id == _dragId);
-    if (current < 0 || current == target) return;
+    if (current < 0 || target < 0 || current == target) return;
     setState(() => _notes.insert(target, _notes.removeAt(current)));
   }
 
@@ -182,60 +191,42 @@ class _NotesListScreenState extends State<NotesListScreen> {
     });
   }
 
-  Widget _animatedGrid(bool canMove) =>
-      LayoutBuilder(builder: (context, constraints) {
-        final width = (constraints.maxWidth - 10) / 2;
-        final reduced = MediaQuery.disableAnimationsOf(context);
-        return DragTarget<String>(
-          // Flutter checks the target before onDragStarted initializes _dragId.
-          onWillAcceptWithDetails: (details) =>
-              canMove && _notes.any((note) => note.id == details.data),
-          onAcceptWithDetails: (_) => _drop(),
-          builder: (context, candidates, rejected) => SizedBox(
-            key: _gridKey,
-            height: (_notes.length / 2).ceil() * 245 - 10,
-            child: Stack(clipBehavior: Clip.none, children: [
-              for (var index = 0; index < _notes.length; index++)
-                AnimatedPositioned(
-                  key: ValueKey(_notes[index].id),
-                  duration: reduced
-                      ? Duration.zero
-                      : const Duration(milliseconds: 230),
-                  curve: Curves.easeOutCubic,
-                  left: (index % 2) * (width + 10),
-                  top: (index ~/ 2) * 245,
-                  width: width,
-                  height: 235,
-                  child: LongPressDraggable<String>(
-                    data: _notes[index].id,
-                    maxSimultaneousDrags: canMove ? 1 : 0,
-                    delay: const Duration(milliseconds: 200),
-                    onDragStarted: () => setState(() {
-                      _dragId = _notes[index].id;
-                      _beforeDrag = List.of(_notes);
-                    }),
-                    onDragUpdate: (details) =>
-                        _dragUpdate(details.globalPosition),
-                    onDragEnd: (details) {
-                      if (!details.wasAccepted) _cancelDrag();
-                    },
-                    feedback: Material(
-                        color: Colors.transparent,
-                        child: Transform.scale(
-                            scale: 1.025,
-                            child: SizedBox(
-                                width: width,
-                                height: 235,
-                                child: _card(_notes[index], false)))),
-                    childWhenDragging: Opacity(
-                        opacity: .22, child: _card(_notes[index], false)),
-                    child: _card(_notes[index], canMove),
-                  ),
-                ),
-            ]),
+  Widget _animatedGrid(bool canMove) => DragTarget<String>(
+        // Flutter checks the target before onDragStarted initializes _dragId.
+        onWillAcceptWithDetails: (details) =>
+            canMove && _notes.any((note) => note.id == details.data),
+        onAcceptWithDetails: (_) => _drop(),
+        builder: (context, candidates, rejected) => NotesMasonry(
+          key: _gridKey,
+          ids: _notes.map((note) => note.id).toList(),
+          onLayout: (rects) => _cardRects = rects,
+          itemBuilder: (context, index, width, height) =>
+              LongPressDraggable<String>(
+            data: _notes[index].id,
+            maxSimultaneousDrags: canMove ? 1 : 0,
+            delay: const Duration(milliseconds: 200),
+            onDragStarted: () => setState(() {
+              _dragId = _notes[index].id;
+              _beforeDrag = List.of(_notes);
+            }),
+            onDragUpdate: (details) => _dragUpdate(details.globalPosition),
+            onDragEnd: (details) {
+              if (!details.wasAccepted) _cancelDrag();
+            },
+            feedback: Material(
+                color: Colors.transparent,
+                child: Transform.scale(
+                    scale: 1.025,
+                    child: SizedBox(
+                        width: width,
+                        height: height,
+                        child: _card(_notes[index], false)))),
+            childWhenDragging:
+                Opacity(opacity: .22, child: _card(_notes[index], false)),
+            child: _card(_notes[index], canMove),
           ),
-        );
-      });
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -327,6 +318,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
 
   Widget _card(Note note, bool canMove) {
     final p = cl(context);
+    final body = notePlainText(note.content);
     return InkWell(
         onTap: () => _open(note),
         borderRadius: BorderRadius.circular(14),
@@ -336,52 +328,55 @@ class _NotesListScreenState extends State<NotesListScreen> {
                 color: p.surface,
                 border: Border.all(color: p.border),
                 borderRadius: BorderRadius.circular(14)),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (note.title.trim().isNotEmpty)
-                Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(note.title,
-                        maxLines: 2,
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (note.title.trim().isNotEmpty)
+                    Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(note.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: p.text))),
+                  if (body.isNotEmpty)
+                    Text(body,
+                        maxLines: 7,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: p.text))),
-              Expanded(
-                  child: Text(notePlainText(note.content),
-                      maxLines: 7,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12, height: 1.65, color: p.text2))),
-              if (note.attachments.isNotEmpty)
-                Padding(
-                    padding: const EdgeInsets.only(top: 5),
-                    child: Text(
-                        '📎 ${note.attachments.first.fileName ?? 'Attachment'}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11, color: p.text3))),
-              Row(children: [
-                Expanded(
-                    child: Text(
-                        note.updatedAt == null
-                            ? ''
-                            : '${note.updatedAt!.month}/${note.updatedAt!.day}',
-                        style: TextStyle(fontSize: 11, color: p.text3))),
-                PopupMenuButton<String>(
-                    tooltip: 'Reorder note',
-                    enabled: canMove,
-                    icon: Icon(Icons.drag_indicator, size: 18, color: p.text3),
-                    onSelected: (value) =>
-                        _move(note.id, value == 'end' ? null : _notes.first.id),
-                    itemBuilder: (_) => const [
-                          PopupMenuItem(
-                              value: 'first', child: Text('Move to first')),
-                          PopupMenuItem(
-                              value: 'end', child: Text('Move to end'))
-                        ])
-              ]),
-            ])));
+                            fontSize: 12, height: 1.65, color: p.text2)),
+                  if (note.attachments.isNotEmpty)
+                    Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: Text(
+                            '📎 ${note.attachments.first.fileName ?? 'Attachment'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: p.text3))),
+                  Row(children: [
+                    Expanded(
+                        child: Text(
+                            note.updatedAt == null
+                                ? ''
+                                : '${note.updatedAt!.month}/${note.updatedAt!.day}',
+                            style: TextStyle(fontSize: 11, color: p.text3))),
+                    PopupMenuButton<String>(
+                        tooltip: 'Reorder note',
+                        enabled: canMove,
+                        icon: Icon(Icons.drag_indicator,
+                            size: 18, color: p.text3),
+                        onSelected: (value) => _move(
+                            note.id, value == 'end' ? null : _notes.first.id),
+                        itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                  value: 'first', child: Text('Move to first')),
+                              PopupMenuItem(
+                                  value: 'end', child: Text('Move to end'))
+                            ])
+                  ]),
+                ])));
   }
 }

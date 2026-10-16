@@ -275,12 +275,64 @@ void main() {
 
   for (final brightness in Brightness.values) {
     final theme = brightness == Brightness.dark ? 'dark' : 'light';
+    testWidgets(
+        'Notes cards fit their content and pack without row gaps ($theme)',
+        (tester) async {
+      notes[0]['content'] = '<p>A short thought.</p>';
+      notes[1]['content'] =
+          '<p>${List.filled(12, 'A longer thought to keep for another day.').join(' ')}</p>';
+      await show(tester, NotesListScreen(api: api), brightness);
+      Rect card(int i) => tester.getRect(find
+          .ancestor(of: find.text(_titles[i]), matching: find.byType(InkWell))
+          .first);
+      final first = card(0), second = card(1), third = card(2);
+      expect(first.height, lessThan(second.height - 30));
+      expect(first.width, second.width);
+      expect(third.left, first.left);
+      expect(third.top, closeTo(first.bottom + 10, .1));
+      for (var i = 0; i < notes.length; i++) {
+        for (var j = i + 1; j < notes.length; j++) {
+          expect(card(i).overlaps(card(j)), isFalse,
+              reason: 'Content-sized cards must not overlap');
+        }
+      }
+      expect(tester.takeException(), isNull);
+    });
+    testWidgets('Notes skeletons use stable varied card heights ($theme)',
+        (tester) async {
+      api.dio.interceptors
+          .insert(0, InterceptorsWrapper(onRequest: (_, __) {}));
+      await show(tester, NotesListScreen(api: api), brightness, settle: false);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      final cards = find.byWidgetPredicate((widget) =>
+          widget is Container &&
+          widget.padding == const EdgeInsets.fromLTRB(12, 13, 8, 5));
+      expect(cards, findsNWidgets(8));
+      final heights = cards
+          .evaluate()
+          .map(
+              (element) => tester.getSize(find.byWidget(element.widget)).height)
+          .toList();
+      expect(heights.toSet().length, greaterThan(2));
+      await tester.pump(const Duration(milliseconds: 300));
+      final later = cards
+          .evaluate()
+          .map(
+              (element) => tester.getSize(find.byWidget(element.widget)).height)
+          .toList();
+      expect(later, heights,
+          reason: 'Loading animation must not reshuffle card sizes');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
     testWidgets('native Notes grid fits and animates a real drag ($theme)',
         (tester) async {
       await show(tester, NotesListScreen(api: api), brightness);
       expect(find.text(_titles.first), findsOneWidget);
       final first = tester.getCenter(find.text(_titles.first));
       final target = tester.getCenter(find.text(_titles[3]));
+      final neighborBefore = tester.getTopLeft(find.text(_titles[1]));
       final gesture = await tester.startGesture(first);
       await tester.pump(const Duration(milliseconds: 250));
       expect(find.text(_titles.first), findsNWidgets(2),
@@ -288,13 +340,20 @@ void main() {
       await gesture.moveBy(const Offset(8, 8));
       await tester.pump();
       await gesture.moveTo(target);
-      await tester.pump(const Duration(milliseconds: 280));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final neighborDuring = tester.getTopLeft(find.text(_titles[1]));
+      await tester.pump(const Duration(milliseconds: 180));
+      final neighborAfter = tester.getTopLeft(find.text(_titles[1]));
+      expect(neighborDuring, isNot(neighborBefore));
+      expect(neighborDuring, isNot(neighborAfter),
+          reason: 'Neighboring cards should interpolate into place');
       await gesture.up();
       await tester.pumpAndSettle();
       expect(moves, isNotEmpty);
       expect(moves.last['note_id'], 'note-0');
-      expect(
-          notes.map((n) => n['id']).toList().indexOf('note-0'), greaterThan(0));
+      expect(notes.map((n) => n['id']).toList().indexOf('note-0'), 3,
+          reason: 'Drop target follows the actual card bounds');
       expect(tester.takeException(), isNull);
     });
     testWidgets('native Diary cards fit cleanly ($theme)', (tester) async {
