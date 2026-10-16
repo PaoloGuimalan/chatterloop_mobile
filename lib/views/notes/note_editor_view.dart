@@ -17,7 +17,7 @@ import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:parchment/codecs.dart';
+import 'package:chatterloop_app/views/notes/note_html.dart';
 import 'package:chatterloop_app/core/reusables/widgets/writing_attachment.dart';
 
 class _RetainedDraft {
@@ -56,6 +56,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   String _lastDocument = '';
   String _lastHtml = '';
   StreamSubscription? _accountSubscription;
+  StreamSubscription? _documentSubscription;
   @override
   void initState() {
     super.initState();
@@ -73,6 +74,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       if (!mounted || !api.isCurrent) return;
       if (reload) {
         _title.removeListener(_changed);
+        _editor.removeListener(_changed);
+        _documentSubscription?.cancel();
         _save?.removeListener(_savedChanged);
         _save?.dispose();
         _accountSubscription?.cancel();
@@ -111,6 +114,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       if (retained != null) _save!.update(draft);
       _title.addListener(_changed);
       _editor.addListener(_changed);
+      // Checklist taps intentionally skip controller notifications. Observe
+      // the document too so every actual edit reaches autosave and history.
+      _documentSubscription = _editor.document.changes.listen((_) {
+        if (mounted) _changed();
+      });
       setState(() {});
     } catch (_) {
       if (mounted) {
@@ -122,7 +130,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   void _replaceEditor(NoteDraft draft) {
     _restoring = true;
     _title.text = draft.title;
-    final target = parchmentHtml.decode(draft.content);
+    final target = decodeNoteHtml(draft.content);
     _editor.compose(_editor.document.toDelta().diff(target.toDelta()),
         selection: const TextSelection.collapsed(offset: 0),
         source: ChangeSource.history);
@@ -136,8 +144,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   NoteDraft _snapshot() {
     final document = jsonEncode(_editor.document.toJson());
     if (document != _lastDocument) {
+      _lastHtml = encodeNoteHtml(_editor.document);
       _lastDocument = document;
-      _lastHtml = parchmentHtml.encode(_editor.document);
     }
     return NoteDraft(
         title: _title.text,
@@ -286,6 +294,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   @override
   void dispose() {
     _accountSubscription?.cancel();
+    _documentSubscription?.cancel();
     _title.dispose();
     _editor.dispose();
     _focus.dispose();
@@ -410,7 +419,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                         tooltip: 'More options',
                         enabled: !_deleting && !_uploading,
                         onSelected: (action) {
-                          if (action == 'copy') {
+                          if (action == 'save') {
+                            FocusManager.instance.primaryFocus?.unfocus();
+                            _changed();
+                            save.flush();
+                          } else if (action == 'copy') {
                             _copyEdits();
                           } else if (action == 'reload') {
                             _reloadLatest();
@@ -419,6 +432,12 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                           }
                         },
                         itemBuilder: (_) => [
+                              PopupMenuItem(
+                                  value: 'save',
+                                  enabled: save.draft.hasValue &&
+                                      save.dirty &&
+                                      !save.conflict,
+                                  child: const Text('Save')),
                               const PopupMenuItem(
                                   value: 'copy', child: Text('Copy edits')),
                               if (save.saved != null)

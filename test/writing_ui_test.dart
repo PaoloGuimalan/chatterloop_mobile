@@ -190,6 +190,48 @@ void main() {
   });
 
   testWidgets(
+      'checklist changes autosave without controller notification and Save flushes immediately',
+      (tester) async {
+    final writes = <Map<String, dynamic>>[];
+    api.dio.interceptors.insert(0,
+        InterceptorsWrapper(onRequest: (options, handler) {
+      if (options.method == 'PATCH') {
+        final payload = Map<String, dynamic>.from(options.data);
+        writes.add(payload);
+        handler
+            .resolve(Response(requestOptions: options, statusCode: 200, data: {
+          ...notes[3],
+          ...payload,
+          'version': writes.length + 1,
+        }));
+      } else {
+        handler.next(options);
+      }
+    }));
+    await show(
+        tester, NoteEditorScreen(api: api, noteId: 'note-3'), Brightness.dark);
+    final controller =
+        tester.widget<FleatherEditor>(find.byType(FleatherEditor)).controller;
+    controller.formatText(0, 0, ParchmentAttribute.cl);
+    await tester.pump(const Duration(seconds: 2));
+    writes.clear();
+    controller.formatText(0, 0, ParchmentAttribute.checked, notify: false);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(writes, hasLength(1),
+        reason: 'Checkbox toggles must be observed from the document');
+    expect(writes.single['content'], contains('ql-list-checked'));
+    await tester.enterText(find.byType(TextField).first, 'Save immediately');
+    await tester.tap(find.byTooltip('More options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save').last);
+    await tester.pumpAndSettle();
+    expect(writes.last['title'], 'Save immediately');
+    expect(find.text('Saved'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
       'saved note history hides the keyboard and resumes editing on tap',
       (tester) async {
     notes[5]['content'] =
