@@ -8,6 +8,7 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/media/composition.dart';
 import 'package:chatterloop_app/core/media/encoding_profile.dart';
 import 'package:chatterloop_app/core/media/media_engine.dart';
+import 'package:chatterloop_app/core/media/moment_draft.dart';
 import 'package:chatterloop_app/core/media/sequence_player.dart';
 import 'package:chatterloop_app/core/media/still_image.dart';
 import 'package:chatterloop_app/core/media/text_card_image.dart';
@@ -67,8 +68,10 @@ class CreateMomentScreen extends StatefulWidget {
   /// Tests only: open straight into editing this.
   @visibleForTesting
   final Composition? initialEdit;
+  final MomentDraftStore? draftStore;
 
-  const CreateMomentScreen({super.key, this.sharedPost, this.initialEdit});
+  const CreateMomentScreen(
+      {super.key, this.sharedPost, this.initialEdit, this.draftStore});
 
   @override
   State<CreateMomentScreen> createState() => _CreateMomentScreenState();
@@ -87,8 +90,21 @@ typedef _Upload = ({
 typedef _Picked = ({String path, bool video});
 
 class _CreateMomentScreenState extends State<CreateMomentScreen>
-    with TickerProviderStateMixin {
-  static const _profile = EncodingProfile.moment;
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  CanvasOrientation _orientation = CanvasOrientation.portrait;
+  EncodingProfile get _profile => EncodingProfile.moment.copyWith(
+        width:
+            (_edit?.orientation ?? _orientation) == CanvasOrientation.landscape
+                ? 1920
+                : 1080,
+        height:
+            (_edit?.orientation ?? _orientation) == CanvasOrientation.landscape
+                ? 1080
+                : 1920,
+      );
+  // A representational horizon, not a product duration limit. Local exports
+  // always use the actual composition length; sharing has its own guard.
+  static const _editingLimit = Duration(microseconds: 0x1FFFFFFFFFFFFF);
 
   static const _backgrounds = <int>[
     0xFF000000,
@@ -128,6 +144,16 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
   /// A video file's picture for its timeline cards, by path.
   final Map<String, String> _thumbnails = {};
   bool _preparing = false;
+  final _canvasVersion = ValueNotifier(0);
+  MomentDraftStore? _draftStore;
+  Timer? _draftTimer;
+  bool _restoringDraft = false;
+  bool _draftClosed = false;
+  bool _leaving = false;
+  bool _closingEditor = false;
+  int _operation = 0;
+  Future<void> _lastDraftSave = Future.value();
+  String? _draftProblem;
 
   /// Playing when a scrub started - it plays on once let go.
   bool _resumeAfterScrub = false;
@@ -145,7 +171,9 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
   // ---- Share / Save.
   _Phase _phase = _Phase.editing;
   double _renderProgress = 0;
-  RenderJob<RenderResult>? _job;
+  RenderJob<Object>? _job;
+  String _renderStatus = 'Preparing your moment';
+  double _uploadProgress = 0;
 
   /// The last render and what it was made from (the edit as JSON, and
   /// whether watermarked): Retry after a failed upload or post reuses it
@@ -162,25 +190,46 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _player = SequencePlayer(vsync: this)..addListener(_onPlayer);
-    _caption.addListener(() => setState(() {}));
+    _caption.addListener(_onCaption);
+    final user = appStore.state.userAuth.user;
+    _draftStore = widget.sharedPost != null
+        ? null
+        : widget.draftStore ??
+            (user.id.isEmpty
+                ? null
+                : MomentDraftStore(ownerId: '${user.id}|${user.entityId}'));
     final edit = widget.initialEdit;
     if (edit != null) {
       _edit = edit;
       _player.setEdit(edit);
+    } else if (_draftStore != null) {
+      _restoringDraft = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _restoreDraft());
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _draftTimer?.cancel();
+    if (!_draftClosed && !_restoringDraft) _saveDraft();
+    _draftClosed = true;
     _caption.dispose();
+    _canvasVersion.dispose();
     _job?.cancel();
     _rendered?.dispose();
     _player
       ..removeListener(_onPlayer)
       ..dispose();
     final workspace = _workspace;
-    if (workspace != null) workspace.delete(recursive: true).ignore();
+    // A queued snapshot may still be copying prepared photos/text from here.
+    if (workspace != null) {
+      _lastDraftSave
+          .whenComplete(() => workspace.delete(recursive: true))
+          .ignore();
+    }
     super.dispose();
   }
 
@@ -192,16 +241,201 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     CLAlerts.show(text, type: type);
   }
 
-  bool get _busy => _phase != _Phase.editing || _preparing;
+  bool get _busy => _phase != _Phase.editing || _preparing || _restoringDraft;
+
+  void _onCaption() {
+    if (mounted) setState(() {});
+    _scheduleDraft();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _player.pause();
+      _saveDraft();
+    }
+  }
+
+  void _scheduleDraft() {
+    if (_draftClosed || _restoringDraft || _draftStore == null) return;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 700), _saveDraft);
+  }
+
+  Future<void> _saveDraft() {
+    _draftTimer?.cancel();
+    final store = _draftStore;
+    final edit =
+        _edit ?? Composition(clips: const [], orientation: _orientation);
+    if (_draftClosed || _restoringDraft || store == null) {
+      return _lastDraftSave;
+    }
+    final snapshot = MomentDraft(
+        edit: edit,
+        caption: _caption.text,
+        audience: _audience,
+        allowReplies: _allowReplies,
+        position: _player.position.value);
+    return _lastDraftSave = store.save(snapshot).then((_) {
+      if (mounted && _draftProblem != null) {
+        setState(() => _draftProblem = null);
+      }
+    }).catchError((Object error) {
+      debugPrint('CreateMoment: draft save failed: $error');
+      if (mounted) {
+        setState(() => _draftProblem = 'Draft could not be saved. '
+            'Keep this editor open and free some storage.');
+      }
+    });
+  }
+
+  Future<void> _restoreDraft() async {
+    try {
+      final draft = await _draftStore!.load();
+      if (!mounted || _draftClosed) return;
+      if (draft != null) {
+        setState(() {
+          final restored = draft.edit;
+          _orientation = restored.orientation;
+          _edit = restored.clips.isEmpty &&
+                  restored.overlays.isEmpty &&
+                  restored.audio.isEmpty
+              ? null
+              : restored;
+          _audience = draft.audience;
+          _allowReplies = draft.allowReplies;
+          _caption.text = draft.caption;
+        });
+        _player.setEdit(_edit);
+        _player.seek(draft.position);
+        _restoreThumbnails(draft.edit);
+      }
+    } catch (error) {
+      debugPrint('CreateMoment: draft restore failed: $error');
+      if (mounted) {
+        setState(() => _draftProblem = 'Could not restore your draft.');
+      }
+    } finally {
+      if (mounted) setState(() => _restoringDraft = false);
+    }
+  }
+
+  Future<void> _restoreThumbnails(Composition edit) async {
+    try {
+      final clips = [...edit.clips, ...edit.overlays.map((o) => o.clip)]
+          .where((clip) => clip.source.isVideo)
+          .toList();
+      if (clips.isEmpty || !mounted) return;
+      final workspace =
+          _workspace ??= await MediaEngine.instance.createWorkspace();
+      if (!mounted) {
+        await workspace.delete(recursive: true);
+        return;
+      }
+      for (final clip in clips) {
+        if (!mounted || _draftClosed) return;
+        if (_thumbnails.containsKey(clip.source.path)) {
+          continue;
+        }
+        final thumb = await MediaEngine.instance
+            .thumbnail(clip.source.path, clip.usedRange.start, workspace);
+        if (thumb != null && mounted) {
+          setState(() => _thumbnails[clip.source.path] = thumb);
+        }
+      }
+    } catch (error) {
+      debugPrint('CreateMoment: draft thumbnail failed: $error');
+    }
+  }
+
+  Future<void> _discardDraft() async {
+    _draftTimer?.cancel();
+    _draftClosed = true;
+    await _draftStore?.discard();
+  }
+
+  Future<void> _closeEditor() async {
+    if (_leaving ||
+        _closingEditor ||
+        _restoringDraft ||
+        _phase == _Phase.uploading ||
+        _phase == _Phase.posting ||
+        _phase == _Phase.saving) {
+      return;
+    }
+    _closingEditor = true;
+    // Invalidates even an attempt still awaiting file IO or native disposal,
+    // before it has a RenderJob. A later attempt cannot revive this one.
+    _operation++;
+    try {
+      _player.pause();
+      if (_phase == _Phase.rendering) {
+        // Stop before opening a decision dialog. The completed render must
+        // never advance into upload/publishing behind that dialog.
+        final job = _job;
+        await job?.cancel();
+        if (job != null) {
+          try {
+            await job.result;
+          } catch (_) {/* Expected cancellation. */}
+        }
+        if (!mounted) return;
+        _savingToDevice = false;
+        _backToEditing(failed: _failed);
+      }
+      final hasDraft = _edit != null && _draftStore != null;
+      final choice = _edit == null
+          ? 'close'
+          : await showDialog<String>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Leave this edit?'),
+                content: Text(hasDraft
+                    ? 'Keep your draft to continue later, or discard it.'
+                    : 'Discard this edit and leave?'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Keep editing')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, 'discard'),
+                      child: const Text('Discard')),
+                  if (hasDraft)
+                    FilledButton(
+                        onPressed: () => Navigator.pop(context, 'keep'),
+                        child: const Text('Keep draft')),
+                ],
+              ),
+            );
+      if (choice == null || !mounted) return;
+      if (choice == 'discard') {
+        await _discardDraft();
+      } else {
+        await _saveDraft();
+        if (_draftProblem != null) return;
+      }
+      if (!mounted) return;
+      setState(() => _leaving = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.pop();
+      });
+    } catch (error) {
+      _draftClosed = false;
+      if (mounted) {
+        _toast("Couldn't save or discard this draft. Please try again.");
+      }
+      debugPrint('CreateMoment: close failed: $error');
+    } finally {
+      _closingEditor = false;
+    }
+  }
 
   // ---------------------------------------------------------------- picking
 
-  /// Time left before the moment reaches its 2 minutes.
-  Duration get _room =>
-      _edit?.remaining(_profile.maxDuration) ?? _profile.maxDuration;
+  /// Editable time is independent of the two-minute sharing limit.
+  Duration get _room => _edit?.remaining(_editingLimit) ?? _editingLimit;
 
-  void _full() => _toast(
-      "A moment can be up to ${TrimBar.lengthLabel(_profile.maxDuration)}");
+  void _full() => _toast("No room here. Move or trim a clip first.");
 
   /// Where new things go in: the playhead - or the top, when the playhead
   /// is at the very end.
@@ -215,7 +449,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       {required bool video, required Duration maxVideo}) async {
     final picker = ImagePicker();
     final file = video
-        ? await picker.pickVideo(source: ImageSource.camera, maxDuration: maxVideo)
+        ? await picker.pickVideo(source: ImageSource.camera)
         : await picker.pickImage(source: ImageSource.camera, imageQuality: 95);
     return file == null ? const [] : [(path: file.path, video: video)];
   }
@@ -334,14 +568,22 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       return MediaLayer(
         source: source,
         transform: framing(source),
-        duration: room < MediaLayer.defaultStill ? room : MediaLayer.defaultStill,
+        duration:
+            room < MediaLayer.defaultStill ? room : MediaLayer.defaultStill,
       );
     }
-    setState(() => _preparing = false);
-    final range = await ClipTrimPage.open(context,
-        source: source, maxSpan: room, step: step);
-    if (!mounted) return null;
-    setState(() => _preparing = true);
+    // Suitable clips join immediately. Fine trimming remains available on
+    // their timeline cards; a trim screen is needed only for a constrained slot.
+    TrimRange? range;
+    if (source.duration! <= room) {
+      range = TrimRange(Duration.zero, source.duration!);
+    } else {
+      setState(() => _preparing = false);
+      range = await ClipTrimPage.open(context,
+          source: source, maxSpan: room, step: step);
+      if (!mounted) return null;
+      setState(() => _preparing = true);
+    }
     if (range == null) return null;
     if (!_thumbnails.containsKey(source.path)) {
       final thumb = await MediaEngine.instance
@@ -406,7 +648,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
             ? selected.index + 1
             : edit.clips.length);
     final next = edit == null
-        ? Composition(clips: added)
+        ? Composition(clips: added, orientation: _orientation)
         : edit.insertClips(added, index: at);
     _setEdit(next);
     setState(() => _selection = TimelineSelection.clip(at));
@@ -421,7 +663,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     if (edit == null) return;
     _player.pause();
     final from = _insertAt(edit);
-    final slot = edit.overlaySlot(from, maxTotal: _profile.maxDuration);
+    final slot = edit.overlaySlot(from, maxTotal: _editingLimit);
     if (slot == null) {
       return _toast(edit.overlayLanes >= maxOverlayLanes
           ? "Up to $maxOverlayLanes layers over each other - "
@@ -442,7 +684,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       final workspace =
           _workspace ??= await MediaEngine.instance.createWorkspace();
       for (final (i, file) in files.indexed) {
-        final room = next.overlaySlot(at, maxTotal: _profile.maxDuration);
+        final room = next.overlaySlot(at, maxTotal: _editingLimit);
         if (room == null) {
           ranOut = true;
           break;
@@ -456,8 +698,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
         );
         if (!mounted) return;
         if (clip == null) continue;
-        final placed =
-            next.addOverlay(clip, at: at, maxTotal: _profile.maxDuration);
+        final placed = next.addOverlay(clip, at: at, maxTotal: _editingLimit);
         if (placed == null) {
           ranOut = true;
           break;
@@ -481,7 +722,9 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     _setEdit(next);
     final index = next.overlays
         .indexWhere((o) => o.lane == landed.lane && o.start == landed.start);
-    if (index >= 0) setState(() => _selection = TimelineSelection.overlay(index));
+    if (index >= 0) {
+      setState(() => _selection = TimelineSelection.overlay(index));
+    }
     _player.seek(from);
   }
 
@@ -495,7 +738,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     if (edit == null) return;
     _player.pause();
     final from = _insertAt(edit);
-    final slot = edit.overlaySlot(from, maxTotal: _profile.maxDuration);
+    final slot = edit.overlaySlot(from, maxTotal: _editingLimit);
     if (slot == null) {
       return _toast(edit.overlayLanes >= maxOverlayLanes
           ? "Up to $maxOverlayLanes layers over each other - "
@@ -512,8 +755,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       transform: LayerTransform(
           scale: TextCardImage.framingScale(source, _profile.aspectRatio)),
     );
-    final next = _edit!
-        .addOverlay(clip, at: from, maxTotal: _profile.maxDuration, text: card);
+    final next =
+        _edit!.addOverlay(clip, at: from, maxTotal: _editingLimit, text: card);
     if (next == null) return _toast("No room for text here");
     _setEdit(next);
     final index = next.overlays.indexWhere((o) => identical(o.text, card));
@@ -640,7 +883,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       // At the playhead, on the first lane free there - else a lane of its
       // own, heard with the others.
       final slot =
-          current.trackSlot(_insertAt(current), maxTotal: _profile.maxDuration);
+          current.trackSlot(_insertAt(current), maxTotal: _editingLimit);
       if (slot == null) {
         _toast("Up to $maxAudioLanes songs at once - "
             "trim or move one first");
@@ -665,12 +908,14 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       final next = _edit!.addTrack(
         AudioTrack(path: path, name: name, fileLength: length, trim: range),
         at: slot.start,
-        maxTotal: _profile.maxDuration,
+        maxTotal: _editingLimit,
       );
       if (next == null) return;
       _setEdit(next);
       final index = next.audio.indexWhere((t) => !current.audio.contains(t));
-      if (index >= 0) setState(() => _selection = TimelineSelection.track(index));
+      if (index >= 0) {
+        setState(() => _selection = TimelineSelection.track(index));
+      }
     } on MediaEngineException {
       if (mounted) _toast("Couldn't use that audio file");
     } catch (e) {
@@ -688,7 +933,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
   /// slider) are one step together, taken when it ends - or when anything
   /// else changes the edit, so a gesture whose end never came can't swallow
   /// the steps after it.
-  void _setEdit(Composition? next, {bool record = true, bool gesture = false}) {
+  void _setEdit(Composition? next,
+      {bool record = true, bool gesture = false, bool visualOnly = false}) {
     final previous = _edit;
     if (identical(previous, next)) return;
     if (gesture) {
@@ -697,12 +943,21 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       _endGesture();
       if (record) _remember(previous);
     }
-    setState(() {
+    void update() {
+      _orientation = next?.orientation ?? previous?.orientation ?? _orientation;
       _edit = next;
       _failed = false;
       _selection = _stillThere(_selection, next);
-    });
+    }
+
+    if (visualOnly && !_failed) {
+      update();
+      _canvasVersion.value++;
+    } else {
+      setState(update);
+    }
     _player.setEdit(next);
+    if (!gesture) _scheduleDraft();
   }
 
   /// [selection] when [edit] still has what it points at.
@@ -735,6 +990,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     final start = _gestureStart;
     _gestureStart = null;
     if (!identical(start, _edit)) setState(() => _remember(start));
+    _scheduleDraft();
   }
 
   bool get _canUndo => _undo.isNotEmpty && !_busy;
@@ -842,7 +1098,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       _setEdit(
           edit.replaceClip(
               index, edit.clips[index].copyWith(transform: transform)),
-          gesture: gesture);
+          gesture: gesture,
+          visualOnly: true);
     } else {
       final overlay = edit.overlays[layer];
       _setEdit(
@@ -850,7 +1107,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
               layer,
               overlay.copyWith(
                   clip: overlay.clip.copyWith(transform: transform))),
-          gesture: gesture);
+          gesture: gesture,
+          visualOnly: true);
     }
   }
 
@@ -957,8 +1215,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       _setEdit(edit.insertClips([clip], index: selected.index + 1));
       setState(() => _selection = TimelineSelection.clip(selected.index + 1));
     } else if (selected.isOverlay) {
-      final next = edit.duplicateOverlay(selected.index,
-          maxTotal: _profile.maxDuration);
+      final next =
+          edit.duplicateOverlay(selected.index, maxTotal: _editingLimit);
       if (next == null) return _toast("No room for a copy of this layer");
       _setEdit(next);
       final index = next.overlays.indexWhere((o) => !edit.overlays.contains(o));
@@ -974,13 +1232,12 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     final edit = _edit;
     if (selected == null || edit == null || !selected.isClip) return;
     final clip = edit.clips[selected.index];
-    final next =
-        edit.liftClip(selected.index, maxTotal: _profile.maxDuration);
+    final next = edit.liftClip(selected.index, maxTotal: _editingLimit);
     if (next == null) return _toast("No free layer for it there");
     _setEdit(next);
     final index = next.overlays.indexWhere((o) => identical(o.clip, clip));
-    setState(() => _selection =
-        index < 0 ? null : TimelineSelection.overlay(index));
+    setState(
+        () => _selection = index < 0 ? null : TimelineSelection.overlay(index));
   }
 
   /// How far the picked card is from its neighbours on its row.
@@ -1002,7 +1259,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     final blanks = _blanksOf(edit, selected);
     final by = toNext ? blanks.after : -blanks.before;
     if (by == null || by == Duration.zero) return;
-    final max = _profile.maxDuration;
+    final max = _editingLimit;
     final next = switch (selected.kind) {
       TimelineKind.clip => edit.slideClip(selected.index, by, maxTotal: max),
       TimelineKind.overlay =>
@@ -1023,16 +1280,15 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
         ? edit.bringForward(selected.index)
         : edit.sendBackward(selected.index);
     if (next == null) {
-      return _toast(forward
-          ? "Already on top"
-          : "Only the main clips are under it");
+      return _toast(
+          forward ? "Already on top" : "Only the main clips are under it");
     }
     HapticFeedback.selectionClick();
     _setEdit(next);
     final index = next.overlays.indexWhere(
         (o) => identical(o.clip, overlay.clip) && o.start == overlay.start);
-    setState(() => _selection =
-        index < 0 ? null : TimelineSelection.overlay(index));
+    setState(
+        () => _selection = index < 0 ? null : TimelineSelection.overlay(index));
   }
 
   /// The picked layer into the main run, at the clip edge nearest it.
@@ -1041,13 +1297,12 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     final edit = _edit;
     if (selected == null || edit == null || !selected.isOverlay) return;
     final clip = edit.overlays[selected.index].clip;
-    final next =
-        edit.dropOverlay(selected.index, maxTotal: _profile.maxDuration);
+    final next = edit.dropOverlay(selected.index, maxTotal: _editingLimit);
     if (next == null) return _full();
     _setEdit(next);
     final index = next.clips.indexWhere((c) => identical(c, clip));
-    setState(() =>
-        _selection = index < 0 ? null : TimelineSelection.clip(index));
+    setState(
+        () => _selection = index < 0 ? null : TimelineSelection.clip(index));
     if (index >= 0) _player.seek(next.clipStarts[index]);
   }
 
@@ -1130,8 +1385,14 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
 
   bool get _ready =>
       !_busy &&
+      !_overShareLimit &&
       (widget.sharedPost != null || _edit != null) &&
       ephemeralCharCount(_caption.text.trim()) <= momentCaptionMaxLength;
+
+  bool get _overShareLimit =>
+      widget.sharedPost == null &&
+      (_edit?.naturalDuration ?? Duration.zero) >
+          EncodingProfile.moment.maxDuration;
 
   /// A single photo is a photo moment; anything more plays as a video - a
   /// blank before it, or a song running on past it, too (the viewer shows
@@ -1146,27 +1407,44 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
 
   Future<void> _share() async {
     if (!_ready) return;
+    final operation = ++_operation;
     FocusScope.of(context).unfocus();
     if (widget.sharedPost != null) return _shareSharedPost();
 
     final edit = _edit!.withAutoFades();
     _player.pause();
+    setState(() => _phase = _Phase.rendering);
     try {
-      final rendered = await _renderFor(edit, watermark: false);
+      final rendered =
+          await _renderFor(edit, watermark: false, operation: operation);
+      if (!_operationActive(operation)) return;
       if (rendered == null) {
         // Cancelled.
         _backToEditing(failed: false);
         return;
       }
 
-      setState(() => _phase = _Phase.uploading);
+      if (!_operationActive(operation)) return;
+      final videoBytes = await File(rendered.videoPath).length();
+      final posterBytes = await File(rendered.posterPath).length();
+      final totalBytes = videoBytes + posterBytes;
+      final videoShare = totalBytes == 0 ? 1.0 : videoBytes / totalBytes;
+      if (!_operationActive(operation)) return;
+      setState(() {
+        _phase = _Phase.uploading;
+        _uploadProgress = _uploadedVideo == null ? 0 : videoShare;
+      });
       final api = ProfileApi();
-      final video = _uploadedVideo ??= await api
-          .uploadMediaRequest(rendered.videoPath, 'video', action: 'moment');
+      final video = _uploadedVideo ??= await api.uploadMediaRequest(
+          rendered.videoPath, 'video',
+          action: 'moment',
+          onProgress: (value) => _onUploadProgress(value * videoShare));
       if (video == null) return _fail("Couldn't upload your moment");
       final poster = _uploadedPoster ??= (await api.uploadMediaRequest(
               rendered.posterPath, 'image',
-              action: 'moment_poster'))
+              action: 'moment_poster',
+              onProgress: (value) =>
+                  _onUploadProgress(videoShare + value * (1 - videoShare))))
           ?.url;
       if (poster == null) return _fail("Couldn't upload your moment");
 
@@ -1186,14 +1464,36 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       if (error != null) return _fail(error);
 
       await _dropRender();
+      try {
+        await _discardDraft();
+      } catch (error) {
+        // The server has already published successfully. A local cleanup
+        // failure must never offer a retry that would publish it twice.
+        debugPrint('CreateMoment: published draft cleanup failed: $error');
+      }
       if (!mounted) return;
       EphemeralEvents.moments.value++;
       _toast("Your moment is up for 24 hours");
       context.pop(true);
     } on MediaEngineException catch (e) {
+      if (!_operationActive(operation)) return;
       debugPrint('CreateMoment: render failed: ${e.message}\n${e.logs}');
       _backToEditing(failed: true);
       if (mounted) await _showRenderFailure(e);
+    } catch (error) {
+      if (!_operationActive(operation)) return;
+      debugPrint('CreateMoment: share failed: $error');
+      _fail("Couldn't share your moment. Your edit is still here; try again.");
+    }
+  }
+
+  bool _operationActive(int operation) =>
+      mounted && operation == _operation && !_closingEditor;
+
+  void _onUploadProgress(double value) {
+    final next = value.clamp(0.0, 1.0);
+    if (mounted && (next * 100).floor() != (_uploadProgress * 100).floor()) {
+      setState(() => _uploadProgress = next);
     }
   }
 
@@ -1214,42 +1514,72 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
   /// already made - and saves it to the gallery, without sharing.
   Future<void> _saveToDevice() async {
     if (!_canSave) return;
+    final operation = ++_operation;
     FocusScope.of(context).unfocus();
     final edit = _edit!.withAutoFades();
     _player.pause();
     _savingToDevice = true;
+    setState(() => _phase = _Phase.rendering);
     MediaEngineException? renderFailure;
+    StampResult? image;
     try {
-      final rendered =
-          await _renderFor(edit, watermark: true, handle: _handle);
-      if (rendered != null && mounted) {
+      final still = _madeFrom(edit) == 'photo' && !edit.hasSound;
+      String? path;
+      if (still) {
+        setState(() {
+          _phase = _Phase.rendering;
+          _renderProgress = 0;
+          _renderStatus = 'Preparing photo';
+        });
+        await _player.releaseVideos();
+        if (!_operationActive(operation)) return;
+        final job = MediaEngine.instance
+            .renderStill(edit, profile: _exportProfile(edit), handle: _handle);
+        _job = job;
+        final stopObserving = _observeRender(job);
+        try {
+          image = await job.result;
+          path = image.path;
+        } finally {
+          stopObserving();
+          if (identical(_job, job)) _job = null;
+        }
+      } else {
+        final rendered = await _renderFor(edit,
+            watermark: true, handle: _handle, operation: operation);
+        path = rendered?.videoPath;
+      }
+      if (path != null && _operationActive(operation)) {
         setState(() => _phase = _Phase.saving);
-        // A single photo with no sound is saved as the photo (the poster:
-        // the frame the video holds); anything else as the video.
-        final still = _madeFrom(edit) == 'photo' && !rendered.hasSound;
         final saved = await GallerySaver.save(
-          still ? rendered.posterPath : rendered.videoPath,
+          path,
           fileName:
               GallerySaver.fileNameFor(DateTime.now(), still ? 'jpg' : 'mp4'),
           mimeType: still ? 'image/jpeg' : 'video/mp4',
         );
         if (saved && mounted) _toast("Saved to your gallery");
       }
+    } on RenderCancelled {
+      // Cancellation returns to editing and keeps the draft.
     } on MediaEngineException catch (e) {
+      if (!_operationActive(operation)) return;
       debugPrint('CreateMoment: render failed: ${e.message}\n${e.logs}');
       renderFailure = e;
     } catch (e) {
-      if (mounted) _toast(GallerySaver.failureMessage(e));
+      if (_operationActive(operation)) _toast(GallerySaver.failureMessage(e));
+    } finally {
+      await image?.dispose();
+      if (mounted && operation == _operation) {
+        _savingToDevice = false;
+        _backToEditing(failed: _failed);
+      }
     }
-    _savingToDevice = false;
-    // Share's Retry, if a share had failed, stays.
-    _backToEditing(failed: _failed);
     if (renderFailure != null && mounted) {
       await _showRenderFailure(renderFailure);
     }
   }
 
-  /// A render failure, with ffmpeg's own words for whoever has to fix it.
+  /// Actionable first, with diagnostic output available on request.
   Future<void> _showRenderFailure(MediaEngineException e) {
     final details = (e.logs ?? '').trim();
     return showDialog<void>(
@@ -1263,39 +1593,38 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text("Try again, or try different photos or videos."),
-              if (details.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: cl(dialogContext).surface2,
-                      borderRadius: BorderRadius.circular(CLRadii.sm),
-                    ),
-                    child: SingleChildScrollView(
-                      reverse: true,
-                      child: SelectableText(
-                        details,
-                        style: const TextStyle(
-                            fontFamily: 'monospace', fontSize: CLType.meta),
+              if (details.isNotEmpty)
+                ExpansionTile(title: const Text('Details'), children: [
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 180,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: cl(dialogContext).surface2,
+                        borderRadius: BorderRadius.circular(CLRadii.sm),
+                      ),
+                      child: SingleChildScrollView(
+                        reverse: true,
+                        child: SelectableText(
+                          details,
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: CLType.meta),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                  TextButton(
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: details));
+                        _toast('Details copied');
+                      },
+                      child: const Text('Copy details')),
+                ]),
             ],
           ),
         ),
         actions: [
-          if (details.isNotEmpty)
-            TextButton(
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: details));
-                Navigator.pop(dialogContext);
-                _toast("Details copied");
-              },
-              child: const Text("Copy details"),
-            ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text("OK"),
@@ -1308,34 +1637,30 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
   /// The render of [edit] - the one already made when nothing changed since,
   /// else a new one. Null when cancelled.
   Future<RenderResult?> _renderFor(Composition edit,
-      {required bool watermark, String? handle}) async {
+      {required bool watermark, String? handle, required int operation}) async {
     final key = '${jsonEncode(edit.toJson())}|watermark=$watermark|$handle';
     final previous = _rendered;
     if (previous != null && _renderedFor == key) return previous;
-    await _dropRender();
-
     setState(() {
       _phase = _Phase.rendering;
       _renderProgress = 0;
+      _renderStatus = 'Preparing video';
     });
+    await _dropRender();
+    if (!_operationActive(operation)) return null;
     // The preview's players let go of their decoders and memory while the
     // render needs them; they come back after (_backToEditing).
-    _player.releaseVideos();
-    final job = _job = MediaEngine.instance.render(edit,
-        profile: _profile, watermark: watermark, handle: handle);
-    void onProgress() {
-      // Progress arrives with every frame encoded: the screen redraws only
-      // when the percentage shown changes.
-      final value = job.progress.value;
-      if (mounted && (value * 100).floor() != (_renderProgress * 100).floor()) {
-        setState(() => _renderProgress = value);
-      }
-    }
-
-    job.progress.addListener(onProgress);
+    await _player.releaseVideos();
+    if (!_operationActive(operation)) return null;
+    final job = MediaEngine.instance.render(edit,
+        profile: watermark ? _exportProfile(edit) : _profile,
+        watermark: watermark,
+        handle: handle);
+    _job = job;
+    final stopObserving = _observeRender(job);
     try {
       final result = await job.result;
-      if (!mounted) {
+      if (!_operationActive(operation)) {
         await result.dispose();
         return null;
       }
@@ -1345,9 +1670,36 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     } on RenderCancelled {
       return null;
     } finally {
-      job.progress.removeListener(onProgress);
+      stopObserving();
       if (identical(_job, job)) _job = null;
     }
+  }
+
+  static EncodingProfile _exportProfile(Composition edit) =>
+      EncodingProfile.momentExportFor(edit.naturalDuration)
+          .copyWith(width: edit.canvasWidth, height: edit.canvasHeight);
+
+  VoidCallback _observeRender(RenderJob<Object> job) {
+    void update() {
+      final progress = job.progress.value;
+      final status = job.status.value;
+      if (mounted &&
+          ((progress * 100).floor() != (_renderProgress * 100).floor() ||
+              status != _renderStatus)) {
+        setState(() {
+          _renderProgress = progress;
+          _renderStatus = status;
+        });
+      }
+    }
+
+    job.progress.addListener(update);
+    job.status.addListener(update);
+    update();
+    return () {
+      job.progress.removeListener(update);
+      job.status.removeListener(update);
+    };
   }
 
   /// Forgets the last render and its uploads (the edit changed, or it is
@@ -1405,7 +1757,38 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
             Navigator.pop(sheetContext, key);
           }),
     );
-    if (picked != null && mounted) setState(() => _audience = picked);
+    if (picked != null && mounted) {
+      setState(() => _audience = picked);
+      _scheduleDraft();
+    }
+  }
+
+  Future<void> _chooseOrientation() async {
+    _player.pause();
+    final orientation = await showModalBottomSheet<CanvasOrientation>(
+      context: context,
+      builder: (context) => SafeArea(
+          child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+              leading: const Icon(Icons.crop_portrait_rounded),
+              title: const Text('Portrait (9:16)'),
+              onTap: () => Navigator.pop(context, CanvasOrientation.portrait)),
+          ListTile(
+              leading: const Icon(Icons.crop_landscape_rounded),
+              title: const Text('Landscape (16:9)'),
+              onTap: () => Navigator.pop(context, CanvasOrientation.landscape)),
+        ],
+      )),
+    );
+    if (orientation == null || !mounted) return;
+    final edit = _edit;
+    if (edit == null) {
+      setState(() => _orientation = orientation);
+    } else if (orientation != edit.orientation) {
+      _setEdit(edit.copyWith(orientation: orientation));
+    }
   }
 
   // ------------------------------------------------------------------ build
@@ -1421,7 +1804,10 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       // A render can be abandoned (leaving cancels it); an upload or post
       // in flight can't be taken back, so it is waited out - and a save to
       // the gallery, which is copying the render leaving would delete.
-      canPop: !holding,
+      canPop: _leaving || (!holding && _edit == null && !_restoringDraft),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !holding) _closeEditor();
+      },
       child: Scaffold(
         backgroundColor: Colors.black,
         resizeToAvoidBottomInset: true,
@@ -1471,52 +1857,62 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
   /// the left - big enough to frame things in - and everything else beside
   /// it, scrolling when the screen is too short for it all.
   Widget _sideBySide(Composition edit, {required bool holding}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
-          child: AspectRatio(
-            aspectRatio: _profile.aspectRatio,
-            child: _stageBox(),
-          ),
-        ),
-        Expanded(
-          child: LayoutBuilder(builder: (context, side) {
-            // Header, play row, the picked card's tools and the pills.
-            const others = 56.0 + 50 + 52 + 50;
-            final forTimeline = side.maxHeight - others;
-            if (forTimeline >= 110) {
-              return Column(
-                children: [
-                  _header(holding: holding),
-                  _transport(edit),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: _timeline(edit, maxHeight: forTimeline),
-                    ),
+    return LayoutBuilder(
+        builder: (context, box) => Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
+                  child: SizedBox(
+                    width: math.min((box.maxHeight - 16) * _profile.aspectRatio,
+                        box.maxWidth * 0.48),
+                    child: Center(
+                        child: AspectRatio(
+                            aspectRatio: _profile.aspectRatio,
+                            child: _stageBox())),
                   ),
-                  _selectionBar(edit),
-                  _pills(),
-                ],
-              );
-            }
-            return SingleChildScrollView(
-              child: Column(
-                children: [
-                  _header(holding: holding),
-                  _transport(edit),
-                  _timeline(edit, maxHeight: 150),
-                  _selectionBar(edit),
-                  _pills(),
-                ],
-              ),
-            );
-          }),
-        ),
-      ],
-    );
+                ),
+                Expanded(
+                  child: LayoutBuilder(builder: (context, side) {
+                    // Header, play row, the picked card's tools and the pills.
+                    final others = 56.0 +
+                        50 +
+                        52 +
+                        50 +
+                        (_overShareLimit ? 48 : 0) +
+                        (_draftProblem == null ? 0 : 48);
+                    final forTimeline = side.maxHeight - others;
+                    if (forTimeline >= 110) {
+                      return Column(
+                        children: [
+                          _header(holding: holding),
+                          _transport(edit),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              child: _timeline(edit, maxHeight: forTimeline),
+                            ),
+                          ),
+                          _selectionBar(edit),
+                          _pills(),
+                        ],
+                      );
+                    }
+                    return SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          _header(holding: holding),
+                          _transport(edit),
+                          _timeline(edit, maxHeight: 150),
+                          _selectionBar(edit),
+                          _pills(),
+                        ],
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ));
   }
 
   Widget _header({required bool holding}) {
@@ -1524,10 +1920,11 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     final editing = widget.sharedPost == null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
-      child: Row(
-        children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
           IconButton(
-            onPressed: holding ? null : () => context.pop(),
+            tooltip: 'Close editor',
+            onPressed: holding ? null : _closeEditor,
             icon: const Icon(Icons.close_rounded, color: Colors.white),
           ),
           const SizedBox(width: 4),
@@ -1556,17 +1953,37 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
             ),
             const SizedBox(width: 4),
           ],
-          CLBtn(
-            label: _phase != _Phase.editing && !_savingToDevice
-                ? "Sharing…"
-                : _failed
-                    ? "Retry"
-                    : "Share",
-            size: CLBtnSize.sm,
-            onPressed: _ready ? _share : null,
+          Tooltip(
+              message: _overShareLimit
+                  ? 'Trim to 2 minutes or less to share. You can export the full edit.'
+                  : 'Share this moment',
+              child: CLBtn(
+                label: _phase != _Phase.editing && !_savingToDevice
+                    ? "Sharing…"
+                    : _failed
+                        ? "Retry"
+                        : "Share",
+                size: CLBtnSize.sm,
+                onPressed: _ready ? _share : null,
+              )),
+        ]),
+        if (_overShareLimit)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(8, 0, 4, 8),
+            child: Text(
+                'Export only · Over 2 minutes. Trim to 2 minutes or less to share.',
+                key: ValueKey('moment-share-limit'),
+                style: TextStyle(
+                    color: Color(0xFFFFB74D), fontSize: CLType.caption)),
           ),
-        ],
-      ),
+        if (_draftProblem != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(_draftProblem!,
+                style: const TextStyle(
+                    color: Color(0xFFFFB74D), fontSize: CLType.caption)),
+          ),
+      ]),
     );
   }
 
@@ -1591,7 +2008,12 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
 
   /// The canvas, with the framing tools, the caption and any progress on
   /// it.
-  Widget _stageBox() {
+  Widget _stageBox() => ValueListenableBuilder<int>(
+        valueListenable: _canvasVersion,
+        builder: (context, version, child) => _buildStageBox(),
+      );
+
+  Widget _buildStageBox() {
     final edit = _edit;
     final hasContent = widget.sharedPost != null || edit != null;
     return ClipRRect(
@@ -1601,7 +2023,12 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
         children: [
           _stage(),
           if (edit != null && _phase == _Phase.editing)
-            Positioned(top: 10, right: 10, child: _tools()),
+            Positioned(
+              top: 10,
+              right: 10,
+              bottom: 64,
+              child: SingleChildScrollView(child: _tools()),
+            ),
           if (hasContent)
             Positioned(left: 12, right: 12, bottom: 12, child: _captionField()),
           if (_phase != _Phase.editing) _progress(),
@@ -1614,7 +2041,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       TimelineView(
         edit: edit,
         position: _player.position,
-        maxTotal: _profile.maxDuration,
+        maxTotal: _editingLimit,
         thumbnails: _thumbnails,
         selection: _selection,
         onSelect: _select,
@@ -1637,26 +2064,34 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
       child: Row(
         children: [
-          _Pill(
-            icon: audience.icon,
-            label: audience.label,
-            onTap: _busy ? null : _chooseAudience,
-          ),
+          Flexible(
+              flex: 3,
+              child: _Pill(
+                icon: audience.icon,
+                label: audience.label,
+                onTap: _busy ? null : _chooseAudience,
+              )),
           const SizedBox(width: 8),
-          _Pill(
-            icon: _allowReplies
-                ? Icons.chat_bubble_outline_rounded
-                : Icons.speaker_notes_off_outlined,
-            label: _allowReplies ? "Replies on" : "Replies off",
-            onTap: _busy
-                ? null
-                : () => setState(() => _allowReplies = !_allowReplies),
-          ),
-          const Spacer(),
+          Flexible(
+              flex: 2,
+              child: _Pill(
+                icon: _allowReplies
+                    ? Icons.chat_bubble_outline_rounded
+                    : Icons.speaker_notes_off_outlined,
+                label: _allowReplies ? "Replies on" : "Replies off",
+                onTap: _busy
+                    ? null
+                    : () {
+                        setState(() => _allowReplies = !_allowReplies);
+                        _scheduleDraft();
+                      },
+              )),
+          const SizedBox(width: 8),
           const Icon(Icons.timer_outlined, size: 16, color: Colors.white60),
           const SizedBox(width: 4),
           const Text("24h",
-              style: TextStyle(color: Colors.white60, fontSize: CLType.caption)),
+              style:
+                  TextStyle(color: Colors.white60, fontSize: CLType.caption)),
         ],
       ),
     );
@@ -1665,7 +2100,6 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
   /// Play / pause, where the playhead is of how long, and Undo / Redo.
   Widget _transport(Composition edit) {
     final total = edit.naturalDuration;
-    final over = total > _profile.maxDuration;
     final clips = edit.clips.length;
     final layers = edit.overlays.length;
     return Padding(
@@ -1695,17 +2129,12 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              over
-                  ? "Only the first ${TrimBar.lengthLabel(_profile.maxDuration)} is kept"
-                  : "$clips ${clips == 1 ? "clip" : "clips"}"
-                      "${layers > 0 ? " · $layers ${layers == 1 ? "layer" : "layers"}" : ""}"
-                      " · up to ${TrimBar.lengthLabel(_profile.maxDuration)}",
+              "$clips ${clips == 1 ? "clip" : "clips"}"
+              "${layers > 0 ? " · $layers ${layers == 1 ? "layer" : "layers"}" : ""}",
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
-              style: TextStyle(
-                  color: over ? const Color(0xFFFFB74D) : Colors.white54,
-                  fontSize: CLType.caption),
+              style: TextStyle(color: Colors.white54, fontSize: CLType.caption),
             ),
           ),
           ..._historyButtons(),
@@ -1760,8 +2189,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
         ),
       );
     }
-    final isText =
-        selected.isOverlay && edit.overlays[selected.index].isText;
+    final isText = selected.isOverlay && edit.overlays[selected.index].isText;
     final MediaLayer? clip = switch (selected.kind) {
       TimelineKind.clip => edit.clips[selected.index],
       TimelineKind.overlay => edit.overlays[selected.index].clip,
@@ -1867,8 +2295,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     );
   }
 
-  /// The framing tools, down the canvas's right edge - for the picked layer
-  /// while it shows, else the main clip on it. In a blank with no layer
+  /// Canvas orientation and framing tools down the canvas's right edge.
+  /// Frame the picked layer while it shows, else the main clip on it. In a blank with no layer
   /// picked there is nothing to frame: only the background.
   Widget _tools() {
     const gap = SizedBox(height: 8);
@@ -1878,6 +2306,14 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        _RoundAction(
+          icon: _edit!.orientation == CanvasOrientation.landscape
+              ? Icons.crop_landscape_rounded
+              : Icons.crop_portrait_rounded,
+          tooltip: 'Canvas orientation',
+          onTap: _chooseOrientation,
+        ),
+        gap,
         if (framing) ...[
           _RoundAction(
             icon:
@@ -1914,9 +2350,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
 
   Widget _progress() {
     final label = switch (_phase) {
-      _Phase.rendering =>
-        "Preparing your moment… ${(_renderProgress * 100).round()}%",
-      _Phase.uploading => "Uploading…",
+      _Phase.rendering => '$_renderStatus… ${(_renderProgress * 100).round()}%',
+      _Phase.uploading => 'Uploading… ${(_uploadProgress * 100).round()}%',
       _Phase.saving => "Saving to your gallery…",
       _ => "Sharing…",
     };
@@ -1932,7 +2367,11 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
                   width: 56,
                   height: 56,
                   child: CircularProgressIndicator(
-                    value: _phase == _Phase.rendering ? _renderProgress : null,
+                    value: _phase == _Phase.rendering
+                        ? _renderProgress
+                        : _phase == _Phase.uploading
+                            ? _uploadProgress
+                            : null,
                     strokeWidth: 4,
                     color: Colors.white,
                     backgroundColor: Colors.white24,
@@ -2028,7 +2467,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       );
     }
 
-    if (_preparing && _edit == null) {
+    if ((_preparing || _restoringDraft) && _edit == null) {
       return const ColoredBox(
         color: Color(0xFF15181D),
         child: Center(child: CircularProgressIndicator(color: Colors.white)),
@@ -2055,9 +2494,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
                         fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
                 Text(
-                    "Pick several - they play one after another, up to "
-                    "${TrimBar.lengthLabel(_profile.maxDuration)}. "
-                    "Gone after 24 hours.",
+                    'Pick several — they play one after another. '
+                    'Export the full edit, or share up to 2 minutes for 24 hours.',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         color: Colors.white60, fontSize: CLType.caption)),
@@ -2095,6 +2533,9 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     // showing there.
     final main = _current;
     final showing = edit.overlaysAt(_player.position.value);
+    final failedMain = main != null && _player.videoFailed(main);
+    final failedOverlay =
+        showing.where((i) => _player.videoFailed(i, overlay: true)).firstOrNull;
     final base = main == null ? 0 : 1;
     final layers = [
       if (main != null)
@@ -2102,12 +2543,12 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
       for (final i in showing)
         CanvasLayer(edit.overlays[i].clip, video: _player.overlayVideoFor(i)),
     ];
+
     /// Canvas layer -> overlay index (null: the main clip).
     int? overlayOf(int layer) => layer < base ? null : showing[layer - base];
     final picked = _selection;
-    final outlined = picked != null && picked.isOverlay
-        ? showing.indexOf(picked.index)
-        : -1;
+    final outlined =
+        picked != null && picked.isOverlay ? showing.indexOf(picked.index) : -1;
 
     return Stack(
       fit: StackFit.expand,
@@ -2143,6 +2584,43 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
             }
           },
         ),
+        if (failedMain || failedOverlay != null)
+          Center(
+              child: Semantics(
+                  liveRegion: true,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 280),
+                    child: Material(
+                      color: const Color(0xEE20242B),
+                      borderRadius: BorderRadius.circular(CLRadii.md),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child:
+                            Column(mainAxisSize: MainAxisSize.min, children: [
+                          Text(
+                              failedMain
+                                  ? "Couldn't preview this clip."
+                                  : "Couldn't preview this video layer.",
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white)),
+                          Wrap(alignment: WrapAlignment.center, children: [
+                            TextButton(
+                                onPressed: () => _player.retryVideo(
+                                    failedMain ? main : failedOverlay!,
+                                    overlay: !failedMain),
+                                child: const Text('Retry preview')),
+                            TextButton(
+                                onPressed: () => _setEdit(failedMain
+                                    ? edit.removeClip(main)
+                                    : edit.removeOverlay(failedOverlay!)),
+                                child: Text(failedMain
+                                    ? 'Remove clip'
+                                    : 'Remove layer')),
+                          ]),
+                        ]),
+                      ),
+                    ),
+                  ))),
         if (_preparing)
           const ColoredBox(
             color: Colors.black38,
@@ -2361,11 +2839,14 @@ class _Pill extends StatelessWidget {
           children: [
             Icon(icon, size: 16, color: Colors.white),
             const SizedBox(width: 6),
-            Text(label,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: CLType.label,
-                    fontWeight: FontWeight.w600)),
+            Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: CLType.label,
+                        fontWeight: FontWeight.w600))),
           ],
         ),
       ),

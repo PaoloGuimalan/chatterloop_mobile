@@ -8,6 +8,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/media/composition.dart';
 import 'package:chatterloop_app/core/media/widgets/edit_canvas.dart';
 import 'package:chatterloop_app/core/media/widgets/timeline_view.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/views/moments/create_moment_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,6 +48,100 @@ Future<void> _pump(WidgetTester tester, Size size, {Composition? edit}) async {
 }
 
 void main() {
+  testWidgets('edits over two minutes remain exportable with sharing explained',
+      (tester) async {
+    final longEdit = Composition(clips: [
+      MediaLayer(
+          source: MediaSource(
+        path: '/in/long.mp4',
+        kind: MediaKind.video,
+        width: 1080,
+        height: 1920,
+        duration: const Duration(minutes: 6),
+      )),
+    ]);
+    await _pump(tester, _upright, edit: longEdit);
+    final share = tester.widget<CLBtn>(find.widgetWithText(CLBtn, 'Share'));
+    expect(share.onPressed, isNull);
+    expect(find.textContaining('Export only'), findsOneWidget);
+    expect(find.textContaining('2 minutes'), findsWidgets);
+    final save = tester.widget<IconButton>(find.ancestor(
+        of: find.byTooltip('Save to device'),
+        matching: find.byType(IconButton)));
+    expect(save.onPressed, isNotNull);
+    final timeline = tester.widget<TimelineView>(find.byType(TimelineView));
+    expect(timeline.maxTotal, greaterThan(const Duration(minutes: 6)));
+  });
+
+  testWidgets('exactly two minutes can still be shared', (tester) async {
+    final atLimit = Composition(clips: [
+      MediaLayer(
+          source: MediaSource(
+        path: '/in/limit.mp4',
+        kind: MediaKind.video,
+        width: 1080,
+        height: 1920,
+        duration: const Duration(minutes: 2),
+      ))
+    ]);
+    await _pump(tester, _upright, edit: atLimit);
+    final share = tester.widget<CLBtn>(find.widgetWithText(CLBtn, 'Share'));
+    expect(share.onPressed, isNotNull);
+    expect(find.textContaining('Export only'), findsNothing);
+  });
+
+  testWidgets('failed previews expose recovery on the ordinary editing canvas',
+      (tester) async {
+    await _pump(tester, _upright, edit: _edit);
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't preview this clip."), findsOneWidget);
+    expect(find.text('Retry preview'), findsOneWidget);
+    await tester.tap(find.text('Remove clip'));
+    await tester.pumpAndSettle();
+    final timeline = tester.widget<TimelineView>(find.byType(TimelineView));
+    expect(timeline.edit.clips, hasLength(1));
+    expect(timeline.edit.clips.single.source.path, '/in/b.mp4');
+  });
+
+  testWidgets(
+      'landscape canvas fits either phone layout and orientation is undoable',
+      (tester) async {
+    await _pump(tester, _upright, edit: _edit);
+    final orientationButton = find.byTooltip('Canvas orientation');
+    final backgroundButton = find.byTooltip('Background');
+    final preview = tester.getRect(find.byType(EditCanvas));
+    expect(preview.contains(tester.getCenter(orientationButton)), isTrue);
+    expect(tester.getCenter(orientationButton).dx,
+        tester.getCenter(backgroundButton).dx);
+    expect(tester.getCenter(orientationButton).dy,
+        lessThan(tester.getCenter(backgroundButton).dy));
+    await tester.tap(find.byTooltip('Canvas orientation'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Landscape (16:9)'));
+    await tester.pumpAndSettle();
+    var canvas = tester.getRect(find.byType(EditCanvas));
+    expect(canvas.width / canvas.height, closeTo(16 / 9, 0.01));
+    var timeline = tester.widget<TimelineView>(find.byType(TimelineView));
+    expect(timeline.edit.orientation, CanvasOrientation.landscape);
+    await tester.ensureVisible(backgroundButton);
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .getRect(find.byType(EditCanvas))
+            .contains(tester.getCenter(backgroundButton)),
+        isTrue);
+
+    tester.view.physicalSize = _onItsSide;
+    await tester.pumpAndSettle();
+    canvas = tester.getRect(find.byType(EditCanvas));
+    expect(canvas.width / canvas.height, closeTo(16 / 9, 0.01));
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Undo'));
+    await tester.pumpAndSettle();
+    timeline = tester.widget<TimelineView>(find.byType(TimelineView));
+    expect(timeline.edit.orientation, CanvasOrientation.portrait);
+  });
+
   testWidgets('on its side, picking: the whole width, not a 9:16 sliver',
       (tester) async {
     await _pump(tester, _onItsSide);
@@ -71,8 +166,7 @@ void main() {
     expect(find.byTooltip('Undo'), findsOneWidget);
   });
 
-  testWidgets('upright, editing: the canvas over the timeline',
-      (tester) async {
+  testWidgets('upright, editing: the canvas over the timeline', (tester) async {
     await _pump(tester, _upright, edit: _edit);
     expect(tester.takeException(), isNull);
     final canvas = tester.getRect(find.byType(EditCanvas));
@@ -92,8 +186,8 @@ void main() {
 
   testWidgets('undo and redo step through the edits', (tester) async {
     await _pump(tester, _upright, edit: _edit);
-    IconButton button(String tooltip) => tester.widget<IconButton>(
-        find.ancestor(
+    IconButton button(String tooltip) =>
+        tester.widget<IconButton>(find.ancestor(
             of: find.byTooltip(tooltip), matching: find.byType(IconButton)));
     // Nothing done yet.
     expect(button('Undo').onPressed, isNull);

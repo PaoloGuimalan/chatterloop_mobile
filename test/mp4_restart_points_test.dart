@@ -3,6 +3,7 @@
 // (an IDR, a P, a whole picture that isn't an IDR, a P) in two chunks, with
 // an audio chunk after each.
 
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:chatterloop_app/core/media/mp4_restart_points.dart';
@@ -25,8 +26,9 @@ List<int> _sps(int references) => [
     ];
 
 /// Length-prefixed NAL units.
-List<int> _sample(List<List<int>> nals) =>
-    [for (final nal in nals) ...[..._u32(nal.length), ...nal]];
+List<int> _sample(List<List<int>> nals) => [
+      for (final nal in nals) ...[..._u32(nal.length), ...nal]
+    ];
 
 final _idr = _sample([
   [0x65, 0x88, 0x11, 0x22]
@@ -52,30 +54,35 @@ Uint8List _mp4({int references = 1}) {
     ]);
     final video = _box('trak', [
       ..._box('mdia', [
-        ..._full('hdlr', [0, 0, 0, 0, ...'vide'.codeUnits, ...List.filled(13, 0)]),
+        ..._full(
+            'hdlr', [0, 0, 0, 0, ...'vide'.codeUnits, ...List.filled(13, 0)]),
         ..._box('minf', [
           ..._box('stbl', [
             ..._full('stsd', [..._u32(1), ...avc1]),
             ..._full('stsz', [
-              ..._u32(0), ..._u32(4),
+              ..._u32(0),
+              ..._u32(4),
               for (final s in [_idr, _p1, _whole, _p2]) ..._u32(s.length),
             ]),
             ..._full('stss', [..._u32(1), ..._u32(1)]),
             ..._full('stsc', [..._u32(1), ..._u32(1), ..._u32(2), ..._u32(1)]),
-            ..._full('stco', [..._u32(2), ..._u32(offsets[0]), ..._u32(offsets[2])]),
+            ..._full(
+                'stco', [..._u32(2), ..._u32(offsets[0]), ..._u32(offsets[2])]),
           ]),
         ]),
       ]),
     ]);
     final sound = _box('trak', [
       ..._box('mdia', [
-        ..._full('hdlr', [0, 0, 0, 0, ...'soun'.codeUnits, ...List.filled(13, 0)]),
+        ..._full(
+            'hdlr', [0, 0, 0, 0, ...'soun'.codeUnits, ...List.filled(13, 0)]),
         ..._box('minf', [
           ..._box('stbl', [
             ..._full('stsd', [..._u32(0)]),
             ..._full('stsz', [..._u32(3), ..._u32(2)]),
             ..._full('stsc', [..._u32(1), ..._u32(1), ..._u32(1), ..._u32(1)]),
-            ..._full('stco', [..._u32(2), ..._u32(offsets[1]), ..._u32(offsets[3])]),
+            ..._full(
+                'stco', [..._u32(2), ..._u32(offsets[1]), ..._u32(offsets[3])]),
           ]),
         ]),
       ]),
@@ -127,14 +134,47 @@ int _find(Uint8List data, List<int> what, int from) {
 }
 
 int _read(Uint8List data, int at) =>
-    (data[at] << 24) | (data[at + 1] << 16) | (data[at + 2] << 8) | data[at + 3];
+    (data[at] << 24) |
+    (data[at + 1] << 16) |
+    (data[at + 2] << 8) |
+    data[at + 3];
 
 List<int> _entries(Uint8List data, String type, {int n = 0, int skip = 0}) {
   final body = _body(data, type, n) + 4 + skip;
-  return [for (var k = 0; k < _read(data, body); k++) _read(data, body + 4 + 4 * k)];
+  return [
+    for (var k = 0; k < _read(data, body); k++) _read(data, body + 4 + 4 * k)
+  ];
 }
 
 void main() {
+  test('file finalization writes restart points and removes its temporary file',
+      () async {
+    final folder = await Directory.systemTemp.createTemp('restart-test-');
+    addTearDown(() => folder.delete(recursive: true));
+    final file = File('${folder.path}/video.mp4');
+    await file.writeAsBytes(_mp4());
+    expect(await Mp4RestartPoints.addToFile(file.path), isTrue);
+    final after = await file.readAsBytes();
+    expect(_entries(after, 'stss'), [1, 3]);
+    expect(await File('${file.path}.restart').exists(), isFalse);
+    expect(await Mp4RestartPoints.addToFile(file.path), isFalse);
+  });
+
+  test('file finalization respects its memory budget without modifying media',
+      () async {
+    final folder = await Directory.systemTemp.createTemp('restart-budget-');
+    addTearDown(() => folder.delete(recursive: true));
+    final file = File('${folder.path}/video.mp4');
+    final before = _mp4();
+    await file.writeAsBytes(before);
+    expect(
+        await Mp4RestartPoints.addToFile(file.path,
+            maxFileBytes: before.length - 1),
+        isFalse);
+    expect(await file.readAsBytes(), before);
+    expect(await File('${file.path}.restart').exists(), isFalse);
+  });
+
   test('a whole picture that is no IDR becomes a restart point', () {
     final before = _mp4();
     final after = Mp4RestartPoints.add(before)!;
@@ -165,7 +205,7 @@ void main() {
   });
 
   test('left as it is when it is no MP4 it knows', () {
-    expect(Mp4RestartPoints.add(Uint8List.fromList(List.filled(64, 7))),
-        isNull);
+    expect(
+        Mp4RestartPoints.add(Uint8List.fromList(List.filled(64, 7))), isNull);
   });
 }

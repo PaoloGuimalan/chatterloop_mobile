@@ -234,7 +234,8 @@ class MediaLayer {
         if (trim != null) 'trim': trim!.toJson(),
         if (duration != null) 'duration_ms': duration!.inMilliseconds,
         'volume': volume,
-        if (gapBefore > Duration.zero) 'gap_before_ms': gapBefore.inMilliseconds,
+        if (gapBefore > Duration.zero)
+          'gap_before_ms': gapBefore.inMilliseconds,
       };
 
   factory MediaLayer.fromJson(Map<String, dynamic> json,
@@ -496,6 +497,8 @@ class CompositionBackground {
           : blur;
 }
 
+enum CanvasOrientation { portrait, landscape }
+
 @immutable
 class Composition {
   /// Bump when the meaning of a field changes; readers check it.
@@ -503,10 +506,17 @@ class Composition {
   /// 3: overlays, and lanes for the audio tracks.
   /// 4: blanks - a clip's [MediaLayer.gapBefore] - and an edit as long as
   /// whatever ends last, not only its clips.
-  static const currentVersion = 4;
+  /// 5: the canvas orientation, independent of device orientation.
+  static const currentVersion = 5;
 
   final int version;
   final CompositionBackground background;
+  final CanvasOrientation orientation;
+  int get canvasWidth =>
+      orientation == CanvasOrientation.landscape ? 1920 : 1080;
+  int get canvasHeight =>
+      orientation == CanvasOrientation.landscape ? 1080 : 1920;
+  double get aspectRatio => canvasWidth / canvasHeight;
 
   /// Played one after another - the MAIN run - each after the blank before
   /// it ([MediaLayer.gapBefore]). Empty when only layers or songs are left.
@@ -523,6 +533,7 @@ class Composition {
   const Composition({
     this.version = currentVersion,
     this.background = CompositionBackground.blur,
+    this.orientation = CanvasOrientation.portrait,
     required this.clips,
     this.overlays = const [],
     this.audio = const [],
@@ -604,6 +615,7 @@ class Composition {
 
   Composition copyWith({
     CompositionBackground? background,
+    CanvasOrientation? orientation,
     List<MediaLayer>? clips,
     List<OverlayClip>? overlays,
     List<AudioTrack>? audio,
@@ -611,6 +623,7 @@ class Composition {
       Composition(
         version: version,
         background: background ?? this.background,
+        orientation: orientation ?? this.orientation,
         clips: clips ?? this.clips,
         overlays: overlays ?? this.overlays,
         audio: audio ?? this.audio,
@@ -619,6 +632,7 @@ class Composition {
   Map<String, dynamic> toJson() => {
         'v': version,
         'background': background.toJson(),
+        'orientation': orientation.name,
         'clips': [for (final clip in clips) clip.toJson()],
         'overlays': [for (final overlay in overlays) overlay.toJson()],
         'audio': [for (final track in audio) track.toJson()],
@@ -640,13 +654,17 @@ class Composition {
               stillDuration: still)
         ],
         audio: [
-          if (audio is Map) AudioTrack.fromJson(Map<String, dynamic>.from(audio))
+          if (audio is Map)
+            AudioTrack.fromJson(Map<String, dynamic>.from(audio))
         ],
       );
     }
     return Composition(
       version: (json['v'] as num?)?.toInt() ?? currentVersion,
       background: background,
+      orientation: json['orientation'] == 'landscape'
+          ? CanvasOrientation.landscape
+          : CanvasOrientation.portrait,
       clips: [
         for (final clip in (json['clips'] as List).cast<Map>())
           MediaLayer.fromJson(Map<String, dynamic>.from(clip))

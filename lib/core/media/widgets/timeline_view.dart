@@ -84,6 +84,8 @@ class TimelineView extends StatefulWidget {
   final double? maxHeight;
 
   final bool enabled;
+  final bool showControls;
+  final double initialPixelsPerSecond;
 
   const TimelineView({
     super.key,
@@ -102,6 +104,8 @@ class TimelineView extends StatefulWidget {
     required this.onAddAudio,
     this.maxHeight,
     this.enabled = true,
+    this.showControls = true,
+    this.initialPixelsPerSecond = pxPerSecond,
   });
 
   /// Timeline pixels per second of edit.
@@ -114,7 +118,7 @@ class TimelineView extends StatefulWidget {
   static const laneGap = 6.0;
 
   /// How tall the timeline is for [edit], all its lanes showing.
-  static double heightFor(Composition edit) => _Rows(edit).height;
+  static double heightFor(Composition edit) => _Rows(edit).height + 48;
 
   @override
   State<TimelineView> createState() => _TimelineViewState();
@@ -140,7 +144,10 @@ class _Rows {
   double get mainTop => TimelineView.rulerHeight + overlays * _overlayRow;
 
   double trackTop(int lane) =>
-      mainTop + TimelineView.clipHeight + TimelineView.laneGap + lane * _trackRow;
+      mainTop +
+      TimelineView.clipHeight +
+      TimelineView.laneGap +
+      lane * _trackRow;
 
   double get height => trackTop(math.max(tracks, 1)) + 2;
 
@@ -180,7 +187,7 @@ class _Landing {
 }
 
 class _TimelineViewState extends State<TimelineView> {
-  static const _pps = TimelineView.pxPerSecond;
+  late double _pps = widget.initialPixelsPerSecond.clamp(12.0, 384.0);
   static const _handle = 16.0;
   static const _addButton = 46.0;
 
@@ -239,8 +246,8 @@ class _TimelineViewState extends State<TimelineView> {
   /// The timeline keeps the playhead's time under the middle line.
   void _follow() {
     if (_userScrolling || !_scroll.hasClients) return;
-    final target = _px(widget.position.value)
-        .clamp(0.0, _scroll.position.maxScrollExtent);
+    final target =
+        _px(widget.position.value).clamp(0.0, _scroll.position.maxScrollExtent);
     if ((target - _scroll.offset).abs() > 0.5) _scroll.jumpTo(target);
   }
 
@@ -274,11 +281,20 @@ class _TimelineViewState extends State<TimelineView> {
       final contentEnd = _px(total);
       final moving = _held != null || _before != null;
       final after = moving
-          ? math.max(_px(widget.maxTotal) - contentEnd, 0.0)
+          ? math.min(
+              math.max(_px(widget.maxTotal) - contentEnd, 0.0),
+              math.max(
+                  box.maxWidth,
+                  (_scroll.hasClients ? _scroll.offset : 0) +
+                      box.maxWidth -
+                      contentEnd))
           : _px(const Duration(seconds: 4));
       final width = contentEnd + math.max(_addButton + 12, after + 12);
       final height = rows.height;
-      final cap = widget.maxHeight;
+      final controlsHeight = widget.showControls ? 48.0 : 0.0;
+      final cap = widget.maxHeight == null
+          ? null
+          : math.max(0.0, widget.maxHeight! - controlsHeight);
       final visible = cap == null ? height : math.min(height, cap);
 
       // Every card is keyed and stays in this one Stack, the held one too
@@ -322,7 +338,9 @@ class _TimelineViewState extends State<TimelineView> {
                     top: 0,
                     width: width,
                     height: TimelineView.rulerHeight,
-                    child: CustomPaint(painter: _RulerPainter(width, _pps)),
+                    child: CustomPaint(
+                        painter: _RulerPainter(width, _pps,
+                            scroll: _scroll, viewport: box.maxWidth)),
                   ),
                   ..._laneBands(edit, rows, width),
                   ..._landingMarks(edit, rows, width),
@@ -344,28 +362,158 @@ class _TimelineViewState extends State<TimelineView> {
       }
 
       return SizedBox(
-        height: visible,
-        child: Stack(
-          children: [
-            Positioned.fill(child: lanes),
-            // The playhead, fixed in the middle.
-            Positioned(
-              left: half - 1,
-              top: 0,
-              bottom: 0,
-              width: 2,
-              child: const IgnorePointer(
-                child: ColoredBox(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
+        height: visible + controlsHeight,
+        child: Column(children: [
+          SizedBox(
+              height: visible,
+              child: Stack(
+                children: [
+                  Positioned.fill(child: lanes),
+                  // The playhead, fixed in the middle.
+                  Positioned(
+                    left: half - 1,
+                    top: 0,
+                    bottom: 0,
+                    width: 2,
+                    child: const IgnorePointer(
+                      child: ColoredBox(color: Colors.white),
+                    ),
+                  ),
+                ],
+              )),
+          if (widget.showControls) _controls(),
+        ]),
       );
     });
   }
 
   static Key _cardKey(TimelineSelection item) =>
       ValueKey('${item.kind.name}-${item.index}');
+
+  void _zoom(double factor) {
+    if (_held != null || _before != null || _userScrolling) return;
+    setState(() => _pps = (_pps * factor).clamp(12.0, 384.0));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _follow();
+    });
+  }
+
+  TrimRange? _selectedTrim() {
+    final item = widget.selection;
+    if (item == null) return null;
+    return switch (item.kind) {
+      TimelineKind.clip => item.index < widget.edit.clips.length
+          ? widget.edit.clips[item.index].trim ??
+              TrimRange(Duration.zero, widget.edit.clips[item.index].length)
+          : null,
+      TimelineKind.overlay => item.index < widget.edit.overlays.length
+          ? widget.edit.overlays[item.index].clip.trim ??
+              TrimRange(Duration.zero, widget.edit.overlays[item.index].length)
+          : null,
+      TimelineKind.track => item.index < widget.edit.audio.length
+          ? widget.edit.audio[item.index].trim
+          : null,
+    };
+  }
+
+  void _setBoundary(TimelineSelection item, bool head, Duration value) {
+    if (widget.selection != item || !widget.enabled) return;
+    final range = _selectedTrim();
+    if (range == null) return;
+    final delta = value - (head ? range.start : range.end);
+    _before = widget.edit;
+    switch (item.kind) {
+      case TimelineKind.clip:
+        _resizeClip(item.index,
+            head: head ? delta : Duration.zero,
+            tail: head ? Duration.zero : delta);
+      case TimelineKind.overlay:
+        _resizeOverlay(item.index,
+            head: head ? delta : Duration.zero,
+            tail: head ? Duration.zero : delta);
+      case TimelineKind.track:
+        _resizeTrack(item.index,
+            head: head ? delta : Duration.zero,
+            tail: head ? Duration.zero : delta);
+    }
+    _endDrag();
+  }
+
+  Future<void> _adjustBoundary(bool head) async {
+    final range = _selectedTrim();
+    final item = widget.selection;
+    if (range == null || item == null) return;
+    final value = await showDialog<Duration>(
+        context: context,
+        builder: (_) => _PreciseTimeDialog(
+            head: head, value: head ? range.start : range.end));
+    if (mounted && value != null) _setBoundary(item, head, value);
+  }
+
+  Widget _boundaryControl(bool head, TrimRange range) {
+    final value = head ? range.start : range.end;
+    final item = widget.selection!;
+    final label = head ? 'Start' : 'End';
+    return Expanded(
+        child: Semantics(
+      key: ValueKey('trim-${head ? 'start' : 'end'}-control'),
+      label: '$label time',
+      value: '${(value.inMilliseconds / 1000).toStringAsFixed(3)} seconds',
+      increasedValue:
+          '${((value.inMilliseconds + 100) / 1000).toStringAsFixed(3)} seconds',
+      decreasedValue:
+          '${((value.inMilliseconds - 100).clamp(0, 1 << 53) / 1000).toStringAsFixed(3)} seconds',
+      onIncrease: widget.enabled
+          ? () => _setBoundary(
+              item, head, value + const Duration(milliseconds: 100))
+          : null,
+      onDecrease: widget.enabled
+          ? () => _setBoundary(
+              item, head, value - const Duration(milliseconds: 100))
+          : null,
+      child: Tooltip(
+        message: 'Adjust ${head ? 'start' : 'end'} time',
+        child: SizedBox(
+            height: 48,
+            child: TextButton(
+              onPressed: widget.enabled ? () => _adjustBoundary(head) : null,
+              child: Text(
+                  '$label ${(value.inMilliseconds / 1000).toStringAsFixed(3)}s',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            )),
+      ),
+    ));
+  }
+
+  Widget _controls() {
+    final range = _selectedTrim();
+    final canZoom =
+        widget.enabled && _held == null && _before == null && !_userScrolling;
+    return SizedBox(
+        height: 48,
+        child: Row(children: [
+          IconButton(
+              tooltip: 'Zoom out',
+              onPressed: canZoom && _pps > 12 ? () => _zoom(1 / 1.5) : null,
+              icon: const Icon(Icons.zoom_out_rounded),
+              constraints:
+                  const BoxConstraints.tightFor(width: 48, height: 48)),
+          Text('${(_pps / TimelineView.pxPerSecond * 100).round()}%',
+              style: const TextStyle(fontSize: 11)),
+          IconButton(
+              tooltip: 'Zoom in',
+              onPressed: canZoom && _pps < 384 ? () => _zoom(1.5) : null,
+              icon: const Icon(Icons.zoom_in_rounded),
+              constraints:
+                  const BoxConstraints.tightFor(width: 48, height: 48)),
+          if (range != null) ...[
+            _boundaryControl(true, range),
+            _boundaryControl(false, range)
+          ] else
+            const Spacer(),
+        ]));
+  }
 
   /// A faint band behind each overlay and audio lane, so the rows read as
   /// rows.
@@ -575,9 +723,8 @@ class _TimelineViewState extends State<TimelineView> {
     final item = TimelineSelection.clip(index);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.enabled
-          ? () => widget.onSelect(selected ? null : item)
-          : null,
+      onTap:
+          widget.enabled ? () => widget.onSelect(selected ? null : item) : null,
       onLongPressStart: widget.enabled ? (d) => _pickUp(item, d) : null,
       onLongPressMoveUpdate: widget.enabled ? _moveHeld : null,
       onLongPressEnd: widget.enabled ? (_) => _drop() : null,
@@ -586,7 +733,8 @@ class _TimelineViewState extends State<TimelineView> {
       dragStartBehavior: DragStartBehavior.down,
       onHorizontalDragUpdate:
           selected && widget.enabled ? (d) => _slideClip(index, d) : null,
-      onHorizontalDragEnd: selected && widget.enabled ? (_) => _endDrag() : null,
+      onHorizontalDragEnd:
+          selected && widget.enabled ? (_) => _endDrag() : null,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -594,10 +742,12 @@ class _TimelineViewState extends State<TimelineView> {
           if (selected && widget.enabled) ...[
             _trimHandle(
               left: true,
+              cardWidth: _px(clip.length),
               onDrag: (dx) => _resizeClip(index, head: _time(dx)),
             ),
             _trimHandle(
               left: false,
+              cardWidth: _px(clip.length),
               onDrag: (dx) => _resizeClip(index, tail: _time(dx)),
             ),
           ],
@@ -705,19 +855,18 @@ class _TimelineViewState extends State<TimelineView> {
     final item = TimelineSelection.overlay(index);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.enabled
-          ? () => widget.onSelect(selected ? null : item)
-          : null,
+      onTap:
+          widget.enabled ? () => widget.onSelect(selected ? null : item) : null,
       onLongPressStart: widget.enabled ? (d) => _pickUp(item, d) : null,
       onLongPressMoveUpdate: widget.enabled ? _moveHeld : null,
       onLongPressEnd: widget.enabled ? (_) => _drop() : null,
       // A picked overlay moves along its lane with the finger; others let
       // the timeline scroll.
       dragStartBehavior: DragStartBehavior.down,
-      onHorizontalDragUpdate: selected && widget.enabled
-          ? (d) => _slideOverlay(index, d)
-          : null,
-      onHorizontalDragEnd: selected && widget.enabled ? (_) => _endDrag() : null,
+      onHorizontalDragUpdate:
+          selected && widget.enabled ? (d) => _slideOverlay(index, d) : null,
+      onHorizontalDragEnd:
+          selected && widget.enabled ? (_) => _endDrag() : null,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -730,11 +879,13 @@ class _TimelineViewState extends State<TimelineView> {
           if (selected && widget.enabled) ...[
             _trimHandle(
               left: true,
+              cardWidth: _px(overlay.length),
               height: TimelineView.overlayHeight,
               onDrag: (dx) => _resizeOverlay(index, head: _time(dx)),
             ),
             _trimHandle(
               left: false,
+              cardWidth: _px(overlay.length),
               height: TimelineView.overlayHeight,
               onDrag: (dx) => _resizeOverlay(index, tail: _time(dx)),
             ),
@@ -758,24 +909,9 @@ class _TimelineViewState extends State<TimelineView> {
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            children: [
-              const Icon(Icons.text_fields_rounded,
-                  size: 14, color: Colors.white),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  text.text.replaceAll('\n', ' '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: CLType.meta,
-                      fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
+          child: _LaneLabel(
+              icon: Icons.text_fields_rounded,
+              label: text.text.replaceAll('\n', ' ')),
         ),
       );
 
@@ -792,8 +928,8 @@ class _TimelineViewState extends State<TimelineView> {
 
   static TimelineSelection? _overlayIndex(
       Composition edit, MediaLayer clip, Duration start) {
-    final i = edit.overlays
-        .indexWhere((o) => o.clip.source.path == clip.source.path && o.start == start);
+    final i = edit.overlays.indexWhere(
+        (o) => o.clip.source.path == clip.source.path && o.start == start);
     return i < 0 ? null : TimelineSelection.overlay(i);
   }
 
@@ -864,43 +1000,25 @@ class _TimelineViewState extends State<TimelineView> {
         ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        children: [
-          Icon(
-            track.heard ? Icons.music_note_rounded : Icons.music_off_rounded,
-            size: 14,
-            color: Colors.white,
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(
-              track.name ?? "Music",
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: CLType.meta,
-                  fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
+      child: _LaneLabel(
+          icon:
+              track.heard ? Icons.music_note_rounded : Icons.music_off_rounded,
+          label: track.name ?? 'Music'),
     );
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.enabled
-          ? () => widget.onSelect(selected ? null : item)
-          : null,
+      onTap:
+          widget.enabled ? () => widget.onSelect(selected ? null : item) : null,
       onLongPressStart: widget.enabled ? (d) => _pickUp(item, d) : null,
       onLongPressMoveUpdate: widget.enabled ? _moveHeld : null,
       onLongPressEnd: widget.enabled ? (_) => _drop() : null,
       // A picked track moves with the finger; others let the timeline
       // scroll. From where the finger went down, so the card keeps under it.
       dragStartBehavior: DragStartBehavior.down,
-      onHorizontalDragUpdate: selected && widget.enabled
-          ? (d) => _slideTrack(index, d)
-          : null,
-      onHorizontalDragEnd: selected && widget.enabled ? (_) => _endDrag() : null,
+      onHorizontalDragUpdate:
+          selected && widget.enabled ? (d) => _slideTrack(index, d) : null,
+      onHorizontalDragEnd:
+          selected && widget.enabled ? (_) => _endDrag() : null,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -908,11 +1026,13 @@ class _TimelineViewState extends State<TimelineView> {
           if (selected && widget.enabled) ...[
             _trimHandle(
               left: true,
+              cardWidth: _px(track.length),
               height: TimelineView.trackHeight,
               onDrag: (dx) => _resizeTrack(index, head: _time(dx)),
             ),
             _trimHandle(
               left: false,
+              cardWidth: _px(track.length),
               height: TimelineView.trackHeight,
               onDrag: (dx) => _resizeTrack(index, tail: _time(dx)),
             ),
@@ -968,11 +1088,8 @@ class _TimelineViewState extends State<TimelineView> {
             _px(edit.clips[item.index].length), TimelineView.clipHeight);
       case TimelineKind.overlay:
         final overlay = edit.overlays[item.index];
-        card = Rect.fromLTWH(
-            _px(overlay.start),
-            rows.overlayTop(overlay.lane),
-            math.max(_px(overlay.length), 8),
-            TimelineView.overlayHeight);
+        card = Rect.fromLTWH(_px(overlay.start), rows.overlayTop(overlay.lane),
+            math.max(_px(overlay.length), 8), TimelineView.overlayHeight);
       case TimelineKind.track:
         final track = edit.audio[item.index];
         card = Rect.fromLTWH(_px(track.start), rows.trackTop(track.lane),
@@ -1120,8 +1237,8 @@ class _TimelineViewState extends State<TimelineView> {
       if (local.dx < edge) by = -12;
       if (local.dx > box.size.width - edge) by = 12;
       if (by != 0) {
-        _scroll.jumpTo((_scroll.offset + by)
-            .clamp(0.0, _scroll.position.maxScrollExtent));
+        _scroll.jumpTo(
+            (_scroll.offset + by).clamp(0.0, _scroll.position.maxScrollExtent));
       }
     }
     if (_lanesScroll.hasClients) {
@@ -1142,6 +1259,7 @@ class _TimelineViewState extends State<TimelineView> {
   /// A card end's grip: dragging it reports the distance moved so far.
   Widget _trimHandle({
     required bool left,
+    required double cardWidth,
     required ValueChanged<double> onDrag,
     double height = TimelineView.clipHeight,
   }) {
@@ -1152,7 +1270,9 @@ class _TimelineViewState extends State<TimelineView> {
       right: left ? null : 0,
       top: 0,
       height: height,
-      width: _handle,
+      // Wider hit regions on roomy cards, with a separate 48px footer
+      // control for each edge on short cards. The grips never overlap.
+      width: cardWidth >= 144 ? 44 : math.min(_handle, cardWidth / 2),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         dragStartBehavior: DragStartBehavior.down,
@@ -1166,29 +1286,58 @@ class _TimelineViewState extends State<TimelineView> {
           onDrag(_handleDx);
         },
         onHorizontalDragEnd: (_) => _endDrag(),
-        child: Center(
-          child: Container(
-            width: 10,
-            height: height - 10,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(4),
-              boxShadow: const [
-                BoxShadow(color: Color(0x66000000), blurRadius: 3),
-              ],
-            ),
-            child: const Center(
-              child: SizedBox(
-                width: 2,
-                height: 14,
-                child: ColoredBox(color: Color(0xFF444B55)),
-              ),
-            ),
-          ),
-        ),
+        onHorizontalDragCancel: _endDrag,
+        child: Align(
+            alignment: left ? Alignment.centerLeft : Alignment.centerRight,
+            child: SizedBox(
+                width: _handle,
+                child: Center(
+                  child: Container(
+                    width: 10,
+                    height: height - 10,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x66000000), blurRadius: 3),
+                      ],
+                    ),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 2,
+                        height: 14,
+                        child: ColoredBox(color: Color(0xFF444B55)),
+                      ),
+                    ),
+                  ),
+                ))),
       ),
     );
   }
+}
+
+/// Text and audio remain within their cards even when zoomed far out.
+class _LaneLabel extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _LaneLabel({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+      builder: (context, box) => Row(children: [
+            if (box.maxWidth >= 24) ...[
+              Icon(icon, size: 14, color: Colors.white),
+              const SizedBox(width: 4),
+            ],
+            Expanded(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: CLType.meta,
+                        fontWeight: FontWeight.w600))),
+          ]));
 }
 
 /// A lane's faint ground.
@@ -1330,16 +1479,24 @@ class _AddAudioCard extends StatelessWidget {
 class _RulerPainter extends CustomPainter {
   final double length;
   final double pps;
+  final ScrollController scroll;
+  final double viewport;
 
-  _RulerPainter(this.length, this.pps);
+  _RulerPainter(this.length, this.pps,
+      {required this.scroll, required this.viewport})
+      : super(repaint: scroll);
 
   @override
   void paint(Canvas canvas, Size size) {
     final tick = Paint()
       ..color = Colors.white24
       ..strokeWidth = 1;
-    final seconds = (length / pps).ceil();
-    for (var s = 0; s <= seconds; s++) {
+    final offset = scroll.hasClients ? scroll.offset : 0.0;
+    final first = math.max(0, ((offset - viewport / 2) / pps).floor() - 2);
+    final seconds = math.min(
+        (length / pps).ceil(), ((offset + viewport / 2) / pps).ceil() + 2);
+    final step = pps < 24 ? 2 : 1;
+    for (var s = first - first % step; s <= seconds; s += step) {
       final x = s * pps;
       final labelled = s % 2 == 0;
       canvas.drawLine(Offset(x, size.height - (labelled ? 6 : 3)),
@@ -1348,7 +1505,8 @@ class _RulerPainter extends CustomPainter {
         final text = TextPainter(
           text: TextSpan(
             text: '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}',
-            style: const TextStyle(color: Colors.white38, fontSize: CLType.meta),
+            style:
+                const TextStyle(color: Colors.white38, fontSize: CLType.meta),
           ),
           textDirection: TextDirection.ltr,
         )..layout();
@@ -1359,5 +1517,82 @@ class _RulerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RulerPainter old) =>
-      old.length != length || old.pps != pps;
+      old.length != length || old.pps != pps || old.viewport != viewport;
+}
+
+class _PreciseTimeDialog extends StatefulWidget {
+  final bool head;
+  final Duration value;
+  const _PreciseTimeDialog({required this.head, required this.value});
+
+  @override
+  State<_PreciseTimeDialog> createState() => _PreciseTimeDialogState();
+}
+
+class _PreciseTimeDialogState extends State<_PreciseTimeDialog> {
+  late final _text = TextEditingController(
+      text: (widget.value.inMilliseconds / 1000).toStringAsFixed(3));
+  String? _error;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _nudge(int milliseconds) {
+    final seconds = double.tryParse(_text.text);
+    if (seconds == null || !seconds.isFinite) return;
+    setState(() {
+      _text.text =
+          math.max(0.0, seconds + milliseconds / 1000).toStringAsFixed(3);
+      _error = null;
+    });
+  }
+
+  void _apply() {
+    final seconds = double.tryParse(_text.text);
+    if (seconds == null ||
+        !seconds.isFinite ||
+        seconds < 0 ||
+        seconds * 1e6 > 0x1FFFFFFFFFFFFF) {
+      setState(() => _error = 'Enter a valid time in seconds.');
+      return;
+    }
+    Navigator.pop(context, Duration(milliseconds: (seconds * 1000).round()));
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text('${widget.head ? 'Start' : 'End'} time'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+              controller: _text,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                  labelText: 'Seconds',
+                  helperText: 'Source time, to the nearest millisecond',
+                  errorText: _error),
+              onSubmitted: (_) => _apply()),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            IconButton(
+                tooltip: 'Earlier by 0.1 seconds',
+                onPressed: () => _nudge(-100),
+                icon: const Icon(Icons.remove)),
+            const Text('0.100s'),
+            IconButton(
+                tooltip: 'Later by 0.1 seconds',
+                onPressed: () => _nudge(100),
+                icon: const Icon(Icons.add)),
+          ]),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          TextButton(onPressed: _apply, child: const Text('Apply'))
+        ],
+      );
 }

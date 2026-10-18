@@ -15,6 +15,7 @@ import 'dart:async';
 import 'package:chatterloop_app/core/media/composition.dart';
 import 'package:chatterloop_app/core/media/sequence_player.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
@@ -23,6 +24,9 @@ class _FakeVideos extends VideoPlayerPlatform {
 
   /// How long a player takes to start - a phone's is a few hundred ms.
   final Duration startTakes;
+  bool failToStart = false;
+  Duration seekTakes = Duration.zero;
+  Completer<void>? releaseGate;
 
   final Map<int, StreamController<VideoEvent>> _events = {};
   final Map<int, String> _uris = {};
@@ -31,6 +35,7 @@ class _FakeVideos extends VideoPlayerPlatform {
 
   /// Every seek asked for, and every volume sent, by file name.
   final List<(String, Duration)> seeks = [];
+  final List<(int, Duration)> playerSeeks = [];
   final List<(String, double)> volumes = [];
   int _next = 0;
 
@@ -41,8 +46,10 @@ class _FakeVideos extends VideoPlayerPlatform {
 
   Duration positionOf(String file) => positions[_id(file)]!;
   bool isPlaying(String file) => playing.contains(_id(file));
-  List<Duration> seeksOf(String file) =>
-      [for (final (name, to) in seeks) if (name == file) to];
+  List<Duration> seeksOf(String file) => [
+        for (final (name, to) in seeks)
+          if (name == file) to
+      ];
 
   /// How many players were made for [file].
   int madeFor(String file) =>
@@ -84,6 +91,11 @@ class _FakeVideos extends VideoPlayerPlatform {
     // Queued: the controller subscribes after this returns.
     void started() {
       if (events.isClosed) return;
+      if (failToStart) {
+        events.addError(PlatformException(
+            code: 'VideoError', message: 'Decoder unavailable'));
+        return;
+      }
       events.add(VideoEvent(
         eventType: VideoEventType.initialized,
         duration: const Duration(seconds: 20),
@@ -102,6 +114,7 @@ class _FakeVideos extends VideoPlayerPlatform {
 
   @override
   Future<void> dispose(int playerId) async {
+    await releaseGate?.future;
     playing.remove(playerId);
     await _events.remove(playerId)?.close();
   }
@@ -115,6 +128,8 @@ class _FakeVideos extends VideoPlayerPlatform {
   @override
   Future<void> seekTo(int playerId, Duration position) async {
     seeks.add((_name(playerId), position));
+    playerSeeks.add((playerId, position));
+    if (seekTakes > Duration.zero) await Future<void>.delayed(seekTakes);
     positions[playerId] = position;
   }
 
@@ -244,7 +259,9 @@ void main() {
       (tester) async {
     final player = SequencePlayer(vsync: tester);
     player.setEdit(Composition(
-      clips: const [MediaLayer(source: _photo, duration: Duration(seconds: 10))],
+      clips: const [
+        MediaLayer(source: _photo, duration: Duration(seconds: 10))
+      ],
       overlays: [
         OverlayClip(
           clip: MediaLayer(
@@ -271,7 +288,131 @@ void main() {
     player.dispose();
   });
 
-  testWidgets('a player let go while it was starting is made again when '
+  testWidgets(
+      'adjacent trims of one source prepare independently before the cut',
+      (tester) async {
+    final player = SequencePlayer(vsync: tester);
+    player.setEdit(Composition(clips: [
+      MediaLayer(source: _video('a'), trim: TrimRange(_ms(2000), _ms(4000))),
+      MediaLayer(source: _video('a'), trim: TrimRange(_ms(12000), _ms(15000))),
+    ]));
+    await _settle(tester);
+    final first = player.videoFor(0)!;
+    final next = player.videoFor(1);
+    expect(next, isNotNull);
+    expect(identical(first, next), isFalse);
+    expect(first.value.position, _ms(2000));
+    expect(next!.value.position, _ms(12000));
+    final nextId = fake._id('a.mp4');
+
+    player.play();
+    await tester.pump();
+    fake.seeks.clear();
+    fake.playerSeeks.clear();
+    await _run(tester, fake, _ms(2600));
+    expect(player.currentIndex, 1);
+    expect(next.value.isPlaying, isTrue);
+    expect(fake.playerSeeks.where((seek) => seek.$1 == nextId), isEmpty,
+        reason: 'the next trim was already waiting at its own in point');
+    expect(player.position.value.inMilliseconds, closeTo(2600, 200));
+    player.dispose();
+  });
+
+  testWidgets('visual edits preserve the active player and pending seek',
+      (tester) async {
+    final player = SequencePlayer(vsync: tester);
+    final edit = Composition(clips: [
+      MediaLayer(source: _video('a'), trim: TrimRange(_ms(2000), _ms(10000))),
+    ]);
+    player.setEdit(edit);
+    await _settle(tester);
+    player.play();
+    await tester.pump();
+    await _run(tester, fake, _ms(600));
+    final before = player.videoFor(0);
+    var transportChanges = 0;
+    player.addListener(() => transportChanges++);
+    fake.seeks.clear();
+    player.setEdit(edit.copyWith(clips: [
+      edit.clips.single.copyWith(
+        transform: const LayerTransform(cx: 0.7, scale: 1.4),
+      ),
+    ]));
+    await tester.pump();
+    expect(player.videoFor(0), same(before));
+    expect(fake.seeks, isEmpty);
+    expect(player.playing, isTrue);
+    expect(transportChanges, 0,
+        reason: 'framing changes do not invalidate playback state');
+    await _run(tester, fake, _ms(400));
+    expect(player.position.value.inMilliseconds, closeTo(1000, 150));
+    player.dispose();
+  });
+
+  testWidgets(
+      'failed imported previews expose a retry that bypasses the cooldown',
+      (tester) async {
+    fake.failToStart = true;
+    final player = SequencePlayer(vsync: tester);
+    player.setEdit(Composition(clips: [MediaLayer(source: _video('a'))]));
+    await _settle(tester);
+    expect(player.videoFailed(0), isTrue);
+    fake.failToStart = false;
+    player.retryVideo(0);
+    await _settle(tester);
+    expect(player.videoFailed(0), isFalse);
+    expect(player.videoFor(0), isNotNull);
+    player.dispose();
+  });
+
+  testWidgets('slow native seeks land on the upcoming trim before its cut',
+      (tester) async {
+    fake.seekTakes = _ms(300);
+    final player = SequencePlayer(vsync: tester);
+    player.setEdit(Composition(clips: [
+      MediaLayer(source: _video('a'), trim: TrimRange(_ms(2000), _ms(4000))),
+      MediaLayer(source: _video('a'), trim: TrimRange(_ms(12000), _ms(15000))),
+    ]));
+    await _settle(tester);
+    await tester.pump(_ms(350));
+    await _settle(tester);
+    final upcoming = player.videoFor(1)!;
+    final nextId = fake._id('a.mp4');
+    expect(upcoming.value.position, _ms(12000));
+    player.play();
+    await tester.pump();
+    fake.playerSeeks.clear();
+    await _run(tester, fake, _ms(2600));
+    expect(player.currentIndex, 1);
+    expect(upcoming.value.isPlaying, isTrue);
+    expect(fake.playerSeeks.where((seek) => seek.$1 == nextId), isEmpty);
+    player.dispose();
+    await tester.pump(_ms(400));
+  });
+
+  testWidgets('export handoff waits for native preview disposal',
+      (tester) async {
+    final player = SequencePlayer(vsync: tester);
+    player.setEdit(Composition(clips: [MediaLayer(source: _video('a'))]));
+    await _settle(tester);
+    final gate = fake.releaseGate = Completer<void>();
+    var released = false;
+    final done = player.releaseVideos().then((_) => released = true);
+    await tester.pump();
+    expect(released, isFalse);
+    expect(player.videoFor(0), isNull);
+    gate.complete();
+    for (var i = 0; i < 50 && !released; i++) {
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+    }
+    expect(released, isTrue);
+    await done;
+    player.dispose();
+  });
+
+  testWidgets(
+      'a player let go while it was starting is made again when '
       'wanted', (tester) async {
     // A reorder, a scrub: a clip's player goes before it has started, and
     // comes back into play straight after.
@@ -325,7 +466,8 @@ void main() {
     player.dispose();
   });
 
-  testWidgets('a blank plays through by the clock; the clip after it waits '
+  testWidgets(
+      'a blank plays through by the clock; the clip after it waits '
       'at its start', (tester) async {
     final player = SequencePlayer(vsync: tester);
     player.setEdit(Composition(clips: [

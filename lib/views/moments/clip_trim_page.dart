@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -45,11 +46,23 @@ class ClipTrimPage extends StatefulWidget {
   State<ClipTrimPage> createState() => _ClipTrimPageState();
 }
 
-class _ClipTrimPageState extends State<ClipTrimPage> {
+class _ClipTrimPageState extends State<ClipTrimPage>
+    with WidgetsBindingObserver {
+  static const _previewTimeout = Duration(seconds: 15);
   late final Duration _total = widget.source.duration ?? Duration.zero;
   late TrimRange _range = TrimRange(
       Duration.zero, _total > widget.maxSpan ? widget.maxSpan : _total);
   VideoPlayerController? _video;
+  final _owned = <VideoPlayerController>{};
+  Future<void>? _releasing;
+  bool _loading = false;
+  bool _failed = false;
+  bool _loopSeeking = false;
+  bool _resumeAfterLifecycle = false;
+  int _generation = 0;
+  bool get _foreground =>
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
   Duration? _at;
   bool _dragging = false;
   DateTime _lastSeek = DateTime(0);
@@ -57,32 +70,124 @@ class _ClipTrimPageState extends State<ClipTrimPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   Future<void> _load() async {
-    // Its own player: the feed's idle ones let their decoders go first.
-    await SharedVideoControllers.releaseIdle();
-    final video = VideoPlayerController.file(File(widget.source.path));
+    if (_loading) return;
+    final generation = ++_generation;
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    VideoPlayerController? video;
     try {
-      await video.initialize();
-      if (!mounted) {
-        await video.dispose();
+      await _releasing?.timeout(_previewTimeout);
+      // Its own player: the feed's idle ones let their decoders go first.
+      await SharedVideoControllers.releaseIdle().timeout(_previewTimeout);
+      if (!mounted || generation != _generation) return;
+      video = VideoPlayerController.file(File(widget.source.path));
+      _owned.add(video);
+      await video.initialize().timeout(_previewTimeout);
+      if (!mounted || generation != _generation) {
+        await _release(video);
         return;
       }
+      _video = video;
       video.addListener(_onTick);
-      await video.play();
-      setState(() => _video = video);
+      if (_foreground) {
+        await video.play().timeout(_previewTimeout);
+      } else {
+        _resumeAfterLifecycle = true;
+      }
+      if (!mounted || generation != _generation) {
+        await _release(video);
+        return;
+      }
+      setState(() => _loading = false);
     } catch (e) {
       debugPrint('ClipTrimPage: preview failed: $e');
+      if (mounted && generation == _generation) {
+        setState(() {
+          _video = null;
+          _loading = false;
+          _failed = true;
+        });
+      }
+      if (video != null) await _release(video);
+    }
+  }
+
+  Future<void> _release(VideoPlayerController video) {
+    if (!_owned.remove(video)) return Future<void>.value();
+    video.removeListener(_onTick);
+    return _releasing = _disposeController(video);
+  }
+
+  Future<void> _disposeController(VideoPlayerController video) async {
+    try {
       await video.dispose();
+    } catch (e) {
+      debugPrint('ClipTrimPage: preview release failed: $e');
+    }
+  }
+
+  Future<void> _action(
+      VideoPlayerController video, Future<void> Function() action) async {
+    if (!mounted || _video != video || !_owned.contains(video)) return;
+    try {
+      await action().timeout(_previewTimeout);
+    } catch (e) {
+      if (!mounted || _video != video) return;
+      setState(() {
+        _video = null;
+        _failed = true;
+        _loading = false;
+      });
+      await _release(video);
+    }
+  }
+
+  Future<void> _playFrom(Duration start) async {
+    final video = _video;
+    if (video == null || _loopSeeking) return;
+    _loopSeeking = true;
+    try {
+      await _action(video, () async {
+        await video.seekTo(start);
+        if (mounted && _video == video && !_dragging && _foreground) {
+          await video.play();
+        }
+      });
+    } finally {
+      _loopSeeking = false;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final video = _video;
+    if (video == null) return;
+    if (state == AppLifecycleState.resumed) {
+      if (_resumeAfterLifecycle && !_dragging) {
+        _resumeAfterLifecycle = false;
+        unawaited(_action(video, video.play));
+      }
+    } else if (video.value.isPlaying) {
+      _resumeAfterLifecycle = true;
+      unawaited(_action(video, video.pause));
     }
   }
 
   @override
   void dispose() {
-    _video?.removeListener(_onTick);
-    _video?.dispose();
+    ++_generation;
+    WidgetsBinding.instance.removeObserver(this);
+    _video = null;
+    for (final video in _owned.toList()) {
+      unawaited(_release(video));
+    }
     super.dispose();
   }
 
@@ -90,13 +195,23 @@ class _ClipTrimPageState extends State<ClipTrimPage> {
   void _onTick() {
     final video = _video;
     if (video == null || _dragging) return;
+    if (video.value.hasError) {
+      setState(() {
+        _video = null;
+        _failed = true;
+        _loading = false;
+      });
+      unawaited(_release(video));
+      return;
+    }
     final pos = video.value.position;
     if (mounted &&
-        ((_at ?? Duration.zero) - pos).abs() > const Duration(milliseconds: 90)) {
+        ((_at ?? Duration.zero) - pos).abs() >
+            const Duration(milliseconds: 90)) {
       setState(() => _at = pos);
     }
     if (pos >= _range.end || video.value.isCompleted) {
-      video.seekTo(_range.start).then((_) => video.play());
+      unawaited(_playFrom(_range.start));
     }
   }
 
@@ -109,9 +224,11 @@ class _ClipTrimPageState extends State<ClipTrimPage> {
     if (video != null &&
         now.difference(_lastSeek) >= const Duration(milliseconds: 80)) {
       _lastSeek = now;
-      video.seekTo(range.start != previous.start
-          ? range.start
-          : range.end - const Duration(milliseconds: 40));
+      unawaited(_action(
+          video,
+          () => video.seekTo(range.start != previous.start
+              ? range.start
+              : range.end - const Duration(milliseconds: 40))));
     }
   }
 
@@ -153,7 +270,10 @@ class _ClipTrimPageState extends State<ClipTrimPage> {
                   CLBtn(
                     label: "Add",
                     size: CLBtnSize.sm,
-                    onPressed: _range.length > Duration.zero
+                    onPressed: !_failed &&
+                            !_loading &&
+                            video != null &&
+                            _range.length > Duration.zero
                         ? () => Navigator.pop(context, _range)
                         : null,
                   ),
@@ -162,17 +282,35 @@ class _ClipTrimPageState extends State<ClipTrimPage> {
             ),
             Expanded(
               child: Center(
-                child: video == null
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : AspectRatio(
-                        aspectRatio: video.value.aspectRatio,
-                        child: GestureDetector(
-                          onTap: () => video.value.isPlaying
-                              ? video.pause()
-                              : video.play(),
-                          child: VideoPlayer(video),
-                        ),
-                      ),
+                child: _failed
+                    ? Column(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.error_outline,
+                            color: Colors.white70, size: 40),
+                        const SizedBox(height: 12),
+                        const Text('Could not preview this video.',
+                            style: TextStyle(color: Colors.white)),
+                        const SizedBox(height: 12),
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          TextButton(
+                              onPressed: _load, child: const Text('Retry')),
+                          TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Skip')),
+                        ]),
+                      ])
+                    : video == null || _loading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : AspectRatio(
+                            aspectRatio: video.value.aspectRatio,
+                            child: GestureDetector(
+                              onTap: () => unawaited(_action(
+                                  video,
+                                  video.value.isPlaying
+                                      ? video.pause
+                                      : video.play)),
+                              child: VideoPlayer(video),
+                            ),
+                          ),
               ),
             ),
             Padding(
@@ -187,12 +325,13 @@ class _ClipTrimPageState extends State<ClipTrimPage> {
                 position: _at,
                 onChangeStart: (_) {
                   _dragging = true;
-                  _video?.pause();
+                  final video = _video;
+                  if (video != null) unawaited(_action(video, video.pause));
                 },
                 onChanged: _changed,
                 onChangeEnd: (range) {
                   _dragging = false;
-                  _video?.seekTo(range.start).then((_) => _video?.play());
+                  unawaited(_playFrom(range.start));
                 },
               ),
             ),

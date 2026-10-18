@@ -168,6 +168,24 @@ class EncodingProfile {
     watermark: Watermark.chatterloop,
   );
 
+  /// A full-length local save, independent of the server's sharing limits.
+  static EncodingProfile momentExportFor(Duration duration) => EncodingProfile(
+        width: moment.width,
+        height: moment.height,
+        fps: moment.fps,
+        videoBitrate: moment.videoBitrate,
+        keyframeInterval: moment.keyframeInterval,
+        videoQp: moment.videoQp,
+        stillQp: moment.stillQp,
+        stillKeyframeInterval: moment.stillKeyframeInterval,
+        audioBitrate: moment.audioBitrate,
+        audioSampleRate: moment.audioSampleRate,
+        audioChannels: moment.audioChannels,
+        maxDuration: duration,
+        posterQuality: moment.posterQuality,
+        watermark: moment.watermark,
+      );
+
   /// The share of [maxBytes] a bitrate is chosen to fill - encoders
   /// overshoot a little, and the MP4's index weighs something too.
   static const _budgetShare = 0.85;

@@ -14,10 +14,12 @@ import 'dart:io';
 
 import 'package:chatterloop_app/core/media/composition.dart';
 import 'package:chatterloop_app/core/media/encoding_profile.dart';
+import 'package:chatterloop_app/core/media/encoder_recovery.dart';
 import 'package:chatterloop_app/core/media/ffmpeg_command.dart';
 import 'package:chatterloop_app/core/media/media_info.dart';
 import 'package:chatterloop_app/core/media/mp4_restart_points.dart';
 import 'package:chatterloop_app/core/media/watermark_image.dart';
+import 'package:chatterloop_app/core/utils/app_version.dart';
 import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_full/ffmpeg_session.dart';
 import 'package:ffmpeg_kit_flutter_new_full/ffprobe_kit.dart';
@@ -96,6 +98,7 @@ class RenderJob<T> {
   final List<H264Encoder> _encoders;
 
   final ValueNotifier<double> _progress = ValueNotifier(0);
+  final ValueNotifier<String> _status = ValueNotifier('Queued');
   final Completer<T> _outcome = Completer();
   bool _started = false;
   bool _cancelled = false;
@@ -108,8 +111,12 @@ class RenderJob<T> {
     _outcome.future.ignore();
   }
 
-  /// 0..1 - the video encode is 0..0.97, the poster the rest.
+  /// 0..1 - the video encode is 0..0.94, then finalization and the poster.
   ValueListenable<double> get progress => _progress;
+
+  /// The active preparation, encoding/retry, or finalization stage. Progress
+  /// remains monotonic across retries; this explains work at the same value.
+  ValueListenable<String> get status => _status;
 
   /// Completes with the files, or with a [RenderCancelled] /
   /// [MediaEngineException] error.
@@ -122,6 +129,7 @@ class RenderJob<T> {
   Future<void> cancel() async {
     if (_outcome.isCompleted || _cancelled) return;
     _cancelled = true;
+    _status.value = _started ? 'Cancelling' : 'Cancelled';
     if (!_started) {
       // Still queued: settle now rather than when its turn comes.
       _outcome.completeError(const RenderCancelled());
@@ -136,15 +144,33 @@ class RenderJob<T> {
     if (clamped > _progress.value) _progress.value = clamped;
   }
 
+  void _stage(String value) {
+    if (!_cancelled) _status.value = value;
+  }
+
+  void _checkCancelled() {
+    if (_cancelled) throw const RenderCancelled();
+  }
+
+  void _complete(T value) {
+    _checkCancelled();
+    // Terminal notifications are synchronous: listeners may leave the
+    // screen and call cancel(). Settle ownership of the files first so that
+    // cancellation after success is consistently a no-op.
+    _outcome.complete(value);
+    _report(1);
+    _stage('Complete');
+  }
+
   /// Settles a failed or cancelled run.
   void _fail(Object error, StackTrace stack) {
     if (_outcome.isCompleted) return;
     final reported = _cancelled ? const RenderCancelled() : error;
+    _status.value = reported is RenderCancelled ? 'Cancelled' : 'Failed';
     _outcome.completeError(
       reported is RenderCancelled || reported is MediaEngineException
           ? reported
-          : MediaEngineException("Couldn't process this video",
-              logs: '$error'),
+          : MediaEngineException("Couldn't process this video", logs: '$error'),
       stack,
     );
   }
@@ -157,7 +183,7 @@ class MediaEngine {
 
   /// The video encode's share of [RenderJob.progress]; the poster is the
   /// rest.
-  static const _encodeShare = 0.97;
+  static const _encodeShare = 0.94;
 
   /// How much of ffmpeg's log a failure keeps.
   static const _logTail = 4000;
@@ -229,6 +255,54 @@ class MediaEngine {
     return job;
   }
 
+  /// Saves one composed photo directly as a JPEG. Geometry and watermark
+  /// match video output; this never starts a hardware video encoder.
+  RenderJob<StampResult> renderStill(
+    Composition composition, {
+    EncodingProfile profile = EncodingProfile.moment,
+    bool watermark = true,
+    String? handle,
+  }) {
+    final job = RenderJob<StampResult>._(profile, const []);
+    _queue = _queue.then(
+        (_) => _runStill(job, composition, watermark ? (handle ?? '') : null));
+    return job;
+  }
+
+  Future<void> _runStill(RenderJob<StampResult> job, Composition composition,
+      String? handle) async {
+    if (job._cancelled) return;
+    job._started = true;
+    job._stage('Preparing photo');
+    Directory? workspace;
+    try {
+      workspace = await _newWorkspace();
+      final path = '${workspace.path}/saved.jpg';
+      final logo = handle == null ? null : job.profile.watermark;
+      final watermarkPath =
+          logo == null ? null : await _watermarkFile(logo, handle!);
+      final logoWidth = logo == null ? null : await _logoWidth(logo);
+      job._checkCancelled();
+      final command = buildStillCommand(
+          composition: composition,
+          profile: job.profile,
+          outputPath: path,
+          watermarkPath: watermarkPath,
+          watermarkLogoWidth: logoWidth);
+      job._stage('Saving photo');
+      final outcome = await _execute(job, command.arguments);
+      job._checkCancelled();
+      if (!outcome.ok) {
+        throw MediaEngineException("Couldn't save this photo",
+            logs: outcome.logs);
+      }
+      job._complete(StampResult._(path, true, workspace));
+    } catch (error, stack) {
+      if (workspace != null) await _deleteQuietly(workspace);
+      job._fail(error, stack);
+    }
+  }
+
   /// A small JPEG of [videoPath] at [at], written into [folder] - a clip's
   /// picture on the timeline. Null when it couldn't be made. Not queued: it
   /// is quick, and made while editing, not while rendering.
@@ -260,6 +334,7 @@ class MediaEngine {
     // Cancelled while queued - already settled by cancel().
     if (job._cancelled) return;
     job._started = true;
+    job._stage('Preparing video');
     Directory? workspace;
     try {
       workspace = await _newWorkspace();
@@ -273,16 +348,18 @@ class MediaEngine {
       final rendered = await _encodeWithFallback(
         job,
         videoPath,
-        (encoder, qpCeilings) => buildRenderCommand(
+        (encoder, qpCeilings, bitrateScale) => buildRenderCommand(
           composition: composition,
           profile: job.profile,
           encoder: encoder,
           outputPath: videoPath,
           qpCeilings: qpCeilings,
+          bitrateScale: bitrateScale,
           watermarkPath: watermarkPath,
           watermarkLogoWidth: logoWidth,
         ),
       );
+      job._checkCancelled();
       if (await _overLimit(job.profile, videoPath)) {
         throw const MediaEngineException(
             'This came out too big to share. Try a shorter part.');
@@ -290,7 +367,13 @@ class MediaEngine {
       // The phone's encoder marks no restart points after the first frame;
       // streamed, the moment stuttered at every stall. See
       // mp4_restart_points.dart - it leaves a file it can't fix as it is.
+      job._stage('Finalizing video');
       await Mp4RestartPoints.addToFile(videoPath);
+      // The worker owns its files until completion. Cancellation during this
+      // await must settle as cancelled and delete the entire workspace.
+      job._checkCancelled();
+      job._report(0.96);
+      job._stage('Preparing preview');
 
       final poster = await _execute(
         job,
@@ -306,8 +389,8 @@ class MediaEngine {
             logs: poster.logs);
       }
 
-      job._report(1);
-      job._outcome.complete(RenderResult._(
+      job._checkCancelled();
+      job._complete(RenderResult._(
         videoPath: videoPath,
         posterPath: posterPath,
         width: job.profile.width,
@@ -330,6 +413,7 @@ class MediaEngine {
   ) async {
     if (job._cancelled) return;
     job._started = true;
+    job._stage('Preparing saved copy');
     Directory? workspace;
     try {
       final logo = job.profile.watermark;
@@ -341,7 +425,8 @@ class MediaEngine {
       final logoWidth = await _logoWidth(logo);
       final source = (await probe(path)).toSource();
       final out = '${workspace.path}/saved.${isImage ? 'jpg' : 'mp4'}';
-      RenderCommand build(H264Encoder encoder, bool qpCeilings) =>
+      RenderCommand build(
+              H264Encoder encoder, bool qpCeilings, double bitrateScale) =>
           buildStampCommand(
             inputPath: path,
             watermarkPath: watermarkPath,
@@ -354,11 +439,12 @@ class MediaEngine {
             encoder: encoder,
             duration: source.duration ?? Duration.zero,
             qpCeilings: qpCeilings,
+            bitrateScale: bitrateScale,
           );
       if (isImage) {
         // No video encoder involved: one go.
         final outcome =
-            await _execute(job, build(job._encoders.first, false).arguments);
+            await _execute(job, build(job._encoders.first, false, 1).arguments);
         if (outcome.cancelled) throw const RenderCancelled();
         if (!outcome.ok) {
           throw MediaEngineException("Couldn't save this", logs: outcome.logs);
@@ -366,8 +452,8 @@ class MediaEngine {
       } else {
         await _encodeWithFallback(job, out, build);
       }
-      job._report(1);
-      job._outcome.complete(StampResult._(out, isImage, workspace));
+      job._checkCancelled();
+      job._complete(StampResult._(out, isImage, workspace));
     } catch (error, stack) {
       if (workspace != null) await _deleteQuietly(workspace);
       job._fail(error, stack);
@@ -381,47 +467,49 @@ class MediaEngine {
   Future<RenderCommand> _encodeWithFallback(
     RenderJob job,
     String outputPath,
-    RenderCommand Function(H264Encoder encoder, bool qpCeilings) build,
+    RenderCommand Function(
+            H264Encoder encoder, bool qpCeilings, double bitrateScale)
+        build,
   ) async {
-    String? failureLogs;
-    for (final encoder in job._encoders) {
-      var command = build(encoder, true);
-      var outcome = await _encode(job, command);
-      if (!outcome.ok && command.usesQpCeilings) {
-        // An encoder that refuses the QP ceilings may still take the
-        // plain bitrate.
-        failureLogs = outcome.logs;
-        debugPrint('MediaEngine: ${encoder.name} refused the QP ceilings');
-        command = build(encoder, false);
-        outcome = await _encode(job, command);
-      } else if (outcome.ok &&
-          command.usesQpCeilings &&
-          await _overLimit(job.profile, outputPath)) {
-        // The ceilings took a long, busy video past the upload cap; the
-        // bitrate alone is chosen to land under it.
-        debugPrint('MediaEngine: too big with QP ceilings, redoing without');
-        command = build(encoder, false);
-        outcome = await _encode(job, command);
-      }
-      if (outcome.ok) return command;
-      failureLogs = outcome.logs;
-      debugPrint('MediaEngine: ${encoder.name} (${encoder.pixelFormat}) failed');
+    await AppVersion.ensureLoaded();
+    job._checkCancelled();
+    final store = EncoderPreferenceStore(
+        '${Platform.operatingSystem}/${Platform.operatingSystemVersion}/${AppVersion.header ?? 'unknown'}');
+    final outcome = await EncoderRecovery(store).encode<RenderCommand>(
+      candidates: job._encoders,
+      maxBytes: job.profile.maxBytes,
+      onStatus: job._stage,
+      run: (settings, bitrateScale) async {
+        job._checkCancelled();
+        final command =
+            build(settings.encoder, settings.qpCeilings, bitrateScale);
+        final outcome = await _encode(job, command);
+        if (!outcome.ok) return EncodeAttempt.failed(outcome.logs);
+        final bytes = await File(outputPath).length();
+        job._checkCancelled();
+        return EncodeAttempt.success(command, bytes);
+      },
+    );
+    job._checkCancelled();
+    if (outcome.oversized) {
+      throw const MediaEngineException(
+          'This came out too big to share. Try a shorter part.');
     }
+    if (outcome.ok) return outcome.value!;
     throw MediaEngineException("Couldn't process this video",
-        logs: failureLogs);
+        logs: outcome.logs);
   }
 
-  /// Runs one video encode for [job], its progress from 0 - a retry starts
-  /// the bar over rather than sitting at the last one's end.
+  /// Runs one video encode. The stage explains retries while the overall
+  /// progress keeps its high-water mark rather than jumping backwards.
   Future<_Outcome> _encode(RenderJob job, RenderCommand command) async {
-    job._progress.value = 0;
     final totalMs = command.duration.inMilliseconds;
     final outcome = await _execute(
       job,
       command.arguments,
       onTime: totalMs <= 0
           ? null
-          : (ms) => job._report(ms / totalMs * _encodeShare),
+          : (ms) => job._report((ms / totalMs).clamp(0.0, 1.0) * _encodeShare),
     );
     if (outcome.cancelled) throw const RenderCancelled();
     return outcome;
@@ -521,8 +609,8 @@ class MediaEngine {
     final layout = logo.layout;
     if (layout == null) return null;
     try {
-      final json =
-          jsonDecode(await rootBundle.loadString(layout)) as Map<String, dynamic>;
+      final json = jsonDecode(await rootBundle.loadString(layout))
+          as Map<String, dynamic>;
       final box = (json['wordmark'] as List).cast<num>();
       return Rect.fromLTRB(box[0].toDouble(), box[1].toDouble(),
           box[2].toDouble(), box[3].toDouble());

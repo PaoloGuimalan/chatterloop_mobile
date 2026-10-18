@@ -123,7 +123,7 @@ void main() {
       final back = Composition.fromJson(edit.toJson());
 
       expect(back.toJson(), edit.toJson());
-      expect(back.version, 4);
+      expect(back.version, 5);
       final layer = back.overlays.single;
       expect((layer.start, layer.lane), (const Duration(seconds: 1), 1));
       expect(layer.clip.transform.scale, 0.6);

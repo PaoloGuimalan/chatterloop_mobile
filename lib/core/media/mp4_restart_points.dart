@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -32,21 +33,43 @@ class Mp4RestartPoints {
 
   /// Adds restart points to the MP4 at [path], in place. Whether it did -
   /// false when it needed none, or couldn't (the file is then untouched).
-  static Future<bool> addToFile(String path) async {
+  /// Runs all file IO and parsing in a worker. The existing conservative
+  /// parser needs the source in memory; very large local exports skip this
+  /// optional optimization rather than risking memory pressure. The video
+  /// remains playable. Writes are synchronous inside the worker to avoid
+  /// building a second, unbounded queue of media bytes in an IOSink.
+  static Future<bool> addToFile(
+    String path, {
+    int maxFileBytes = 256 * 1024 * 1024,
+  }) =>
+      Isolate.run(() => _addToFile(path, maxFileBytes));
+
+  static bool _addToFile(String path, int maxFileBytes) {
+    final temp = File('$path.restart');
     try {
       final file = File(path);
-      final bytes = await file.readAsBytes();
+      if (file.lengthSync() > maxFileBytes) return false;
+      final bytes = file.readAsBytesSync();
       final plan = _plan(bytes);
       if (plan == null) return false;
-      final temp = File('$path.restart');
-      final sink = temp.openWrite();
-      plan.writeTo(bytes, sink.add);
-      await sink.close();
-      await temp.rename(path);
+      final output = temp.openSync(mode: FileMode.write);
+      try {
+        plan.writeTo(bytes, output.writeFromSync);
+        output.flushSync();
+      } finally {
+        output.closeSync();
+      }
+      temp.renameSync(path);
       return true;
     } catch (e) {
       debugPrint('Mp4RestartPoints: left as it was: $e');
       return false;
+    } finally {
+      try {
+        if (temp.existsSync()) temp.deleteSync();
+      } catch (_) {
+        // Workspaces are also deleted by the render lifecycle.
+      }
     }
   }
 
@@ -143,8 +166,7 @@ class Mp4RestartPoints {
               });
       }
       replace[video.stszBox.start] = _stsz(sizes);
-      replace[video.stssBox!.start] =
-          _fullBox('stss', 4, syncs.length, (b) {
+      replace[video.stssBox!.start] = _fullBox('stss', 4, syncs.length, (b) {
         for (final s in syncs.toList()..sort()) {
           b.add(_u32(s));
         }
@@ -233,7 +255,9 @@ class Mp4RestartPoints {
     if (!_Box.containers.contains(box.type)) {
       return Uint8List.sublistView(data, box.start, box.end);
     }
-    final parts = [for (final kid in box.kids(data)) _rebuild(data, kid, replace)];
+    final parts = [
+      for (final kid in box.kids(data)) _rebuild(data, kid, replace)
+    ];
     final length = 8 + parts.fold<int>(0, (sum, p) => sum + p.length);
     final out = BytesBuilder(copy: false)
       ..add(_u32(length))
@@ -395,8 +419,8 @@ class _Avc {
     final lengthSize = (data[at + 4] & 3) + 1;
     if (data[at + 5] & 0x1F < 1) return null;
     final spsLength = _read(data, at + 6, 2);
-    final sps = Mp4RestartPoints._unescape(
-        data, at + 8 + 1, at + 8 + spsLength, 64);
+    final sps =
+        Mp4RestartPoints._unescape(data, at + 8 + 1, at + 8 + spsLength, 64);
     final bits = _Bits(sps);
     final profile = bits.u(8);
     bits.u(16); // constraints, level
@@ -453,9 +477,9 @@ class _Track {
     final hdlr = trak.find(data, 'mdia/hdlr');
     final stbl = trak.find(data, 'mdia/minf/stbl');
     if (hdlr == null || stbl == null) return null;
-    final isVideo =
-        String.fromCharCodes(data.sublist(hdlr.bodyStart + 8, hdlr.bodyStart + 12)) ==
-            'vide';
+    final isVideo = String.fromCharCodes(
+            data.sublist(hdlr.bodyStart + 8, hdlr.bodyStart + 12)) ==
+        'vide';
     final stsz = stbl.find(data, 'stsz');
     final stsc = stbl.find(data, 'stsc');
     final co = stbl.find(data, 'stco') ?? stbl.find(data, 'co64');
@@ -498,16 +522,17 @@ class _Track {
         return null;
       }
       // After the 78 bytes of a visual sample entry: its boxes.
-      final avcC = _Box.children(
-              data, entry.first.bodyStart + 78, entry.first.end)
-          .where((b) => b.type == 'avcC');
+      final avcC =
+          _Box.children(data, entry.first.bodyStart + 78, entry.first.end)
+              .where((b) => b.type == 'avcC');
       if (avcC.isEmpty) return null;
       avc = _Avc.read(data, avcC.first.bodyStart);
       stssBox = stbl.find(data, 'stss');
       if (stssBox != null) {
         final n = _read(data, stssBox.bodyStart + 4, 4);
         stss = [
-          for (var k = 0; k < n; k++) _read(data, stssBox.bodyStart + 8 + 4 * k, 4)
+          for (var k = 0; k < n; k++)
+            _read(data, stssBox.bodyStart + 8 + 4 * k, 4)
         ];
       }
     }

@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/media/composition.dart';
 import 'package:chatterloop_app/core/media/timeline.dart';
 import 'package:chatterloop_app/core/media/widgets/timeline_view.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 MediaSource _video(String name) => MediaSource(
@@ -58,11 +59,13 @@ final _twoSongs = _edit.copyWith(audio: [
 final _layered = _edit.copyWith(
   overlays: [
     OverlayClip(
-      clip: MediaLayer(source: _video('x'), trim: TrimRange(Duration.zero, _s(3))),
+      clip: MediaLayer(
+          source: _video('x'), trim: TrimRange(Duration.zero, _s(3))),
       start: _s(1),
     ),
     OverlayClip(
-      clip: MediaLayer(source: _video('y'), trim: TrimRange(Duration.zero, _s(5))),
+      clip: MediaLayer(
+          source: _video('y'), trim: TrimRange(Duration.zero, _s(5))),
       start: _s(2),
       lane: 1,
     ),
@@ -88,6 +91,7 @@ Future<_Harness> _pump(
   TimelineSelection? selection,
   Composition? edit,
   double? maxHeight,
+  Duration maxTotal = const Duration(minutes: 2),
 }) async {
   tester.view.physicalSize = const Size(1000, 400);
   tester.view.devicePixelRatio = 1.0;
@@ -103,7 +107,7 @@ Future<_Harness> _pump(
           child: TimelineView(
             edit: h.edit,
             position: h.position,
-            maxTotal: const Duration(minutes: 2),
+            maxTotal: maxTotal,
             thumbnails: const {},
             selection: h.selection,
             onSelect: (s) => setState(() => h.selection = s),
@@ -129,6 +133,105 @@ Finder _clip(String length) => find.text(length);
 void main() {
   const pps = TimelineView.pxPerSecond;
 
+  testWidgets('zoom keeps the playhead time without creating an edit',
+      (tester) async {
+    final h = await _pump(tester);
+    h.position.value = _s(5);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Zoom in'));
+    await tester.pumpAndSettle();
+    final scroll = tester
+        .widget<SingleChildScrollView>(find.byType(SingleChildScrollView));
+    expect(scroll.controller!.offset, closeTo(5 * pps * 1.5, 0.5));
+    expect(h.position.value, _s(5));
+    expect(h.seeks, isEmpty);
+    expect(h.ends, 0);
+  });
+
+  testWidgets(
+      'roomy trim target reaches beyond the visible grip and zoom works after drag',
+      (tester) async {
+    final h = await _pump(tester, selection: const TimelineSelection.clip(0));
+    final card = tester.getRect(find.byKey(const ValueKey('clip-0')));
+    await tester.dragFrom(
+        Offset(card.right - 30, card.center.dy), const Offset(pps, 0));
+    await tester.pump();
+    expect(h.edit.clips.first.trim!.end, _s(5));
+    expect(h.ends, 1);
+    await tester.tap(find.byTooltip('Zoom in'));
+    await tester.pumpAndSettle();
+    expect(find.text('150%'), findsOneWidget);
+  });
+
+  testWidgets('short text and audio cards still lay out when zoomed out',
+      (tester) async {
+    await _pump(tester,
+        edit: _edit.copyWith(
+          overlays: [
+            OverlayClip(
+                clip: MediaLayer(
+                    source: _video('text'),
+                    trim: TrimRange(Duration.zero, _s(.5))),
+                text: const TextCard(text: 'Text'))
+          ],
+          audio: [
+            _edit.audio.first.copyWith(trim: TrimRange(Duration.zero, _s(.5)))
+          ],
+        ));
+    await tester.tap(find.byTooltip('Zoom out'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('precise trim applies milliseconds as one edit', (tester) async {
+    final h = await _pump(tester, selection: const TimelineSelection.clip(2));
+    await tester.tap(find.byTooltip('Adjust end time'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '2.125');
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+    expect(h.edit.clips[2].trim!.end, _s(2.125));
+    expect(h.ends, 1);
+  });
+
+  testWidgets('short clips have separate accessible trim controls',
+      (tester) async {
+    final h = await _pump(tester,
+        edit: Composition(clips: [
+          MediaLayer(
+              source: _video('short'), trim: TrimRange(Duration.zero, _s(.5)))
+        ]),
+        selection: const TimelineSelection.clip(0));
+    final start = find.byTooltip('Adjust start time');
+    final end = find.byTooltip('Adjust end time');
+    expect(tester.getSize(start).width, greaterThanOrEqualTo(44));
+    expect(tester.getSize(end).height, greaterThanOrEqualTo(44));
+    expect(tester.getRect(start).overlaps(tester.getRect(end)), isFalse);
+    final semantics = tester.ensureSemantics();
+    final node =
+        tester.getSemantics(find.byKey(const ValueKey('trim-end-control')));
+    node.owner!.performAction(node.id, SemanticsAction.increase);
+    await tester.pump();
+    expect(h.edit.clips.single.trim!.end, _s(.6));
+    expect(h.ends, 1);
+    semantics.dispose();
+  });
+
+  testWidgets('a huge editing horizon only adds a viewport of drag room',
+      (tester) async {
+    await _pump(tester,
+        selection: const TimelineSelection.clip(2),
+        maxTotal: const Duration(days: 365));
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.text('2s')));
+    await gesture.moveBy(const Offset(30, 0));
+    await tester.pump();
+    final scroll = tester
+        .widget<SingleChildScrollView>(find.byType(SingleChildScrollView));
+    expect(scroll.controller!.position.maxScrollExtent, lessThan(2500));
+    await gesture.up();
+  });
+
   testWidgets('a card per clip and per song, as wide as they are long',
       (tester) async {
     await _pump(tester);
@@ -153,8 +256,7 @@ void main() {
   });
 
   testWidgets("a picked clip's end handle trims it", (tester) async {
-    final h =
-        await _pump(tester, selection: const TimelineSelection.clip(2));
+    final h = await _pump(tester, selection: const TimelineSelection.clip(2));
     // The last clip's right edge: its handle sits just inside it.
     final card = tester.getRect(find
         .ancestor(of: _clip('2s'), matching: find.byType(GestureDetector))
@@ -166,8 +268,7 @@ void main() {
     expect(h.ends, 1);
   });
 
-  testWidgets('hold a clip and drag it: it moves in the order',
-      (tester) async {
+  testWidgets('hold a clip and drag it: it moves in the order', (tester) async {
     final h = await _pump(tester);
     // Scrolled to the start, the first card sits right of the middle line.
     final first = tester.getCenter(find.text('4s').first);
@@ -188,8 +289,7 @@ void main() {
   });
 
   testWidgets('a picked song drags along the timeline', (tester) async {
-    final h =
-        await _pump(tester, selection: const TimelineSelection.track(0));
+    final h = await _pump(tester, selection: const TimelineSelection.track(0));
     await tester.drag(find.text('Summer'), const Offset(pps * 2, 0));
     await tester.pump();
     expect(h.edit.audio.single.start, _s(3));
@@ -223,14 +323,15 @@ void main() {
     final h = await _pump(tester);
     h.position.value = _s(5);
     await tester.pump();
-    final scroll = tester.widget<SingleChildScrollView>(
-        find.byType(SingleChildScrollView));
+    final scroll = tester
+        .widget<SingleChildScrollView>(find.byType(SingleChildScrollView));
     expect(scroll.controller!.offset, closeTo(5 * pps, 0.5));
     // Following isn't the user scrubbing.
     expect(h.seeks, isEmpty);
   });
 
-  testWidgets('layers over the clips, the top lane highest; songs under, '
+  testWidgets(
+      'layers over the clips, the top lane highest; songs under, '
       'lane by lane', (tester) async {
     await _pump(tester, edit: _layered);
     double top(String text) => tester.getRect(find.text(text)).top;
@@ -306,7 +407,9 @@ void main() {
       (tester) async {
     final h = await _pump(tester, selection: const TimelineSelection.clip(2));
     // The last clip (2s at 8s) dragged 1.5s on.
-    await tester.drag(find.text('2s'), const Offset(pps * 1.5, 0));
+    await tester.dragFrom(
+        tester.getCenter(find.byKey(const ValueKey('clip-2'))),
+        const Offset(pps * 1.5, 0));
     await tester.pump();
     expect(h.edit.clipStarts, [Duration.zero, _s(4), _s(9.5)]);
     expect(h.edit.clips[2].gapBefore, _s(1.5));
@@ -326,7 +429,9 @@ void main() {
     h.position.value = _s(5);
     await tester.pump();
     // 1.9s back: 0.1s short of the clip before - that blank stays.
-    await tester.drag(find.text('2s'), const Offset(-pps * 1.9, 0));
+    await tester.dragFrom(
+        tester.getCenter(find.byKey(const ValueKey('clip-2'))),
+        const Offset(-pps * 1.9, 0));
     await tester.pump();
     expect(h.edit.clips[2].gapBefore, _s(0.1));
   });

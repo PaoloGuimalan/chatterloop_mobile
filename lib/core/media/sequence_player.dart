@@ -26,9 +26,9 @@
 /// just doesn't play - so a video keeps a player only while it shows or is
 /// about to: the main clip on screen, the next one as it nears, the overlays
 /// showing or about to. The rest are let go and made again when needed.
-/// Players are shared where things never play at once: one per file for the
-/// main clips (the pieces of a split clip), one per file per LANE for
-/// overlays and songs.
+/// Main pieces have separate players even when they use one source: the
+/// upcoming trim must wait at its own in point without seeking the piece
+/// currently playing. Only the current and upcoming main pieces are kept.
 library;
 
 import 'dart:async';
@@ -100,6 +100,7 @@ class SequencePlayer extends ChangeNotifier {
   /// made.
   final Map<String, VideoPlayerController> _videos = {};
   final Map<String, Future<void>> _videoReady = {};
+  final Set<Future<void>> _releasingVideos = {};
 
   /// Players that failed to start, and when: not tried again for
   /// [_retryAfter]. Retried at once, a failing file (decoders all taken,
@@ -135,7 +136,7 @@ class SequencePlayer extends ChangeNotifier {
 
   DateTime _audioCheckedAt = DateTime(0);
 
-  static String _mainKey(String path) => 'm|$path';
+  static String _mainKey(int index, String path) => 'm$index|$path';
   static String _overlayKey(OverlayClip o) =>
       'o${o.lane}|${o.clip.source.path}';
   static String _trackKey(AudioTrack t) => 'a${t.lane}|${t.path}';
@@ -151,7 +152,7 @@ class SequencePlayer extends ChangeNotifier {
     if (clips == null || index >= clips.length) return null;
     final clip = clips[index];
     if (!clip.source.isVideo) return null;
-    return _ready(_mainKey(clip.source.path));
+    return _ready(_mainKey(index, clip.source.path));
   }
 
   /// The ready player for the overlay at [index], when it is a video.
@@ -163,6 +164,31 @@ class SequencePlayer extends ChangeNotifier {
     return _ready(_overlayKey(overlay));
   }
 
+  String? _previewKey(int index, bool overlay) {
+    final edit = _edit;
+    if (edit == null || index < 0) return null;
+    if (overlay) {
+      return index < edit.overlays.length
+          ? _overlayKey(edit.overlays[index])
+          : null;
+    }
+    return index < edit.clips.length
+        ? _mainKey(index, edit.clips[index].source.path)
+        : null;
+  }
+
+  bool videoFailed(int index, {bool overlay = false}) =>
+      _failedAt.containsKey(_previewKey(index, overlay));
+
+  /// An explicit retry bypasses the automatic failure cooldown.
+  void retryVideo(int index, {bool overlay = false}) {
+    final key = _previewKey(index, overlay);
+    if (key == null) return;
+    _failedAt.remove(key);
+    _sync();
+    notifyListeners();
+  }
+
   VideoPlayerController? _ready(String key) {
     final controller = _videos[key];
     return controller != null && controller.value.isInitialized
@@ -172,7 +198,13 @@ class SequencePlayer extends ChangeNotifier {
 
   /// The edit changed (or was first given): the players follow it.
   void setEdit(Composition? edit) {
+    final previous = _edit;
     _edit = edit;
+    // Geometry/background edits are rendered by the canvas. They neither
+    // invalidate transport nor require another seek or platform call.
+    if (previous != null && edit != null && _samePlayback(previous, edit)) {
+      return;
+    }
     if (edit == null) {
       pause();
       position.value = Duration.zero;
@@ -183,8 +215,8 @@ class SequencePlayer extends ChangeNotifier {
     if (position.value > total) position.value = total;
     // Players for what is no longer in the edit go.
     final videos = {
-      for (final clip in edit.clips)
-        if (clip.source.isVideo) _mainKey(clip.source.path),
+      for (final (i, clip) in edit.clips.indexed)
+        if (clip.source.isVideo) _mainKey(i, clip.source.path),
       for (final overlay in edit.overlays)
         if (overlay.clip.source.isVideo) _overlayKey(overlay),
     };
@@ -201,6 +233,35 @@ class SequencePlayer extends ChangeNotifier {
     // Edits arrive with every move of a trim handle: seek like a scrub.
     _sync(seekVideo: true, scrubbing: !_playing);
     notifyListeners();
+  }
+
+  static bool _samePlayback(Composition a, Composition b) {
+    if (a.clips.length != b.clips.length ||
+        a.overlays.length != b.overlays.length ||
+        !identical(a.audio, b.audio)) {
+      return false;
+    }
+    bool sameLayer(MediaLayer x, MediaLayer y) =>
+        x.source.path == y.source.path &&
+        x.source.kind == y.source.kind &&
+        x.source.hasAudio == y.source.hasAudio &&
+        x.usedRange.start == y.usedRange.start &&
+        x.usedRange.end == y.usedRange.end &&
+        x.length == y.length &&
+        x.gapBefore == y.gapBefore &&
+        x.volume == y.volume;
+    for (var i = 0; i < a.clips.length; i++) {
+      if (!sameLayer(a.clips[i], b.clips[i])) return false;
+    }
+    for (var i = 0; i < a.overlays.length; i++) {
+      final x = a.overlays[i], y = b.overlays[i];
+      if (x.start != y.start ||
+          x.lane != y.lane ||
+          !sameLayer(x.clip, y.clip)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<void> play() async {
@@ -291,7 +352,7 @@ class SequencePlayer extends ChangeNotifier {
     if (index == null || index < 0 || index >= edit.clips.length) return null;
     final clip = edit.clips[index];
     if (!clip.source.isVideo) return null;
-    final key = _mainKey(clip.source.path);
+    final key = _mainKey(index, clip.source.path);
     final video = _ready(key);
     if (video == null || !video.value.isPlaying) return null;
     final reported = video.value.position;
@@ -376,8 +437,8 @@ class SequencePlayer extends ChangeNotifier {
       _shownIndex = index;
       if (previous != null && previous >= 0 && previous < edit.clips.length) {
         final before = edit.clips[previous].source;
-        if (before.isVideo && before.path != clip?.source.path) {
-          final video = _videos[_mainKey(before.path)];
+        if (before.isVideo) {
+          final video = _videos[_mainKey(previous, before.path)];
           if (video != null && video.value.isInitialized) video.pause();
         }
       }
@@ -396,7 +457,7 @@ class SequencePlayer extends ChangeNotifier {
 
     if (clip != null && clip.source.isVideo) {
       _drive(
-        _mainKey(clip.source.path),
+        _mainKey(index, clip.source.path),
         clip.source.path,
         clip.usedRange.start + located!.offset,
         clip.soundHeard ? clip.volume : 0,
@@ -412,10 +473,8 @@ class SequencePlayer extends ChangeNotifier {
     if (upcoming != null && !scrubbing) {
       final (next, until) = upcoming;
       final nextClip = edit.clips[next];
-      if (nextClip.source.isVideo &&
-          nextClip.source.path != clip?.source.path &&
-          until <= _lead) {
-        final key = _mainKey(nextClip.source.path);
+      if (nextClip.source.isVideo && next != index && until <= _lead) {
+        final key = _mainKey(next, nextClip.source.path);
         _loadUnlessResting(key, nextClip.source.path);
         final video = _ready(key);
         if (video != null && !video.value.isPlaying) {
@@ -455,7 +514,9 @@ class SequencePlayer extends ChangeNotifier {
         }
       } else {
         final video = _videos[key];
-        if (video != null && video.value.isInitialized && video.value.isPlaying) {
+        if (video != null &&
+            video.value.isInitialized &&
+            video.value.isPlaying) {
           video.pause();
         }
       }
@@ -541,9 +602,8 @@ class SequencePlayer extends ChangeNotifier {
       // Only when it did start: after a failure this would come straight
       // back round.
       if (_videos[key]?.value.isInitialized != true) return;
-      _shownIndex = null;
-      _shownOverlays = null;
-      _sync(seekVideo: true);
+      // A newly ready successor should not invalidate the playing clip.
+      _sync();
     });
   }
 
@@ -633,12 +693,12 @@ class SequencePlayer extends ChangeNotifier {
 
     if (index >= 0) {
       final clip = edit.clips[index];
-      want(clip, _mainKey(clip.source.path));
+      want(clip, _mainKey(index, clip.source.path));
     }
     final upcoming = _nextClip(edit, index, at);
     if (upcoming != null && upcoming.$2 <= _lead) {
       final next = edit.clips[upcoming.$1];
-      want(next, _mainKey(next.source.path));
+      want(next, _mainKey(upcoming.$1, next.source.path));
     }
     for (final overlay in edit.overlays) {
       if (at >= overlay.start - _lead && at < overlay.end) {
@@ -683,13 +743,14 @@ class SequencePlayer extends ChangeNotifier {
         _videos.remove(key);
         _videoReady.remove(key);
         unawaited(controller.dispose());
+        if (!_disposed) notifyListeners();
       }
     }();
   }
 
   /// Lets every video player go - their decoders and memory - for heavy
   /// work like a render. [resume] brings back the ones on screen.
-  void releaseVideos() {
+  Future<void> releaseVideos() async {
     pause();
     for (final key in [..._videos.keys]) {
       _releaseVideo(key);
@@ -697,6 +758,9 @@ class SequencePlayer extends ChangeNotifier {
     _shownIndex = null;
     _shownOverlays = null;
     notifyListeners();
+    // Platform disposal is asynchronous. An export must not compete with
+    // decoders still being released from the preview or its predecessor.
+    await Future.wait([..._releasingVideos]);
   }
 
   /// After [releaseVideos]: what is on screen loads again.
@@ -714,7 +778,14 @@ class SequencePlayer extends ChangeNotifier {
     _landing.remove(key);
     _volumes.remove(key);
     if (_clockKey == key) _clockKey = null;
-    _videos.remove(key)?.dispose();
+    final controller = _videos.remove(key);
+    if (controller != null) {
+      final released = controller.dispose().catchError((Object error) {
+        debugPrint('SequencePlayer: video release failed: $error');
+      });
+      _releasingVideos.add(released);
+      released.then((_) => _releasingVideos.remove(released));
+    }
   }
 
   void _releaseAll() {

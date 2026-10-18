@@ -175,6 +175,7 @@ RenderCommand buildRenderCommand({
   required H264Encoder encoder,
   required String outputPath,
   bool qpCeilings = true,
+  double bitrateScale = 1,
   String? watermarkPath,
   int? watermarkLogoWidth,
 }) {
@@ -300,14 +301,17 @@ RenderCommand buildRenderCommand({
       fps: fps,
     ));
     graph.add(clip.soundHeard
-        ? _chain('[$input:a:0]', [
-            format,
-            ..._volume(clip.volume),
-            // Held to the clip's length whatever the file's sound runs to.
-            'apad=whole_dur=${_seconds(length)}',
-            'atrim=duration=${_seconds(length)}',
-            'asetpts=PTS-STARTPTS',
-          ], '[a$i]')
+        ? _chain(
+            '[$input:a:0]',
+            [
+              format,
+              ..._volume(clip.volume),
+              // Held to the clip's length whatever the file's sound runs to.
+              'apad=whole_dur=${_seconds(length)}',
+              'atrim=duration=${_seconds(length)}',
+              'asetpts=PTS-STARTPTS',
+            ],
+            '[a$i]')
         : 'anullsrc=r=$rate:cl=$layout,atrim=duration=${_seconds(length)}'
             '[a$i]');
   }
@@ -316,9 +320,8 @@ RenderCommand buildRenderCommand({
   var videoOut = '[v0]';
   var audioOut = '[a0]';
   if (pieces.length > 1) {
-    final inputs = [
-      for (var i = 0; i < pieces.length; i++) '[v$i][a$i]'
-    ].join();
+    final inputs =
+        [for (var i = 0; i < pieces.length; i++) '[v$i][a$i]'].join();
     graph.add('${inputs}concat=n=${pieces.length}:v=1:a=1[vcat][acat]');
     videoOut = '[vcat]';
     audioOut = '[acat]';
@@ -338,8 +341,8 @@ RenderCommand buildRenderCommand({
     if (chain == null) continue; // None of it on the canvas.
     final (filters, place) = chain;
     graph.add(_chain('[$input:v:0]', filters, '[ov$j]'));
-    graph.add(_chain('$videoOut[ov$j]',
-        ['overlay=$place:eof_action=pass'], '[vo$j]'));
+    graph.add(_chain(
+        '$videoOut[ov$j]', ['overlay=$place:eof_action=pass'], '[vo$j]'));
     videoOut = '[vo$j]';
   }
 
@@ -366,35 +369,44 @@ RenderCommand buildRenderCommand({
     final labels = [audioOut];
     for (final (j, (input, track, used)) in tracks.indexed) {
       final delay = track.start.inMilliseconds;
-      graph.add(_chain('[$input:a:0]', [
-        format,
-        ..._volume(track.volume),
-        ..._fades(track, used),
-        if (delay > 0) 'adelay=delays=$delay:all=1',
-        'apad=whole_dur=$seconds',
-      ], '[t$j]'));
+      graph.add(_chain(
+          '[$input:a:0]',
+          [
+            format,
+            ..._volume(track.volume),
+            ..._fades(track, used),
+            if (delay > 0) 'adelay=delays=$delay:all=1',
+            'apad=whole_dur=$seconds',
+          ],
+          '[t$j]'));
       labels.add('[t$j]');
     }
     for (final (j, input, overlay, used) in heardOverlays) {
       final delay = overlay.start.inMilliseconds;
-      graph.add(_chain('[$input:a:0]', [
-        format,
-        ..._volume(overlay.clip.volume),
-        'apad=whole_dur=${_seconds(used)}',
-        'atrim=duration=${_seconds(used)}',
-        'asetpts=PTS-STARTPTS',
-        if (delay > 0) 'adelay=delays=$delay:all=1',
-        'apad=whole_dur=$seconds',
-      ], '[oa$j]'));
+      graph.add(_chain(
+          '[$input:a:0]',
+          [
+            format,
+            ..._volume(overlay.clip.volume),
+            'apad=whole_dur=${_seconds(used)}',
+            'atrim=duration=${_seconds(used)}',
+            'asetpts=PTS-STARTPTS',
+            if (delay > 0) 'adelay=delays=$delay:all=1',
+            'apad=whole_dur=$seconds',
+          ],
+          '[oa$j]'));
       labels.add('[oa$j]');
     }
     // duration=first: as long as the clips. normalize=0: the volumes are
     // the author's, not divided by the number of sounds. The limiter keeps
     // loud ones from clipping together.
-    graph.add(_chain(labels.join(), [
-      'amix=inputs=${labels.length}:duration=first:normalize=0',
-      'alimiter=limit=0.95:level=0',
-    ], '[a]'));
+    graph.add(_chain(
+        labels.join(),
+        [
+          'amix=inputs=${labels.length}:duration=first:normalize=0',
+          'alimiter=limit=0.95:level=0',
+        ],
+        '[a]'));
   }
 
   final filterGraph = graph.join(';');
@@ -409,7 +421,8 @@ RenderCommand buildRenderCommand({
     '-map', '[v]',
     '-map', '[a]',
     ..._videoEncoding(encoder, profile, duration, keyframeInterval,
-        withCeilings ? ceiling : null),
+        withCeilings ? ceiling : null,
+        bitrateScale: bitrateScale),
     '-r', '$fps',
     '-c:a', 'aac',
     '-b:a', '${profile.audioBitrate}',
@@ -438,6 +451,76 @@ RenderCommand buildRenderCommand({
   );
 }
 
+/// Composes a single photo directly to JPEG using the video renderer's
+/// geometry, background and watermark filters. No audio or video encoding.
+RenderCommand buildStillCommand({
+  required Composition composition,
+  required EncodingProfile profile,
+  required String outputPath,
+  String? watermarkPath,
+  int? watermarkLogoWidth,
+}) {
+  if (composition.clips.length != 1 ||
+      composition.clips.single.source.isVideo ||
+      composition.clips.single.gapBefore > Duration.zero ||
+      composition.overlays.isNotEmpty ||
+      composition.hasSound) {
+    throw ArgumentError.value(composition, 'composition', 'is not one still');
+  }
+  final clip = composition.clips.single;
+  if (clip.source.width <= 0 || clip.source.height <= 0) {
+    throw ArgumentError.value(
+        clip.source.path, 'composition', 'media has no known size');
+  }
+  final args = <String>['-hide_banner', '-y', '-i', clip.source.path];
+  final graph = _clipVideo(
+    clip: clip,
+    input: 0,
+    label: '[picture]',
+    length: const Duration(seconds: 1),
+    background: composition.background,
+    width: profile.width,
+    height: profile.height,
+    fps: 1,
+    staticFrame: true,
+  );
+  final watermark = watermarkPath == null ? null : profile.watermark;
+  var output = '[picture]';
+  if (watermark != null) {
+    args.addAll(['-i', watermarkPath!]);
+    final (scale, place) = _watermarkFilters(
+        watermark, profile.width, profile.height,
+        logoWidth: watermarkLogoWidth);
+    graph.add(_chain('[1:v:0]', [scale], '[wm]'));
+    graph.add(_chain('[picture][wm]', [place], '[v]'));
+    output = '[v]';
+  }
+  final filterGraph = graph.join(';');
+  args.addAll([
+    '-filter_complex',
+    filterGraph,
+    '-map',
+    output,
+    '-frames:v',
+    '1',
+    '-q:v',
+    '2',
+    '-update',
+    '1',
+    '-an',
+    '-map_metadata',
+    '-1',
+    '-map_chapters',
+    '-1',
+    outputPath,
+  ]);
+  return RenderCommand(
+      arguments: List.unmodifiable(args),
+      filterGraph: filterGraph,
+      duration: Duration.zero,
+      hasSound: false);
+}
+
 /// One clip's picture, framed on the canvas and cut to [length]: the chains
 /// that end in [label].
 List<String> _clipVideo({
@@ -449,6 +532,7 @@ List<String> _clipVideo({
   required int width,
   required int height,
   required int fps,
+  bool staticFrame = false,
 }) {
   final w = width, h = height;
   final source = clip.source;
@@ -458,17 +542,21 @@ List<String> _clipVideo({
   // half), and held on its last frame a moment in case the file runs a
   // little short of what its probe said; a still becomes an endless run of
   // one frame at _stillComposeFps.
-  final prepare = source.isVideo
-      ? ['fps=$fps', 'tpad=stop_mode=clone:stop_duration=1']
-      : [
-          'loop=loop=-1:size=1:start=0',
-          'setpts=N/($_stillComposeFps*TB)',
-        ];
+  final prepare = staticFrame
+      ? <String>[]
+      : source.isVideo
+          ? ['fps=$fps', 'tpad=stop_mode=clone:stop_duration=1']
+          : [
+              'loop=loop=-1:size=1:start=0',
+              'setpts=N/($_stillComposeFps*TB)',
+            ];
   // Then exactly the clip's length, from 0 - the join needs both.
   final finish = [
-    if (!source.isVideo) 'fps=$fps',
-    'trim=duration=${_seconds(length)}',
-    'setpts=PTS-STARTPTS',
+    if (!staticFrame) ...[
+      if (!source.isVideo) 'fps=$fps',
+      'trim=duration=${_seconds(length)}',
+      'setpts=PTS-STARTPTS',
+    ],
     'format=yuv420p',
     'setsar=1',
   ];
@@ -628,20 +716,24 @@ List<String> _videoEncoding(
   EncodingProfile profile,
   Duration duration,
   int keyframeInterval,
-  QpCeiling? ceiling,
-) =>
+  QpCeiling? ceiling, {
+  double bitrateScale = 1,
+}) =>
     [
-      '-c:v', encoder.name,
+      '-c:v',
+      encoder.name,
       if (encoder.profile != null) ...['-profile:v', encoder.profile!],
       ...encoder.options,
-      '-b:v', '${profile.videoBitrateFor(duration)}',
+      '-b:v',
+      '${(profile.videoBitrateFor(duration) * bitrateScale).floor()}',
       if (ceiling != null) ...[
         '-qp_i_max',
         '${ceiling.keyframe}',
         '-qp_p_max',
         '${ceiling.other}',
       ],
-      '-g', '$keyframeInterval',
+      '-g',
+      '$keyframeInterval',
     ];
 
 /// The ffmpeg arguments that stamp the profile's watermark onto a copy of
@@ -663,13 +755,15 @@ RenderCommand buildStampCommand({
   required H264Encoder encoder,
   Duration duration = Duration.zero,
   bool qpCeilings = true,
+  double bitrateScale = 1,
 }) {
   final watermark = profile.watermark;
   if (watermark == null) {
     throw ArgumentError.value(profile, 'profile', 'has no watermark');
   }
   if (width <= 0 || height <= 0) {
-    throw ArgumentError.value(inputPath, 'inputPath', 'media has no known size');
+    throw ArgumentError.value(
+        inputPath, 'inputPath', 'media has no known size');
   }
   final (scale, place) = _watermarkFilters(watermark, width, height,
       logoWidth: watermarkLogoWidth);
@@ -679,20 +773,29 @@ RenderCommand buildStampCommand({
         [place, if (!isImage) 'format=${encoder.pixelFormat}'], '[v]'),
   ].join(';');
   final inputs = [
-    '-hide_banner', '-y',
-    '-i', inputPath,
-    '-i', watermarkPath,
-    '-filter_complex', filterGraph,
-    '-map', '[v]',
+    '-hide_banner',
+    '-y',
+    '-i',
+    inputPath,
+    '-i',
+    watermarkPath,
+    '-filter_complex',
+    filterGraph,
+    '-map',
+    '[v]',
   ];
   if (isImage) {
     return RenderCommand(
       arguments: List.unmodifiable([
         ...inputs,
-        '-frames:v', '1',
-        '-q:v', '2',
-        '-update', '1',
-        '-map_metadata', '-1',
+        '-frames:v',
+        '1',
+        '-q:v',
+        '2',
+        '-update',
+        '1',
+        '-map_metadata',
+        '-1',
         outputPath,
       ]),
       filterGraph: filterGraph,
@@ -708,7 +811,8 @@ RenderCommand buildStampCommand({
       // Its sound as it was, when it has any.
       '-map', '0:a:0?',
       ..._videoEncoding(encoder, profile, duration, profile.keyframeInterval,
-          withCeilings ? ceiling : null),
+          withCeilings ? ceiling : null,
+          bitrateScale: bitrateScale),
       '-c:a', 'aac',
       '-b:a', '${profile.audioBitrate}',
       '-map_metadata', '-1',
@@ -754,13 +858,19 @@ List<String> buildThumbnailCommand({
     List.unmodifiable([
       '-hide_banner',
       '-y',
-      '-ss', _seconds(at),
-      '-i', videoPath,
+      '-ss',
+      _seconds(at),
+      '-i',
+      videoPath,
       '-an',
-      '-frames:v', '1',
-      '-vf', 'scale=$width:-2',
-      '-q:v', '5',
-      '-update', '1',
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=$width:-2',
+      '-q:v',
+      '5',
+      '-update',
+      '1',
       outputPath,
     ]);
 
