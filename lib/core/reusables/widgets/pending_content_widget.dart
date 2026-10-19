@@ -1,9 +1,9 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
-import 'dart:io';
 
 import 'package:chatterloop_app/core/reusables/players/voice_message_player.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/reusables/widgets/chat_photo.dart';
 import 'package:chatterloop_app/core/media/media_uploader.dart';
 import 'package:flutter/material.dart';
 
@@ -232,9 +232,9 @@ class PendingContentWidgetState extends State<PendingContentWidget> {
                         // (the file being uploaded), never a URL yet -
                         // Image.network can't read that, so this checks
                         // which one it's looking at rather than assuming.
-                        child: content.startsWith('http')
-                            ? Image.network(content, fit: BoxFit.cover)
-                            : Image.file(File(content), fit: BoxFit.cover),
+                        child: ChatPhotoPreview(
+                            source: content,
+                            isLocal: !content.startsWith('http')),
                       ),
                     ),
                   )),

@@ -8,7 +8,10 @@
 // Pinned here because it is a fallback: it only shows when there is no uploaded
 // picture, so it is exactly the path that goes untested and then regresses.
 
+import 'dart:async';
+
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/media/display_image.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,6 +56,13 @@ void main() {
   });
 
   testWidgets('an uploaded picture wins over the glyph', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final frame = Completer<ImageInfo>();
+    PaintingBinding.instance.imageCache.putIfAbsent(
+        const DisplayImage(source: 'https://example.invalid/moderator.png',
+          width: 38, height: 38),
+        () => OneFrameImageStreamCompleter(frame.future));
     // kind is the FALLBACK, not an override: give the bot a real avatar and
     // that is what should render.
     await _pump(
@@ -61,9 +71,12 @@ void main() {
       src: 'https://example.invalid/moderator.png',
     );
 
-    // No glyph and no initials - the image path took over. (The network image
-    // itself cannot load in a test, which is fine; what matters is that the
-    // fallback branch was not taken.)
+    // The loading placeholder may carry the fallback. Once a real image frame
+    // arrives, it wins over the glyph and initials.
+    final decoded = await tester.runAsync(() => createTestImage(width: 80, height: 80));
+    frame.complete(ImageInfo(image: decoded!));
+    await tester.pumpAndSettle();
+    expect(tester.widget<RawImage>(find.byType(RawImage)).image, isNotNull);
     expect(find.byIcon(Icons.smart_toy), findsNothing);
     expect(find.text('CM'), findsNothing);
   });

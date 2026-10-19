@@ -13,6 +13,7 @@
 // what caught CLMiniBtn's label not being Flexible.
 
 import 'package:chatterloop_app/core/design/rails.dart';
+import 'package:chatterloop_app/core/media/display_image.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -384,13 +385,11 @@ void main() {
     expect(image.fit, BoxFit.cover);
 
     final provider = image.image;
-    expect(provider, isA<ResizeImage>());
-    expect((provider as ResizeImage).policy, ResizeImagePolicy.fit);
-
-    // Both caps set with `fit` bounds the LONG edge; the short edge - the one
-    // cover has to fill - lands under it, so the cap carries 2x headroom.
-    expect(provider.width, 108);
-    expect(provider.height, 108);
+    expect(provider, isA<DisplayImage>());
+    // The short edge fills the avatar and the long edge remains proportional
+    // for cover to crop. No blanket 2x overdecode or square distortion.
+    final target = (provider as DisplayImage).targetSize(400, 200);
+    expect(target, const Size(108, 54));
   });
 
   testWidgets('a scrollable chips rail shows both chevrons, never a hole',

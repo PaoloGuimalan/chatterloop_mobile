@@ -9,6 +9,7 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.StandardMethodCodec
 import java.io.File
 
 /**
@@ -45,7 +46,10 @@ object ConversationShortcuts {
     private const val MAX_SHORTCUTS = 8
 
     fun register(context: Context, messenger: BinaryMessenger) {
-        MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
+        // Bitmap decoding and ShortcutManager's binder work must not block the
+        // platform UI thread while Flutter is drawing the conversation list.
+        MethodChannel(messenger, CHANNEL, StandardMethodCodec.INSTANCE,
+            messenger.makeBackgroundTaskQueue()).setMethodCallHandler { call, result ->
             when (call.method) {
                 "sync" -> {
                     @Suppress("UNCHECKED_CAST")

@@ -4,6 +4,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/media/media_engine.dart';
+import 'package:chatterloop_app/core/media/display_image.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/requests/moments_api.dart';
@@ -1466,9 +1467,8 @@ class _MomentPhotoState extends State<_MomentPhoto> {
     final mq = MediaQuery.of(context);
     // Decoded at the screen's size, like every other full-width image here;
     // the same provider feeds the Image below, so it decodes once.
-    final provider = ResizeImage(NetworkImage(widget.src),
-        width: (mq.size.width * mq.devicePixelRatio).ceil(),
-        policy: ResizeImagePolicy.fit);
+    final provider = DisplayImage(source: widget.src,
+        width: (mq.size.width * mq.devicePixelRatio * 2).ceil().clamp(1, 4096));
     _provider = provider;
     final stream = provider.resolve(createLocalImageConfiguration(context));
     if (stream.key == _stream?.key) return;
@@ -1500,9 +1500,9 @@ class _MomentPhotoState extends State<_MomentPhoto> {
           ? BoxFit.contain
           : momentMediaFit(aspect, MediaQuery.of(context).size),
       gaplessPlayback: true,
-      loadingBuilder: (context, child, progress) => progress == null
-          ? child
-          : const Center(child: CircularProgressIndicator(color: Colors.white)),
+      frameBuilder: (context, child, frame, _) => frame == null
+          ? const ColoredBox(color: Colors.black)
+          : child,
       errorBuilder: (_, __, ___) => const Center(
           child: Icon(Icons.image_not_supported_outlined,
               size: 32, color: Colors.white54)),

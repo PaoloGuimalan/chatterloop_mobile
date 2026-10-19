@@ -187,11 +187,12 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                             if (faviconSrc != null) ...[
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(3),
-                                child: Image.network(faviconSrc,
+                                child: CLNetworkImage(
+                                    src: faviconSrc,
                                     width: 14,
                                     height: 14,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) =>
+                                    errorBuilder: (_) =>
                                         const SizedBox(width: 14, height: 14)),
                               ),
                               const SizedBox(width: 6),

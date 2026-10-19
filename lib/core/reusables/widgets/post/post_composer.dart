@@ -283,7 +283,8 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
 
     setState(() {});
     if (rejected.isNotEmpty) {
-      _toast("Skipped ${rejected.length} file(s) over ${UploadLimits.of(UploadFeature.postMedia).label}",
+      _toast(
+          "Skipped ${rejected.length} file(s) over ${UploadLimits.of(UploadFeature.postMedia).label}",
           type: CLAlertType.warning);
     }
   }
@@ -458,11 +459,12 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                             aspectRatio: widget.mode == ComposerMode.coverPhoto
                                 ? 3 / 1
                                 : 1,
-                            child: Image.file(
-                              File(_media.first.path),
+                            child: CLNetworkImage(
+                              src: _media.first.path,
+                              isLocal: true,
                               fit: BoxFit.cover,
                               width: double.infinity,
-                              errorBuilder: (_, __, ___) => Container(
+                              errorBuilder: (_) => Container(
                                 color: p.surface2,
                                 alignment: Alignment.center,
                                 child: Icon(Icons.broken_image_outlined,
@@ -657,16 +659,13 @@ class PostMediaPreviewTile extends StatelessWidget {
                               source: item.path,
                               isLocalFile: true,
                             )
-                          : Image.file(
-                              File(item.path),
+                          : CLNetworkImage(
+                              src: item.path,
+                              isLocal: true,
                               fit: BoxFit.cover,
-                              // Decoded at display size - a 12MP photo would
-                              // otherwise land in the image cache whole, once
-                              // per attachment.
-                              cacheWidth: (_kPreviewTileSize *
-                                      MediaQuery.devicePixelRatioOf(context))
-                                  .ceil(),
-                              errorBuilder: (_, __, ___) => Center(
+                              width: _kPreviewTileSize,
+                              height: _kPreviewTileSize,
+                              errorBuilder: (_) => Center(
                                 child: Icon(Icons.broken_image_outlined,
                                     size: 22, color: p.text3),
                               ),

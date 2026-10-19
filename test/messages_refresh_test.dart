@@ -61,6 +61,45 @@ Map<String, dynamic> _rail(String text) => {
     };
 
 void main() {
+  testWidgets(
+      'the thoughts rail builds only visible avatars and remains scrollable',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final rail = _Adapter(() => {
+          'mine': null,
+          'results': [
+            for (var i = 0; i < 50; i++)
+              {
+                'post_id': 't$i',
+                'entity_id': 'e$i',
+                'content': {'text': 'thought $i'},
+                'author': {
+                  'id': 'e$i',
+                  'details': {'first_name': 'Person$i'}
+                },
+              }
+          ],
+          'suggestions': [],
+        });
+    ApiClient.userService.dio
+      ..interceptors.clear()
+      ..httpClientAdapter = rail;
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(body: ThoughtsRailView())));
+    await tester.pumpAndSettle();
+    expect(find.text('Person0'), findsOneWidget);
+    expect(find.text('Person49'), findsNothing);
+    final horizontal = find.byWidgetPredicate(
+        (w) => w is Scrollable && w.axisDirection == AxisDirection.right);
+    await tester.drag(horizontal, const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Person6'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a pull from the top reloads the list and the thoughts',
       (tester) async {
     tester.view.physicalSize = const Size(360, 800);

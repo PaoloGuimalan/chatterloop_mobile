@@ -273,6 +273,7 @@ class _ZoomableImageState extends State<_ZoomableImage>
             src: widget.url,
             fit: BoxFit.contain,
             width: double.infinity,
+            resolutionScale: 2,
           ),
         ),
       ),

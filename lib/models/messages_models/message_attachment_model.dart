@@ -13,6 +13,8 @@ class MessageAttachment {
     this.mime,
     this.kind,
     this.size,
+    this.width,
+    this.height,
     this.available = true,
   });
 
@@ -24,6 +26,13 @@ class MessageAttachment {
   /// image | video | audio | file
   final String? kind;
   final int? size;
+  final int? width;
+  final int? height;
+
+  double? get aspectRatio =>
+      width != null && height != null && width! > 0 && height! > 0
+          ? width! / height!
+          : null;
 
   /// False when the file itself is gone (the old Firebase uploads).
   final bool available;
@@ -32,6 +41,8 @@ class MessageAttachment {
     if (json is! Map) return null;
     final url = json['url']?.toString();
     if (url == null || url.isEmpty) return null;
+    int? dimension(dynamic value) =>
+        value is num && value.isFinite && value > 0 ? value.toInt() : null;
     return MessageAttachment(
       url: url,
       name: (json['name'] ?? 'File').toString(),
@@ -39,6 +50,8 @@ class MessageAttachment {
       mime: json['mime']?.toString(),
       kind: json['kind']?.toString(),
       size: (json['size'] as num?)?.toInt(),
+      width: dimension(json['width']),
+      height: dimension(json['height']),
       available: json['status'] != 'unavailable',
     );
   }

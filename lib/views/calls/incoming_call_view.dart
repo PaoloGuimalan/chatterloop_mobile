@@ -20,6 +20,7 @@ import 'package:chatterloop_app/models/call_models/call_signed_payloads_model.da
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
+import 'package:chatterloop_app/core/media/display_image.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
 
@@ -100,10 +101,12 @@ class _IncomingCallViewState extends State<IncomingCallView> {
       //
       // Says so, and still declines nothing - the caller keeps ringing, and
       // this user's other devices keep their chance to answer.
-      CLAlerts.show(CallController.instance.isBusy
-            ? "Leave your current call before answering."
-            : (CallController.instance.lastError ??
-                "Could not join the call."), type: CLAlertType.warning);
+      CLAlerts.show(
+          CallController.instance.isBusy
+              ? "Leave your current call before answering."
+              : (CallController.instance.lastError ??
+                  "Could not join the call."),
+          type: CLAlertType.warning);
       Navigator.of(context).pop();
       return;
     }
@@ -278,8 +281,16 @@ class _IncomingCallViewState extends State<IncomingCallView> {
           CircleAvatar(
             radius: short ? 34 : 56, // 112 across, per the design
             backgroundColor: CLColors.brand300,
-            backgroundImage:
-                hasImage ? NetworkImage(alert.displayImage!) : null,
+            backgroundImage: hasImage
+                ? DisplayImage(
+                    source: alert.displayImage!,
+                    width: ((short ? 68 : 112) *
+                            MediaQuery.devicePixelRatioOf(context))
+                        .ceil(),
+                    height: ((short ? 68 : 112) *
+                            MediaQuery.devicePixelRatioOf(context))
+                        .ceil())
+                : null,
             child: hasImage
                 ? null
                 : Text(

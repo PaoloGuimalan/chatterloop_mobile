@@ -4,10 +4,11 @@ import 'dart:ui' show Color, DartPluginRegistrant;
 
 import 'package:chatterloop_app/core/notifications/notification_thread_store.dart';
 import 'package:chatterloop_app/core/notifications/push_payload.dart';
+import 'package:chatterloop_app/core/media/image_byte_cache.dart';
+import 'package:crypto/crypto.dart';
 import 'package:chatterloop_call_native/chatterloop_call_native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
@@ -856,11 +857,26 @@ class NotificationRenderer {
   /// Downloads, processes and caches [url], returning null on any failure - a
   /// missing thumbnail is always better than a slow or broken CDN holding up
   /// the notification itself.
+  static final _imageRequests = <String, Future<File?>>{};
+  static int _imageWrites = 0;
+
   static Future<File?> _cachedImage(
     String url, {
     required bool circle,
     required int size,
-  }) async {
+  }) {
+    final key = '$circle:$size:$url';
+    return _imageRequests.putIfAbsent(key, () async {
+      try {
+        return await _loadCachedImage(url, circle: circle, size: size);
+      } finally {
+        _imageRequests.remove(key);
+      }
+    });
+  }
+
+  static Future<File?> _loadCachedImage(String url,
+      {required bool circle, required int size}) async {
     if (url.isEmpty) return null;
     try {
       final dir = await getTemporaryDirectory();
@@ -868,26 +884,60 @@ class NotificationRenderer {
       // be wanted both ways - a profile photo is a small circle as an avatar,
       // but a large square when it IS the content someone reacted to.
       final shape = circle ? 'circle' : 'square';
-      final file =
-          File('${dir.path}/push_img_${shape}_${size}_${url.hashCode}.png');
+      final file = File(
+          '${dir.path}/push_img_v2_${shape}_${size}_${sha256.convert(utf8.encode(url))}.png');
 
-      if (file.existsSync() && await file.length() > 0) return file;
+      final stat = await file.stat();
+      if (stat.type == FileSystemEntityType.file &&
+          stat.size > 0 &&
+          DateTime.now().difference(stat.modified) < const Duration(days: 7)) {
+        return file;
+      }
 
-      final response =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 4));
-      if (response.statusCode != 200 || response.bodyBytes.isEmpty) return null;
+      final bytes = await ImageByteCache.instance
+          .bytes(url)
+          .timeout(const Duration(seconds: 4));
 
       final processed =
-          _processImage(response.bodyBytes, circle: circle, size: size);
+          await processNotificationImage(bytes, circle: circle, size: size);
       if (processed == null) return null;
 
       await file.writeAsBytes(processed, flush: true);
+      if (_imageWrites++ % 16 == 0) await _pruneImageFiles(dir);
       return file;
     } catch (e) {
       if (kDebugMode) debugPrint('[FCM] image fetch failed: $e');
       return null;
     }
   }
+
+  static Future<void> _pruneImageFiles(Directory dir) async {
+    try {
+      final images = <({File file, DateTime modified})>[];
+      await for (final entry in dir.list()) {
+        if (entry is File &&
+            entry.uri.pathSegments.last.startsWith('push_img_')) {
+          images.add((file: entry, modified: (await entry.stat()).modified));
+        }
+      }
+      images.sort((a, b) => b.modified.compareTo(a.modified));
+      for (final image in images.skip(256)) {
+        await image.file.delete();
+      }
+    } catch (_) {}
+  }
+
+  /// Only this pure byte transformation crosses the isolate boundary. Plugin
+  /// initialization, HTTP, and disk access stay in the calling isolate, which
+  /// also supports FCM's background handler.
+  @visibleForTesting
+  static Future<Uint8List?> processNotificationImage(Uint8List bytes,
+          {required bool circle, required int size}) =>
+      compute(_processImageRequest, (bytes: bytes, circle: circle, size: size));
+
+  static Uint8List? _processImageRequest(
+          ({Uint8List bytes, bool circle, int size}) request) =>
+      _processImage(request.bytes, circle: request.circle, size: request.size);
 
   /// Source bytes in, centre-cropped square PNG out - rounded into a circle
   /// when [circle] is set.

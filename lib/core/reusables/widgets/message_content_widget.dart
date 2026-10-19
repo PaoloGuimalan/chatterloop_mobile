@@ -25,6 +25,7 @@ import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:chatterloop_app/core/reusables/widgets/chat_photo.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:go_router/go_router.dart';
@@ -1038,12 +1039,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                     ),
                     child: GestureDetector(
                       // The whole tile takes the tap, not just wherever the
-                      // picture happens to be painting. CLNetworkImage fades
-                      // itself in from zero opacity, and a zero-opacity
-                      // subtree ignores pointers - so with the default
-                      // deferToChild the photo was untappable until it had
-                      // finished loading, and permanently untappable if it
-                      // never did.
+                      // picture happens to be painting, including the preview's
+                      // placeholder or the margins around a portrait photo.
                       behavior: HitTestBehavior.opaque,
                       // Not on either preview copy of a message: the
                       // long-press hero (isHoverPreview) is a modal whose
@@ -1053,7 +1050,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       // quote does, which is nothing.
                       onTap: isReply || isHoverPreview
                           ? null
-                          : () => _openInViewer(chatMediaUrl(content, attachment), messageType),
+                          : () => _openInViewer(
+                              chatMediaUrl(content, attachment), messageType),
                       child: Container(
                         decoration: BoxDecoration(
                             color: p.surface3,
@@ -1063,9 +1061,10 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                           borderRadius: BorderRadius.circular(10),
                           child: Padding(
                             padding: EdgeInsets.all(0),
-                            child: CLNetworkImage(
+                            child: ChatPhotoPreview(
                               // The attachment's link, like every other file.
-                              src: chatMediaUrl(content, attachment),
+                              source: chatMediaUrl(content, attachment),
+                              aspectRatio: attachment?.aspectRatio,
                             ),
                           ),
                         ),
@@ -1278,7 +1277,8 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                       // so the save action sits in one place for both kinds of
                       // media - rather than in the bare full-screen player,
                       // which has no actions at all.
-                      onFullscreen: () => _openInViewer(chatMediaUrl(content, attachment), messageType),
+                      onFullscreen: () => _openInViewer(
+                          chatMediaUrl(content, attachment), messageType),
                     ),
                   ),
                 ),
@@ -1981,11 +1981,11 @@ class MessageContentWidgetState extends State<MessageContentWidget> {
                                             // text in light, full text in
                                             // dark, where text2 at this size
                                             // reads as greyed-out.
-                                            color: Theme.of(context)
-                                                        .brightness ==
-                                                    Brightness.dark
-                                                ? cl(context).text
-                                                : cl(context).text2,
+                                            color:
+                                                Theme.of(context).brightness ==
+                                                        Brightness.dark
+                                                    ? cl(context).text
+                                                    : cl(context).text2,
                                           ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,

@@ -2,6 +2,7 @@ import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/notifications/notification_renderer.dart';
 import 'package:chatterloop_app/core/notifications/conversation_shortcuts.dart';
+import 'package:chatterloop_app/core/media/image_byte_cache.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
@@ -32,5 +33,8 @@ Future<void> logoutUser(BuildContext context) async {
   // Shortcuts outlive the session too - without this the next account would
   // see the previous one's contacts in the launcher and the shade.
   await ConversationShortcuts.clearAll();
+  await ImageByteCache.instance.clear();
+  PaintingBinding.instance.imageCache.clear();
+  PaintingBinding.instance.imageCache.clearLiveImages();
   if (context.mounted) context.go('/login');
 }

@@ -249,14 +249,9 @@ class _PostEditScreenState extends State<PostEditScreen> {
         anchorControlsToBounds: true,
       );
     }
-    if (pending != null) {
-      return Image.file(File(source),
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) =>
-              Icon(Icons.broken_image_outlined, color: cl(context).text3));
-    }
     return CLNetworkImage(
         src: source,
+        isLocal: pending != null,
         fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity);

@@ -55,13 +55,30 @@ void main() {
   tearDown(() => MediaDownloader.instance.progress.value = const {});
 
   group('attachment url and name', () {
+    test(
+        'optional photo dimensions are defensive and preserve the aspect ratio',
+        () {
+      final photo = MessageAttachment.tryParse({
+        'url': _spacesImage,
+        'name': 'photo.jpg',
+        'width': 4000,
+        'height': 3000,
+      })!;
+      expect(photo.aspectRatio, 4 / 3);
+      expect(
+          MessageAttachment.tryParse(
+                  {'url': _spacesImage, 'width': 0, 'height': 'bad'})!
+              .aspectRatio,
+          isNull);
+    });
     test('a plain url is left alone', () {
       expect(chatMediaUrl(_spacesFile), _spacesFile);
     });
 
     test("a message file's link and name come from its attachment", () {
       const attachment = MessageAttachment(
-        url: 'https://media.example.invalid/uploads/messages/c/1/Q3%20report.pdf',
+        url:
+            'https://media.example.invalid/uploads/messages/c/1/Q3%20report.pdf',
         name: 'Q3 report.pdf',
         size: 2048,
       );
@@ -81,7 +98,8 @@ void main() {
     test("an attachment's name is still made safe for disk", () {
       const attachment =
           MessageAttachment(url: 'https://m.invalid/x', name: 'a/b:c?.txt');
-      expect(chatMediaFileName('ignored', attachment: attachment), 'a_b_c_.txt');
+      expect(
+          chatMediaFileName('ignored', attachment: attachment), 'a_b_c_.txt');
     });
 
     test('a name comes from the last path segment, percent-decoded', () {
@@ -255,8 +273,11 @@ void main() {
       // It used to render with `onPressed: () {}` - a card that looked like a
       // button and did nothing at all when tapped.
       await pumpBubble(
-          tester, _message(
-              type: "application/pdf", content: _spacesFile, name: "report.pdf"));
+          tester,
+          _message(
+              type: "application/pdf",
+              content: _spacesFile,
+              name: "report.pdf"));
 
       expect(find.text('report.pdf'), findsOneWidget);
       // By name, not byType: the bubble also carries the reply affordance,
@@ -269,8 +290,11 @@ void main() {
         (tester) async {
       MediaDownloader.instance.progress.value = {_spacesFile: 0.25};
       await pumpBubble(
-          tester, _message(
-              type: "application/pdf", content: _spacesFile, name: "report.pdf"));
+          tester,
+          _message(
+              type: "application/pdf",
+              content: _spacesFile,
+              name: "report.pdf"));
 
       expect(find.byIcon(Icons.file_copy_outlined), findsNothing);
       final indicator = tester.widget<CircularProgressIndicator>(
@@ -280,8 +304,11 @@ void main() {
 
     testWidgets('long-pressing an attachment offers Save', (tester) async {
       await pumpBubble(
-          tester, _message(
-              type: "application/pdf", content: _spacesFile, name: "report.pdf"));
+          tester,
+          _message(
+              type: "application/pdf",
+              content: _spacesFile,
+              name: "report.pdf"));
 
       await tester.longPress(_fileCard);
       await tester.pumpAndSettle();

@@ -11,6 +11,7 @@ import 'package:chatterloop_app/views/moments/moments_strip.dart';
 import 'package:chatterloop_app/views/moments/reaction_burst.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:go_router/go_router.dart';
 
 /// A thought as a bubble above an avatar (rail, profile).
@@ -217,49 +218,59 @@ class ThoughtsRailViewState extends State<ThoughtsRailView> {
     // A fixed room above every avatar, the same whatever the thoughts say:
     // it used to be a band sized by the tallest bubble, which grew with the
     // longest thought and sat empty over everyone without one.
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          item(
-            bubble: rail.mine?.text ?? "Share a thought",
-            muted: rail.mine == null,
-            avatar: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                CLAvatar(
-                    id: user.entityId,
-                    name: user.activeEntity?.name ?? user.personalDisplayName,
-                    src: user.activeEntity?.profile ?? user.profile,
-                    size: 52),
-                Positioned(
-                  right: -2,
-                  bottom: -2,
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: p.surface,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: p.border),
+    return SizedBox(
+      height: _railBubbleRoom +
+          52 +
+          4 +
+          MediaQuery.textScalerOf(context).scale(CLType.meta) * 1.5,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        itemExtent: 78,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(156),
+        itemCount: 1 + rail.results.length + people.length,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return item(
+              bubble: rail.mine?.text ?? "Share a thought",
+              muted: rail.mine == null,
+              avatar: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CLAvatar(
+                      id: user.entityId,
+                      name: user.activeEntity?.name ?? user.personalDisplayName,
+                      src: user.activeEntity?.profile ?? user.profile,
+                      size: 52),
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: p.surface,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: p.border),
+                      ),
+                      child: Icon(
+                          rail.mine == null
+                              ? Icons.add_rounded
+                              : Icons.edit_rounded,
+                          size: 12,
+                          color: p.text2),
                     ),
-                    child: Icon(
-                        rail.mine == null
-                            ? Icons.add_rounded
-                            : Icons.edit_rounded,
-                        size: 12,
-                        color: p.text2),
                   ),
-                ),
-              ],
-            ),
-            label: "Your thought",
-            onTap: () => showThoughtComposerSheet(context, existing: rail.mine),
-          ),
-          for (final thought in rail.results)
-            item(
+                ],
+              ),
+              label: "Your thought",
+              onTap: () =>
+                  showThoughtComposerSheet(context, existing: rail.mine),
+            );
+          }
+          if (index <= rail.results.length) {
+            final thought = rail.results[index - 1];
+            return item(
               bubble: thought.text,
               avatar: CLAvatar(
                 id: thought.author?.entityId ?? thought.entityId,
@@ -270,21 +281,22 @@ class ThoughtsRailViewState extends State<ThoughtsRailView> {
               ),
               label: (thought.author?.displayName ?? "").split(" ").first,
               onTap: () => showThoughtDetailSheet(context, thought: thought),
+            );
+          }
+          final person = people[index - 1 - rail.results.length];
+          return item(
+            bubble: null,
+            avatar: CLAvatar(
+              id: person.entityId,
+              entityId: person.entityId,
+              name: person.displayName,
+              src: person.profile,
+              size: 52,
             ),
-          for (final person in people)
-            item(
-              bubble: null,
-              avatar: CLAvatar(
-                id: person.entityId,
-                entityId: person.entityId,
-                name: person.displayName,
-                src: person.profile,
-                size: 52,
-              ),
-              label: person.displayName.split(" ").first,
-              onTap: () => _openChat(context, person.entityId),
-            ),
-        ],
+            label: person.displayName.split(" ").first,
+            onTap: () => _openChat(context, person.entityId),
+          );
+        },
       ),
     );
   }

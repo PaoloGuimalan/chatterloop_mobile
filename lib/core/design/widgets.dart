@@ -6,6 +6,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:chatterloop_app/core/media/display_image.dart';
 
 import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/models/util_models/conversation_utils_model.dart';
@@ -246,28 +247,10 @@ class CLAvatar extends StatelessWidget {
             ),
     );
 
-    // Decode avatars at display resolution, not the source photo's native
-    // size: an avatar renders at ~size logical px but the profile image behind
-    // it is often 500-1000px+, and without a cap the full bitmap is decoded
-    // into the image cache for EVERY avatar in a list. isFinite-guarded so a
-    // non-finite size can never reach ceil() (throws on Infinity/NaN).
-    //
-    // The cap is 2x the display size, and the resize is done through an
-    // explicit ResizeImage rather than Image.network's cacheWidth/cacheHeight,
-    // because BOTH of those together mean ResizeImagePolicy.exact - which
-    // resizes to precisely WxH and DISTORTS the aspect ratio. A landscape
-    // group photo squeezed into a square is what that looked like: the image
-    // arrived already squished, so the BoxFit.cover below had a square bitmap
-    // to work with and nothing left to crop. `fit` keeps the proportions and
-    // lets cover do the cropping, which is the whole point of asking for it.
-    //
-    // 2x rather than 1x because `fit` scales the LONG edge down to the cap, so
-    // the short edge - the one cover then has to fill - lands under it. The
-    // headroom keeps ordinary 4:3/16:9 photos sharp; memory is still a small
-    // fraction of decoding the original.
-    final int? avatarDecodePx = size.isFinite
-        ? (size * MediaQuery.devicePixelRatioOf(context) * 2).ceil()
-        : null;
+    final avatarDecodePx =
+        ((size.isFinite ? size : 40) * MediaQuery.devicePixelRatioOf(context))
+            .ceil()
+            .clamp(1, 4096);
 
     Widget clip(Widget child) => cornerRadius == null
         ? ClipOval(child: child)
@@ -275,13 +258,10 @@ class CLAvatar extends StatelessWidget {
             borderRadius: BorderRadius.circular(cornerRadius!), child: child);
 
     ImageProvider<Object> avatarProvider(String url) {
-      final provider = NetworkImage(url);
-      if (avatarDecodePx == null) return provider;
-      return ResizeImage(
-        provider,
+      return DisplayImage(
+        source: url,
         width: avatarDecodePx,
         height: avatarDecodePx,
-        policy: ResizeImagePolicy.fit,
       );
     }
 
@@ -292,22 +272,9 @@ class CLAvatar extends StatelessWidget {
               width: size,
               height: size,
               fit: BoxFit.cover,
-              // Same gradient+initials placeholder for "still downloading"
-              // as for "failed to load" - previously there was no
-              // loadingBuilder at all, so the circle was simply blank
-              // (transparent) for however long the request took, which
-              // read as a rendering bug rather than a photo on its way in.
-              loadingBuilder: (context, child, progress) =>
-                  progress == null ? child : placeholder,
               errorBuilder: (_, __, ___) => placeholder,
               frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                if (wasSynchronouslyLoaded) return child;
-                return AnimatedOpacity(
-                  opacity: frame == null ? 0 : 1,
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  child: child,
-                );
+                return frame == null ? placeholder : child;
               },
             ),
           )
@@ -723,14 +690,8 @@ class _CLSkeletonState extends State<CLSkeleton>
 
 // -------- Network image --------------------------------------------------------
 
-/// Image.network wrapped with a pulsing skeleton while bytes are still
-/// downloading (instead of a blank gap that pops in once loaded), a fade-in
-/// once the first frame decodes, a static neutral placeholder on failure
-/// (not a forever-pulsing skeleton, which would misleadingly imply it's
-/// still loading), and an AnimatedSize so the swap between skeleton and
-/// real content doesn't jump instantly when no explicit height is given
-/// (e.g. message/link-preview images, whose real aspect ratio isn't known
-/// until the bytes actually arrive).
+/// Cached original bytes, decoded for this layout. Static placeholders avoid
+/// download-progress rebuilds and one animation controller per loading image.
 class CLNetworkImage extends StatelessWidget {
   final String src;
   final double? width;
@@ -739,6 +700,10 @@ class CLNetworkImage extends StatelessWidget {
   final BorderRadiusGeometry? borderRadius;
   final double placeholderHeight;
   final WidgetBuilder? errorBuilder;
+  final bool isLocal;
+
+  /// Full-screen viewers can retain more detail than their inline thumbnail.
+  final double resolutionScale;
 
   const CLNetworkImage({
     super.key,
@@ -749,70 +714,65 @@ class CLNetworkImage extends StatelessWidget {
     this.borderRadius,
     this.placeholderHeight = 160,
     this.errorBuilder,
+    this.isLocal = false,
+    this.resolutionScale = 1,
   });
 
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    final resolvedPlaceholderHeight = height ?? placeholderHeight;
+    return LayoutBuilder(builder: (context, constraints) {
+      final mq = MediaQuery.of(context);
+      double? finitePositive(double? value) =>
+          value != null && value.isFinite && value > 0 ? value : null;
+      final targetWidth = math.min(
+        finitePositive(width) ??
+            finitePositive(constraints.maxWidth) ??
+            mq.size.width,
+        finitePositive(constraints.maxWidth) ?? double.infinity,
+      );
+      final targetHeight = finitePositive(height) ??
+          (constraints.hasTightHeight
+              ? finitePositive(constraints.maxHeight)
+              : null);
+      final density = mq.devicePixelRatio * resolutionScale;
+      int pixels(double value) => (value * density).ceil().clamp(1, 4096);
+      final resolvedPlaceholderHeight = targetHeight ?? placeholderHeight;
+      final placeholder = Container(
+        width: width ?? double.infinity,
+        height: resolvedPlaceholderHeight,
+        color: p.surface3,
+      );
+      final image = Image(
+        image: DisplayImage(
+          source: src,
+          width: pixels(targetWidth),
+          height: targetHeight == null ? null : pixels(targetHeight),
+          fit: fit,
+          isLocal: isLocal,
+        ),
+        width: width,
+        height: height,
+        fit: fit,
+        errorBuilder: (context, error, stack) =>
+            errorBuilder?.call(context) ??
+            Container(
+              width: width,
+              height: resolvedPlaceholderHeight,
+              color: p.surface3,
+              alignment: Alignment.center,
+              child: Icon(Icons.image_not_supported_outlined,
+                  color: p.text3, size: 22),
+            ),
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          return frame == null ? placeholder : child;
+        },
+      );
 
-    // Cap decode resolution to what's actually shown: the given width when
-    // it's finite, otherwise the screen width. A full-bleed image (e.g. the
-    // profile cover) passes width: double.infinity, which must NOT reach
-    // ceil() - Infinity/NaN.toInt() throws "Unsupported operation". An inline
-    // image is never shown wider than the screen, so screen width is a safe
-    // cap. Only cacheWidth is set, so aspect ratio is preserved.
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final double targetWidth =
-        (width != null && width!.isFinite) ? width! : screenWidth;
-    final int decodeWidth =
-        (targetWidth * MediaQuery.of(context).devicePixelRatio).ceil();
-
-    final image = Image.network(
-      src,
-      width: width,
-      height: height,
-      fit: fit,
-      cacheWidth: decodeWidth,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return CLSkeleton(
-          width: width ?? double.infinity,
-          height: resolvedPlaceholderHeight,
-          borderRadius: borderRadius ?? BorderRadius.zero,
-        );
-      },
-      errorBuilder: (context, error, stack) =>
-          errorBuilder?.call(context) ??
-          Container(
-            width: width,
-            height: resolvedPlaceholderHeight,
-            color: p.surface3,
-            alignment: Alignment.center,
-            child: Icon(Icons.image_not_supported_outlined,
-                color: p.text3, size: 22),
-          ),
-      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-        if (wasSynchronouslyLoaded) return child;
-        return AnimatedOpacity(
-          opacity: frame == null ? 0 : 1,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-          child: child,
-        );
-      },
-    );
-
-    final clipped = borderRadius != null
-        ? ClipRRect(borderRadius: borderRadius!, child: image)
-        : image;
-
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-      alignment: Alignment.topCenter,
-      child: clipped,
-    );
+      return borderRadius != null
+          ? ClipRRect(borderRadius: borderRadius!, child: image)
+          : image;
+    });
   }
 }
 

@@ -2608,7 +2608,7 @@ class ConversationStateView extends State<ConversationView> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: isImage
-                ? Image.file(File(file.path),
+                ? CLNetworkImage(src: file.path, isLocal: true,
                     width: 60, height: 60, fit: BoxFit.cover)
                 : isVideo
                     ? Stack(
