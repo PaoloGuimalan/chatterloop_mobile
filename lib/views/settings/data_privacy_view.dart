@@ -7,6 +7,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'package:chatterloop_app/views/settings/passphrase_section.dart';
 
 import 'package:chatterloop_app/core/auth/consent_prefs.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -146,6 +147,14 @@ class _DataPrivacyScreenState extends State<DataPrivacyScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            StoreConnector<AppState, String>(
+              distinct: true,
+              converter: (store) =>
+                  '${store.state.userAuth.user.id}/${store.state.userAuth.user.entityId}',
+              builder: (_, identity) =>
+                  PassphraseSection(key: ValueKey(identity)),
+            ),
+            const SizedBox(height: 30),
             StoreConnector<AppState, UserAccount>(
               distinct: true,
               converter: (store) => store.state.userAuth.user,

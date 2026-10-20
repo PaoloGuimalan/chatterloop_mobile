@@ -12,6 +12,7 @@ import 'package:chatterloop_app/views/auth/login_view.dart';
 import 'package:chatterloop_app/views/diary/diary_compose_view.dart';
 import 'package:chatterloop_app/views/diary/diary_entry_view.dart';
 import 'package:chatterloop_app/views/diary/diary_list_view.dart';
+import 'package:chatterloop_app/views/diary/diary_gate.dart';
 import 'package:chatterloop_app/views/notes/notes_list_view.dart';
 import 'package:chatterloop_app/views/notes/note_editor_view.dart';
 import 'package:chatterloop_app/views/auth/setup_view.dart';
@@ -558,18 +559,18 @@ GoRouter buildAppRouter(AuthController authController) {
           GoRoute(
             path: '/diary',
             redirect: _diaryGuard,
-            pageBuilder: (c, s) => _clPage(s, const DiaryListScreen()),
+            pageBuilder: (c, s) => _clPage(s, const DiaryGate(child: DiaryListScreen())),
           ),
           GoRoute(
             path: '/diary/new',
             redirect: _diaryGuard,
-            pageBuilder: (c, s) => _clPage(s, const DiaryComposeScreen()),
+            pageBuilder: (c, s) => _clPage(s, const DiaryGate(child: DiaryComposeScreen())),
           ),
           GoRoute(
             path: '/diary/entry/:entryId',
             redirect: _diaryGuard,
             pageBuilder: (c, s) => _clPage(
-                s, DiaryEntryScreen(entryId: s.pathParameters['entryId']!)),
+                s, DiaryGate(child: DiaryEntryScreen(entryId: s.pathParameters['entryId']!))),
           ),
           GoRoute(
             path: '/user/:username',

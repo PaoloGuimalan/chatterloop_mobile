@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/design/app_dialog.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -388,22 +389,25 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
           ? 'close'
           : await showDialog<String>(
               context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Leave this edit?'),
-                content: Text(hasDraft
+              builder: (context) => AppDialog(
+                icon: Icons.edit_outlined,
+                title: 'Leave this edit?',
+                description: hasDraft
                     ? 'Keep your draft to continue later, or discard it.'
-                    : 'Discard this edit and leave?'),
+                    : 'Discard this edit and leave?',
                 actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Keep editing')),
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, 'discard'),
-                      child: const Text('Discard')),
+                  AppDialogAction(
+                      label: 'Keep editing',
+                      onPressed: () => Navigator.pop(context)),
+                  AppDialogAction(
+                      label: 'Discard',
+                      destructive: true,
+                      onPressed: () => Navigator.pop(context, 'discard')),
                   if (hasDraft)
-                    FilledButton(
-                        onPressed: () => Navigator.pop(context, 'keep'),
-                        child: const Text('Keep draft')),
+                    AppDialogAction(
+                        label: 'Keep draft',
+                        primary: true,
+                        onPressed: () => Navigator.pop(context, 'keep')),
                 ],
               ),
             );

@@ -9,6 +9,7 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
+import 'package:chatterloop_app/core/encryption/diary_session.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:chatterloop_app/core/utils/writing_html.dart';
@@ -296,6 +297,8 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   }
 
   Future<void> _save() async {
+    final session = DiarySession.instance;
+    final visit = session.generation;
     if (_currentAccount != _accountKey) {
       _toast(
           'Account changed. Return to the original account to save this entry.');
@@ -318,6 +321,23 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
     }
 
     setState(() => _isSaving = true);
+    String wireTitle = title, wireContent = _contentAsHtml();
+    final encrypted = session.active != null;
+    if (encrypted) {
+      try {
+        final fields = await session.encryptNew(title, wireContent);
+        wireTitle = fields.$1;
+        wireContent = fields.$2;
+      } catch (_) {
+        if (mounted) {
+          setState(() => _isSaving = false);
+          _toast(
+              'Diary protection requires an updated server and an unlocked visit. Reopen Diary and try again.');
+        }
+        return;
+      }
+    }
+    if (!mounted || visit != session.generation) return;
 
     // Attachments upload first: the entry POST takes their resulting URLs, so
     // a failure here has to abort before anything is created.
@@ -341,17 +361,20 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
         return;
       }
     }
-    if (_currentAccount != _accountKey) {
+    if (!mounted ||
+        visit != session.generation ||
+        _currentAccount != _accountKey) {
       if (mounted) setState(() => _isSaving = false);
       return;
     }
 
     final entry =
         await DiaryApi(dio: ApiClient.userService.forToken(token)).createEntry(
-      title: title,
-      content: _contentAsHtml(),
+      title: wireTitle,
+      content: wireContent,
       entryDate: _entryDateForApi(),
-      isPrivate: _isPrivate,
+      isPrivate: encrypted || _isPrivate,
+      isEncrypted: encrypted,
       mood: _selectedMood,
       tags: _selectedTags,
       attachments: uploaded,
@@ -422,6 +445,16 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                             child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 14),
+                                      child: Text(
+                                          DiarySession.instance.active != null
+                                              ? 'Titles and text are encrypted and private. Attachments, tags, moods and dates are outside this protection.'
+                                              : 'No active passphrase. This entry will be saved without passphrase encryption.',
+                                          style: TextStyle(
+                                              color: p.text2,
+                                              fontSize: CLType.caption))),
                                   _titleAndDate(p),
                                   const SizedBox(height: 16),
                                   Row(
@@ -794,7 +827,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                 borderRadius: BorderRadius.circular(9)),
             child: DropdownButtonHideUnderline(
                 child: DropdownButton<bool>(
-              value: _isPrivate,
+              value: DiarySession.instance.active != null || _isPrivate,
               isExpanded: true,
               style: Theme.of(context)
                   .textTheme
@@ -804,12 +837,14 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                 DropdownMenuItem(value: true, child: Text('Private')),
                 DropdownMenuItem(value: false, child: Text('Public'))
               ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _isPrivate = value);
-                  _record();
-                }
-              },
+              onChanged: DiarySession.instance.active != null
+                  ? null
+                  : (value) {
+                      if (value != null) {
+                        setState(() => _isPrivate = value);
+                        _record();
+                      }
+                    },
             ))),
       ]);
 

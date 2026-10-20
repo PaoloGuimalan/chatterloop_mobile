@@ -16,6 +16,8 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:chatterloop_app/views/diary/locked_diary.dart';
+import 'package:chatterloop_app/core/encryption/diary_session.dart';
 
 class DiaryListScreen extends StatefulWidget {
   const DiaryListScreen({super.key});
@@ -102,7 +104,6 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
       _isLoadingMore = false;
       _isInitialized = true;
     });
-    if (_search.text.trim().isNotEmpty && _hasNext) _loadPage(_page + 1);
   }
 
   Future<void> _openCompose() async {
@@ -144,12 +145,13 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
                   hint: 'Search diary',
                   onChanged: (_) {
                     setState(() {});
-                    if (_search.text.trim().isNotEmpty &&
-                        _hasNext &&
-                        !_isLoadingMore) {
-                      _loadPage(_page + 1);
-                    }
                   })),
+          Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                'Search loaded, unlocked entries. Load more for earlier dates.',
+                style: TextStyle(color: p.text2, fontSize: CLType.caption),
+              )),
           Expanded(
               child: !_isInitialized
                   ? const DiaryListSkeleton()
@@ -200,9 +202,10 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
         .where((e) =>
             e.entryDate != null &&
             (query.isEmpty ||
-                '${e.title} ${e.plainTextPreview} ${e.tags.map((t) => t.name).join(' ')} ${e.mood?.name ?? ''}'
-                    .toLowerCase()
-                    .contains(query)))
+                (!e.isLocked &&
+                    '${e.title} ${e.plainTextPreview} ${e.tags.map((t) => t.name).join(' ')} ${e.mood?.name ?? ''}'
+                        .toLowerCase()
+                        .contains(query))))
         .toList()
       ..sort((a, b) {
         final byDate = a.entryDate!.compareTo(b.entryDate!);
@@ -243,97 +246,115 @@ class _EntryCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(CLRadii.md),
-        onTap: () => context.push('/diary/entry/${entry.id}'),
+        onTap: () async {
+          await context.push('/diary/entry/${entry.id}');
+          if (!context.mounted || !DiarySession.instance.ready) return;
+          // Refresh the scoped list so an older key unlocked in the reader
+          // also reveals the other entries protected with it during this visit.
+          final state =
+              context.findAncestorStateOfType<_DiaryListScreenState>();
+          state?._loadPage(1);
+        },
         child: Container(
           padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(
               color: p.surface,
               border: Border.all(color: p.border),
               borderRadius: BorderRadius.circular(12)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      entry.title.isEmpty ? "Untitled" : entry.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: p.text,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13),
+          child: entry.isLocked
+              ? const LockedDiary()
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            entry.title.isEmpty ? "Untitled" : entry.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: p.text,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13),
+                          ),
+                        ),
+                        if (entry.mood != null) ...[
+                          const SizedBox(width: 8),
+                          ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 112),
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(entry.mood!.emoji,
+                                        style: const TextStyle(fontSize: 12)),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                        child: Text(entry.mood!.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                                color: p.text2, fontSize: 11))),
+                                  ])),
+                        ],
+                      ],
                     ),
-                  ),
-                  if (entry.mood != null) ...[
-                    const SizedBox(width: 8),
-                    ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 112),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Text(entry.mood!.emoji,
-                              style: const TextStyle(fontSize: 12)),
-                          const SizedBox(width: 4),
-                          Flexible(
-                              child: Text(entry.mood!.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style:
-                                      TextStyle(color: p.text2, fontSize: 11))),
-                        ])),
+                    if (entry.tags.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: entry.tags
+                            .take(3)
+                            .map((tag) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                    color: p.brand.withValues(alpha: .14),
+                                    borderRadius: BorderRadius.circular(6)),
+                                child: Text(tag.name,
+                                    style: TextStyle(
+                                        color: p.brand, fontSize: 11))))
+                            .toList(),
+                      ),
+                    ],
+                    if (entry.plainTextPreview.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(entry.plainTextPreview,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: p.text2, fontSize: 12, height: 1.65)),
+                    ],
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Icon(entry.isPrivate ? Icons.lock_outline : Icons.public,
+                          size: 12, color: p.text2),
+                      const SizedBox(width: 5),
+                      Text(
+                          entry.isEncrypted
+                              ? 'Encrypted'
+                              : entry.isPrivate
+                                  ? 'Private'
+                                  : 'Public',
+                          style: TextStyle(color: p.text2, fontSize: 11)),
+                      if (entry.attachments.isNotEmpty) ...[
+                        const SizedBox(width: 12),
+                        Icon(Icons.attachment, size: 13, color: p.text3),
+                        const SizedBox(width: 4),
+                        Text('${entry.attachments.length}',
+                            style: TextStyle(
+                                color: p.text3, fontSize: CLType.caption)),
+                      ],
+                      const Spacer(),
+                      if (entry.createdAt != null)
+                        Text(
+                            TimeOfDay.fromDateTime(entry.createdAt!.toLocal())
+                                .format(context),
+                            style: TextStyle(color: p.text2, fontSize: 11)),
+                    ]),
                   ],
-                ],
-              ),
-              if (entry.tags.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: entry.tags
-                      .take(3)
-                      .map((tag) => Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 3),
-                          decoration: BoxDecoration(
-                              color: p.brand.withValues(alpha: .14),
-                              borderRadius: BorderRadius.circular(6)),
-                          child: Text(tag.name,
-                              style: TextStyle(color: p.brand, fontSize: 11))))
-                      .toList(),
                 ),
-              ],
-              if (entry.plainTextPreview.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(entry.plainTextPreview,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style:
-                        TextStyle(color: p.text2, fontSize: 12, height: 1.65)),
-              ],
-              const SizedBox(height: 10),
-              Row(children: [
-                Icon(entry.isPrivate ? Icons.lock_outline : Icons.public,
-                    size: 12, color: p.text2),
-                const SizedBox(width: 5),
-                Text(entry.isPrivate ? 'Private' : 'Public',
-                    style: TextStyle(color: p.text2, fontSize: 11)),
-                if (entry.attachments.isNotEmpty) ...[
-                  const SizedBox(width: 12),
-                  Icon(Icons.attachment, size: 13, color: p.text3),
-                  const SizedBox(width: 4),
-                  Text('${entry.attachments.length}',
-                      style:
-                          TextStyle(color: p.text3, fontSize: CLType.caption)),
-                ],
-                const Spacer(),
-                if (entry.createdAt != null)
-                  Text(
-                      TimeOfDay.fromDateTime(entry.createdAt!.toLocal())
-                          .format(context),
-                      style: TextStyle(color: p.text2, fontSize: 11)),
-              ]),
-            ],
-          ),
         ),
       ),
     );

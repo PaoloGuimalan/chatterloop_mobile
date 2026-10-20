@@ -201,6 +201,10 @@ class DiaryEntry {
     this.createdAt,
     this.updatedAt,
     this.linkPreview,
+    this.isEncrypted = false,
+    this.isLocked = false,
+    this.encryptedTitle,
+    this.encryptedContent,
   });
 
   final String id;
@@ -216,6 +220,25 @@ class DiaryEntry {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final LinkPreviewData? linkPreview;
+  final bool isEncrypted, isLocked;
+  final String? encryptedTitle, encryptedContent;
+
+  DiaryEntry unlocked(String title, String content) => DiaryEntry(
+      id: id,
+      title: title,
+      content: content,
+      isPrivate: isPrivate,
+      tags: tags,
+      attachments: attachments,
+      account: account,
+      entryDate: entryDate,
+      mood: mood,
+      mapInfo: mapInfo,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      isEncrypted: true,
+      encryptedTitle: encryptedTitle,
+      encryptedContent: encryptedContent);
 
   /// A rough plain-text rendering for list previews. Deliberately crude - it
   /// strips tags and unescapes the handful of entities Quill actually emits,
@@ -248,8 +271,19 @@ class DiaryEntry {
     return DiaryEntry(
       id: (json["id"] ?? "").toString(),
       account: json["account"]?.toString(),
-      title: (json["title"] ?? "").toString(),
-      content: (json["content"] ?? "").toString(),
+      title:
+          json['is_encrypted'] == true ? '' : (json["title"] ?? "").toString(),
+      content: json['is_encrypted'] == true
+          ? ''
+          : (json["content"] ?? "").toString(),
+      isEncrypted: json['is_encrypted'] == true,
+      isLocked: json['is_encrypted'] == true,
+      encryptedTitle: json['is_encrypted'] == true
+          ? (json['title'] ?? '').toString()
+          : null,
+      encryptedContent: json['is_encrypted'] == true
+          ? (json['content'] ?? '').toString()
+          : null,
       // entry_date is a plain "YYYY-MM-DD" DateField, not a timestamp.
       entryDate: DateTime.tryParse((json["entry_date"] ?? "").toString()),
       isPrivate: json["is_private"] != false,

@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
+import 'package:chatterloop_app/core/encryption/diary_session.dart';
 
 class DiaryApi {
   // userService, not instance - every diary route lives on the Django user
@@ -32,10 +33,16 @@ class DiaryApi {
       );
       final data = response.data;
       if (data is! Map) return DiaryPage.empty<DiaryEntry>();
-      return DiaryPage.fromJson<DiaryEntry>(
+      final parsed = DiaryPage.fromJson<DiaryEntry>(
         Map<String, dynamic>.from(data),
         DiaryEntry.fromJson,
       );
+      return DiaryPage(
+          count: parsed.count,
+          next: parsed.next,
+          previous: parsed.previous,
+          results: await Future.wait(
+              parsed.results.map(DiarySession.instance.openEntry)));
     } catch (e) {
       if (kDebugMode) print("[diary] getEntries failed: $e");
       return DiaryPage.empty<DiaryEntry>();
@@ -48,7 +55,8 @@ class DiaryApi {
       final response = await _dio.get('${_endpoints.diaryEntry}$entryId/');
       final data = response.data;
       if (data is! Map) return null;
-      return DiaryEntry.fromJson(Map<String, dynamic>.from(data));
+      return DiarySession.instance
+          .openEntry(DiaryEntry.fromJson(Map<String, dynamic>.from(data)));
     } catch (e) {
       if (kDebugMode) print("[diary] getEntry failed: $e");
       return null;
@@ -66,6 +74,7 @@ class DiaryApi {
     required String content,
     required String entryDate,
     required bool isPrivate,
+    bool isEncrypted = false,
     Mood? mood,
     List<DiaryTag> tags = const [],
     List<DiaryAttachment> attachments = const [],
@@ -76,6 +85,7 @@ class DiaryApi {
         'content': content,
         'entry_date': entryDate,
         'is_private': isPrivate,
+        'is_encrypted': isEncrypted,
         'mood': mood?.toPayload(),
         'tags': tags.map((t) => t.toPayload()).toList(),
         'attachments': attachments.map((a) => a.toPayload()).toList(),
@@ -84,7 +94,6 @@ class DiaryApi {
       if (data is! Map) return null;
       return DiaryEntry.fromJson(Map<String, dynamic>.from(data));
     } catch (e) {
-      if (kDebugMode) print("[diary] createEntry failed: $e");
       return null;
     }
   }

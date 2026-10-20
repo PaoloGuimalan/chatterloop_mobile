@@ -14,6 +14,10 @@ import 'package:chatterloop_app/core/reusables/widgets/writing_attachment.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/views/notes/writing_skeletons.dart';
 import 'package:chatterloop_app/core/reusables/widgets/writing_body.dart';
+import 'package:chatterloop_app/core/encryption/diary_session.dart';
+import 'package:chatterloop_app/core/encryption/passphrase_crypto.dart';
+import 'package:chatterloop_app/views/settings/passphrase_section.dart';
+import 'package:chatterloop_app/views/diary/locked_diary.dart';
 
 class DiaryEntryScreen extends StatefulWidget {
   const DiaryEntryScreen({super.key, required this.entryId});
@@ -27,6 +31,8 @@ class DiaryEntryScreen extends StatefulWidget {
 class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
   DiaryEntry? _entry;
   bool _isLoading = true;
+  bool _promptOpen = false, _autoPrompted = false;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -35,12 +41,61 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
   }
 
   Future<void> _load() async {
+    final ticket = ++_loadGeneration;
     final result = await DiaryApi().getEntry(widget.entryId);
-    if (!mounted) return;
+    if (!mounted || ticket != _loadGeneration) return;
     setState(() {
       _entry = result;
       _isLoading = false;
     });
+    if (result?.isLocked == true && !_autoPrompted) {
+      _autoPrompted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && ticket == _loadGeneration && identical(_entry, result)) {
+          _unlockEntry();
+        }
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant DiaryEntryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.entryId != widget.entryId) {
+      _entry = null;
+      _isLoading = true;
+      _autoPrompted = false;
+      _load();
+    }
+  }
+
+  Future<void> _unlockEntry() async {
+    final entry = _entry;
+    if (entry == null || !entry.isLocked || _promptOpen) return;
+    final session = DiarySession.instance,
+        generation = DiarySession.instance.generation;
+    try {
+      final e = PassphraseCrypto.envelope(entry.encryptedTitle!);
+      final configuration =
+          session.configuration(e['configuration_id'] as String);
+      if (configuration == null) return;
+      _promptOpen = true;
+      final result = await promptPassphrase(context, configuration);
+      if (result == null) return;
+      if (!mounted ||
+          generation != session.generation ||
+          !identical(_entry, entry)) {
+        result.key.fillRange(0, result.key.length, 0);
+        return;
+      }
+      session.addKey(configuration['id'] as String, result.key);
+      final opened = await session.openEntry(entry);
+      if (mounted && generation == session.generation) {
+        setState(() => _entry = opened);
+      }
+    } catch (_) {/* Keep malformed or tampered entries locked. */} finally {
+      _promptOpen = false;
+    }
   }
 
   @override
@@ -77,8 +132,27 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                     children: [
                       _header(entry, p),
                       const SizedBox(height: 10),
-                      _content(entry, p),
-                      if (entry.linkPreview?.isOk ?? false) ...[
+                      if (entry.isLocked) ...[
+                        Row(children: [
+                          Icon(Icons.lock_outline, size: 15, color: p.text2),
+                          const SizedBox(width: 8),
+                          Expanded(
+                              child: Text(
+                                  'Entry needs a different or older key to unlock',
+                                  style: TextStyle(
+                                      fontSize: CLType.caption,
+                                      color: p.text2))),
+                          TextButton(
+                              onPressed: _unlockEntry,
+                              child: const Text('Unlock entry')),
+                        ]),
+                        const SizedBox(height: 16),
+                        const LockedDiaryContent(
+                            key: ValueKey('locked-diary-content')),
+                      ] else
+                        _content(entry, p),
+                      if (!entry.isEncrypted &&
+                          (entry.linkPreview?.isOk ?? false)) ...[
                         const SizedBox(height: 16),
                         LinkPreviewCard(preview: entry.linkPreview),
                       ],
@@ -110,13 +184,16 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                   const SizedBox(width: 10),
                 ],
                 Expanded(
-                  child: Text(
-                    entry.title.isEmpty ? "Untitled" : entry.title,
-                    style: TextStyle(
-                        color: p.text,
-                        fontSize: CLType.screenTitle,
-                        fontWeight: FontWeight.w600),
-                  ),
+                  child: entry.isLocked
+                      ? const LockedDiaryTitle(
+                          key: ValueKey('locked-diary-title'))
+                      : Text(
+                          entry.title.isEmpty ? "Untitled" : entry.title,
+                          style: TextStyle(
+                              color: p.text,
+                              fontSize: CLType.screenTitle,
+                              fontWeight: FontWeight.w600),
+                        ),
                 ),
               ],
             ),
@@ -141,7 +218,12 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                 Icon(entry.isPrivate ? Icons.lock_outline : Icons.public,
                     size: 13, color: p.text3),
                 const SizedBox(width: 5),
-                Text(entry.isPrivate ? "Private" : "Public",
+                Text(
+                    entry.isEncrypted
+                        ? "Encrypted"
+                        : entry.isPrivate
+                            ? "Private"
+                            : "Public",
                     style: TextStyle(color: p.text3, fontSize: CLType.caption)),
                 if (entry.mood != null) ...[
                   const SizedBox(width: 12),
