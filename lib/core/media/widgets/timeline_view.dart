@@ -224,6 +224,9 @@ class _TimelineViewState extends State<TimelineView> {
   void initState() {
     super.initState();
     widget.position.addListener(_follow);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _follow();
+    });
   }
 
   @override
@@ -351,15 +354,16 @@ class _TimelineViewState extends State<TimelineView> {
           ),
         ),
       );
-      if (height > visible) {
-        lanes = SingleChildScrollView(
-          controller: _lanesScroll,
-          physics: widget.enabled
-              ? const ClampingScrollPhysics()
-              : const NeverScrollableScrollPhysics(),
-          child: lanes,
-        );
-      }
+      // Keep this wrapper mounted when the available height changes (keyboard,
+      // rotation, tray size). Reparenting the horizontal view would briefly
+      // attach its controller to two positions.
+      lanes = SingleChildScrollView(
+        controller: _lanesScroll,
+        physics: widget.enabled
+            ? const ClampingScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
+        child: lanes,
+      );
 
       return SizedBox(
         height: visible + controlsHeight,

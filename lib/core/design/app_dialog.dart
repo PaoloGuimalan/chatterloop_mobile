@@ -10,10 +10,12 @@ class AppDialog extends StatelessWidget {
       required this.description,
       this.children = const [],
       required this.actions,
-      this.icon = Icons.info_outline});
+      this.icon = Icons.info_outline,
+      this.iconBesideTitle = false});
 
   final String title, description;
   final IconData icon;
+  final bool iconBesideTitle;
   final List<Widget> children, actions;
 
   @override
@@ -41,17 +43,28 @@ class AppDialog extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Align(
-                        alignment: Alignment.centerLeft,
-                        child: Icon(icon, size: 25, color: p.text)),
-                    const SizedBox(height: 14),
-                    Semantics(
-                        header: true,
-                        child: Text(title,
-                            style: TextStyle(
-                                fontSize: CLType.screenTitle,
-                                fontWeight: FontWeight.w600,
-                                color: p.text))),
+                    if (!iconBesideTitle) ...[
+                      Align(
+                          alignment: Alignment.centerLeft,
+                          child: Icon(icon, size: 25, color: p.text)),
+                      const SizedBox(height: 14),
+                    ],
+                    Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (iconBesideTitle) ...[
+                            Icon(icon, size: 22, color: p.text),
+                            const SizedBox(width: 10),
+                          ],
+                          Expanded(
+                              child: Semantics(
+                                  header: true,
+                                  child: Text(title,
+                                      style: TextStyle(
+                                          fontSize: CLType.screenTitle,
+                                          fontWeight: FontWeight.w600,
+                                          color: p.text)))),
+                        ]),
                     const SizedBox(height: 6),
                     Text(description,
                         style: TextStyle(color: p.text2, height: 1.6)),
@@ -102,8 +115,7 @@ class AppDialogAction extends StatelessWidget {
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
             side: BorderSide(color: primary ? Colors.transparent : p.border)),
-        textStyle:
-            const TextStyle(fontFamily: 'Inter', fontSize: CLType.label),
+        textStyle: const TextStyle(fontFamily: 'Inter', fontSize: CLType.label),
       ),
       child: Text(label),
     );

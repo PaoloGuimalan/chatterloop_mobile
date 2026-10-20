@@ -129,6 +129,9 @@ Future<_Harness> _pump(
 
 /// A clip card's centre, found by its length badge.
 Finder _clip(String length) => find.text(length);
+Finder get _horizontalTimeline => find.byWidgetPredicate((widget) =>
+    widget is SingleChildScrollView &&
+    widget.scrollDirection == Axis.horizontal);
 
 void main() {
   const pps = TimelineView.pxPerSecond;
@@ -140,8 +143,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('Zoom in'));
     await tester.pumpAndSettle();
-    final scroll = tester
-        .widget<SingleChildScrollView>(find.byType(SingleChildScrollView));
+    final scroll = tester.widget<SingleChildScrollView>(_horizontalTimeline);
     expect(scroll.controller!.offset, closeTo(5 * pps * 1.5, 0.5));
     expect(h.position.value, _s(5));
     expect(h.seeks, isEmpty);
@@ -226,8 +228,7 @@ void main() {
         await tester.startGesture(tester.getCenter(find.text('2s')));
     await gesture.moveBy(const Offset(30, 0));
     await tester.pump();
-    final scroll = tester
-        .widget<SingleChildScrollView>(find.byType(SingleChildScrollView));
+    final scroll = tester.widget<SingleChildScrollView>(_horizontalTimeline);
     expect(scroll.controller!.position.maxScrollExtent, lessThan(2500));
     await gesture.up();
   });
@@ -323,8 +324,7 @@ void main() {
     final h = await _pump(tester);
     h.position.value = _s(5);
     await tester.pump();
-    final scroll = tester
-        .widget<SingleChildScrollView>(find.byType(SingleChildScrollView));
+    final scroll = tester.widget<SingleChildScrollView>(_horizontalTimeline);
     expect(scroll.controller!.offset, closeTo(5 * pps, 0.5));
     // Following isn't the user scrubbing.
     expect(h.seeks, isEmpty);

@@ -57,6 +57,19 @@ Map<String, dynamic> fixtureData({bool active = true}) => {
       ],
     };
 
+Future<void> _submitRealUnlock(WidgetTester tester) async {
+  await tester.tap(find.text('Unlock'));
+  await tester.pump();
+  for (var i = 0;
+      i < 200 && find.text('Verifying…').evaluate().isNotEmpty;
+      i++) {
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late List<Interceptor> previous;
@@ -189,6 +202,73 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     router.dispose();
   });
+  testWidgets('wrong visit passphrase warns and allows a successful retry',
+      (tester) async {
+    var childBuilds = 0;
+    final router = GoRouter(initialLocation: '/diary', routes: [
+      GoRoute(
+          path: '/diary',
+          builder: (_, __) => DiaryGate(child: Builder(builder: (_) {
+                childBuilds++;
+                return const Scaffold(body: Text('Unlocked diary'));
+              }))),
+      GoRoute(
+          path: '/newsfeed', builder: (_, __) => const Text('Previous page')),
+    ]);
+    await tester.pumpWidget(MaterialApp.router(
+        theme: buildCLTheme(Brightness.light), routerConfig: router));
+    await tester.pumpAndSettle();
+    final icon = tester.getRect(find.byIcon(Icons.lock_outline));
+    final heading = tester.getRect(find.text('Unlock your Diary'));
+    expect(icon.center.dy, closeTo(heading.center.dy, 1));
+    expect(icon.right, lessThan(heading.left));
+    await tester.enterText(find.byType(TextField), 'wrong phrase');
+    await _submitRealUnlock(tester);
+    expect(find.text('Unlock your Diary'), findsOneWidget);
+    expect(find.textContaining('Check your passphrase'), findsOneWidget);
+    expect(find.text('Previous page'), findsNothing);
+    expect(childBuilds, 0);
+    expect(DiarySession.instance.ready, isFalse);
+    expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text, '');
+    await tester.enterText(find.byType(TextField), 'violet lantern river 你好');
+    await _submitRealUnlock(tester);
+    expect(find.text('Unlocked diary'), findsOneWidget);
+    expect(DiarySession.instance.ready, isTrue);
+    await tester.pumpWidget(const SizedBox());
+    router.dispose();
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  testWidgets('wrong older entry passphrase warns and keeps the entry locked',
+      (tester) async {
+    ({List<int> key, String proof})? result;
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: Scaffold(
+            body: Builder(
+                builder: (context) => TextButton(
+                    onPressed: () async {
+                      result = await promptPassphrase(
+                          context, fixtureConfiguration(active: false));
+                    },
+                    child: const Text('Open protected entry'))))));
+    await tester.tap(find.text('Open protected entry'));
+    await tester.pumpAndSettle();
+    final icon = tester.getRect(find.byIcon(Icons.lock_outline));
+    final heading = tester.getRect(find.text('Unlock older entries'));
+    expect(icon.center.dy, closeTo(heading.center.dy, 1));
+    await tester.enterText(find.byType(TextField), 'wrong phrase');
+    await _submitRealUnlock(tester);
+    expect(find.text('Unlock older entries'), findsOneWidget);
+    expect(
+        find.textContaining('Check its original passphrase'), findsOneWidget);
+    expect(result, isNull);
+    expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text, '');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Unlock older entries'), findsNothing);
+  }, timeout: const Timeout(Duration(minutes: 3)));
   testWidgets('base prompt cancel pops back to the actual previous screen',
       (tester) async {
     final router =

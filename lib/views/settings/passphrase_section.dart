@@ -49,22 +49,22 @@ abstract class _SecretDialogState<T extends StatefulWidget> extends State<T>
 /// Secret controllers and derived keys exist only for this dialog's lifetime.
 Future<({List<int> key, String proof})?> promptPassphrase(
         BuildContext context, Map<String, dynamic> configuration,
-        {bool exitOnFailure = false, bool forEncryption = false}) =>
+        {bool forVisit = false, bool forEncryption = false}) =>
     showDialog<({List<int> key, String proof})>(
         context: context,
         barrierDismissible: false,
         builder: (_) => _UnlockDialog(
             configuration: configuration,
-            exitOnFailure: exitOnFailure,
+            forVisit: forVisit,
             forEncryption: forEncryption));
 
 class _UnlockDialog extends StatefulWidget {
   const _UnlockDialog(
       {required this.configuration,
-      required this.exitOnFailure,
+      required this.forVisit,
       required this.forEncryption});
   final Map<String, dynamic> configuration;
-  final bool exitOnFailure;
+  final bool forVisit;
   final bool forEncryption;
   @override
   State<_UnlockDialog> createState() => _UnlockDialogState();
@@ -84,6 +84,7 @@ class _UnlockDialogState extends _SecretDialogState<_UnlockDialog> {
   }
 
   Future<void> _unlock() async {
+    if (_busy) return;
     final ticket = generation;
     setState(() {
       _busy = true;
@@ -99,17 +100,15 @@ class _UnlockDialogState extends _SecretDialogState<_UnlockDialog> {
       _phrase.clear();
       Navigator.pop(context, result);
     } catch (_) {
-      if (mounted && widget.exitOnFailure) {
-        Navigator.pop(context);
-        return;
-      }
-      if (mounted) {
+      if (mounted && ticket == generation) {
         _phrase.clear();
         setState(() {
           _busy = false;
           _error = widget.forEncryption
               ? 'Could not confirm the active passphrase. Please try again.'
-              : 'Could not unlock. Check your passphrase.';
+              : widget.forVisit
+                  ? 'Could not unlock your Diary. Check your passphrase and try again.'
+                  : 'Could not unlock this entry. Check its original passphrase and try again.';
         });
       }
     }
@@ -119,12 +118,12 @@ class _UnlockDialogState extends _SecretDialogState<_UnlockDialog> {
   Widget build(BuildContext context) => PassphraseDialog(
         title: widget.forEncryption
             ? 'Confirm entry encryption'
-            : widget.exitOnFailure
+            : widget.forVisit
                 ? 'Unlock your Diary'
                 : 'Unlock older entries',
         description: widget.forEncryption
             ? 'Confirm your active passphrase to encrypt this entry title and writing before saving.'
-            : widget.exitOnFailure
+            : widget.forVisit
                 ? 'Enter your active passphrase to open this visit.'
                 : 'Entry needs a different or older key to unlock. This does not change your active passphrase.',
         actions: [
@@ -148,10 +147,35 @@ class _UnlockDialogState extends _SecretDialogState<_UnlockDialog> {
               secret: true,
               enabled: !_busy,
               autofocus: true,
-              errorText: _error,
               onSubmitted: (_) {
                 if (!_busy) _unlock();
               }),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Semantics(
+                liveRegion: true,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                      color: cl(context).pinkSoft,
+                      borderRadius: BorderRadius.circular(8)),
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.error_outline,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.error),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: Text(_error!,
+                                style: TextStyle(
+                                    color: Theme.of(context).colorScheme.error,
+                                    height: 1.5))),
+                      ]),
+                ),
+              ),
+            ),
         ],
       );
 }

@@ -116,7 +116,7 @@ class _DiaryGateState extends State<DiaryGate> with WidgetsBindingObserver {
       final active = _session.active;
       if (active != null) {
         final unlocked =
-            await promptPassphrase(context, active, exitOnFailure: true);
+            await promptPassphrase(context, active, forVisit: true);
         if (!mounted || ticket != _session.generation || owner != _identity) {
           unlocked?.key.fillRange(0, unlocked.key.length, 0);
           return;

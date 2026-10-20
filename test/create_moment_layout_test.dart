@@ -36,7 +36,8 @@ final _edit = Composition(clips: [
 const _onItsSide = Size(915, 412);
 const _upright = Size(412, 915);
 
-Future<void> _pump(WidgetTester tester, Size size, {Composition? edit}) async {
+Future<void> _pump(WidgetTester tester, Size size,
+    {Composition? edit, bool openTools = true}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -45,9 +46,127 @@ Future<void> _pump(WidgetTester tester, Size size, {Composition? edit}) async {
     home: CreateMomentScreen(initialEdit: edit),
   ));
   await tester.pump();
+  if (edit != null && openTools) {
+    await tester.tap(find.byTooltip('Show editing layers'));
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
+  testWidgets(
+      'full preview controls do not overlap on a narrow phone with larger text',
+      (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.4;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pump(tester, const Size(320, 568), edit: _edit, openTools: false);
+    final toggle = tester.getRect(find.byTooltip('Show editing layers'));
+    final clock = tester.getRect(find.text('0:00 / 0:07'));
+    expect(toggle.right, lessThanOrEqualTo(clock.left));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'caption keyboard keeps portrait editing below the canvas without overflow',
+      (tester) async {
+    await _pump(tester, const Size(390, 844), edit: _edit);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 400);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byType(TimelineView)).top,
+        greaterThanOrEqualTo(tester.getRect(find.byType(EditCanvas)).bottom));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'moment opens with full preview and toggles editing tools without changing layers',
+      (tester) async {
+    final edit = _edit.copyWith(overlays: [
+      OverlayClip(
+          clip: MediaLayer(
+              source: _video('overlay'),
+              trim: const TrimRange(Duration.zero, Duration(seconds: 3))))
+    ]);
+    await _pump(tester, _upright, edit: edit, openTools: false);
+    expect(find.byType(TimelineView), findsNothing);
+    final full = tester.getSize(find.byType(EditCanvas));
+    expect(full.height, greaterThan(650));
+    expect(tester.widget<EditCanvas>(find.byType(EditCanvas)).enabled, isFalse);
+    final sources = tester
+        .widget<EditCanvas>(find.byType(EditCanvas))
+        .layers
+        .map((layer) => layer.layer.source.path)
+        .toList();
+    await tester.tap(find.byTooltip('Show editing layers'));
+    await tester.pumpAndSettle();
+    final timeline = tester.widget<TimelineView>(find.byType(TimelineView));
+    expect(timeline.edit, same(edit));
+    timeline.onSeek(const Duration(seconds: 2));
+    timeline.onSelect(const TimelineSelection.overlay(0));
+    await tester.pump();
+    expect(tester.widget<EditCanvas>(find.byType(EditCanvas)).enabled, isTrue);
+    expect(
+        tester.getSize(find.byType(EditCanvas)).height, lessThan(full.height));
+    await tester.tap(find.byTooltip('Hide editing layers'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TimelineView), findsNothing);
+    final canvas = tester.widget<EditCanvas>(find.byType(EditCanvas));
+    expect(canvas.layers.map((layer) => layer.layer.source.path), sources);
+    expect(canvas.outlined, isNull);
+    expect(tester.getSize(find.byType(EditCanvas)), full);
+    await tester.tap(find.byTooltip('Show editing layers'));
+    await tester.pumpAndSettle();
+    final reopened = tester.widget<TimelineView>(find.byType(TimelineView));
+    expect(reopened.position.value, const Duration(seconds: 2));
+    final scroller = tester.widget<SingleChildScrollView>(find.descendant(
+        of: find.byType(TimelineView),
+        matching: find.byWidgetPredicate((widget) =>
+            widget is SingleChildScrollView &&
+            widget.scrollDirection == Axis.horizontal)));
+    expect(
+        scroller.controller!.offset, closeTo(2 * TimelineView.pxPerSecond, .5));
+    expect(reopened.selection, const TimelineSelection.overlay(0));
+    expect(tester.widget<EditCanvas>(find.byType(EditCanvas)).outlined, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('editing tray moves beside the canvas when the phone rotates',
+      (tester) async {
+    await _pump(tester, _upright, edit: _edit, openTools: false);
+    await tester.tap(find.byTooltip('Show editing layers'));
+    await tester.pumpAndSettle();
+    tester.view.physicalSize = _onItsSide;
+    await tester.pumpAndSettle();
+    var canvas = tester.getRect(find.byType(EditCanvas));
+    expect(canvas.width / canvas.height, closeTo(9 / 16, 0.01));
+    expect(tester.getRect(find.byType(TimelineView)).left,
+        greaterThanOrEqualTo(canvas.right));
+    await tester.tap(find.byTooltip('Hide editing layers'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TimelineView), findsNothing);
+    canvas = tester.getRect(find.byType(EditCanvas));
+    expect(canvas.width / canvas.height, closeTo(9 / 16, 0.01));
+    tester.view.physicalSize = _upright;
+    await tester.pumpAndSettle();
+    expect(find.byType(TimelineView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'landscape composition stays uncropped in preview and its editing tray',
+      (tester) async {
+    final edit = _edit.copyWith(orientation: CanvasOrientation.landscape);
+    await _pump(tester, _onItsSide, edit: edit, openTools: false);
+    var canvas = tester.getRect(find.byType(EditCanvas));
+    expect(canvas.width / canvas.height, closeTo(16 / 9, 0.01));
+    expect(canvas.width, greaterThan(600));
+    await tester.tap(find.byTooltip('Show editing layers'));
+    await tester.pumpAndSettle();
+    canvas = tester.getRect(find.byType(EditCanvas));
+    expect(canvas.width / canvas.height, closeTo(16 / 9, 0.01));
+    expect(tester.getRect(find.byType(TimelineView)).left,
+        greaterThanOrEqualTo(canvas.right));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('edits over two minutes remain exportable with sharing explained',
       (tester) async {
     final longEdit = Composition(clips: [

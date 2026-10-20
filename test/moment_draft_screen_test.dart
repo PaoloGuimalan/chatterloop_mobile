@@ -94,6 +94,8 @@ void main() {
         allowReplies: false,
         position: const Duration(seconds: 2))));
     await open(tester);
+    await tester.tap(find.byTooltip('Show editing layers'));
+    await tester.pumpAndSettle();
     final timeline = tester.widget<TimelineView>(find.byType(TimelineView));
     expect(timeline.edit.orientation, CanvasOrientation.landscape);
     expect(timeline.position.value, const Duration(seconds: 2));
@@ -139,6 +141,8 @@ void main() {
         allowReplies: true,
         position: Duration.zero)));
     await open(tester);
+    await tester.tap(find.byTooltip('Show editing layers'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('6s'));
     await tester.pump();
     await tester.ensureVisible(find.text('Delete'));
