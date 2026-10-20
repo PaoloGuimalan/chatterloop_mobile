@@ -70,13 +70,14 @@ class DiarySession extends ChangeNotifier {
     }
   }
 
-  Future<(String, String)> encryptNew(String title, String content) async {
+  Future<(String, String)> encryptNew(String title, String content,
+      {List<int>? confirmedKey}) async {
     final c = active;
     if (!ready || c == null || !canEncrypt) {
       throw const FormatException(
           'Diary protection requires a server update. Try again later.');
     }
-    final key = _keys[c['id']];
+    final key = confirmedKey ?? _keys[c['id']];
     if (key == null) {
       throw const FormatException('Unlock Diary again before saving.');
     }

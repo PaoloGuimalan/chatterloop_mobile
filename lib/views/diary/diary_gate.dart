@@ -17,6 +17,7 @@ class DiaryGate extends StatefulWidget {
 }
 
 class _DiaryGateState extends State<DiaryGate> with WidgetsBindingObserver {
+  static final _mountedGates = <_DiaryGateState>{};
   final _session = DiarySession.instance;
   StreamSubscription? _subscription;
   GoRouter? _router;
@@ -27,6 +28,7 @@ class _DiaryGateState extends State<DiaryGate> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _mountedGates.add(this);
     WidgetsBinding.instance.addObserver(this);
     _session.addListener(_locked);
     _subscription = appStore.onChange.listen((_) {
@@ -176,6 +178,9 @@ class _DiaryGateState extends State<DiaryGate> with WidgetsBindingObserver {
     _router?.routerDelegate.removeListener(_routeChanged);
     _session.removeListener(_locked);
     WidgetsBinding.instance.removeObserver(this);
+    _mountedGates.remove(this);
+    // List, reader and composer share a visit only while a Diary gate exists.
+    if (_mountedGates.isEmpty) _session.clear();
     super.dispose();
   }
 

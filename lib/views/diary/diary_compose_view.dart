@@ -10,6 +10,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/diary_api.dart';
 import 'package:chatterloop_app/core/encryption/diary_session.dart';
+import 'package:chatterloop_app/views/settings/passphrase_section.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:chatterloop_app/core/utils/writing_html.dart';
@@ -50,6 +51,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
   DateTime _entryDate = DateTime.now();
   bool _isPrivate = true;
+  bool _encryptEntry = false;
   bool _isSaving = false;
 
   Mood? _selectedMood;
@@ -88,6 +90,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
         'document': jsonDecode(jsonEncode(_editor.document.toJson())),
         'date': _entryDateForApi(),
         'private': _isPrivate,
+        'encrypted': _encryptEntry,
         'mood': _selectedMood,
         'tags': List<DiaryTag>.of(_selectedTags),
         'files': List<_PendingAttachment>.of(_attachments),
@@ -97,6 +100,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
         'document': d['document'],
         'date': d['date'],
         'private': d['private'],
+        'encrypted': d['encrypted'],
         'mood': (d['mood'] as Mood?)?.id,
         'tags': (d['tags'] as List<DiaryTag>).map((t) => t.name).toList(),
         'files': (d['files'] as List<_PendingAttachment>)
@@ -297,6 +301,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
     final session = DiarySession.instance;
     final visit = session.generation;
     if (_currentAccount != _accountKey) {
@@ -305,7 +310,12 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
       return;
     }
     final token = await _token;
-    if (token == null || _currentAccount != _accountKey || !mounted) return;
+    if (token == null ||
+        _currentAccount != _accountKey ||
+        !mounted ||
+        _isSaving) {
+      return;
+    }
     final title = _title.text.trim();
     final plain = _editor.document.toPlainText().trim();
 
@@ -322,12 +332,32 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
 
     setState(() => _isSaving = true);
     String wireTitle = title, wireContent = _contentAsHtml();
-    final encrypted = session.active != null;
+    final encrypted = _encryptEntry;
     if (encrypted) {
       try {
-        final fields = await session.encryptNew(title, wireContent);
-        wireTitle = fields.$1;
-        wireContent = fields.$2;
+        final configuration = session.active;
+        if (!session.ready || !session.canEncrypt || configuration == null) {
+          throw const FormatException('Diary protection is unavailable');
+        }
+        final confirmed =
+            await promptPassphrase(context, configuration, forEncryption: true);
+        if (confirmed == null) {
+          if (mounted) setState(() => _isSaving = false);
+          return;
+        }
+        try {
+          if (!mounted ||
+              visit != session.generation ||
+              _currentAccount != _accountKey) {
+            return;
+          }
+          final fields = await session.encryptNew(title, wireContent,
+              confirmedKey: confirmed.key);
+          wireTitle = fields.$1;
+          wireContent = fields.$2;
+        } finally {
+          confirmed.key.fillRange(0, confirmed.key.length, 0);
+        }
       } catch (_) {
         if (mounted) {
           setState(() => _isSaving = false);
@@ -445,16 +475,6 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                             child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Padding(
-                                      padding:
-                                          const EdgeInsets.only(bottom: 14),
-                                      child: Text(
-                                          DiarySession.instance.active != null
-                                              ? 'Titles and text are encrypted and private. Attachments, tags, moods and dates are outside this protection.'
-                                              : 'No active passphrase. This entry will be saved without passphrase encryption.',
-                                          style: TextStyle(
-                                              color: p.text2,
-                                              fontSize: CLType.caption))),
                                   _titleAndDate(p),
                                   const SizedBox(height: 16),
                                   Row(
@@ -467,7 +487,43 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                                       ]),
                                   const SizedBox(height: 12),
                                   _tagPicker(p),
-                                  const SizedBox(height: 22),
+                                  const SizedBox(height: 16),
+                                  Material(
+                                    color: p.surface2,
+                                    borderRadius: BorderRadius.circular(8),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: CheckboxListTile(
+                                      horizontalTitleGap: 4,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 3),
+                                      controlAffinity:
+                                          ListTileControlAffinity.leading,
+                                      dense: true,
+                                      title: const Text('Encrypt this entry',
+                                          style: TextStyle(
+                                              fontSize: CLType.label)),
+                                      subtitle: Text(
+                                          DiarySession.instance.active == null
+                                              ? 'Activate a passphrase in Settings / Data & Privacy to encrypt entries.'
+                                              : _encryptEntry
+                                                  ? 'Uses ${DiarySession.instance.active!['name']}. Confirm when saving. Only the title and writing are encrypted; this entry will be private.'
+                                                  : 'Protect this entry title and writing with your active passphrase.',
+                                          style: TextStyle(
+                                              color: p.text2,
+                                              fontSize: CLType.caption)),
+                                      value: _encryptEntry,
+                                      onChanged:
+                                          DiarySession.instance.active == null
+                                              ? null
+                                              : (value) {
+                                                  setState(() => _encryptEntry =
+                                                      value ?? false);
+                                                  _record();
+                                                },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 18),
                                   _editorCard(p),
                                   const SizedBox(height: 18),
                                   _attachmentPicker(p),
@@ -827,7 +883,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                 borderRadius: BorderRadius.circular(9)),
             child: DropdownButtonHideUnderline(
                 child: DropdownButton<bool>(
-              value: DiarySession.instance.active != null || _isPrivate,
+              value: _encryptEntry || _isPrivate,
               isExpanded: true,
               style: Theme.of(context)
                   .textTheme
@@ -837,7 +893,7 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                 DropdownMenuItem(value: true, child: Text('Private')),
                 DropdownMenuItem(value: false, child: Text('Public'))
               ],
-              onChanged: DiarySession.instance.active != null
+              onChanged: _encryptEntry
                   ? null
                   : (value) {
                       if (value != null) {

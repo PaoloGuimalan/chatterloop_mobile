@@ -49,18 +49,23 @@ abstract class _SecretDialogState<T extends StatefulWidget> extends State<T>
 /// Secret controllers and derived keys exist only for this dialog's lifetime.
 Future<({List<int> key, String proof})?> promptPassphrase(
         BuildContext context, Map<String, dynamic> configuration,
-        {bool exitOnFailure = false}) =>
+        {bool exitOnFailure = false, bool forEncryption = false}) =>
     showDialog<({List<int> key, String proof})>(
         context: context,
         barrierDismissible: false,
         builder: (_) => _UnlockDialog(
-            configuration: configuration, exitOnFailure: exitOnFailure));
+            configuration: configuration,
+            exitOnFailure: exitOnFailure,
+            forEncryption: forEncryption));
 
 class _UnlockDialog extends StatefulWidget {
   const _UnlockDialog(
-      {required this.configuration, required this.exitOnFailure});
+      {required this.configuration,
+      required this.exitOnFailure,
+      required this.forEncryption});
   final Map<String, dynamic> configuration;
   final bool exitOnFailure;
+  final bool forEncryption;
   @override
   State<_UnlockDialog> createState() => _UnlockDialogState();
 }
@@ -102,7 +107,9 @@ class _UnlockDialogState extends _SecretDialogState<_UnlockDialog> {
         _phrase.clear();
         setState(() {
           _busy = false;
-          _error = 'Could not unlock. Check your passphrase.';
+          _error = widget.forEncryption
+              ? 'Could not confirm the active passphrase. Please try again.'
+              : 'Could not unlock. Check your passphrase.';
         });
       }
     }
@@ -110,18 +117,27 @@ class _UnlockDialogState extends _SecretDialogState<_UnlockDialog> {
 
   @override
   Widget build(BuildContext context) => PassphraseDialog(
-        title:
-            widget.exitOnFailure ? 'Unlock your Diary' : 'Unlock older entries',
-        description: widget.exitOnFailure
-            ? 'Enter your active passphrase to open this visit.'
-            : 'Entry needs a different or older key to unlock. This does not change your active passphrase.',
+        title: widget.forEncryption
+            ? 'Confirm entry encryption'
+            : widget.exitOnFailure
+                ? 'Unlock your Diary'
+                : 'Unlock older entries',
+        description: widget.forEncryption
+            ? 'Confirm your active passphrase to encrypt this entry title and writing before saving.'
+            : widget.exitOnFailure
+                ? 'Enter your active passphrase to open this visit.'
+                : 'Entry needs a different or older key to unlock. This does not change your active passphrase.',
         actions: [
           PassphraseAction(
             label: 'Cancel',
             onPressed: () => Navigator.pop(context),
           ),
           PassphraseAction(
-              label: _busy ? 'Unlocking…' : 'Unlock',
+              label: _busy
+                  ? 'Verifying…'
+                  : widget.forEncryption
+                      ? 'Encrypt and save'
+                      : 'Unlock',
               primary: true,
               onPressed: _busy ? null : _unlock)
         ],

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:fleather/fleather.dart';
 import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -10,6 +12,7 @@ import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/encryption_api.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 import 'package:chatterloop_app/views/diary/diary_gate.dart';
+import 'package:chatterloop_app/views/diary/diary_compose_view.dart';
 import 'package:chatterloop_app/views/diary/diary_entry_view.dart';
 import 'package:chatterloop_app/views/diary/locked_diary.dart';
 import 'package:chatterloop_app/views/diary/diary_list_view.dart';
@@ -117,6 +120,19 @@ void main() {
     session.addKey('11111111-1111-4111-8111-111111111111', List.filled(32, 1));
     await expectLater(
         session.encryptNew('Private', '<p>Words</p>'), throwsFormatException);
+  });
+  test('new entry encryption uses the freshly confirmed key', () async {
+    final session = DiarySession.instance;
+    session.install(fixtureData(), 'owner');
+    session.addKey('11111111-1111-4111-8111-111111111111', List.filled(32, 1));
+    final confirmed = List.filled(32, 2);
+    final fields = await session.encryptNew(
+        'Chosen title', '<p>Chosen writing</p>',
+        confirmedKey: confirmed);
+    expect(
+        await PassphraseCrypto().decryptDiary(
+            confirmed, 'entity-vector', 'user-vector', fields.$1, fields.$2),
+        ('Chosen title', '<p>Chosen writing</p>'));
   });
   test('independent Python diary vector decrypts and rejects changed field AAD',
       () async {
@@ -284,6 +300,94 @@ void main() {
     expect(find.text('Private diary'), findsNothing);
     await tester.pumpWidget(const SizedBox());
     router.dispose();
+  });
+
+  testWidgets(
+      'disposing the last Diary gate resets the visit even without a route change',
+      (tester) async {
+    final router = GoRouter(initialLocation: '/diary', routes: [
+      GoRoute(
+          path: '/diary',
+          builder: (_, __) => const DiaryGate(child: Text('Private diary'))),
+    ]);
+    await tester.pumpWidget(MaterialApp.router(
+        theme: buildCLTheme(Brightness.light), routerConfig: router));
+    await tester.pumpAndSettle();
+    final key = List.filled(32, 9);
+    Navigator.of(tester.element(find.text('Unlock your Diary')))
+        .pop((key: key, proof: 'verified fixture'));
+    await tester.pumpAndSettle();
+    expect(find.text('Private diary'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    expect(DiarySession.instance.ready, isFalse);
+    expect(key, everyElement(0));
+    await tester.pumpWidget(MaterialApp.router(
+        theme: buildCLTheme(Brightness.light), routerConfig: router));
+    await tester.pumpAndSettle();
+    expect(find.text('Unlock your Diary'), findsOneWidget);
+    expect(find.text('Private diary'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    router.dispose();
+  });
+
+  testWidgets(
+      'encryption is optional and cancelling save confirmation keeps the native draft',
+      (tester) async {
+    FlutterSecureStorage.setMockInitialValues({'token': 'fixture-token'});
+    final session = DiarySession.instance;
+    session.install(fixtureData(), 'owner');
+    session.addKey('11111111-1111-4111-8111-111111111111', List.filled(32, 9));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const DiaryComposeScreen()));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    expect(
+        tester
+            .widget<DropdownButton<bool>>(find.byType(DropdownButton<bool>))
+            .onChanged,
+        isNotNull);
+    await tester.tap(find.text('Encrypt this entry'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(
+        tester
+            .widget<DropdownButton<bool>>(find.byType(DropdownButton<bool>))
+            .onChanged,
+        isNull);
+    await tester.enterText(find.byType(TextField).first, 'Keep my draft');
+    final controller =
+        tester.widget<FleatherEditor>(find.byType(FleatherEditor)).controller;
+    controller.replaceText(0, 0, 'Private writing',
+        selection: const TextSelection.collapsed(offset: 15));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    // Saving remains busy underneath the confirmation dialog.
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Confirm entry encryption'), findsOneWidget);
+    expect(find.text('Personal journal'), findsOneWidget);
+    expect(find.text('Encrypt and save'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Confirm entry encryption'), findsNothing);
+    expect(find.text('Keep my draft'), findsOneWidget);
+    expect(controller.document.toPlainText(), contains('Private writing'));
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(find.text('Save'), findsOneWidget);
+  });
+
+  testWidgets(
+      'native encryption choice is unavailable without an active passphrase',
+      (tester) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    DiarySession.instance.install(fixtureData(active: false), 'owner');
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const DiaryComposeScreen()));
+    await tester.pumpAndSettle();
+    final checkbox = tester.widget<Checkbox>(find.byType(Checkbox));
+    expect(checkbox.value, isFalse);
+    expect(checkbox.onChanged, isNull);
   });
 
   testWidgets('passphrase Settings shows named rows and no delete action',
