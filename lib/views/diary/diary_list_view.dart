@@ -191,11 +191,8 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
   /// Same-day entries collapse into ONE list item, so the list reads day by
   /// day - each day being that day's collection of entries.
   ///
-  /// Mirrors the webapp's `entriesByDate` memo (Diary.tsx:57), whose ordering
-  /// is easy to get subtly wrong: sort by entry_date ASCENDING with ties
-  /// broken by created_at DESCENDING, then reverse BOTH the per-day list and
-  /// the outer list. Net effect - newest day first, and within a day the
-  /// oldest entry first.
+  /// Newest day first, with the newest creation first within each day.
+  /// Reverse only the outer day order; entries are already newest first.
   List<({DateTime date, List<DiaryEntry> entries})> get _groupedEntries {
     final query = _search.text.trim().toLowerCase();
     final dated = _entries
@@ -227,7 +224,7 @@ class _DiaryListScreenState extends State<DiaryListScreen> {
     return order.reversed
         .map((key) => (
               date: buckets[key]!.first.entryDate!,
-              entries: buckets[key]!.reversed.toList(),
+              entries: buckets[key]!,
             ))
         .toList();
   }

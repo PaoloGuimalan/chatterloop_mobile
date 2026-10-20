@@ -97,7 +97,13 @@ class PassphraseCrypto {
         final key = await Argon2id(
                 parallelism: 1, memory: 65536, iterations: 3, hashLength: 32)
             .deriveKey(secretKey: SecretKey(utf8.encode(phrase)), nonce: salt);
-        return key.extractBytes();
+        try {
+          // extractBytes returns a read-only library view. Own a writable copy
+          // so dialog completion and visit locking can overwrite the key.
+          return List<int>.from(await key.extractBytes(), growable: false);
+        } finally {
+          key.destroy();
+        }
       });
   Future<({List<int> key, String proof})> unlock(
       Map<String, dynamic> c, String phrase) async {

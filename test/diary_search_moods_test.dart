@@ -82,4 +82,50 @@ void main() {
     expect(find.text('Thoughtful'), findsOneWidget);
     expect(requests.last.queryParameters['page'], 2);
   });
+
+  testWidgets('date groups and entries within each group are newest first',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    ApiClient.userService.dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) {
+        handler.resolve(Response(requestOptions: options, data: {
+          'next': null,
+          'results': [
+            {
+              'id': 'early',
+              'title': 'Earlier same day',
+              'content': 'Body',
+              'entry_date': '2026-10-20',
+              'created_at': '2026-10-20T09:00:00Z'
+            },
+            {
+              'id': 'previous',
+              'title': 'Previous day',
+              'content': 'Body',
+              'entry_date': '2026-10-19',
+              'created_at': '2026-10-21T20:00:00Z'
+            },
+            {
+              'id': 'latest',
+              'title': 'Latest same day',
+              'content': 'Body',
+              'entry_date': '2026-10-20',
+              'created_at': '2026-10-20T17:00:00Z'
+            },
+          ],
+        }));
+      }));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light), home: const DiaryListScreen()));
+    await tester.pumpAndSettle();
+    final latest = tester.getTopLeft(find.text('Latest same day')).dy;
+    final earlier = tester.getTopLeft(find.text('Earlier same day')).dy;
+    final previous = tester.getTopLeft(find.text('Previous day')).dy;
+    expect(latest, lessThan(earlier));
+    expect(earlier, lessThan(previous));
+  });
 }

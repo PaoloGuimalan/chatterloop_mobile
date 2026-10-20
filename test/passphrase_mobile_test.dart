@@ -219,6 +219,74 @@ void main() {
   });
 
   testWidgets(
+      'a real derived key is cleared by Back and the next visit prompts again',
+      (tester) async {
+    Map<String, dynamic>? encryptedEntry;
+    ApiClient.userService.dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) {
+        handler.resolve(Response(
+            requestOptions: options,
+            data: options.path.contains('encryption-configurations')
+                ? {'status': true, 'result': fixtureData()}
+                : {
+                    'next': null,
+                    'results': [encryptedEntry!]
+                  }));
+      }));
+    final router = GoRouter(initialLocation: '/newsfeed', routes: [
+      GoRoute(
+          path: '/newsfeed',
+          builder: (context, _) => Scaffold(
+              body: TextButton(
+                  onPressed: () => context.push('/diary'),
+                  child: const Text('Open Diary')))),
+      GoRoute(
+          path: '/diary',
+          builder: (_, __) => const DiaryGate(child: DiaryListScreen())),
+    ]);
+    await tester.pumpWidget(MaterialApp.router(
+        theme: buildCLTheme(Brightness.light), routerConfig: router));
+    await tester.tap(find.text('Open Diary'));
+    await tester.pumpAndSettle();
+    expect(find.text('Unlock your Diary'), findsOneWidget);
+    final verified = await tester.runAsync(() => PassphraseCrypto()
+        .unlock(fixtureConfiguration(), 'violet lantern river 你好'));
+    expect(verified, isNotNull);
+    final fields = await tester.runAsync(() => PassphraseCrypto().encryptDiary(
+        verified!.key,
+        'entity-vector',
+        'user-vector',
+        '11111111-1111-4111-8111-111111111111',
+        'Actual unlocked entry',
+        '<p>Actual protected writing</p>'));
+    encryptedEntry = {
+      'id': 'actual',
+      'title': fields!.$1,
+      'content': fields.$2,
+      'is_encrypted': true,
+      'is_private': true,
+      'entry_date': '2026-10-20',
+      'created_at': '2026-10-20T09:00:00Z'
+    };
+    Navigator.of(tester.element(find.text('Unlock your Diary'))).pop(verified);
+    await tester.pumpAndSettle();
+    expect(find.text('Actual unlocked entry'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(DiarySession.instance.ready, isFalse);
+    expect(verified!.key, everyElement(0));
+    expect(find.text('Open Diary'), findsOneWidget);
+    await tester.tap(find.text('Open Diary'));
+    await tester.pumpAndSettle();
+    expect(find.text('Unlock your Diary'), findsOneWidget);
+    expect(find.text('Actual unlocked entry'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    router.dispose();
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  testWidgets(
       'leaving Diary for a pushed screen clears keys and prompts on return',
       (tester) async {
     final account = appStore.state.userAuth.user;

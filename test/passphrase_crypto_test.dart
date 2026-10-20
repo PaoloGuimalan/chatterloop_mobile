@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'package:chatterloop_app/core/encryption/passphrase_crypto.dart';
+import 'package:chatterloop_app/core/encryption/diary_session.dart';
+import 'package:chatterloop_app/core/requests/diary_api.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -54,5 +57,54 @@ void main() {
     expect(unlocked.key.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
         '5485f9dbf50c2bfb57a2054954e4498576759e490e476f877e160b1cf818d4a2');
     expect(unlocked.proof, 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=');
+    final cachedKey = List<int>.from(unlocked.key);
+    final session = DiarySession();
+    session.install({
+      'consumer_capabilities': {
+        'diary': {'format_version': 1}
+      },
+      'purposes': [
+        {
+          'purpose': 'diary',
+          'active_configuration_id': c['id'],
+          'configurations': [
+            {...c, 'is_active': true}
+          ],
+        }
+      ],
+    }, 'vector-owner');
+    session.addKey(c['id'] as String, cachedKey);
+    final fields = await session.encryptNew(
+        'Saved title', '<p>Saved writing</p>',
+        confirmedKey: unlocked.key);
+    // This is the real dialog-confirmation buffer, not a writable fixture key.
+    unlocked.key.fillRange(0, unlocked.key.length, 0);
+    expect(unlocked.key, everyElement(0));
+    final dio = Dio(BaseOptions(baseUrl: 'https://local.test'));
+    Map<String, dynamic>? submitted;
+    dio.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+      submitted = Map<String, dynamic>.from(options.data as Map);
+      handler.resolve(Response(
+          requestOptions: options,
+          data: {'id': 'saved-encrypted-entry', ...submitted!}));
+    }));
+    final saved = await DiaryApi(dio: dio).createEntry(
+        title: fields.$1,
+        content: fields.$2,
+        entryDate: '2026-10-20',
+        isPrivate: true,
+        isEncrypted: true);
+    dio.close();
+    expect(saved?.isEncrypted, isTrue);
+    expect(submitted?['is_encrypted'], isTrue);
+    expect(submitted?['title'], fields.$1);
+    expect(submitted?['content'], fields.$2);
+    expect(
+        await PassphraseCrypto().decryptDiary(
+            cachedKey, 'entity-vector', 'user-vector', fields.$1, fields.$2),
+        ('Saved title', '<p>Saved writing</p>'));
+    session.clear();
+    expect(session.ready, isFalse);
+    expect(cachedKey, everyElement(0));
   }, timeout: const Timeout(Duration(minutes: 3)));
 }
