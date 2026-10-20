@@ -12,6 +12,8 @@ import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/views/moments/create_moment_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:io';
+import 'package:image/image.dart' as img;
 
 MediaSource _video(String name) => MediaSource(
       path: '/in/$name.mp4',
@@ -53,6 +55,140 @@ Future<void> _pump(WidgetTester tester, Size size,
 }
 
 void main() {
+  testWidgets('landscape full-preview tools stay above multiline captions',
+      (tester) async {
+    await _pump(tester, _onItsSide, edit: _edit, openTools: false);
+    await tester.enterText(
+        find.byType(TextField), 'First line\nSecond line\nThird line');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Rotate'));
+    await tester.pumpAndSettle();
+    final tools = find
+        .ancestor(
+            of: find.byTooltip('Reset framing'),
+            matching: find.byType(SingleChildScrollView))
+        .first;
+    await tester.drag(tools, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byTooltip('Reset framing')).bottom,
+        lessThanOrEqualTo(tester.getRect(find.byType(TextField)).top));
+    await tester.tap(find.byTooltip('Reset framing'));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<EditCanvas>(find.byType(EditCanvas))
+            .layers
+            .first
+            .layer
+            .transform
+            .rotationDeg,
+        0);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final size in [_upright, _onItsSide]) {
+    testWidgets('full-screen editing keeps controls and gestures at $size',
+        (tester) async {
+      late Directory directory;
+      late File photo;
+      await tester.runAsync(() async {
+        directory = await Directory.systemTemp.createTemp('moment-gesture-');
+        photo = File('${directory.path}/photo.png');
+        await photo
+            .writeAsBytes(img.encodePng(img.Image(width: 100, height: 200)));
+      });
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox());
+        PaintingBinding.instance.imageCache.clear();
+        PaintingBinding.instance.imageCache.clearLiveImages();
+        await tester.runAsync(() async {
+          for (var attempt = 0;; attempt++) {
+            try {
+              await directory.delete(recursive: true);
+              break;
+            } on FileSystemException {
+              if (attempt == 20) rethrow;
+              await Future<void>.delayed(const Duration(milliseconds: 50));
+            }
+          }
+        });
+      });
+      final edit = Composition(clips: [
+        MediaLayer(
+            source: MediaSource(
+                path: photo.path,
+                kind: MediaKind.image,
+                width: 100,
+                height: 200))
+      ]);
+      await _pump(tester, size, edit: edit, openTools: false);
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Canvas orientation'), findsOneWidget);
+      expect(find.byTooltip('Rotate'), findsOneWidget);
+      expect(
+          tester.widget<EditCanvas>(find.byType(EditCanvas)).enabled, isTrue);
+      await tester.tap(find.byTooltip('Rotate'));
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<EditCanvas>(find.byType(EditCanvas))
+              .layers
+              .single
+              .layer
+              .transform
+              .rotationDeg,
+          90);
+      final center = tester.getCenter(find.byType(EditCanvas));
+      final gesture = await tester.startGesture(center.translate(-25, 0));
+      await gesture.moveBy(const Offset(20, 10));
+      await tester.pump();
+      await gesture.moveBy(const Offset(45, 30));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final transformed = tester
+          .widget<EditCanvas>(find.byType(EditCanvas))
+          .layers
+          .single
+          .layer
+          .transform;
+      expect(transformed.cx, greaterThan(.5));
+      expect(transformed.cy, greaterThan(.5));
+      await tester.tap(find.byTooltip('Show editing layers'));
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<TimelineView>(find.byType(TimelineView))
+              .edit
+              .clips
+              .single
+              .transform,
+          transformed);
+      expect(find.text('Hide Layers'), findsOneWidget);
+      expect(
+          find.byIcon(size.width > size.height
+              ? Icons.keyboard_arrow_right_rounded
+              : Icons.keyboard_arrow_down_rounded),
+          findsOneWidget);
+      await tester.tap(find.byTooltip('Hide editing layers'));
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<EditCanvas>(find.byType(EditCanvas))
+              .layers
+              .single
+              .layer
+              .transform,
+          transformed);
+      expect(
+          tester.widget<EditCanvas>(find.byType(EditCanvas)).enabled, isTrue);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   testWidgets(
       'full preview controls do not overlap on a narrow phone with larger text',
       (tester) async {
@@ -89,7 +225,9 @@ void main() {
     expect(find.byType(TimelineView), findsNothing);
     final full = tester.getSize(find.byType(EditCanvas));
     expect(full.height, greaterThan(650));
-    expect(tester.widget<EditCanvas>(find.byType(EditCanvas)).enabled, isFalse);
+    expect(tester.widget<EditCanvas>(find.byType(EditCanvas)).enabled, isTrue);
+    expect(find.text('Edit layers'), findsNothing);
+    expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
     final sources = tester
         .widget<EditCanvas>(find.byType(EditCanvas))
         .layers
@@ -110,7 +248,7 @@ void main() {
     expect(find.byType(TimelineView), findsNothing);
     final canvas = tester.widget<EditCanvas>(find.byType(EditCanvas));
     expect(canvas.layers.map((layer) => layer.layer.source.path), sources);
-    expect(canvas.outlined, isNull);
+    expect(canvas.outlined, 1);
     expect(tester.getSize(find.byType(EditCanvas)), full);
     await tester.tap(find.byTooltip('Show editing layers'));
     await tester.pumpAndSettle();

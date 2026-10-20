@@ -38,7 +38,8 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 /// New Moment opens in full preview, with Save and Share top-right. The
-/// floating Edit layers control reveals the timeline, tools and audience.
+/// floating up arrow reveals the timeline and audience controls. Canvas
+/// tools and gestures remain available with the panel hidden or shown.
 ///
 /// An edit is a run of CLIPS - photos and videos picked from the gallery
 /// (several at once) or the camera, each video first cut to the part wanted
@@ -1850,32 +1851,26 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
                     ConstrainedBox(
                       constraints:
                           BoxConstraints(maxHeight: box.maxHeight * 0.62),
-                      child: Material(
-                        color: CLColors.surfaceDark,
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(16)),
-                        child:
-                            Column(mainAxisSize: MainAxisSize.min, children: [
-                          _editingTrayHeader(edit),
-                          Flexible(
-                            fit: FlexFit.loose,
-                            child: SingleChildScrollView(
-                                primary: false,
-                                child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _transport(edit),
-                                      _timeline(edit,
-                                          maxHeight: math.max(
-                                              90.0,
-                                              math.min(220.0,
-                                                  box.maxHeight * 0.25))),
-                                      _selectionBar(edit),
-                                      _pills(),
-                                    ])),
-                          ),
-                        ]),
-                      ),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        _editingTrayHeader(),
+                        Flexible(
+                          fit: FlexFit.loose,
+                          child: SingleChildScrollView(
+                              primary: false,
+                              child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _transport(edit),
+                                    _timeline(edit,
+                                        maxHeight: math.max(
+                                            90.0,
+                                            math.min(
+                                                220.0, box.maxHeight * 0.25))),
+                                    _selectionBar(edit),
+                                    _pills(),
+                                  ])),
+                        ),
+                      ]),
                     ),
                   ],
                   if (edit == null) _pills(),
@@ -1895,51 +1890,49 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
     setState(() => _editingLayersVisible = !_editingLayersVisible);
   }
 
-  Widget _layersToggle() => Tooltip(
-        message: _editingLayersVisible
-            ? 'Hide editing layers'
-            : 'Show editing layers',
-        child: TextButton.icon(
-          onPressed: _busy ? null : _toggleEditingLayers,
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.white,
-            backgroundColor: const Color(0xE61B2230),
-            minimumSize: const Size(0, 44),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            shape: const StadiumBorder(
-                side: BorderSide(color: CLColors.border2Dark)),
-            textStyle: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: CLType.label,
-                fontWeight: FontWeight.w600),
-          ),
-          icon: Icon(
-              _editingLayersVisible
-                  ? Icons.keyboard_arrow_down_rounded
-                  : Icons.keyboard_arrow_up_rounded,
-              size: 22),
-          label: const Text('Edit layers'),
+  Widget _layersToggle() {
+    if (!_editingLayersVisible) {
+      return IconButton(
+        tooltip: 'Show editing layers',
+        onPressed: _busy ? null : _toggleEditingLayers,
+        style: IconButton.styleFrom(
+            foregroundColor: Colors.white70,
+            backgroundColor: Colors.transparent),
+        icon: const Icon(Icons.keyboard_arrow_up_rounded, size: 22),
+      );
+    }
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    return Tooltip(
+      message: 'Hide editing layers',
+      child: TextButton.icon(
+        onPressed: _busy ? null : _toggleEditingLayers,
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.white,
+          backgroundColor: Colors.transparent,
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          textStyle: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: CLType.label,
+              fontWeight: FontWeight.w600),
         ),
-      );
+        icon: Icon(
+            landscape
+                ? Icons.keyboard_arrow_right_rounded
+                : Icons.keyboard_arrow_down_rounded,
+            size: 22),
+        label: const Text('Hide Layers'),
+      ),
+    );
+  }
 
-  Widget _editingTrayHeader(Composition edit) => Padding(
+  Widget _editingTrayHeader() => Padding(
         padding: const EdgeInsets.fromLTRB(8, 4, 12, 0),
-        child: Row(children: [
-          _layersToggle(),
-          const SizedBox(width: 8),
-          Expanded(
-              child: Text(
-            '${edit.clips.length} clips · ${edit.overlays.length} layers',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.right,
-            style:
-                const TextStyle(color: Colors.white54, fontSize: CLType.meta),
-          )),
-        ]),
+        child: Align(alignment: Alignment.centerLeft, child: _layersToggle()),
       );
 
-  /// Only editor chrome is hidden: all composition layers still render.
+  /// Only the timeline panel is hidden: canvas editing stays available.
   /// AspectRatio fits the complete composition in either phone orientation.
   Widget _fullPreview({required bool holding}) => Column(children: [
         _header(holding: holding),
@@ -2029,7 +2022,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
                       return Column(
                         children: [
                           _header(holding: holding),
-                          _editingTrayHeader(edit),
+                          _editingTrayHeader(),
                           _transport(edit),
                           Expanded(
                             child: Align(
@@ -2047,7 +2040,7 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
                       child: Column(
                         children: [
                           _header(holding: holding),
-                          _editingTrayHeader(edit),
+                          _editingTrayHeader(),
                           _transport(edit),
                           _timeline(edit, maxHeight: 150),
                           _selectionBar(edit),
@@ -2168,19 +2161,30 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
         fit: StackFit.expand,
         children: [
           _stage(),
-          if (edit != null && _phase == _Phase.editing && _editingLayersVisible)
-            Positioned(
-              top: 10,
-              right: 10,
-              bottom: 64,
-              child: SingleChildScrollView(primary: false, child: _tools()),
-            ),
           if (hasContent)
-            Positioned(
-                left: 12,
-                right: 12,
-                bottom: edit != null && !_editingLayersVisible ? 66 : 12,
-                child: _captionField()),
+            Positioned.fill(
+              child: Column(
+                children: [
+                  Expanded(
+                    child: edit != null && _phase == _Phase.editing
+                        ? Align(
+                            alignment: Alignment.topRight,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(0, 10, 10, 8),
+                              child: SingleChildScrollView(
+                                  primary: false, child: _tools()),
+                            ),
+                          )
+                        : const SizedBox(),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(12, 0, 12,
+                        edit != null && !_editingLayersVisible ? 66 : 12),
+                    child: _captionField(),
+                  ),
+                ],
+              ),
+            ),
           if (_phase != _Phase.editing) _progress(),
         ],
       ),
@@ -2707,10 +2711,8 @@ class _CreateMomentScreenState extends State<CreateMomentScreen>
           layers: layers,
           hasBase: main != null,
           background: edit.background,
-          outlined:
-              !_editingLayersVisible || outlined < 0 ? null : outlined + base,
-          enabled:
-              _editingLayersVisible && _phase == _Phase.editing && !_preparing,
+          outlined: outlined < 0 ? null : outlined + base,
+          enabled: _phase == _Phase.editing && !_preparing,
           onGestureStart: (layer) {
             if (_player.playing) _player.pause();
             _beginGesture();
