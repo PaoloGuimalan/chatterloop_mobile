@@ -92,7 +92,7 @@ class ApiClient {
 
   String _userIdFromToken(String? token) {
     if (token == null) return 'guest';
-    final decoded = JwtCodec.decode(token);
+    final decoded = JwtCodec.readClaims(token);
     final userId = decoded?['userID'] ?? decoded?['id'] ?? decoded?['username'];
     return userId?.toString() ?? 'guest';
   }

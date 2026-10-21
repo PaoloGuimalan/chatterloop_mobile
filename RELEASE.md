@@ -117,14 +117,15 @@ Play-signed case; use an internal testing track for that.
 
 [lib/core/configs/keys.dart](lib/core/configs/keys.dart) reads a `--dart-define`,
 and [api_client.dart](lib/core/requests/api_client.dart) uses it as a shared
-JWT/encryption secret. Dart-defines are compiled in as constants and can be pulled
-straight out of the AAB. Per `env.example.json` this is the same value as
-`server/.env`'s `JWT_SECRET`, so extracting it means being able to mint tokens the
-backend trusts.
+payload/encryption key. Dart-defines are compiled in as constants and can be
+pulled straight out of the AAB. This value matches Node's `JWT_SECRET` and
+Django's `JWT_TOKEN`; it remains shared for nonce and payload compatibility.
 
-This does not block submission — it blocks being safe once submitted. The fix is
-server-side (stop treating a client-held secret as proof of anything), so it is a
-decision to make deliberately rather than something to patch in the client.
+Authentication tokens now use a separate server-only `AUTHENTICATION_SECRET`.
+Never include that key in `env.json` or a client build. Both backends must use
+the same new authentication key, different from the client key. Activating it
+invalidates previously issued authentication tokens, requiring a new login;
+device-session checks and nonce handling remain in place.
 
 ### 3. iOS is not configured for release at all
 
