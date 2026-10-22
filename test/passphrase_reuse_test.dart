@@ -25,6 +25,44 @@ Map<String, dynamic> sharedConfiguration({bool active = true}) => {
     };
 
 void main() {
+  testWidgets('single purpose catalog still displays passphrase uses',
+      (tester) async {
+    final data = fixtureData();
+    final dio = ApiClient.userService.dio;
+    final previous = List<Interceptor>.from(dio.interceptors);
+    addTearDown(() => dio.interceptors
+      ..clear()
+      ..addAll(previous));
+    dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) {
+        handler.resolve(Response(
+            requestOptions: options, data: {'status': true, 'result': data}));
+      }));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+            body: SingleChildScrollView(child: PassphraseSection()))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add passphrase'));
+    await tester.pumpAndSettle();
+    expect(find.text('Passphrase uses'), findsOneWidget);
+    final diary = find.widgetWithText(CheckboxListTile, 'Use for Diary');
+    expect(diary, findsOneWidget);
+    expect(tester.widget<CheckboxListTile>(diary).value, isTrue);
+    expect(tester.getTopLeft(find.text('Name')).dy,
+        lessThan(tester.getTopLeft(find.text('Passphrase uses')).dy));
+    await tester.tap(diary);
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<TextButton>(
+                find.widgetWithText(TextButton, 'Add passphrase').last)
+            .onPressed,
+        isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
       'global creation permits Notes alone and uses its verification origin and version',
       (tester) async {
@@ -70,17 +108,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add passphrase').first);
     await tester.pumpAndSettle();
-    final notes = find.widgetWithText(CheckboxListTile, 'Notes');
+    final notes = find.widgetWithText(CheckboxListTile, 'Use for Notes');
     expect(notes, findsOneWidget);
     final origin = tester.widget<CheckboxListTile>(
-        find.widgetWithText(CheckboxListTile, 'Diary'));
+        find.widgetWithText(CheckboxListTile, 'Use for Diary'));
     expect(origin.value, isTrue);
     expect(origin.onChanged, isNotNull);
-    final disabled = tester.widget<CheckboxListTile>(
-        find.widgetWithText(CheckboxListTile, 'Future area'));
-    expect(disabled.value, isFalse);
-    expect(disabled.onChanged, isNull);
-    await tester.tap(find.widgetWithText(CheckboxListTile, 'Diary'));
+    expect(find.widgetWithText(CheckboxListTile, 'Use for Future area'),
+        findsNothing);
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Use for Diary'));
     await tester.pumpAndSettle();
     expect(
         tester
@@ -100,9 +136,13 @@ void main() {
     final recovery = find.widgetWithText(CheckboxListTile,
         'I understand that a forgotten passphrase cannot be recovered.');
     await tester.ensureVisible(recovery);
+    await tester.pumpAndSettle();
     await tester.tap(recovery);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add passphrase').last);
+    final save = find.widgetWithText(TextButton, 'Add passphrase').last;
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
     await tester.pump();
     for (var i = 0; i < 200 && submitted == null; i++) {
       await tester.runAsync(

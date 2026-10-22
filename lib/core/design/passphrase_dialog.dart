@@ -8,8 +8,9 @@ class PassphraseDialog extends AppDialog {
       required super.title,
       required super.description,
       super.children,
+      super.iconBesideTitle = true,
       required super.actions})
-      : super(icon: Icons.lock_outline, iconBesideTitle: true);
+      : super(icon: Icons.lock_outline);
 }
 
 class PassphraseField extends StatelessWidget {

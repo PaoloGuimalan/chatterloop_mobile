@@ -689,6 +689,7 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
   @override
   Widget build(BuildContext context) => PassphraseDialog(
           title: 'Add passphrase',
+          iconBesideTitle: false,
           description:
               'Add an inactive passphrase, then activate it when you are ready.',
           actions: [
@@ -700,47 +701,13 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
                 onPressed: _busy || _purposes.isEmpty ? null : _save)
           ],
           children: [
-            if (widget.groups.length > 1) ...[
-              Padding(
-                  padding: const EdgeInsets.only(top: 12, bottom: 4),
-                  child: Text('Passphrase uses',
-                      style: TextStyle(
-                          fontSize: CLType.caption, color: cl(context).text))),
-              for (final group in widget.groups)
-                CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    minTileHeight: 44,
-                    minVerticalPadding: 0,
-                    minLeadingWidth: 0,
-                    horizontalTitleGap: 0,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: Text(
-                        group['purpose'] == 'diary'
-                            ? 'Diary'
-                            : group['label'] as String? ??
-                                group['purpose'] as String,
-                        style: TextStyle(
-                            fontSize: CLType.bodySm, color: cl(context).text)),
-                    value: _purposes.contains(group['purpose']),
-                    onChanged: _busy || !isEncryptionPurposeEnabled(group)
-                        ? null
-                        : (selected) {
-                            setState(() {
-                              if (selected == true) {
-                                _purposes.add(group['purpose'] as String);
-                              } else {
-                                _purposes.remove(group['purpose']);
-                              }
-                            });
-                          }),
-            ],
             PassphraseField(
                 label: 'Name',
                 controller: _name,
                 enabled: !_busy,
                 maxLength: 80,
                 autofocus: true),
+            _purposeSelector(context),
             PassphraseField(
                 label: 'New passphrase',
                 controller: _phrase,
@@ -779,4 +746,56 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
             if (_error != null)
               Text(_error!, style: const TextStyle(color: Color(0xFFD64545))),
           ]);
+
+  Widget _purposeSelector(BuildContext context) {
+    final p = cl(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Stack(children: [
+        Container(
+          margin: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+          decoration: BoxDecoration(
+              border: Border.all(color: p.border),
+              borderRadius: BorderRadius.circular(8)),
+          child: Column(children: [
+            for (final group in widget.groups.where(isEncryptionPurposeEnabled))
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                minTileHeight: 44,
+                minVerticalPadding: 0,
+                minLeadingWidth: 0,
+                horizontalTitleGap: 0,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(
+                    'Use for ${group['purpose'] == 'diary' ? 'Diary' : group['label'] as String? ?? group['purpose'] as String}',
+                    style: TextStyle(fontSize: CLType.caption, color: p.text)),
+                value: _purposes.contains(group['purpose']),
+                onChanged: _busy
+                    ? null
+                    : (selected) => setState(() {
+                          if (selected == true) {
+                            _purposes.add(group['purpose'] as String);
+                          } else {
+                            _purposes.remove(group['purpose']);
+                          }
+                        }),
+              ),
+          ]),
+        ),
+        Positioned(
+            top: 0,
+            left: 12,
+            child: ColoredBox(
+              color: p.surface,
+              child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text('Passphrase uses',
+                      style:
+                          TextStyle(fontSize: CLType.caption, color: p.text2))),
+            )),
+      ]),
+    );
+  }
 }
