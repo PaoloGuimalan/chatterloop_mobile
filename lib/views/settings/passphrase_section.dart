@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/passphrase_dialog.dart';
 import 'package:chatterloop_app/core/encryption/passphrase_crypto.dart';
+import 'package:chatterloop_app/core/encryption/purpose_status.dart';
 import 'package:chatterloop_app/core/requests/encryption_api.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 
@@ -191,14 +192,36 @@ class _PassphraseSectionState extends State<PassphraseSection> {
   String? _error;
   bool _busy = false;
   int _generation = 0;
-  Map<String, dynamic> get _group => Map<String, dynamic>.from(
-      (_data!['purposes'] as List).firstWhere((e) => e['purpose'] == 'diary')
-          as Map);
-  List<Map<String, dynamic>> get _rows => (_group['configurations'] as List)
+  List<Map<String, dynamic>> get _groups => (_data?['purposes'] as List? ?? [])
       .map((e) => Map<String, dynamic>.from(e as Map))
       .toList();
+  List<Map<String, dynamic>> _rows(Map<String, dynamic> group) =>
+      (group['configurations'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+  List<Map<String, dynamic>> get _configurations {
+    final unique = <String, Map<String, dynamic>>{};
+    for (final group in _groups) {
+      for (final configuration in _rows(group)) {
+        unique.putIfAbsent(configuration['id'] as String, () => configuration);
+      }
+    }
+    return unique.values.toList();
+  }
+
+  List<Map<String, dynamic>> _linkedGroups(Map<String, dynamic> configuration) {
+    final purposes = PassphraseCrypto.configurationPurposes(configuration);
+    return _groups.where((g) => purposes.contains(g['purpose'])).toList();
+  }
+
+  Map<String, dynamic>? _contextFor(Map<String, dynamic> configuration,
+          {bool activate = false}) =>
+      _linkedGroups(configuration)
+          .where((g) => !activate || isEncryptionPurposeEnabled(g))
+          .firstOrNull;
+
   Map<String, dynamic>? get _active =>
-      _rows.where((c) => c['is_active'] == true).firstOrNull;
+      _configurations.where((c) => c['is_active'] == true).firstOrNull;
   @override
   void initState() {
     super.initState();
@@ -260,26 +283,32 @@ class _PassphraseSectionState extends State<PassphraseSection> {
         builder: (_) => _SetupDialog(
             entity: owner['entity_id'] as String,
             user: owner['user_id'] as String,
-            version: _group['scope_version'] as String));
+            groups: _groups));
     if (payload != null && mounted) {
       await _mutate(() => EncryptionApi().create(payload));
     }
   }
 
   Future<void> _rename(Map<String, dynamic> c) async {
+    final group = _contextFor(c);
+    if (group == null) return;
     final value = await showDialog<String>(
         context: context,
         builder: (_) => _RenameDialog(name: c['name'] as String));
     if (value != null && mounted) {
-      await _mutate(() => EncryptionApi()
-          .rename(c['id'] as String, value, _group['scope_version'] as String));
+      await _mutate(() => EncryptionApi().rename(
+          c['id'] as String, value, group['scope_version'] as String,
+          purpose: group['purpose'] as String));
     }
   }
 
   Future<void> _change(Map<String, dynamic> target, bool disable) async {
     if (_busy) return;
+    final group = _contextFor(target, activate: !disable);
+    if (group == null) return;
     setState(() => _busy = true);
-    final version = _group['scope_version'] as String;
+    final version = group['scope_version'] as String;
+    final purpose = group['purpose'] as String;
     try {
       final proofs = await showDialog<({String? active, String? target})>(
           context: context,
@@ -288,11 +317,13 @@ class _PassphraseSectionState extends State<PassphraseSection> {
               _ChangeDialog(active: _active, target: target, disable: disable));
       if (proofs == null || !mounted) return;
       if (disable) {
-        await EncryptionApi()
-            .disable(target['id'] as String, version, proofs.active!);
+        await EncryptionApi().disable(
+            target['id'] as String, version, proofs.active!,
+            purpose: purpose);
       } else {
         await EncryptionApi().activate(
-            target['id'] as String, version, proofs.target!, proofs.active);
+            target['id'] as String, version, proofs.target!, proofs.active,
+            purpose: purpose);
       }
       await _load();
     } catch (e) {
@@ -308,24 +339,46 @@ class _PassphraseSectionState extends State<PassphraseSection> {
     }
   }
 
+  Widget _purposeBadge(String code) {
+    final p = cl(context);
+    final group = _groups.where((g) => g['purpose'] == code).firstOrNull;
+    final label =
+        code == 'diary' ? 'Diary' : group?['label'] as String? ?? code;
+    final paused = group != null && !isEncryptionPurposeEnabled(group);
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+            color: paused ? p.surface2 : p.brandSoft,
+            borderRadius: BorderRadius.circular(6)),
+        child: Text(paused ? '$label · Paused' : label,
+            style: TextStyle(
+                fontSize: CLType.meta, color: paused ? p.text2 : p.brand)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
+    final rows = _configurations;
+    final canAdd = _groups.any(isEncryptionPurposeEnabled);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('Passphrase',
-          style: TextStyle(
-              fontSize: CLType.title,
-              fontWeight: FontWeight.w700,
-              color: p.text)),
+      Row(children: [
+        Expanded(
+            child: Text('Passphrase',
+                style: TextStyle(
+                    fontSize: CLType.title,
+                    fontWeight: FontWeight.w700,
+                    color: p.text))),
+        TextButton.icon(
+            onPressed: _busy || !canAdd ? null : _add,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add passphrase')),
+      ]),
       const SizedBox(height: 5),
       Text(
           'Manage the passphrases used to protect your private data. Keep every passphrase you still need: Chatterloop cannot recover it.',
           style:
               TextStyle(fontSize: CLType.bodySm, color: p.text2, height: 1.4)),
       const SizedBox(height: 14),
-      Text('Passphrase uses',
-          style: TextStyle(fontWeight: FontWeight.w600, color: p.text)),
-      const SizedBox(height: 8),
       if (_error != null) ...[
         Text(_error!, style: TextStyle(color: p.text2)),
         TextButton(
@@ -335,7 +388,6 @@ class _PassphraseSectionState extends State<PassphraseSection> {
       if (_data == null && _error == null) const LinearProgressIndicator(),
       if (_data != null)
         Container(
-            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
                 color: p.surface,
                 border: Border.all(color: p.border),
@@ -343,27 +395,14 @@ class _PassphraseSectionState extends State<PassphraseSection> {
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(children: [
-                    Icon(Icons.book_outlined, color: p.brand),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                        child: Text('Diary',
-                            style: TextStyle(fontWeight: FontWeight.w700))),
-                    Text(_active == null ? 'Not active' : 'Protected',
-                        style: TextStyle(color: p.text2))
-                  ]),
-                  const SizedBox(height: 8),
-                  Text(
-                      'Only entry titles and text are encrypted. Attachments, tags, moods and dates are outside this protection. Existing entries keep their original protection.',
-                      style:
-                          TextStyle(color: p.text2, fontSize: CLType.caption)),
-                  if (_rows.isEmpty)
+                  if (rows.isEmpty)
                     const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
+                        padding: EdgeInsets.all(16),
                         child: Text('No passphrase configurations yet.')),
-                  for (final row in _rows)
+                  for (var index = 0; index < rows.length; index++) ...[
+                    if (index > 0) Divider(height: 1, color: p.border),
                     Padding(
-                        padding: const EdgeInsets.only(top: 12),
+                        padding: const EdgeInsets.fromLTRB(14, 14, 4, 14),
                         child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -372,22 +411,30 @@ class _PassphraseSectionState extends State<PassphraseSection> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                    Text(row['name'] as String,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600)),
+                                    Text(rows[index]['name'] as String,
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: p.text)),
+                                    const SizedBox(height: 4),
                                     Text(
-                                        '${row['is_active'] == true ? 'Active' : 'Inactive'} · Created ${(row['created_at'] as String? ?? '').split('T').first}',
+                                        '${rows[index]['is_active'] == true ? 'Active' : 'Inactive'} · Created ${(rows[index]['created_at'] as String? ?? '').split('T').first}',
                                         style: TextStyle(
                                             color: p.text3,
-                                            fontSize: CLType.caption))
+                                            fontSize: CLType.caption)),
+                                    const SizedBox(height: 8),
+                                    Wrap(spacing: 6, runSpacing: 6, children: [
+                                      for (final code in PassphraseCrypto
+                                          .configurationPurposes(rows[index]))
+                                        _purposeBadge(code),
+                                    ]),
                                   ])),
                               PopupMenuButton<String>(
                                   enabled: !_busy,
                                   onSelected: (action) {
                                     if (action == 'rename') {
-                                      _rename(row);
+                                      _rename(rows[index]);
                                     } else {
-                                      _change(row, action == 'disable');
+                                      _change(rows[index], action == 'disable');
                                     }
                                   },
                                   itemBuilder: (_) => [
@@ -395,23 +442,31 @@ class _PassphraseSectionState extends State<PassphraseSection> {
                                             value: 'rename',
                                             child: Text('Rename')),
                                         PopupMenuItem(
-                                            value: row['is_active'] == true
-                                                ? 'disable'
-                                                : 'activate',
-                                            child: Text(row['is_active'] == true
-                                                ? 'Disable'
-                                                : 'Activate'))
+                                            enabled: rows[index]['is_active'] ==
+                                                    true ||
+                                                _contextFor(rows[index],
+                                                        activate: true) !=
+                                                    null,
+                                            value:
+                                                rows[index]['is_active'] == true
+                                                    ? 'disable'
+                                                    : 'activate',
+                                            child: Text(
+                                                rows[index]['is_active'] == true
+                                                    ? 'Disable'
+                                                    : 'Activate')),
                                       ]),
                             ])),
-                  const SizedBox(height: 10),
-                  Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                          onPressed: _busy ? null : _add,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add passphrase'))),
-                  if (_busy) const LinearProgressIndicator(),
+                  ],
                 ])),
+      if (_data != null)
+        Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+                'The active passphrase protects new content for its listed purposes. Older content keeps its original protection.',
+                style: TextStyle(
+                    color: p.text2, fontSize: CLType.caption, height: 1.4))),
+      if (_busy) const LinearProgressIndicator(),
     ]);
   }
 }
@@ -562,13 +617,18 @@ class _ChangeDialogState extends _SecretDialogState<_ChangeDialog> {
 
 class _SetupDialog extends StatefulWidget {
   const _SetupDialog(
-      {required this.entity, required this.user, required this.version});
-  final String entity, user, version;
+      {required this.entity, required this.user, required this.groups});
+  final String entity, user;
+  final List<Map<String, dynamic>> groups;
   @override
   State<_SetupDialog> createState() => _SetupDialogState();
 }
 
 class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
+  late final Set<String> _purposes = {
+    if (widget.groups.any(isEncryptionPurposeEnabled))
+      widget.groups.firstWhere(isEncryptionPurposeEnabled)['purpose'] as String
+  };
   final _name = TextEditingController(),
       _phrase = TextEditingController(),
       _confirm = TextEditingController();
@@ -592,13 +652,14 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
 
   Future<void> _save() async {
     final ticket = generation;
-    if (!_ack ||
+    if (_purposes.isEmpty ||
+        !_ack ||
         _name.text.trim().isEmpty ||
         _name.text.trim().runes.length > 80 ||
         !PassphraseCrypto.validPhrase(_phrase.text) ||
         _phrase.text != _confirm.text) {
       setState(() => _error =
-          'Enter a name, at least 15 characters, matching confirmation, and acknowledge recovery.');
+          'Choose at least one use, enter a name, at least 15 characters, matching confirmation, and acknowledge recovery.');
       return;
     }
     setState(() {
@@ -606,8 +667,11 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
       _error = null;
     });
     try {
-      final payload = await PassphraseCrypto().setup(
-          _name.text, _phrase.text, widget.entity, widget.user, widget.version);
+      final origin = _purposes.first;
+      final group = widget.groups.firstWhere((g) => g['purpose'] == origin);
+      final payload = await PassphraseCrypto().setup(_name.text, _phrase.text,
+          widget.entity, widget.user, group['scope_version'] as String,
+          purpose: origin, purposes: _purposes.toList());
       if (!mounted || ticket != generation) return;
       _phrase.clear();
       _confirm.clear();
@@ -633,9 +697,44 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
             PassphraseAction(
                 label: _busy ? 'Working…' : 'Add passphrase',
                 primary: true,
-                onPressed: _busy ? null : _save)
+                onPressed: _busy || _purposes.isEmpty ? null : _save)
           ],
           children: [
+            if (widget.groups.length > 1) ...[
+              Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 4),
+                  child: Text('Passphrase uses',
+                      style: TextStyle(
+                          fontSize: CLType.caption, color: cl(context).text))),
+              for (final group in widget.groups)
+                CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    minTileHeight: 44,
+                    minVerticalPadding: 0,
+                    minLeadingWidth: 0,
+                    horizontalTitleGap: 0,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(
+                        group['purpose'] == 'diary'
+                            ? 'Diary'
+                            : group['label'] as String? ??
+                                group['purpose'] as String,
+                        style: TextStyle(
+                            fontSize: CLType.bodySm, color: cl(context).text)),
+                    value: _purposes.contains(group['purpose']),
+                    onChanged: _busy || !isEncryptionPurposeEnabled(group)
+                        ? null
+                        : (selected) {
+                            setState(() {
+                              if (selected == true) {
+                                _purposes.add(group['purpose'] as String);
+                              } else {
+                                _purposes.remove(group['purpose']);
+                              }
+                            });
+                          }),
+            ],
             PassphraseField(
                 label: 'Name',
                 controller: _name,
@@ -663,6 +762,11 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
             CheckboxListTile(
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
+                dense: true,
+                minTileHeight: 44,
+                minVerticalPadding: 0,
+                minLeadingWidth: 0,
+                horizontalTitleGap: 0,
                 value: _ack,
                 onChanged:
                     _busy ? null : (v) => setState(() => _ack = v ?? false),

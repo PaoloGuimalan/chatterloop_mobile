@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/encryption/diary_session.dart';
 
 class LockedDiaryTitle extends StatelessWidget {
   const LockedDiaryTitle({super.key});
@@ -82,10 +83,13 @@ class LockedDiary extends StatelessWidget {
         Icon(Icons.lock_outline, size: 16, color: p.text2),
         const SizedBox(width: 6),
         Expanded(
-            child: Text('Entry needs a different or older key to unlock',
+            child: Text(
+                DiarySession.instance.purposeEnabled
+                    ? 'Entry needs a different or older key to unlock'
+                    : 'Diary protection is temporarily unavailable.',
                 style: TextStyle(color: p.text2, fontSize: CLType.bodySm)))
       ]),
-      if (onUnlock != null)
+      if (onUnlock != null && DiarySession.instance.purposeEnabled)
         TextButton(onPressed: onUnlock, child: const Text('Unlock entry')),
     ]);
   }

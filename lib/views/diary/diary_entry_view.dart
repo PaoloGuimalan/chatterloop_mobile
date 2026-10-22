@@ -48,7 +48,9 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
       _entry = result;
       _isLoading = false;
     });
-    if (result?.isLocked == true && !_autoPrompted) {
+    if (DiarySession.instance.purposeEnabled &&
+        result?.isLocked == true &&
+        !_autoPrompted) {
       _autoPrompted = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && ticket == _loadGeneration && identical(_entry, result)) {
@@ -71,7 +73,12 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
 
   Future<void> _unlockEntry() async {
     final entry = _entry;
-    if (entry == null || !entry.isLocked || _promptOpen) return;
+    if (entry == null ||
+        !entry.isLocked ||
+        _promptOpen ||
+        !DiarySession.instance.purposeEnabled) {
+      return;
+    }
     final session = DiarySession.instance,
         generation = DiarySession.instance.generation;
     try {
@@ -138,13 +145,16 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                               child: Text(
-                                  'Entry needs a different or older key to unlock',
+                                  DiarySession.instance.purposeEnabled
+                                      ? 'Entry needs a different or older key to unlock'
+                                      : 'Diary protection is temporarily unavailable.',
                                   style: TextStyle(
                                       fontSize: CLType.caption,
                                       color: p.text2))),
-                          TextButton(
-                              onPressed: _unlockEntry,
-                              child: const Text('Unlock entry')),
+                          if (DiarySession.instance.purposeEnabled)
+                            TextButton(
+                                onPressed: _unlockEntry,
+                                child: const Text('Unlock entry')),
                         ]),
                         const SizedBox(height: 16),
                         const LockedDiaryContent(

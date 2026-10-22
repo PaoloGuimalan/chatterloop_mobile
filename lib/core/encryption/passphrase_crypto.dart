@@ -66,9 +66,11 @@ class PassphraseCrypto {
 
   static void validateConfiguration(Map<String, dynamic> c) {
     validateProfile({...profile, ...c});
-    if (!_uuid.hasMatch(c['id'] as String? ?? '') || c['purpose'] != 'diary') {
+    if (!_uuid.hasMatch(c['id'] as String? ?? '')) {
       throw const FormatException('Unsupported encryption configuration');
     }
+    verificationPurpose(c);
+    configurationPurposes(c);
     for (final field in ['entity_id', 'user_id']) {
       if (c[field] is! String ||
           (c[field] as String).isEmpty ||
@@ -84,13 +86,38 @@ class PassphraseCrypto {
     binary(c['verification_ciphertext'], 17, 1024);
   }
 
+  static bool validPurpose(dynamic value) =>
+      value is String && value.isNotEmpty && value.runes.length <= 40;
+
+  static String verificationPurpose(Map<String, dynamic> c) {
+    final origin = c.containsKey('verification_purpose')
+        ? c['verification_purpose']
+        : c['purpose'];
+    if (!validPurpose(origin) ||
+        (c.containsKey('purpose') && c['purpose'] != origin)) {
+      throw const FormatException('Invalid verification purpose');
+    }
+    return origin as String;
+  }
+
+  static List<String> configurationPurposes(Map<String, dynamic> c) {
+    final values = c.containsKey('purposes') ? c['purposes'] : [c['purpose']];
+    if (values is! List ||
+        values.isEmpty ||
+        values.any((p) => !validPurpose(p)) ||
+        values.toSet().length != values.length) {
+      throw const FormatException('Invalid passphrase uses');
+    }
+    return List<String>.from(values);
+  }
+
   static String verificationAad(Map<String, dynamic> c) => jsonEncode([
         'chatterloop.encryption.verification',
         1,
         c['id'],
         c['entity_id'],
         c['user_id'],
-        'diary'
+        verificationPurpose(c)
       ]);
   Future<List<int>> derive(String phrase, List<int> salt) =>
       Isolate.run(() async {
@@ -126,8 +153,14 @@ class PassphraseCrypto {
     }
   }
 
-  Future<Map<String, dynamic>> setup(String name, String phrase, String entity,
-      String user, String version) async {
+  Future<Map<String, dynamic>> setup(
+      String name, String phrase, String entity, String user, String version,
+      {String purpose = 'diary', List<String>? purposes}) async {
+    final uses = configurationPurposes(
+        {'purpose': purpose, if (purposes != null) 'purposes': purposes});
+    if (!validPurpose(purpose) || !uses.contains(purpose)) {
+      throw const FormatException('Invalid passphrase uses');
+    }
     if (!validPhrase(phrase) ||
         name.trim().isEmpty ||
         name.trim().runes.length > 80) {
@@ -145,7 +178,7 @@ class PassphraseCrypto {
         id,
         entity,
         user,
-        'diary'
+        purpose
       ]);
       final cipher = await _encrypt(
           key,
@@ -165,7 +198,8 @@ class PassphraseCrypto {
       }
       return {
         'id': id,
-        'purpose': 'diary',
+        'purpose': purpose,
+        if (purposes != null) 'purposes': uses,
         'name': name.trim(),
         'expected_scope_version': version,
         'format_version': 1,

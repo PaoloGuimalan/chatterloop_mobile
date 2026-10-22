@@ -107,14 +107,14 @@ class _DiaryGateState extends State<DiaryGate> with WidgetsBindingObserver {
     });
     final ticket = _session.generation, owner = _identity;
     try {
-      final data = await EncryptionApi().load();
+      final data = await EncryptionApi().load(purpose: 'diary');
       if (!mounted || ticket != _session.generation || owner != _identity) {
         return;
       }
       _session.install(data, owner);
       setState(() {});
       final active = _session.active;
-      if (active != null) {
+      if (_session.purposeEnabled && active != null) {
         final unlocked =
             await promptPassphrase(context, active, forVisit: true);
         if (!mounted || ticket != _session.generation || owner != _identity) {
@@ -126,7 +126,7 @@ class _DiaryGateState extends State<DiaryGate> with WidgetsBindingObserver {
           return;
         }
         _session.addKey(active['id'] as String, unlocked.key);
-      } else if (_session.configurations.isEmpty) {
+      } else if (_session.purposeEnabled && _session.configurations.isEmpty) {
         final prefs = await SharedPreferences.getInstance();
         final flag = 'diary-protection-intro-v1/$owner';
         if (!prefs.containsKey(flag) && mounted) {

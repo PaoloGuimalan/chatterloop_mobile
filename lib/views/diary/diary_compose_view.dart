@@ -488,41 +488,43 @@ class _DiaryComposeScreenState extends State<DiaryComposeScreen> {
                                   const SizedBox(height: 12),
                                   _tagPicker(p),
                                   const SizedBox(height: 16),
-                                  Material(
-                                    color: p.surface2,
-                                    borderRadius: BorderRadius.circular(8),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: CheckboxListTile(
-                                      horizontalTitleGap: 4,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 10, vertical: 3),
-                                      controlAffinity:
-                                          ListTileControlAffinity.leading,
-                                      dense: true,
-                                      title: const Text('Encrypt this entry',
-                                          style: TextStyle(
-                                              fontSize: CLType.label)),
-                                      subtitle: Text(
-                                          DiarySession.instance.active == null
-                                              ? 'Activate a passphrase in Settings / Data & Privacy to encrypt entries.'
-                                              : _encryptEntry
-                                                  ? 'Uses ${DiarySession.instance.active!['name']}. Confirm when saving. Only the title and writing are encrypted; this entry will be private.'
-                                                  : 'Protect this entry title and writing with your active passphrase.',
-                                          style: TextStyle(
-                                              color: p.text2,
-                                              fontSize: CLType.caption)),
-                                      value: _encryptEntry,
-                                      onChanged:
-                                          DiarySession.instance.active == null
-                                              ? null
-                                              : (value) {
-                                                  setState(() => _encryptEntry =
-                                                      value ?? false);
-                                                  _record();
-                                                },
+                                  if (DiarySession.instance.purposeEnabled)
+                                    Material(
+                                      color: p.surface2,
+                                      borderRadius: BorderRadius.circular(8),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: CheckboxListTile(
+                                        horizontalTitleGap: 4,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 10, vertical: 3),
+                                        controlAffinity:
+                                            ListTileControlAffinity.leading,
+                                        dense: true,
+                                        title: const Text('Encrypt this entry',
+                                            style: TextStyle(
+                                                fontSize: CLType.label)),
+                                        subtitle: Text(
+                                            DiarySession.instance.active == null
+                                                ? 'Activate a passphrase in Settings / Data & Privacy to encrypt entries.'
+                                                : _encryptEntry
+                                                    ? 'Uses ${DiarySession.instance.active!['name']}. Confirm when saving. Only the title and writing are encrypted; this entry will be private.'
+                                                    : 'Protect this entry title and writing with your active passphrase.',
+                                            style: TextStyle(
+                                                color: p.text2,
+                                                fontSize: CLType.caption)),
+                                        value: _encryptEntry,
+                                        onChanged:
+                                            DiarySession.instance.active == null
+                                                ? null
+                                                : (value) {
+                                                    setState(() =>
+                                                        _encryptEntry =
+                                                            value ?? false);
+                                                    _record();
+                                                  },
+                                      ),
                                     ),
-                                  ),
                                   const SizedBox(height: 18),
                                   _editorCard(p),
                                   const SizedBox(height: 18),

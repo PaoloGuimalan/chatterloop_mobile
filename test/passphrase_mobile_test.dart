@@ -552,7 +552,7 @@ void main() {
                 padding: EdgeInsets.all(16), child: PassphraseSection()))));
     await tester.pumpAndSettle();
     expect(find.text('Personal journal'), findsOneWidget);
-    expect(find.text('Protected'), findsOneWidget);
+    expect(find.text('Active · Created 2026-10-20'), findsOneWidget);
     await tester.tap(find.byType(PopupMenuButton<String>));
     await tester.pumpAndSettle();
     expect(find.text('Rename'), findsOneWidget);
