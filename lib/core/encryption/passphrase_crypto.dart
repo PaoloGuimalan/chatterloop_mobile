@@ -103,7 +103,6 @@ class PassphraseCrypto {
   static List<String> configurationPurposes(Map<String, dynamic> c) {
     final values = c.containsKey('purposes') ? c['purposes'] : [c['purpose']];
     if (values is! List ||
-        values.isEmpty ||
         values.any((p) => !validPurpose(p)) ||
         values.toSet().length != values.length) {
       throw const FormatException('Invalid passphrase uses');

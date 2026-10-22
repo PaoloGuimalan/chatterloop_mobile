@@ -153,7 +153,9 @@ class _TypersVm {
 class ConversationView extends StatefulWidget {
   final String conversationId;
 
-  const ConversationView({super.key, required this.conversationId});
+  const ConversationView({super.key, required this.conversationId, this.initialSetup, this.setupRequest});
+  final Map<String, dynamic>? initialSetup;
+  final Future<Map<String, dynamic>?>? setupRequest;
 
   @override
   ConversationStateView createState() => ConversationStateView();
@@ -257,8 +259,9 @@ class ConversationStateView extends State<ConversationView> {
   /// contact's Message button before any message was ever sent) - without
   /// this step first, that exact case left the screen spinning forever.
   Future<void> _startLoading() async {
-    final setup = await ConversationsApi()
-        .getConversationSetupRequest(widget.conversationId);
+    final setup = widget.initialSetup ??
+        await (widget.setupRequest ?? ConversationsApi()
+            .getConversationSetupRequest(widget.conversationId));
     if (!mounted) return;
     if (setup == null) {
       setState(() {

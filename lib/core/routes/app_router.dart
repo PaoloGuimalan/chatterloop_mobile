@@ -26,6 +26,8 @@ import 'package:chatterloop_app/views/search/topic_detail_view.dart';
 import 'package:chatterloop_app/views/home/tabs/contacts_view.dart';
 import 'package:chatterloop_app/views/messages/create_group_chat_view.dart';
 import 'package:chatterloop_app/views/messages/messages_view.dart';
+import 'package:chatterloop_app/views/messages/messages_gate.dart';
+import 'package:chatterloop_app/views/messages/conversation_messages_gate.dart';
 import 'package:chatterloop_app/views/messages/new_message_view.dart';
 import 'package:chatterloop_app/views/newsfeed/newsfeed_view.dart';
 import 'package:chatterloop_app/views/messages/tabs/conversation_view.dart';
@@ -324,7 +326,8 @@ GoRouter buildAppRouter(AuthController authController) {
               StatefulShellBranch(routes: [
                 GoRoute(
                     path: '/messages',
-                    pageBuilder: (c, s) => _clPage(s, const MessagesView()))
+                    pageBuilder: (c, s) =>
+                        _clPage(s, const MessagesGate(child: MessagesView())))
               ]),
               StatefulShellBranch(routes: [
                 GoRoute(
@@ -378,16 +381,22 @@ GoRouter buildAppRouter(AuthController authController) {
           // trap '/server-browser' below exists to avoid.
           GoRoute(
               path: '/new-message',
-              pageBuilder: (c, s) => _clPage(s, const NewMessageScreen())),
+              pageBuilder: (c, s) =>
+                  _clPage(s, const MessagesGate(child: NewMessageScreen()))),
           GoRoute(
               path: '/new-group-chat',
-              pageBuilder: (c, s) => _clPage(s, const CreateGroupChatScreen())),
+              pageBuilder: (c, s) => _clPage(
+                  s, const MessagesGate(child: CreateGroupChatScreen()))),
           GoRoute(
             path: '/conversation/:conversationId',
             pageBuilder: (c, s) => _clPage(
                 s,
-                ConversationView(
+                ConversationMessagesGate(
                   conversationId: s.pathParameters['conversationId']!,
+                  builder: (setupRequest) => ConversationView(
+                    conversationId: s.pathParameters['conversationId']!,
+                    setupRequest: setupRequest,
+                  ),
                 )),
           ),
           GoRoute(
@@ -559,18 +568,23 @@ GoRouter buildAppRouter(AuthController authController) {
           GoRoute(
             path: '/diary',
             redirect: _diaryGuard,
-            pageBuilder: (c, s) => _clPage(s, const DiaryGate(child: DiaryListScreen())),
+            pageBuilder: (c, s) =>
+                _clPage(s, const DiaryGate(child: DiaryListScreen())),
           ),
           GoRoute(
             path: '/diary/new',
             redirect: _diaryGuard,
-            pageBuilder: (c, s) => _clPage(s, const DiaryGate(child: DiaryComposeScreen())),
+            pageBuilder: (c, s) =>
+                _clPage(s, const DiaryGate(child: DiaryComposeScreen())),
           ),
           GoRoute(
             path: '/diary/entry/:entryId',
             redirect: _diaryGuard,
             pageBuilder: (c, s) => _clPage(
-                s, DiaryGate(child: DiaryEntryScreen(entryId: s.pathParameters['entryId']!))),
+                s,
+                DiaryGate(
+                    child: DiaryEntryScreen(
+                        entryId: s.pathParameters['entryId']!))),
           ),
           GoRoute(
             path: '/user/:username',
@@ -623,6 +637,7 @@ GoRouter buildAppRouter(AuthController authController) {
     ],
   );
   _appRouter = router;
+  MessagesGate.observe(router);
   return router;
 }
 

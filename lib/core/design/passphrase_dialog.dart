@@ -17,6 +17,7 @@ class PassphraseField extends StatelessWidget {
   const PassphraseField(
       {super.key,
       required this.label,
+      this.labelSpan,
       required this.controller,
       this.secret = false,
       this.enabled = true,
@@ -25,6 +26,7 @@ class PassphraseField extends StatelessWidget {
       this.errorText,
       this.onSubmitted});
   final String label;
+  final InlineSpan? labelSpan;
   final TextEditingController controller;
   final bool secret, enabled, autofocus;
   final int? maxLength;
@@ -40,7 +42,11 @@ class PassphraseField extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 15),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(label, style: TextStyle(fontSize: CLType.caption, color: p.text)),
+        if (labelSpan == null)
+          Text(label, style: TextStyle(fontSize: CLType.caption, color: p.text))
+        else
+          Text.rich(labelSpan!,
+              style: TextStyle(fontSize: CLType.caption, color: p.text)),
         const SizedBox(height: 7),
         Semantics(
             label: label,

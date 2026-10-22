@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import 'package:chatterloop_app/core/encryption/passphrase_crypto.dart';
 import 'package:chatterloop_app/core/encryption/purpose_status.dart';
+import 'package:chatterloop_app/core/requests/encryption_api.dart';
 import 'package:chatterloop_app/models/diary_models/diary_models.dart';
 
 /// A visit owns all unlocked keys. No key or plaintext is persisted.
@@ -10,6 +12,8 @@ class DiarySession extends ChangeNotifier {
   String? identity;
   int generation = 0;
   final Map<String, List<int>> _keys = {};
+  // These records can decrypt old entries, but never enter the active catalog.
+  final Map<String, Map<String, dynamic>> _history = {};
   Map<String, dynamic>? get group {
     final value = (data?['purposes'] as List? ?? [])
         .where((g) => g['purpose'] == 'diary')
@@ -24,7 +28,38 @@ class DiarySession extends ChangeNotifier {
       .where((c) => PassphraseCrypto.configurationPurposes(c).contains('diary'))
       .toList();
   Map<String, dynamic>? configuration(String id) =>
-      configurations.where((c) => c['id'] == id).firstOrNull;
+      configurations.where((c) => c['id'] == id).firstOrNull ?? _history[id];
+
+  Future<Map<String, dynamic>?> historicalConfiguration(String id) async {
+    if (data == null || group == null || !purposeEnabled) return null;
+    final current = configuration(id);
+    if (current != null) return current;
+    final ticket = generation, owner = identity;
+    try {
+      final c = await EncryptionApi().loadConfiguration(id,
+          purpose: 'diary', owner: data!['owner'] as Map);
+      if (ticket != generation || owner != identity || !purposeEnabled) {
+        return null;
+      }
+      _history[id] = c;
+      return c;
+    } on DioException catch (error) {
+      final response = error.response?.data;
+      final code = response is Map ? response['code'] : null;
+      if (ticket == generation &&
+          owner == identity &&
+          code == 'purpose_inactive') {
+        generation++;
+        for (final value in data?['purposes'] as List? ?? []) {
+          if (value['purpose'] == 'diary') value['is_active'] = false;
+        }
+        _clearKeys();
+        notifyListeners();
+      }
+      rethrow;
+    }
+  }
+
   Map<String, dynamic>? get active => configurations
       .where((c) => c['id'] == group?['active_configuration_id'])
       .firstOrNull;
@@ -39,14 +74,13 @@ class DiarySession extends ChangeNotifier {
       group != null &&
       (!purposeEnabled || active == null || _keys.containsKey(active!['id']));
   void install(Map<String, dynamic> value, String owner) {
+    if (identity != null && identity != owner) {
+      generation++;
+      _clearKeys();
+    }
     data = value;
     identity = owner;
-    if (!purposeEnabled) {
-      for (final key in _keys.values) {
-        key.fillRange(0, key.length, 0);
-      }
-      _keys.clear();
-    }
+    if (!purposeEnabled) _clearKeys();
   }
 
   void addKey(String id, List<int> key) {
@@ -60,13 +94,18 @@ class DiarySession extends ChangeNotifier {
 
   void clear() {
     generation++;
+    _clearKeys();
+    data = null;
+    identity = null;
+    notifyListeners();
+  }
+
+  void _clearKeys() {
     for (final key in _keys.values) {
       key.fillRange(0, key.length, 0);
     }
     _keys.clear();
-    data = null;
-    identity = null;
-    notifyListeners();
+    _history.clear();
   }
 
   Future<DiaryEntry> openEntry(DiaryEntry entry) async {

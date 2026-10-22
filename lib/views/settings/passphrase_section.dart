@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -7,6 +8,18 @@ import 'package:chatterloop_app/core/encryption/passphrase_crypto.dart';
 import 'package:chatterloop_app/core/encryption/purpose_status.dart';
 import 'package:chatterloop_app/core/requests/encryption_api.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
+
+String _purposeLabel(String code, Map<String, dynamic>? group) {
+  final label = (group?['label'] as String?)?.trim();
+  final text = code == 'diary'
+      ? 'Diary'
+      : code == 'messages'
+          ? 'Messages'
+          : label != null && label.isNotEmpty
+              ? label
+              : code;
+  return text.isEmpty ? text : text[0].toUpperCase() + text.substring(1);
+}
 
 abstract class _SecretDialogState<T extends StatefulWidget> extends State<T>
     with WidgetsBindingObserver {
@@ -28,8 +41,13 @@ abstract class _SecretDialogState<T extends StatefulWidget> extends State<T>
   void _cancelSecrets() {
     generation++;
     clearSecretFields();
-    if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
-      Navigator.of(context).pop();
+    if (mounted) {
+      final route = ModalRoute.of(context);
+      if (route?.isCurrent ?? false) {
+        Navigator.of(context).pop();
+      } else if (route?.isActive ?? false) {
+        Navigator.of(context).removeRoute(route!);
+      }
     }
   }
 
@@ -50,23 +68,32 @@ abstract class _SecretDialogState<T extends StatefulWidget> extends State<T>
 /// Secret controllers and derived keys exist only for this dialog's lifetime.
 Future<({List<int> key, String proof})?> promptPassphrase(
         BuildContext context, Map<String, dynamic> configuration,
-        {bool forVisit = false, bool forEncryption = false}) =>
+        {bool forVisit = false,
+        bool forEncryption = false,
+        String visitLabel = 'Diary',
+        ValueListenable<bool>? visitActive}) =>
     showDialog<({List<int> key, String proof})>(
         context: context,
         barrierDismissible: false,
         builder: (_) => _UnlockDialog(
             configuration: configuration,
             forVisit: forVisit,
-            forEncryption: forEncryption));
+            forEncryption: forEncryption,
+            visitLabel: visitLabel,
+            visitActive: visitActive));
 
 class _UnlockDialog extends StatefulWidget {
   const _UnlockDialog(
       {required this.configuration,
       required this.forVisit,
-      required this.forEncryption});
+      required this.forEncryption,
+      required this.visitLabel,
+      this.visitActive});
   final Map<String, dynamic> configuration;
   final bool forVisit;
   final bool forEncryption;
+  final String visitLabel;
+  final ValueListenable<bool>? visitActive;
   @override
   State<_UnlockDialog> createState() => _UnlockDialogState();
 }
@@ -76,9 +103,31 @@ class _UnlockDialogState extends _SecretDialogState<_UnlockDialog> {
   bool _busy = false;
   String? _error;
   @override
+  void initState() {
+    super.initState();
+    widget.visitActive?.addListener(_visitChanged);
+    if (widget.visitActive?.value == false) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _visitChanged();
+      });
+    }
+  }
+
+  void _visitChanged() {
+    if (widget.visitActive?.value != false) return;
+    // A gate may end its visit while Navigator is rebuilding its routes.
+    // Invalidate pending derivations now; remove the dialog after that frame.
+    generation++;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.visitActive?.value == false) _cancelSecrets();
+    });
+  }
+
+  @override
   void clearSecretFields() => _phrase.clear();
   @override
   void dispose() {
+    widget.visitActive?.removeListener(_visitChanged);
     _phrase.clear();
     _phrase.dispose();
     super.dispose();
@@ -108,7 +157,7 @@ class _UnlockDialogState extends _SecretDialogState<_UnlockDialog> {
           _error = widget.forEncryption
               ? 'Could not confirm the active passphrase. Please try again.'
               : widget.forVisit
-                  ? 'Could not unlock your Diary. Check your passphrase and try again.'
+                  ? 'Could not unlock your ${widget.visitLabel}. Check your passphrase and try again.'
                   : 'Could not unlock this entry. Check its original passphrase and try again.';
         });
       }
@@ -120,7 +169,7 @@ class _UnlockDialogState extends _SecretDialogState<_UnlockDialog> {
         title: widget.forEncryption
             ? 'Confirm entry encryption'
             : widget.forVisit
-                ? 'Unlock your Diary'
+                ? 'Unlock your ${widget.visitLabel}'
                 : 'Unlock older entries',
         description: widget.forEncryption
             ? 'Confirm your active passphrase to encrypt this entry title and writing before saving.'
@@ -200,6 +249,11 @@ class _PassphraseSectionState extends State<PassphraseSection> {
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
   List<Map<String, dynamic>> get _configurations {
+    if (_data?['configurations'] is List) {
+      return (_data!['configurations'] as List)
+          .map((c) => Map<String, dynamic>.from(c as Map))
+          .toList();
+    }
     final unique = <String, Map<String, dynamic>>{};
     for (final group in _groups) {
       for (final configuration in _rows(group)) {
@@ -291,24 +345,44 @@ class _PassphraseSectionState extends State<PassphraseSection> {
 
   Future<void> _rename(Map<String, dynamic> c) async {
     final group = _contextFor(c);
-    if (group == null) return;
+    final version = group?['scope_version'] ?? _data?['scope_version'];
+    if (version is! String) return;
     final value = await showDialog<String>(
         context: context,
         builder: (_) => _RenameDialog(name: c['name'] as String));
     if (value != null && mounted) {
       await _mutate(() => EncryptionApi().rename(
-          c['id'] as String, value, group['scope_version'] as String,
-          purpose: group['purpose'] as String));
+          c['id'] as String, value, version,
+          purpose: group?['purpose'] as String?));
+    }
+  }
+
+  Future<void> _editUses(Map<String, dynamic> configuration) async {
+    if (_busy) return;
+    final version = _data?['scope_version'];
+    if (version is! String) return;
+    final change = await showDialog<({List<String> purposes, String proof})>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) =>
+            _EditUsesDialog(configuration: configuration, groups: _groups));
+    if (change != null && mounted) {
+      await _mutate(() => EncryptionApi().updateUses(
+          configuration['id'] as String,
+          change.purposes,
+          version,
+          change.proof));
     }
   }
 
   Future<void> _change(Map<String, dynamic> target, bool disable) async {
     if (_busy) return;
     final group = _contextFor(target, activate: !disable);
-    if (group == null) return;
+    if (!disable && group == null) return;
+    final version = group?['scope_version'] ?? _data?['scope_version'];
+    if (version is! String) return;
     setState(() => _busy = true);
-    final version = group['scope_version'] as String;
-    final purpose = group['purpose'] as String;
+    final purpose = group?['purpose'] as String?;
     try {
       final proofs = await showDialog<({String? active, String? target})>(
           context: context,
@@ -342,8 +416,7 @@ class _PassphraseSectionState extends State<PassphraseSection> {
   Widget _purposeBadge(String code) {
     final p = cl(context);
     final group = _groups.where((g) => g['purpose'] == code).firstOrNull;
-    final label =
-        code == 'diary' ? 'Diary' : group?['label'] as String? ?? code;
+    final label = _purposeLabel(code, group);
     final paused = group != null && !isEncryptionPurposeEnabled(group);
     return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -375,7 +448,7 @@ class _PassphraseSectionState extends State<PassphraseSection> {
       ]),
       const SizedBox(height: 5),
       Text(
-          'Manage the passphrases used to protect your private data. Keep every passphrase you still need: Chatterloop cannot recover it.',
+          'Manage passphrases for private data and screen locks. Keep every passphrase you still need: Chatterloop cannot recover it.',
           style:
               TextStyle(fontSize: CLType.bodySm, color: p.text2, height: 1.4)),
       const SizedBox(height: 14),
@@ -423,6 +496,14 @@ class _PassphraseSectionState extends State<PassphraseSection> {
                                             fontSize: CLType.caption)),
                                     const SizedBox(height: 8),
                                     Wrap(spacing: 6, runSpacing: 6, children: [
+                                      if (PassphraseCrypto
+                                              .configurationPurposes(
+                                                  rows[index])
+                                          .isEmpty)
+                                        Text('No uses selected',
+                                            style: TextStyle(
+                                                color: p.text3,
+                                                fontSize: CLType.meta)),
                                       for (final code in PassphraseCrypto
                                           .configurationPurposes(rows[index]))
                                         _purposeBadge(code),
@@ -433,6 +514,8 @@ class _PassphraseSectionState extends State<PassphraseSection> {
                                   onSelected: (action) {
                                     if (action == 'rename') {
                                       _rename(rows[index]);
+                                    } else if (action == 'uses') {
+                                      _editUses(rows[index]);
                                     } else {
                                       _change(rows[index], action == 'disable');
                                     }
@@ -441,6 +524,9 @@ class _PassphraseSectionState extends State<PassphraseSection> {
                                         const PopupMenuItem(
                                             value: 'rename',
                                             child: Text('Rename')),
+                                        const PopupMenuItem(
+                                            value: 'uses',
+                                            child: Text('Edit uses')),
                                         PopupMenuItem(
                                             enabled: rows[index]['is_active'] ==
                                                     true ||
@@ -463,7 +549,7 @@ class _PassphraseSectionState extends State<PassphraseSection> {
         Padding(
             padding: const EdgeInsets.only(top: 12),
             child: Text(
-                'The active passphrase protects new content for its listed purposes. Older content keeps its original protection.',
+                'The active passphrase protects new content and screen access for its listed uses. Older encrypted content keeps its original protection.',
                 style: TextStyle(
                     color: p.text2, fontSize: CLType.caption, height: 1.4))),
       if (_busy) const LinearProgressIndicator(),
@@ -577,7 +663,7 @@ class _ChangeDialogState extends _SecretDialogState<_ChangeDialog> {
   Widget build(BuildContext context) => PassphraseDialog(
         title: widget.disable ? 'Disable passphrase' : 'Activate passphrase',
         description: widget.disable
-            ? 'New entries will be saved without passphrase encryption. Older encrypted entries still need their original passphrase.'
+            ? 'Disable this passphrase for new encryption and screen locks. Older encrypted content still needs its original passphrase.'
             : 'Confirm the selected passphrase and the currently active one, if any. Older entries keep their original protection.',
         actions: [
           PassphraseAction(
@@ -611,6 +697,103 @@ class _ChangeDialogState extends _SecretDialogState<_ChangeDialog> {
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(_error!,
                     style: const TextStyle(color: Color(0xFFD64545)))),
+        ],
+      );
+}
+
+class _EditUsesDialog extends StatefulWidget {
+  const _EditUsesDialog({required this.configuration, required this.groups});
+  final Map<String, dynamic> configuration;
+  final List<Map<String, dynamic>> groups;
+  @override
+  State<_EditUsesDialog> createState() => _EditUsesDialogState();
+}
+
+class _EditUsesDialogState extends _SecretDialogState<_EditUsesDialog> {
+  late final _original =
+      PassphraseCrypto.configurationPurposes(widget.configuration).toSet();
+  late final _purposes = Set<String>.from(_original);
+  final _phrase = TextEditingController();
+  bool _busy = false;
+  String? _error;
+  @override
+  void clearSecretFields() => _phrase.clear();
+  @override
+  void dispose() {
+    clearSecretFields();
+    _phrase.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_busy) return;
+    final ticket = generation;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final confirmed =
+          await PassphraseCrypto().unlock(widget.configuration, _phrase.text);
+      try {
+        if (!mounted || ticket != generation) return;
+        clearSecretFields();
+        Navigator.pop(
+            context, (purposes: _purposes.toList(), proof: confirmed.proof));
+      } finally {
+        confirmed.key.fillRange(0, confirmed.key.length, 0);
+      }
+    } catch (_) {
+      if (mounted && ticket == generation) {
+        clearSecretFields();
+        setState(() {
+          _busy = false;
+          _error = 'Could not verify the passphrase. Check it and try again.';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PassphraseDialog(
+        title: 'Edit uses',
+        description:
+            'Changes apply to future encryption and screen locks. Older encrypted content still needs its original passphrase.',
+        actions: [
+          PassphraseAction(
+              label: 'Cancel', onPressed: () => Navigator.pop(context)),
+          PassphraseAction(
+              label: _busy ? 'Verifying…' : 'Save changes',
+              primary: true,
+              onPressed: _busy ? null : _save)
+        ],
+        children: [
+          _PurposeSelector(
+              groups: widget.groups,
+              purposes: _purposes,
+              original: _original,
+              busy: _busy,
+              onChanged: (code, selected) => setState(() {
+                    if (selected) {
+                      _purposes.add(code);
+                    } else {
+                      _purposes.remove(code);
+                    }
+                  })),
+          PassphraseField(
+              label: 'Enter passphrase for ${widget.configuration['name']}',
+              labelSpan: TextSpan(children: [
+                const TextSpan(text: 'Enter passphrase for '),
+                TextSpan(
+                    text: widget.configuration['name'] as String,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+              ]),
+              controller: _phrase,
+              secret: true,
+              enabled: !_busy,
+              autofocus: true,
+              errorText: _error,
+              onSubmitted: (_) => _save()),
         ],
       );
 }
@@ -707,7 +890,18 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
                 enabled: !_busy,
                 maxLength: 80,
                 autofocus: true),
-            _purposeSelector(context),
+            _PurposeSelector(
+                groups:
+                    widget.groups.where(isEncryptionPurposeEnabled).toList(),
+                purposes: _purposes,
+                busy: _busy,
+                onChanged: (code, selected) => setState(() {
+                      if (selected) {
+                        _purposes.add(code);
+                      } else {
+                        _purposes.remove(code);
+                      }
+                    })),
             PassphraseField(
                 label: 'New passphrase',
                 controller: _phrase,
@@ -746,8 +940,22 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
             if (_error != null)
               Text(_error!, style: const TextStyle(color: Color(0xFFD64545))),
           ]);
+}
 
-  Widget _purposeSelector(BuildContext context) {
+class _PurposeSelector extends StatelessWidget {
+  const _PurposeSelector(
+      {required this.groups,
+      required this.purposes,
+      this.original = const {},
+      required this.busy,
+      required this.onChanged});
+  final List<Map<String, dynamic>> groups;
+  final Set<String> purposes, original;
+  final bool busy;
+  final void Function(String, bool) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
     final p = cl(context);
     return Padding(
       padding: const EdgeInsets.only(top: 16),
@@ -759,7 +967,7 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
               border: Border.all(color: p.border),
               borderRadius: BorderRadius.circular(8)),
           child: Column(children: [
-            for (final group in widget.groups.where(isEncryptionPurposeEnabled))
+            for (final group in groups)
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 dense: true,
@@ -769,18 +977,15 @@ class _SetupDialogState extends _SecretDialogState<_SetupDialog> {
                 horizontalTitleGap: 0,
                 controlAffinity: ListTileControlAffinity.leading,
                 title: Text(
-                    'Use for ${group['purpose'] == 'diary' ? 'Diary' : group['label'] as String? ?? group['purpose'] as String}',
+                    'Use for ${_purposeLabel(group['purpose'] as String, group)}${isEncryptionPurposeEnabled(group) ? '' : ' · Paused'}',
                     style: TextStyle(fontSize: CLType.caption, color: p.text)),
-                value: _purposes.contains(group['purpose']),
-                onChanged: _busy
+                value: purposes.contains(group['purpose']),
+                onChanged: busy ||
+                        (!isEncryptionPurposeEnabled(group) &&
+                            !original.contains(group['purpose']))
                     ? null
-                    : (selected) => setState(() {
-                          if (selected == true) {
-                            _purposes.add(group['purpose'] as String);
-                          } else {
-                            _purposes.remove(group['purpose']);
-                          }
-                        }),
+                    : (selected) =>
+                        onChanged(group['purpose'] as String, selected == true),
               ),
           ]),
         ),

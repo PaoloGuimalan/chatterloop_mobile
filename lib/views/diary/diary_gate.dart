@@ -66,7 +66,10 @@ class _DiaryGateState extends State<DiaryGate> with WidgetsBindingObserver {
   }
 
   void _locked() {
-    if (mounted) setState(() => _ready = false);
+    if (mounted) {
+      setState(
+          () => _ready = _session.data != null && !_session.purposeEnabled);
+    }
   }
 
   @override
@@ -186,7 +189,7 @@ class _DiaryGateState extends State<DiaryGate> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => _ready && _session.ready
-      ? widget.child
+      ? KeyedSubtree(key: ValueKey(_session.generation), child: widget.child)
       : Scaffold(
           appBar: AppBar(
               title: const Text('Diary'),

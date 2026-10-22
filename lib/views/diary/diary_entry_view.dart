@@ -81,12 +81,18 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
     }
     final session = DiarySession.instance,
         generation = DiarySession.instance.generation;
+    _promptOpen = true;
     try {
       final e = PassphraseCrypto.envelope(entry.encryptedTitle!);
-      final configuration =
-          session.configuration(e['configuration_id'] as String);
-      if (configuration == null) return;
-      _promptOpen = true;
+      final configuration = await session
+          .historicalConfiguration(e['configuration_id'] as String);
+      if (configuration == null ||
+          !mounted ||
+          generation != session.generation ||
+          !session.purposeEnabled ||
+          !identical(_entry, entry)) {
+        return;
+      }
       final result = await promptPassphrase(context, configuration);
       if (result == null) return;
       if (!mounted ||
@@ -102,6 +108,7 @@ class _DiaryEntryScreenState extends State<DiaryEntryScreen> {
       }
     } catch (_) {/* Keep malformed or tampered entries locked. */} finally {
       _promptOpen = false;
+      if (mounted && identical(_entry, entry)) setState(() {});
     }
   }
 

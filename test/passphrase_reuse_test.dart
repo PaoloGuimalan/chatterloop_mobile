@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:chatterloop_app/core/encryption/diary_session.dart';
 import 'package:chatterloop_app/core/encryption/passphrase_crypto.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/encryption_api.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/views/settings/passphrase_section.dart';
 import 'package:chatterloop_app/views/diary/diary_gate.dart';
 import 'package:chatterloop_app/views/diary/diary_compose_view.dart';
@@ -25,6 +27,508 @@ Map<String, dynamic> sharedConfiguration({bool active = true}) => {
     };
 
 void main() {
+  testWidgets('Edit uses confirms the selected phrase and can remove every use',
+      (tester) async {
+    final data = fixtureData();
+    final c = {
+      ...fixtureConfiguration(),
+      'purposes': ['diary']
+    };
+    data['configurations'] = [c];
+    data['scope_version'] = 'c' * 64;
+    data['purposes'][0]['configurations'] = [c];
+    final dio = ApiClient.userService.dio;
+    final previous = List<Interceptor>.from(dio.interceptors);
+    RequestOptions? mutation;
+    addTearDown(() => dio.interceptors
+      ..clear()
+      ..addAll(previous));
+    dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) {
+        if (options.method == 'POST') {
+          mutation = options;
+          c['purposes'] = <String>[];
+          data['purposes'][0]['configurations'] = [];
+          data['purposes'][0]['active_configuration_id'] = null;
+        }
+        handler.resolve(Response(
+            requestOptions: options, data: {'status': true, 'result': data}));
+      }));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+            body: SingleChildScrollView(child: PassphraseSection()))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit uses'));
+    await tester.pumpAndSettle();
+    final diary = find.widgetWithText(CheckboxListTile, 'Use for Diary');
+    expect(tester.widget<CheckboxListTile>(diary).value, isTrue);
+    expect(find.text('Enter passphrase for Personal journal'), findsOneWidget);
+    await tester.tap(diary);
+    await tester.enterText(find.byType(TextField), 'wrong phrase');
+    await tester.tap(find.text('Save changes'));
+    await tester.pump();
+    for (var i = 0;
+        i < 300 && find.text('Verifying…').evaluate().isNotEmpty;
+        i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(mutation, isNull);
+    expect(
+        find.text('Could not verify the passphrase. Check it and try again.'),
+        findsOneWidget);
+    expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text, '');
+    await tester.enterText(find.byType(TextField), 'violet lantern river 你好');
+    await tester.tap(find.text('Save changes'));
+    await tester.pump();
+    for (var i = 0;
+        i < 300 && find.text('Verifying…').evaluate().isNotEmpty;
+        i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(mutation?.path,
+        '${EncryptionApi.path}11111111-1111-4111-8111-111111111111/uses/');
+    expect(mutation?.data, {
+      'purposes': [],
+      'expected_scope_version': 'c' * 64,
+      'target_verification_proof':
+          'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8='
+    });
+    expect(find.text('Personal journal'), findsOneWidget);
+    expect(find.text('No uses selected'), findsOneWidget);
+    expect(find.text('Edit uses'), findsNothing);
+    expect(tester.takeException(), isNull);
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  testWidgets('Edit uses retains paused selections and cannot add paused uses',
+      (tester) async {
+    final data = fixtureData(active: false);
+    final c = {
+      ...fixtureConfiguration(active: false),
+      'purposes': ['diary', 'notes']
+    };
+    data['configurations'] = [c];
+    data['scope_version'] = 'c' * 64;
+    data['purposes'] = [
+      {
+        ...data['purposes'][0],
+        'configurations': [c]
+      },
+      {
+        'purpose': 'notes',
+        'label': 'Notes',
+        'is_active': false,
+        'scope_version': 'b' * 64,
+        'active_configuration_id': null,
+        'configurations': [c]
+      },
+      {
+        'purpose': 'future',
+        'label': 'Future area',
+        'is_active': false,
+        'scope_version': 'b' * 64,
+        'active_configuration_id': null,
+        'configurations': []
+      },
+      {
+        'purpose': 'letters',
+        'label': 'Letters',
+        'is_active': true,
+        'scope_version': 'b' * 64,
+        'active_configuration_id': null,
+        'configurations': []
+      },
+    ];
+    final dio = ApiClient.userService.dio;
+    final previous = List<Interceptor>.from(dio.interceptors);
+    var mutations = 0;
+    addTearDown(() => dio.interceptors
+      ..clear()
+      ..addAll(previous));
+    dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) {
+        if (options.method != 'GET') mutations++;
+        handler.resolve(Response(
+            requestOptions: options, data: {'status': true, 'result': data}));
+      }));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+            body: SingleChildScrollView(child: PassphraseSection()))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit uses'));
+    await tester.pumpAndSettle();
+    final notes =
+        find.widgetWithText(CheckboxListTile, 'Use for Notes · Paused');
+    expect(tester.widget<CheckboxListTile>(notes).value, isTrue);
+    expect(tester.widget<CheckboxListTile>(notes).onChanged, isNotNull);
+    final paused =
+        find.widgetWithText(CheckboxListTile, 'Use for Future area · Paused');
+    expect(tester.widget<CheckboxListTile>(paused).value, isFalse);
+    expect(tester.widget<CheckboxListTile>(paused).onChanged, isNull);
+    expect(find.widgetWithText(CheckboxListTile, 'Use for Letters'),
+        findsOneWidget);
+    await tester.tap(notes);
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Use for Letters'));
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(mutations, 0);
+    expect(c['purposes'], ['diary', 'notes']);
+  });
+
+  testWidgets('zero-use rows allow rename but cannot activate', (tester) async {
+    final data = fixtureData(active: false);
+    final c = {...fixtureConfiguration(active: false), 'purposes': <String>[]};
+    data['configurations'] = [c];
+    data['scope_version'] = 'c' * 64;
+    data['purposes'][0]['configurations'] = [];
+    final dio = ApiClient.userService.dio;
+    final previous = List<Interceptor>.from(dio.interceptors);
+    RequestOptions? mutation;
+    addTearDown(() => dio.interceptors
+      ..clear()
+      ..addAll(previous));
+    dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) {
+        if (options.method == 'PATCH') {
+          mutation = options;
+          c['name'] = (options.data as Map)['name'];
+        }
+        handler.resolve(Response(
+            requestOptions: options, data: {'status': true, 'result': data}));
+      }));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+            body: SingleChildScrollView(child: PassphraseSection()))));
+    await tester.pumpAndSettle();
+    expect(find.text('No uses selected'), findsOneWidget);
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<PopupMenuItem<String>>(
+                find.widgetWithText(PopupMenuItem<String>, 'Activate'))
+            .enabled,
+        isFalse);
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Original protection');
+    await tester.tap(find.text('Rename passphrase').last);
+    await tester.pumpAndSettle();
+    expect(mutation?.data,
+        {'name': 'Original protection', 'expected_scope_version': 'c' * 64});
+    expect(find.text('Original protection'), findsOneWidget);
+  });
+
+  testWidgets('active zero-use rows can disable using the global scope',
+      (tester) async {
+    final data = fixtureData();
+    final c = {...fixtureConfiguration(), 'purposes': <String>[]};
+    data['configurations'] = [c];
+    data['scope_version'] = 'c' * 64;
+    data['purposes'][0]['configurations'] = [];
+    data['purposes'][0]['active_configuration_id'] = null;
+    final dio = ApiClient.userService.dio;
+    final previous = List<Interceptor>.from(dio.interceptors);
+    RequestOptions? mutation;
+    addTearDown(() => dio.interceptors
+      ..clear()
+      ..addAll(previous));
+    dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) {
+        if (options.method == 'POST') {
+          mutation = options;
+          c['is_active'] = false;
+        }
+        handler.resolve(Response(
+            requestOptions: options, data: {'status': true, 'result': data}));
+      }));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const Scaffold(
+            body: SingleChildScrollView(child: PassphraseSection()))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Disable'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Current passphrase · Personal journal'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Disable passphrase').first))
+        .pop((active: 'confirmed-proof' as String?, target: null as String?));
+    await tester.pumpAndSettle();
+    expect(mutation?.path,
+        '${EncryptionApi.path}11111111-1111-4111-8111-111111111111/deactivate/');
+    expect(mutation?.data, {
+      'expected_scope_version': 'c' * 64,
+      'active_verification_proof': 'confirmed-proof'
+    });
+    expect(find.text('No uses selected'), findsOneWidget);
+    expect(find.textContaining('Inactive · Created'), findsOneWidget);
+  });
+
+  test('removing all uses preserves the original verification binding',
+      () async {
+    final c = {...fixtureConfiguration(), 'purposes': <String>[]};
+    final result =
+        await PassphraseCrypto().unlock(c, 'violet lantern river 你好');
+    expect(result.proof, 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=');
+    result.key.fillRange(0, result.key.length, 0);
+    await expectLater(
+        PassphraseCrypto().setup('Unused', 'violet lantern river 你好',
+            'entity-vector', 'user-vector', 'a' * 64,
+            purposes: []),
+        throwsFormatException);
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  testWidgets(
+      'unassigned historical config unlocks its entry but cannot encrypt new entries',
+      (tester) async {
+    final session = DiarySession.instance;
+    final data = fixtureData(active: false);
+    data['purposes'][0]['configurations'] = [];
+    final c = {...fixtureConfiguration(), 'purposes': <String>[]};
+    late (String, String) fields;
+    await tester.runAsync(() async {
+      final result =
+          await PassphraseCrypto().unlock(c, 'violet lantern river 你好');
+      fields = await PassphraseCrypto().encryptDiary(
+          result.key,
+          'entity-vector',
+          'user-vector',
+          c['id'],
+          'Original private title',
+          '<p>Original private writing</p>');
+      result.key.fillRange(0, result.key.length, 0);
+    });
+    session.install(data, 'owner');
+    addTearDown(session.clear);
+    final dio = ApiClient.userService.dio;
+    final previous = List<Interceptor>.from(dio.interceptors);
+    RequestOptions? historicalRead;
+    addTearDown(() => dio.interceptors
+      ..clear()
+      ..addAll(previous));
+    dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) {
+        if (options.path.startsWith(EncryptionApi.path)) {
+          historicalRead = options;
+          handler.resolve(Response(requestOptions: options, data: {
+            'status': true,
+            'result': {'configuration': c}
+          }));
+        } else {
+          handler.resolve(Response(requestOptions: options, data: {
+            'id': 'old',
+            'title': fields.$1,
+            'content': fields.$2,
+            'is_encrypted': true,
+            'is_private': true,
+          }));
+        }
+      }));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const DiaryEntryScreen(entryId: 'old')));
+    await tester.pumpAndSettle();
+    expect(find.text('Unlock older entries'), findsOneWidget);
+    expect(historicalRead?.path,
+        '${EncryptionApi.path}11111111-1111-4111-8111-111111111111/');
+    expect(historicalRead?.queryParameters, {'purpose': 'diary'});
+    await tester.enterText(find.byType(TextField), 'violet lantern river 你好');
+    await tester.tap(find.text('Unlock'));
+    await tester.pump();
+    for (var i = 0;
+        i < 300 && find.text('Verifying…').evaluate().isNotEmpty;
+        i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('Original private title'), findsOneWidget);
+    expect(find.byKey(const ValueKey('locked-diary-content')), findsNothing);
+    expect(session.active, isNull);
+    await expectLater(
+        session.encryptNew('New title', 'New writing'), throwsFormatException);
+    session.clear();
+    expect(session.configuration(c['id']), isNull);
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('historical reads reject another owner, ID, profile or verification AAD',
+      () async {
+    final owner = fixtureData()['owner'] as Map;
+    for (final change in [
+      {'user_id': 'another-user'},
+      {'id': '33333333-3333-4333-8333-333333333333'},
+      {'format_version': 2},
+      {'verification_aad': 'tampered'}
+    ]) {
+      final dio = Dio();
+      dio.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+        handler.resolve(Response(requestOptions: options, data: {
+          'status': true,
+          'result': {
+            'configuration': {...fixtureConfiguration(), ...change}
+          }
+        }));
+      }));
+      await expectLater(
+          EncryptionApi(dio: dio).loadConfiguration(
+              '11111111-1111-4111-8111-111111111111',
+              purpose: 'diary',
+              owner: owner),
+          throwsFormatException);
+      dio.close();
+    }
+  });
+
+  testWidgets(
+      'disabled historical reads clear visit keys and remove unlock controls',
+      (tester) async {
+    final session = DiarySession.instance;
+    final data = fixtureData(active: false);
+    data['purposes'][0]['configurations'] = [];
+    session.install(data,
+        '${appStore.state.userAuth.user.id}/${appStore.state.userAuth.user.entityId}');
+    final key = List.filled(32, 7);
+    session.addKey('cached', key);
+    addTearDown(session.clear);
+    late (String, String) fields;
+    await tester.runAsync(() async {
+      fields = await PassphraseCrypto().encryptDiary(
+          List.filled(32, 8),
+          'entity-vector',
+          'user-vector',
+          fixtureConfiguration()['id'],
+          'Hidden title',
+          'Hidden writing');
+    });
+    final dio = ApiClient.userService.dio;
+    final previous = List<Interceptor>.from(dio.interceptors);
+    addTearDown(() => dio.interceptors
+      ..clear()
+      ..addAll(previous));
+    dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) {
+        if (options.path.startsWith(EncryptionApi.path)) {
+          handler.reject(DioException(
+              requestOptions: options,
+              response:
+                  Response(requestOptions: options, statusCode: 409, data: {
+                'status': false,
+                'code': 'purpose_inactive',
+                'message':
+                    'Encryption is temporarily disabled for this purpose.'
+              })));
+        } else {
+          handler.resolve(Response(requestOptions: options, data: {
+            'id': 'old',
+            'title': fields.$1,
+            'content': fields.$2,
+            'is_encrypted': true,
+            'is_private': true,
+          }));
+        }
+      }));
+    final router = GoRouter(initialLocation: '/diary/old', routes: [
+      GoRoute(
+          path: '/diary/old',
+          builder: (_, __) =>
+              const DiaryGate(child: DiaryEntryScreen(entryId: 'old')))
+    ]);
+    await tester.pumpWidget(MaterialApp.router(
+        theme: buildCLTheme(Brightness.light), routerConfig: router));
+    await tester.pumpAndSettle();
+    expect(session.purposeEnabled, isFalse);
+    expect(key, everyElement(0));
+    expect(find.text('Unlock entry'), findsNothing);
+    expect(find.text('Unlock Diary to continue.'), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const ValueKey('locked-diary-content')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    router.dispose();
+  });
+
+  testWidgets(
+      'a historical read completing after visit ends cannot prompt or cache',
+      (tester) async {
+    final session = DiarySession.instance;
+    final data = fixtureData(active: false);
+    data['purposes'][0]['configurations'] = [];
+    session.install(data, 'owner');
+    addTearDown(session.clear);
+    late (String, String) fields;
+    await tester.runAsync(() async {
+      fields = await PassphraseCrypto().encryptDiary(
+          List.filled(32, 8),
+          'entity-vector',
+          'user-vector',
+          fixtureConfiguration()['id'],
+          'Hidden title',
+          'Hidden writing');
+    });
+    final response = Completer<void>();
+    final requested = Completer<void>();
+    final dio = ApiClient.userService.dio;
+    final previous = List<Interceptor>.from(dio.interceptors);
+    addTearDown(() => dio.interceptors
+      ..clear()
+      ..addAll(previous));
+    dio.interceptors
+      ..clear()
+      ..add(InterceptorsWrapper(onRequest: (options, handler) async {
+        if (options.path.startsWith(EncryptionApi.path)) {
+          requested.complete();
+          await response.future;
+          handler.resolve(Response(requestOptions: options, data: {
+            'status': true,
+            'result': {
+              'configuration': {
+                ...fixtureConfiguration(),
+                'purposes': <String>[]
+              }
+            }
+          }));
+        } else {
+          handler.resolve(Response(requestOptions: options, data: {
+            'id': 'old',
+            'title': fields.$1,
+            'content': fields.$2,
+            'is_encrypted': true,
+            'is_private': true,
+          }));
+        }
+      }));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const DiaryEntryScreen(entryId: 'old')));
+    await tester.pumpAndSettle();
+    expect(requested.isCompleted, isTrue);
+    session.clear();
+    response.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing);
+    expect(session.configuration(fixtureConfiguration()['id']), isNull);
+  });
+
   testWidgets('single purpose catalog still displays passphrase uses',
       (tester) async {
     final data = fixtureData();
@@ -431,7 +935,6 @@ void main() {
       () {
     for (final uses in [
       null,
-      [],
       ['diary', 'diary'],
       [''],
       [1],
