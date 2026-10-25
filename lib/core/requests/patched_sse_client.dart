@@ -53,6 +53,11 @@ import 'package:http/io_client.dart';
 /// `_shared` - the notification stream keeps the API and the behaviour it had,
 /// and every other stream gets its own instance with its own client.
 class PatchedSSEClient {
+  final http.Client Function() _clientFactory;
+
+  PatchedSSEClient({http.Client Function()? clientFactory})
+      : _clientFactory = clientFactory ?? _makeClient;
+
   /// Backs the static API, i.e. the notification stream. Every field below is
   /// per-instance, so this one's client and controllers are untouched by any
   /// other stream's.
@@ -84,7 +89,7 @@ class PatchedSSEClient {
     return IOClient(io);
   }
 
-  http.Client _client = _makeClient();
+  late http.Client _client = _clientFactory();
 
   /// Whichever StreamController the most recent subscribe call returned -
   /// what unsubscribe() (called with no arguments, matching the original API)
@@ -93,15 +98,21 @@ class PatchedSSEClient {
 
   final Set<StreamController<SSEModel>> _disconnected =
       <StreamController<SSEModel>>{};
+  final Map<StreamController<SSEModel>, Timer> _retryTimers = {};
 
   void _retryConnection(
       {required SSERequestType method,
       required String url,
       required Map<String, String> header,
       required StreamController<SSEModel> streamController,
-      Map<String, dynamic>? body}) {
-    if (_disconnected.contains(streamController)) return;
-    Future.delayed(const Duration(seconds: 5), () {
+      Map<String, dynamic>? body,
+      void Function()? onReconnect}) {
+    if (_disconnected.contains(streamController) ||
+        _retryTimers.containsKey(streamController)) {
+      return;
+    }
+    _retryTimers[streamController] = Timer(const Duration(seconds: 5), () {
+      _retryTimers.remove(streamController);
       if (_disconnected.contains(streamController)) return;
       subscribe(
         method: method,
@@ -109,6 +120,7 @@ class PatchedSSEClient {
         header: header,
         body: body,
         oldStreamController: streamController,
+        onReconnect: onReconnect,
       );
     });
   }
@@ -118,15 +130,23 @@ class PatchedSSEClient {
       required String url,
       required Map<String, String> header,
       StreamController<SSEModel>? oldStreamController,
-      Map<String, dynamic>? body}) {
+      Map<String, dynamic>? body,
+      void Function()? onReconnect}) {
     StreamController<SSEModel> streamController =
         oldStreamController ?? StreamController<SSEModel>();
     _activeController = streamController;
+    void retry() => _retryConnection(
+        method: method,
+        url: url,
+        header: header,
+        body: body,
+        streamController: streamController,
+        onReconnect: onReconnect);
     var lineRegex = RegExp(r'^([^:]*)(?::)?(?: )?(.*)?$');
     var currentSSEModel = SSEModel(data: '', id: '', event: '');
     while (true) {
       try {
-        _client = _makeClient();
+        _client = _clientFactory();
         var request = http.Request(
           method == SSERequestType.GET ? "GET" : "POST",
           Uri.parse(url),
@@ -143,6 +163,10 @@ class PatchedSSEClient {
         Future<http.StreamedResponse> response = _client.send(request);
 
         response.asStream().listen((data) {
+          if (_disconnected.contains(streamController)) return;
+          if (oldStreamController != null && data.statusCode == 200) {
+            onReconnect?.call();
+          }
           data.stream
               .transform(const Utf8Decoder())
               .transform(const LineSplitter())
@@ -188,32 +212,15 @@ class PatchedSSEClient {
               }
             },
             onError: (e, s) {
-              _retryConnection(
-                method: method,
-                url: url,
-                header: header,
-                body: body,
-                streamController: streamController,
-              );
+              retry();
             },
+            onDone: retry,
           );
         }, onError: (e, s) {
-          _retryConnection(
-            method: method,
-            url: url,
-            header: header,
-            body: body,
-            streamController: streamController,
-          );
+          retry();
         });
       } catch (e) {
-        _retryConnection(
-          method: method,
-          url: url,
-          header: header,
-          body: body,
-          streamController: streamController,
-        );
+        retry();
       }
       return streamController.stream;
     }
@@ -227,6 +234,7 @@ class PatchedSSEClient {
   void unsubscribe() {
     if (_activeController != null) {
       _disconnected.add(_activeController!);
+      _retryTimers.remove(_activeController)?.cancel();
     }
     _client.close();
   }
@@ -238,13 +246,15 @@ class PatchedSSEClient {
           required String url,
           required Map<String, String> header,
           StreamController<SSEModel>? oldStreamController,
-          Map<String, dynamic>? body}) =>
+          Map<String, dynamic>? body,
+          void Function()? onReconnect}) =>
       _shared.subscribe(
         method: method,
         url: url,
         header: header,
         oldStreamController: oldStreamController,
         body: body,
+        onReconnect: onReconnect,
       );
 
   static void unsubscribeFromSSE() => _shared.unsubscribe();

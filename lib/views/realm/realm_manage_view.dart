@@ -37,6 +37,9 @@ import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/realm/realm_sections.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
+import 'package:chatterloop_app/views/communities/community_requests_view.dart';
+import 'package:chatterloop_app/core/reusables/widgets/community_name.dart';
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'package:go_router/go_router.dart';
 
 /// A realm's kind for the purposes of this screen.
@@ -69,6 +72,7 @@ const Map<String, List<String>> _kFormPresets = {
   "voice": ["name"],
   "page": ["name", "description", "email", "slug"],
   "server": ["name", "description", "privacy"],
+  "community": ["name", "description", "slug", "privacy"],
 };
 
 List<String> realmFormFields(RealmProfile realm) =>
@@ -112,7 +116,7 @@ String realmKindNoun(RealmProfile realm) => realmFormKind(realm);
 /// a group, channel or voice room has no surface that renders a banner, so
 /// uploading one there is a file that goes nowhere.
 bool realmHasCoverPhoto(RealmProfile realm) =>
-    realm.type == "page" || realm.type == "server";
+    realm.type == "page" || realm.type == "server" || realm.type == "community";
 
 /// Whether a realm has media to manage AT ALL.
 ///
@@ -222,7 +226,8 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
               // only on save, which is a worse answer than being told plainly.
               // is_admin is annotated by the server, so the two copies read the
               // same field rather than each deciding for themselves.
-              : !realm.isAdmin
+              : !(realm.isAdmin ||
+                      realm.type == 'community' && realm.myRole == 'moderator')
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
@@ -247,26 +252,27 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                       children: [
                         _RealmHeader(realm: realm),
                         const SizedBox(height: 16),
-                        _SectionTile(
-                          icon: Icons.tune,
-                          title: 'Profile Details',
-                          subtitle: realmFormFields(realm)
-                              .map((field) => _kFieldLabels[field] ?? field)
-                              .join(', '),
-                          onTap: () async {
-                            final updated =
-                                await Navigator.of(context).push<bool>(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    RealmDetailsScreen(realm: realm),
-                              ),
-                            );
-                            // Re-read rather than patching locally: the server
-                            // normalises a slug, so what you typed is not always
-                            // what it stored.
-                            if (updated == true) _load();
-                          },
-                        ),
+                        if (realm.isAdmin)
+                          _SectionTile(
+                            icon: Icons.tune,
+                            title: 'Profile Details',
+                            subtitle: realmFormFields(realm)
+                                .map((field) => _kFieldLabels[field] ?? field)
+                                .join(', '),
+                            onTap: () async {
+                              final updated =
+                                  await Navigator.of(context).push<bool>(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      RealmDetailsScreen(realm: realm),
+                                ),
+                              );
+                              // Re-read rather than patching locally: the server
+                              // normalises a slug, so what you typed is not always
+                              // what it stored.
+                              if (updated == true) _load();
+                            },
+                          ),
                         if (realmHasDashboard(realm))
                           _SectionTile(
                             icon: Icons.insights_outlined,
@@ -274,7 +280,7 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                             subtitle: 'Not available yet',
                             enabled: false,
                           ),
-                        if (realmHasMedia(realm))
+                        if (realm.isAdmin && realmHasMedia(realm))
                           _SectionTile(
                             icon: Icons.photo_library_outlined,
                             title: 'Media',
@@ -290,6 +296,15 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                               if (changed == true) _load();
                             },
                           ),
+                        if (realm.type == 'community')
+                          _SectionTile(
+                              icon: Icons.person_add_alt,
+                              title: 'Join requests',
+                              subtitle: 'Approve or decline pending requests',
+                              onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => CommunityRequestsView(
+                                          realmId: realm.id)))),
                         _SectionTile(
                           icon: Icons.group_outlined,
                           title: 'Members',
@@ -300,7 +315,7 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                               builder: (_) => RealmRosterScreen(
                                   realm: realm,
                                   members: true,
-                                  allowRemoval:
+                                  allowRemoval: realm.isAdmin &&
                                       realmAllowsMemberRemoval(realm)),
                             ),
                           ),
@@ -381,8 +396,19 @@ class _RealmHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                realm.name,
+              Text.rich(
+                TextSpan(
+                    children: realm.type == 'community'
+                        ? communityNameSpans(
+                            context,
+                            Community(
+                                realmId: realm.id,
+                                entityId: realm.entityId,
+                                name: realm.name,
+                                isVerified: realm.isVerified),
+                            style: TextStyle(
+                                color: p.text, fontWeight: FontWeight.w700))
+                        : [TextSpan(text: realm.name)]),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -440,21 +466,24 @@ class _SectionTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(CLRadii.md),
         ),
         clipBehavior: Clip.antiAlias,
-        child: ListTile(
-          enabled: enabled,
-          onTap: onTap,
-          leading: Icon(icon, size: 20, color: p.text2),
-          minLeadingWidth: 0,
-          title: Text(title,
-              style: TextStyle(
-                  fontSize: CLType.body,
-                  fontWeight: FontWeight.w700,
-                  color: p.text)),
-          subtitle: Text(subtitle,
-              style: TextStyle(fontSize: CLType.caption, color: p.text2)),
-          trailing: enabled
-              ? Icon(Icons.chevron_right, size: 18, color: p.text3)
-              : null,
+        child: Material(
+          type: MaterialType.transparency,
+          child: ListTile(
+            enabled: enabled,
+            onTap: onTap,
+            leading: Icon(icon, size: 20, color: p.text2),
+            minLeadingWidth: 0,
+            title: Text(title,
+                style: TextStyle(
+                    fontSize: CLType.body,
+                    fontWeight: FontWeight.w700,
+                    color: p.text)),
+            subtitle: Text(subtitle,
+                style: TextStyle(fontSize: CLType.caption, color: p.text2)),
+            trailing: enabled
+                ? Icon(Icons.chevron_right, size: 18, color: p.text3)
+                : null,
+          ),
         ),
       ),
     );

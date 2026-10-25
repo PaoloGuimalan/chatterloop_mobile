@@ -14,8 +14,11 @@
 //   post screen  PostCard(post: ..., onOpen: null) + PostComments below it
 
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
+import 'package:chatterloop_app/core/requests/community_api.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
@@ -99,6 +102,32 @@ class PostCard extends StatefulWidget {
 
 class _PostCardState extends State<PostCard> {
   bool _reactionBusy = false;
+  bool _communityUnavailable = false;
+  PostPreview? _validatedPost;
+  int _accessGeneration = 0;
+  Future<void> _communityChanged() async {
+    if (widget.post.community == null) {
+      _syncSharedPostFuture();
+      if (mounted) setState(() {});
+      return;
+    }
+    final generation = ++_accessGeneration;
+    final actor = appStore.state.userAuth.user.entityId;
+    setState(() {
+      _communityUnavailable = true;
+      _validatedPost = null;
+    });
+    final fresh = await FeedApi().getPostPreviewRequest(widget.post.postId);
+    if (!mounted ||
+        generation != _accessGeneration ||
+        actor != appStore.state.userAuth.user.entityId) {
+      return;
+    }
+    setState(() {
+      _validatedPost = fresh;
+      _communityUnavailable = fresh == null;
+    });
+  }
 
   Future<PostPreview?>? _sharedPostFuture;
   String? _sharedPostId;
@@ -107,6 +136,7 @@ class _PostCardState extends State<PostCard> {
   void initState() {
     super.initState();
     PostUpdates.instance.addListener(_postUpdated);
+    communityChanges.addListener(_communityChanged);
     _syncSharedPostFuture();
   }
 
@@ -117,12 +147,14 @@ class _PostCardState extends State<PostCard> {
   @override
   void dispose() {
     PostUpdates.instance.removeListener(_postUpdated);
+    communityChanges.removeListener(_communityChanged);
     super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.post != widget.post) _validatedPost = null;
 
     if (oldWidget.post.postId != widget.post.postId ||
         oldWidget.post.isShared != widget.post.isShared ||
@@ -146,21 +178,39 @@ class _PostCardState extends State<PostCard> {
     _sharedPostFuture = null;
   }
 
-  PostPreview get _post => PostUpdates.instance.resolve(widget.post);
+  PostPreview get _post =>
+      PostUpdates.instance.resolve(_validatedPost ?? widget.post);
 
   Future<void> _react() async {
     if (_reactionBusy) return;
-
-    final picked = await showReactionPicker(
-      context,
-      currentEmojiId: _post.entityReaction,
-    );
+    if (_post.community != null && !_post.community!.isMember) {
+      CLAlerts.show('Join this community to react.');
+      return;
+    }
+    final original = _post;
+    final actor = appStore.state.userAuth.user.entityId;
+    bool? identity;
+    final communityChoice = _post.community == null
+        ? null
+        : await showCommunityReactionPicker(context,
+            currentEmojiId: _post.entityReaction,
+            currentIsAnonymous: _post.entityReactionIsAnonymous);
+    if (!mounted) return;
+    final picked = _post.community == null
+        ? await showReactionPicker(context,
+            currentEmojiId: _post.entityReaction)
+        : communityChoice?.emoji;
+    identity = communityChoice?.isAnonymous;
+    final token = await ApiClient.instance.readToken();
+    if (actor != appStore.state.userAuth.user.entityId) return;
     if (picked == null || !mounted) return;
 
-    final method = reactionMethodFor(
-      currentEmojiId: _post.entityReaction,
-      tappedEmojiId: picked.emojiId,
-    );
+    final method = identity != null && _post.entityReaction != null
+        ? ReactionMethod.swap
+        : reactionMethodFor(
+            currentEmojiId: _post.entityReaction,
+            tappedEmojiId: picked.emojiId,
+          );
     final removing = method == ReactionMethod.remove;
 
     final optimistic = _post.copyWith(
@@ -173,25 +223,37 @@ class _PostCardState extends State<PostCard> {
       ),
       entityReaction: removing ? null : picked.emojiId,
       clearEntityReaction: removing,
+      entityReactionIsAnonymous: identity,
     );
 
     setState(() => _reactionBusy = true);
     widget.onChanged?.call(optimistic);
 
-    final ok = await NewsfeedApi().setPostReactionRequest(
+    final ok = await NewsfeedApi(authToken: token).setPostReactionRequest(
       postId: _post.postId,
       emojiId: picked.emojiId,
       method: method,
+      isAnonymous: identity,
     );
-    if (!mounted) return;
+    if (!mounted || actor != appStore.state.userAuth.user.entityId) return;
     setState(() => _reactionBusy = false);
 
     if (!ok) {
       // Roll back to exactly what was on screen before the tap.
-      widget.onChanged?.call(_post);
+      widget.onChanged?.call(original);
       return;
     }
 
+    if (original.community != null) {
+      final fresh = await FeedApi().getPostPreviewRequest(original.postId);
+      if (!mounted || actor != appStore.state.userAuth.user.entityId) return;
+      if (fresh == null) {
+        communityChanges.value++;
+      } else {
+        widget.onChanged?.call(fresh);
+      }
+      return;
+    }
     // Reconcile against the server once it has accepted: another viewer may
     // have reacted in the meantime, and the optimistic arithmetic only knew
     // about this device's change.
@@ -205,6 +267,10 @@ class _PostCardState extends State<PostCard> {
   /// webapp's SharePostButton does. "Send in message" reports its own outcome
   /// (post_send.dart); the feed repost is confirmed here as it always was.
   Future<void> _share() async {
+    if (_post.community?.isPrivate == true) {
+      CLAlerts.show('Only members of this community can open this post.');
+      return;
+    }
     final choice = await showShareOptionsSheet(context);
     if (!mounted || choice == null) return;
 
@@ -319,6 +385,12 @@ class _PostCardState extends State<PostCard> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
+    if (_communityUnavailable) {
+      return const Padding(
+          padding: EdgeInsets.all(14),
+          child: Text('Community post unavailable',
+              style: TextStyle(fontSize: CLType.body)));
+    }
     final post = _post;
     final privacyIcon = postPrivacyIcon(post.effectivePrivacyStatus);
 

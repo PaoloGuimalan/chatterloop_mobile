@@ -39,6 +39,7 @@ extension NotificationSectionSlug on NotificationSection {
 class NotificationSenderV2 {
   final String entityId;
   final String type;
+  final String? realmType;
   final String displayName;
   final String handle;
   final String? profile;
@@ -47,6 +48,7 @@ class NotificationSenderV2 {
   const NotificationSenderV2({
     required this.entityId,
     required this.type,
+    this.realmType,
     required this.displayName,
     required this.handle,
     this.profile,
@@ -57,6 +59,7 @@ class NotificationSenderV2 {
     return NotificationSenderV2(
       entityId: (json["entity_id"] ?? "").toString(),
       type: (json["type"] ?? "user").toString(),
+      realmType: json["realm_type"]?.toString(),
       displayName: (json["display_name"] ?? "").toString(),
       handle: (json["handle"] ?? "").toString(),
       profile: json["profile"]?.toString(),
@@ -442,7 +445,8 @@ class NotificationSectionData {
     final groups = rawGroups is List
         ? rawGroups
             .whereType<Map>()
-            .map((g) => NotificationGroup.fromJson(Map<String, dynamic>.from(g)))
+            .map(
+                (g) => NotificationGroup.fromJson(Map<String, dynamic>.from(g)))
             .where((g) => g.items.isNotEmpty)
             .toList()
         : rawItems is List

@@ -234,8 +234,8 @@ class _InviteCard extends StatelessWidget {
           Text(
             invite.sentence,
             textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: CLType.body, height: 1.45, color: p.text2),
+            style:
+                TextStyle(fontSize: CLType.body, height: 1.45, color: p.text2),
           ),
           const SizedBox(height: 18),
           if (invite.isPending)
@@ -264,9 +264,8 @@ class _InviteCard extends StatelessWidget {
                               : () => onOpenConference(conferenceUrl),
                         )
                       : CLBtn(
-                          label: answering == 'accepted'
-                              ? 'Accepting…'
-                              : 'Accept',
+                          label:
+                              answering == 'accepted' ? 'Accepting…' : 'Accept',
                           block: true,
                           onPressed: answering != null
                               ? null
@@ -296,8 +295,8 @@ class _InviteCard extends StatelessWidget {
                           'declined' => 'You declined this invite.',
                           _ => 'This invite was withdrawn.',
                         },
-                        style: TextStyle(
-                            fontSize: CLType.bodySm, color: p.text2),
+                        style:
+                            TextStyle(fontSize: CLType.bodySm, color: p.text2),
                       ),
                     ),
                   ],

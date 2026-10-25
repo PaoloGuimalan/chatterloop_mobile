@@ -60,6 +60,10 @@ bool isOwnProfileHandle(String handle) {
 }
 
 class NewsfeedApi {
+  final String? _authToken;
+  NewsfeedApi({String? authToken}) : _authToken = authToken;
+  Options? get _identityOptions =>
+      _authToken == null ? null : Options(extra: {'authToken': _authToken});
   final _dio = ApiClient.userService.dio;
   final _nodeDio = ApiClient.instance.dio;
   final _endpoints = Endpoints();
@@ -110,7 +114,9 @@ class NewsfeedApi {
           'emoji_id': emojiId,
           if (isAnonymous != null) 'is_anonymous': isAnonymous
         },
-        options: Options(method: _verb(method)),
+        options: Options(
+            method: _verb(method),
+            extra: {if (_authToken != null) 'authToken': _authToken}),
       ),
       failure: "We couldn't save that reaction.",
     );
@@ -131,7 +137,9 @@ class NewsfeedApi {
           'emoji_id': emojiId,
           if (isAnonymous != null) 'is_anonymous': isAnonymous
         },
-        options: Options(method: _verb(method)),
+        options: Options(
+            method: _verb(method),
+            extra: {if (_authToken != null) 'authToken': _authToken}),
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -249,11 +257,17 @@ class NewsfeedApi {
   Future<void> broadcastCommentTypingRequest({
     required String postId,
     String? parentId,
+    bool? isAnonymous,
   }) async {
     try {
       await _nodeDio.post(
         _endpoints.commentTypingBroadcast,
-        data: {'post_id': postId, 'parent_id': parentId},
+        options: _identityOptions,
+        data: {
+          'post_id': postId,
+          'parent_id': parentId,
+          if (isAnonymous != null) 'is_anonymous': isAnonymous
+        },
       );
     } catch (e) {
       // A missed typing ping is three missing dots, never a reason to
@@ -270,10 +284,12 @@ class NewsfeedApi {
     String? parentId,
     required String text,
     String? attachment,
+    bool? isAnonymous,
   }) {
     return reportedAction(
       () => _dio.post(
         _endpoints.newsfeedComments,
+        options: _identityOptions,
         data: {
           'post_id': postId,
           // Nulls are omitted rather than sent - mirrors web's
@@ -281,6 +297,7 @@ class NewsfeedApi {
           if (parentId != null) 'parent_id': parentId,
           'new_comment': text,
           if (attachment != null) 'new_attachment': attachment,
+          if (isAnonymous != null) 'is_anonymous': isAnonymous,
         },
       ),
       failure: "We couldn't post that comment.",
@@ -648,6 +665,8 @@ class NewsfeedApi {
     List<String> taggedEntityIds = const [],
     String privacy = "public",
     String? contentType,
+    String? communityEntityId,
+    bool? isAnonymous,
   }) {
     final hasMedia = media.isNotEmpty;
     final payload = {
@@ -668,11 +687,15 @@ class NewsfeedApi {
       },
       'privacy': {'status': privacy, 'users': []},
       'onfeed': 'feed',
+      if (communityEntityId != null) 'community_entity_id': communityEntityId,
+      if (communityEntityId != null && isAnonymous != null)
+        'is_anonymous': isAnonymous,
     };
 
     return reportedAction(
       () => _nodeDio.post(
         _endpoints.createPost,
+        options: _identityOptions,
         data: {'token': JwtCodec.sign(payload)},
       ),
       failure: "We couldn't create that post.",

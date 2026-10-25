@@ -38,13 +38,14 @@ class InvitesApi {
   /// A realm's invites still waiting for an answer. Empty when there are
   /// none - or when this account may not see them, which is not an error
   /// worth showing.
-  Future<List<RealmInvite>> pending(String realmId) async {
+  Future<List<RealmInvite>> pending(String realmId,
+      {String kind = 'invite'}) async {
     try {
       final response = await _dio.get(
         _endpoints.realmInvites,
         queryParameters: {
           'realm_id': realmId,
-          'kind': 'invite',
+          'kind': kind,
           'status': 'pending',
         },
       );

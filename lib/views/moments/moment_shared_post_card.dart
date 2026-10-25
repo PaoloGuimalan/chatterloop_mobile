@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/reusables/widgets/community_content_guard.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
@@ -87,6 +88,14 @@ class _MomentSharedPostCardState extends State<MomentSharedPostCard> {
 
   @override
   Widget build(BuildContext context) {
+    return CommunityContentGuard(
+      postId: widget.post.postId,
+      community: widget.post.community,
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final p = cl(context);
     final post = PostUpdates.instance.resolve(widget.post);
     final isReshare = post.isShared;

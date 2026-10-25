@@ -24,6 +24,10 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_comments.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
+import 'package:chatterloop_app/core/requests/community_api.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/core/utils/post_updates.dart';
+import 'dart:async';
 
 class PostPreviewScreen extends StatefulWidget {
   final String postId;
@@ -51,16 +55,37 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
 
   PostPreview? _post;
   bool _isLoading = true;
+  bool _anonymousComment = false;
+  int _generation = 0;
+  StreamSubscription? _identitySubscription;
+  late String _actor;
+  void _accessChanged() {
+    if (_post?.community != null) {
+      PostUpdates.instance.clear();
+      _load();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _actor = appStore.state.userAuth.user.entityId;
+    _identitySubscription = appStore.onChange.listen((_) {
+      final actor = appStore.state.userAuth.user.entityId;
+      if (actor != _actor) {
+        _actor = actor;
+        _load();
+      }
+    });
+    communityChanges.addListener(_accessChanged);
     _load();
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _identitySubscription?.cancel();
+    communityChanges.removeListener(_accessChanged);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _replyTarget.dispose();
@@ -79,8 +104,16 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
   }
 
   Future<void> _load() async {
+    final generation = ++_generation;
+    setState(() {
+      _post = null;
+      _isLoading = true;
+      _anonymousComment = false;
+      _replyTarget.value = null;
+      _typers.value = [];
+    });
     final result = await FeedApi().getPostPreviewRequest(widget.postId);
-    if (!mounted) return;
+    if (!mounted || generation != _generation) return;
     setState(() {
       _post = result;
       _isLoading = false;
@@ -189,6 +222,8 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                             PostComments(
                               key: _commentsKey,
                               postId: post.postId,
+                              community: post.community,
+                              commentAnonymously: _anonymousComment,
                               replyTarget: _replyTarget,
                               // This screen IS the post-in-full surface: one
                               // post the reader is sitting on, which is the
@@ -224,21 +259,49 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                     CommentTypingIndicator(typers: _typers),
                     // Rebuilds only the composer when the reply target changes,
                     // rather than the whole screen.
-                    ValueListenableBuilder<PostComment?>(
-                      valueListenable: _replyTarget,
-                      builder: (context, replyingTo, _) => CommentComposer(
-                        replyingToName: replyingTo?.author.displayName,
-                        // Pre-fills "@handle" so the person being replied to is
-                        // actually notified - null for your own comment, see
-                        // replyMentionHandleFor.
-                        mentionHandle: replyMentionHandleFor(replyingTo),
-                        onCancelReply: () => _replyTarget.value = null,
-                        onTyping: () =>
-                            _commentsKey.currentState?.broadcastTyping(),
-                        onSubmit: (text) async =>
-                            _commentsKey.currentState?.submitComment(text),
+                    if (post.community != null && post.community!.isMember)
+                      SwitchListTile(
+                          title: const Text('Comment anonymously',
+                              style: TextStyle(fontSize: CLType.label)),
+                          subtitle: Text(
+                              _anonymousComment
+                                  ? 'Anonymous member'
+                                  : 'Your current profile',
+                              style: TextStyle(
+                                  fontSize: CLType.caption, color: p.text2)),
+                          value: _anonymousComment,
+                          onChanged: (value) =>
+                              setState(() => _anonymousComment = value)),
+                    if (post.community == null || post.community!.isMember)
+                      ValueListenableBuilder<PostComment?>(
+                        valueListenable: _replyTarget,
+                        builder: (context, replyingTo, _) => CommentComposer(
+                          key: ValueKey(
+                              '${post.community?.entityId}:$_actor:$_anonymousComment'),
+                          community: post.community,
+                          isAnonymous: _anonymousComment,
+                          onSubmitAttachment: post.community == null
+                              ? null
+                              : (text, attachment, token) async =>
+                                  await _commentsKey.currentState
+                                      ?.submitComment(text,
+                                          attachment: attachment,
+                                          authToken: token) ??
+                                  false,
+                          replyingToName: replyingTo?.author.displayName,
+                          // Pre-fills "@handle" so the person being replied to is
+                          // actually notified - null for your own comment, see
+                          // replyMentionHandleFor.
+                          mentionHandle: replyMentionHandleFor(replyingTo),
+                          onCancelReply: () => _replyTarget.value = null,
+                          onTyping: () =>
+                              _commentsKey.currentState?.broadcastTyping(),
+                          onSubmit: (text) async {
+                            await _commentsKey.currentState
+                                ?.submitComment(text);
+                          },
+                        ),
                       ),
-                    ),
                   ],
                 ),
     );

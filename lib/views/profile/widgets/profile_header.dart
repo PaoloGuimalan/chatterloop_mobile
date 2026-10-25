@@ -316,6 +316,11 @@ class ProfileHeader extends StatelessWidget {
                   badgeSize: 18,
                   gap: 5,
                   isPage: type == "page"),
+              if (type == "community")
+                Padding(
+                    padding: const EdgeInsets.only(left: 5),
+                    child:
+                        Icon(Icons.groups_outlined, size: 17, color: p.text3)),
               if (isPrivate) ...[
                 const SizedBox(width: 5),
                 Icon(Icons.lock, size: 16, color: p.text2),
@@ -329,8 +334,9 @@ class ProfileHeader extends StatelessWidget {
               style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
         ],
         const SizedBox(height: 2),
-        Text("@$username",
-            style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
+        if (username.isNotEmpty)
+          Text("@$username",
+              style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
         if (actions != null) ...[
           const SizedBox(height: 16),
           actions!,

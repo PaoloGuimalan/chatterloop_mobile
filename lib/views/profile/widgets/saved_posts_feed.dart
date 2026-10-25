@@ -16,6 +16,7 @@
 // opens /post/<id> for the real thing - the same split webapp's View button
 // makes.
 
+import 'package:chatterloop_app/core/reusables/widgets/community_content_guard.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
@@ -223,9 +224,12 @@ class _SavedPostRow extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-      listenable: PostUpdates.instance,
-      builder: (context, _) => _build(context));
+  Widget build(BuildContext context) => CommunityContentGuard(
+      postId: item.postId,
+      community: item.community,
+      child: ListenableBuilder(
+          listenable: PostUpdates.instance,
+          builder: (context, _) => _build(context)));
 
   Widget _build(BuildContext context) {
     final p = cl(context);

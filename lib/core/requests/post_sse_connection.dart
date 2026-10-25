@@ -62,6 +62,10 @@ class PostActivityActor {
 
   static PostActivityActor? fromJson(dynamic raw) {
     if (raw is! Map) return null;
+    if (raw['is_anonymous'] == true || raw['type'] == 'anonymous') {
+      return const PostActivityActor(
+          entityId: 'anonymous', name: 'Anonymous member', type: 'anonymous');
+    }
     final id = raw['entity_id'];
     if (id == null) return null;
 
@@ -137,7 +141,12 @@ class PostActivityEvent {
         parentId: result['parent_id']?.toString(),
         target: _targetOf(result['target_type'] as String?),
         action: result['action'] as String?,
-        actor: PostActivityActor.fromJson(result['entity']),
+        actor: result['is_anonymous'] == true
+            ? const PostActivityActor(
+                entityId: 'anonymous',
+                name: 'Anonymous member',
+                type: 'anonymous')
+            : PostActivityActor.fromJson(result['entity']),
       );
     } catch (_) {
       // A frame we cannot parse is a frame we cannot act on. Dropping it costs

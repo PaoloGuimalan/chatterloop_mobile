@@ -17,6 +17,9 @@
 // empty.
 
 import 'dart:io';
+import 'package:chatterloop_app/core/requests/community_api.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 
 import 'package:chatterloop_app/core/design/rails.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -135,6 +138,8 @@ Future<bool> showCreatePostSheet(
   /// Pre-selected tag - the profile being visited. Null on your own profile
   /// and anywhere outside a profile.
   SearchResultUser? autoTag,
+  Community? community,
+  ProfileApi? profileApi,
 
   /// Opens straight into the media picker, like web's "Photo" button.
   bool withMedia = false,
@@ -159,6 +164,8 @@ Future<bool> showCreatePostSheet(
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
       child: _CreatePostSheet(
         autoTag: autoTag,
+        community: community,
+        profileApi: profileApi,
         // NOT forced on for the avatar/cover modes. Opening the system picker
         // the instant the sheet appears takes the decision away - you land in
         // the gallery before you have seen the sheet, and backing out of it
@@ -198,11 +205,15 @@ class PendingMedia {
 
 class _CreatePostSheet extends StatefulWidget {
   final SearchResultUser? autoTag;
+  final Community? community;
+  final ProfileApi? profileApi;
   final bool withMedia;
   final ComposerMode mode;
 
   const _CreatePostSheet({
     this.autoTag,
+    this.community,
+    this.profileApi,
     this.withMedia = false,
     this.mode = ComposerMode.post,
   });
@@ -220,6 +231,72 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   late String _privacy = defaultPostPrivacy();
 
   bool _posting = false;
+  late Community? _community = widget.community;
+  bool _anonymous = false;
+  final _actor = appStore.state.userAuth.user.entityId;
+  int _submissionEpoch = 0;
+  bool _accessBlocked = false;
+
+  bool _canSubmit(int epoch) =>
+      mounted &&
+      !_accessBlocked &&
+      epoch == _submissionEpoch &&
+      _actor == appStore.state.userAuth.user.entityId;
+
+  void _accessChanged() {
+    if (_community == null) return;
+    _submissionEpoch++;
+    setState(() {
+      _accessBlocked = true;
+      _posting = false;
+      _progress = '';
+    });
+  }
+
+  Future<void> _pickDestination() async {
+    if (_posting) return;
+    try {
+      final choices = <Community>[];
+      var page = 1;
+      while (true) {
+        final result =
+            await CommunityApi().discover(joined: true, page: page++);
+        choices.addAll(result.results.where((c) => c.isMember));
+        if (!result.hasNext) break;
+      }
+      if (!mounted || _actor != appStore.state.userAuth.user.entityId) return;
+      final result = await showModalBottomSheet<Community?>(
+          context: context,
+          builder: (context) => SafeArea(
+                  child: ListView(shrinkWrap: true, children: [
+                ListTile(
+                    title: const Text('Your timeline',
+                        style: TextStyle(fontSize: CLType.title)),
+                    onTap: () => Navigator.pop(
+                        context,
+                        const Community(
+                            realmId: '', entityId: '', name: 'Your timeline'))),
+                for (final choice in choices)
+                  ListTile(
+                      leading: const Icon(Icons.groups_outlined),
+                      title: Text(choice.name,
+                          style: const TextStyle(fontSize: CLType.title)),
+                      subtitle: Text(
+                          choice.isPrivate
+                              ? 'Private community'
+                              : 'Public community',
+                          style: const TextStyle(fontSize: CLType.caption)),
+                      onTap: () => Navigator.pop(context, choice))
+              ])));
+      if (!mounted || result == null) return;
+      setState(() {
+        _community = result.entityId.isEmpty ? null : result;
+        _anonymous = false;
+      });
+    } catch (_) {
+      _toast('Could not load your communities');
+    }
+  }
 
   /// What the progress line says while a post is going out. Uploads run one
   /// file at a time, so on a slow connection this is the difference between
@@ -229,6 +306,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   @override
   void initState() {
     super.initState();
+    communityChanges.addListener(_accessChanged);
     if (widget.withMedia) {
       // After the first frame: the picker is a platform channel, and firing it
       // during build races the sheet's own open animation.
@@ -238,6 +316,8 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
 
   @override
   void dispose() {
+    _submissionEpoch++;
+    communityChanges.removeListener(_accessChanged);
     _caption.dispose();
     super.dispose();
   }
@@ -303,7 +383,34 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
       _toast("Write a caption or add a photo first", type: CLAlertType.warning);
       return;
     }
-    if (_posting) return;
+    if (_posting || _accessBlocked) return;
+    final submissionEpoch = _submissionEpoch;
+    setState(() {
+      _posting = true;
+      _progress = 'Checking membership…';
+    });
+    if (_actor != appStore.state.userAuth.user.entityId) {
+      Navigator.of(context).pop(false);
+      return;
+    }
+    final token = await ApiClient.instance.readToken();
+    if (!_canSubmit(submissionEpoch)) return;
+    if (_community != null) {
+      try {
+        final current =
+            await CommunityApi(authToken: token).detail(_community!.realmId);
+        if (!_canSubmit(submissionEpoch)) return;
+        if (!current.isMember ||
+            _actor != appStore.state.userAuth.user.entityId) {
+          if (!mounted) return;
+          Navigator.of(context).pop(false);
+          return;
+        }
+      } catch (_) {
+        if (mounted) Navigator.of(context).pop(false);
+        return;
+      }
+    }
 
     setState(() {
       _posting = true;
@@ -316,15 +423,25 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
     // that's missing half its photos.
     final uploaded = <PostMediaReference>[];
     for (var i = 0; i < _media.length; i++) {
+      if (!_canSubmit(submissionEpoch)) return;
       final pending = _media[i];
       if (mounted) {
         setState(() => _progress = 'Uploading ${i + 1} of ${_media.length}…');
       }
-      final result = await ProfileApi().uploadMediaRequest(
+      final result =
+          await (widget.profileApi ?? ProfileApi()).uploadMediaRequest(
         pending.path,
         pending.mediaType,
         action: 'post',
+        authToken: token,
+        context: _community == null
+            ? null
+            : {
+                'community_entity_id': _community!.entityId,
+                'is_anonymous': _anonymous
+              },
       );
+      if (!_canSubmit(submissionEpoch)) return;
       if (result == null) {
         if (!mounted) return;
         setState(() {
@@ -341,10 +458,13 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
       ));
     }
 
-    if (mounted) setState(() => _progress = 'Posting…');
+    if (!_canSubmit(submissionEpoch)) return;
+    setState(() => _progress = 'Posting…');
 
-    final ok = await NewsfeedApi().createPostRequest(
+    final ok = await NewsfeedApi(authToken: token).createPostRequest(
       caption: caption,
+      communityEntityId: _community?.entityId,
+      isAnonymous: _community == null ? null : _anonymous,
       media: uploaded,
       // Deduped: the auto-tagged profile owner is in this list like any other
       // entity, and the picker can't add them twice, but the server takes the
@@ -412,6 +532,65 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (!widget.mode.isMedia) ...[
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(CLRadii.sm),
+                        onTap: _posting ? null : _pickDestination,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Row(children: [
+                            Icon(
+                                _community == null
+                                    ? Icons.home_outlined
+                                    : Icons.groups_outlined,
+                                size: 20,
+                                color: p.brand),
+                            const SizedBox(width: 10),
+                            Expanded(
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                  Text('Post in',
+                                      style: TextStyle(
+                                          fontSize: CLType.label,
+                                          color: p.text2)),
+                                  const SizedBox(height: 3),
+                                  Text(_community?.name ?? 'Your timeline',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: CLType.title,
+                                          color: p.text,
+                                          fontWeight: FontWeight.w600)),
+                                ])),
+                            const SizedBox(width: 8),
+                            Icon(Icons.expand_more, size: 20, color: p.text3),
+                          ]),
+                        ),
+                      ),
+                    ),
+                    if (_community != null) ...[
+                      SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Post anonymously',
+                              style: TextStyle(
+                                  fontSize: CLType.label, color: p.text)),
+                          subtitle: Text(
+                              _anonymous
+                                  ? 'Anonymous member'
+                                  : appStore
+                                      .state.userAuth.user.activeDisplayName,
+                              style: TextStyle(
+                                  fontSize: CLType.caption, color: p.text2)),
+                          value: _anonymous,
+                          onChanged: _posting
+                              ? null
+                              : (value) => setState(() => _anonymous = value)),
+                    ],
+                  ],
                   TextField(
                     controller: _caption,
                     minLines: 3,
@@ -528,7 +707,8 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                           Icon(Icons.add_photo_alternate_outlined,
                               size: 18, color: p.green),
                           const SizedBox(width: 6),
-                          Text(
+                          Expanded(
+                              child: Text(
                             widget.mode.isMedia
                                 ? (_media.isEmpty
                                     ? "Choose a photo"
@@ -541,7 +721,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                               fontWeight: FontWeight.w600,
                               color: p.green,
                             ),
-                          ),
+                          )),
                         ],
                       ),
                     ),
@@ -555,31 +735,46 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                       onChanged: (next) => setState(() => _tagged = next),
                     ),
                   const SizedBox(height: 10),
-                  Text(
-                    "Who can see this post?",
-                    style: TextStyle(fontSize: CLType.caption, color: p.text2),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final option in _kPrivacyOptions)
-                        CLChip(
-                          label: option.$2,
-                          icon: option.$3,
-                          active: _privacy == option.$1,
-                          onTap: _posting
-                              ? null
-                              : () => setState(() => _privacy = option.$1),
-                        ),
-                    ],
-                  ),
+                  if (_community != null)
+                    Text(
+                        _community!.isPrivate
+                            ? "Only members of this community can see this post."
+                            : "This post is visible in this public community.",
+                        style:
+                            TextStyle(fontSize: CLType.caption, color: p.text2))
+                  else ...[
+                    Text(
+                      "Who can see this post?",
+                      style:
+                          TextStyle(fontSize: CLType.caption, color: p.text2),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final option in _kPrivacyOptions)
+                          CLChip(
+                            label: option.$2,
+                            icon: option.$3,
+                            active: _privacy == option.$1,
+                            onTap: _posting
+                                ? null
+                                : () => setState(() => _privacy = option.$1),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
+          if (_accessBlocked)
+            const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                    'Community access changed. Reopen the composer to continue.')),
           if (_posting)
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -599,7 +794,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
               iconL: Icons.send,
               block: true,
               size: CLBtnSize.lg,
-              onPressed: _post,
+              onPressed: _accessBlocked ? null : _post,
             ),
         ],
       ),
@@ -729,6 +924,7 @@ class ProfileComposerCard extends StatelessWidget {
 
   /// Passed straight to the sheet: the visited profile, or null.
   final SearchResultUser? autoTag;
+  final Community? community;
 
   /// Fired after a post is created, so the feed below reloads.
   final VoidCallback onPosted;
@@ -745,6 +941,7 @@ class ProfileComposerCard extends StatelessWidget {
     this.avatarSrc,
     required this.placeholder,
     this.autoTag,
+    this.community,
     required this.onPosted,
     this.showMoment = false,
   });
@@ -758,6 +955,7 @@ class ProfileComposerCard extends StatelessWidget {
     required String placeholder,
     required VoidCallback onPosted,
     bool showMoment = false,
+    Community? community,
   }) {
     final user = appStore.state.userAuth.user;
     final acting = user.activeEntity;
@@ -769,6 +967,7 @@ class ProfileComposerCard extends StatelessWidget {
       placeholder: placeholder,
       onPosted: onPosted,
       showMoment: showMoment,
+      community: community,
     );
   }
 
@@ -817,6 +1016,7 @@ class ProfileComposerCard extends StatelessWidget {
     final created = await showCreatePostSheet(
       context,
       autoTag: autoTag,
+      community: community,
       withMedia: withMedia,
     );
     if (created) onPosted();

@@ -26,6 +26,7 @@ import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
 import 'package:chatterloop_app/views/moments/moment_archive.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/material.dart';
+import 'package:chatterloop_app/views/communities/community_profile_view.dart';
 import 'package:go_router/go_router.dart';
 
 class RealmProfileScreen extends StatefulWidget {
@@ -270,6 +271,9 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_realm?.type == 'community') {
+      return CommunityProfileView(id: _realm!.id);
+    }
     final p = cl(context);
     final realm = _realm;
 

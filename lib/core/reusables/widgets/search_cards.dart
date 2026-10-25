@@ -3,6 +3,7 @@
 // from the mockup (150px person cards, 176px realm cards with a 64px banner in
 // the rail; full-width variants in the "See all" lists).
 
+import 'package:chatterloop_app/core/reusables/widgets/community_content_guard.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
@@ -548,9 +549,12 @@ class SearchContentCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-      listenable: PostUpdates.instance,
-      builder: (context, _) => _build(context));
+  Widget build(BuildContext context) => CommunityContentGuard(
+      postId: post.postId,
+      community: post.community,
+      child: ListenableBuilder(
+          listenable: PostUpdates.instance,
+          builder: (context, _) => _build(context)));
 
   Widget _build(BuildContext context) {
     final p = cl(context);

@@ -12,6 +12,8 @@
 // count right.
 
 import 'dart:async';
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -85,6 +87,8 @@ class CommentTyper {
 /// the action bar mean "scroll down", not "open a thing".
 class PostComments extends StatefulWidget {
   final String postId;
+  final Community? community;
+  final bool commentAnonymously;
 
   /// Fires with the signed delta whenever a comment is added, so the owner can
   /// keep the post's own count in step without refetching the post.
@@ -134,6 +138,8 @@ class PostComments extends StatefulWidget {
   const PostComments({
     super.key,
     required this.postId,
+    this.community,
+    this.commentAnonymously = false,
     this.onCountChanged,
     this.onPostReaction,
     this.replyTarget,
@@ -393,6 +399,7 @@ class PostCommentsState extends State<PostComments> {
     NewsfeedApi().broadcastCommentTypingRequest(
       postId: widget.postId,
       parentId: _threadParentFor(_replyingTo)?.commentId,
+      isAnonymous: widget.community == null ? null : widget.commentAnonymously,
     );
   }
 
@@ -460,16 +467,27 @@ class PostCommentsState extends State<PostComments> {
   Future<void> _react(PostComment comment, {required bool isReply}) async {
     if (_reactionBusy.contains(comment.commentId)) return;
 
-    final picked = await showReactionPicker(
-      context,
-      currentEmojiId: comment.entityReaction,
-    );
+    final actor = appStore.state.userAuth.user.entityId;
+    final choice = widget.community == null
+        ? null
+        : await showCommunityReactionPicker(context,
+            currentEmojiId: comment.entityReaction,
+            currentIsAnonymous: comment.entityReactionIsAnonymous);
+    if (!mounted) return;
+    final picked = widget.community == null
+        ? await showReactionPicker(context,
+            currentEmojiId: comment.entityReaction)
+        : choice?.emoji;
+    final token = await ApiClient.instance.readToken();
+    if (actor != appStore.state.userAuth.user.entityId) return;
     if (picked == null || !mounted) return;
 
-    final method = reactionMethodFor(
-      currentEmojiId: comment.entityReaction,
-      tappedEmojiId: picked.emojiId,
-    );
+    final method = choice?.isAnonymous != null && comment.entityReaction != null
+        ? ReactionMethod.swap
+        : reactionMethodFor(
+            currentEmojiId: comment.entityReaction,
+            tappedEmojiId: picked.emojiId,
+          );
     final removing = method == ReactionMethod.remove;
 
     final updated = comment.copyWith(
@@ -481,6 +499,7 @@ class PostCommentsState extends State<PostComments> {
       ),
       entityReaction: removing ? null : picked.emojiId,
       clearEntityReaction: removing,
+      entityReactionIsAnonymous: choice?.isAnonymous,
     );
 
     setState(() {
@@ -488,10 +507,11 @@ class PostCommentsState extends State<PostComments> {
       _replaceComment(updated, isReply: isReply);
     });
 
-    final ok = await NewsfeedApi().setCommentReactionRequest(
+    final ok = await NewsfeedApi(authToken: token).setCommentReactionRequest(
       commentId: comment.commentId,
       emojiId: picked.emojiId,
       method: method,
+      isAnonymous: choice?.isAnonymous,
     );
     if (!mounted) return;
     setState(() {
@@ -500,6 +520,16 @@ class PostCommentsState extends State<PostComments> {
       // server never accepted.
       if (!ok) _replaceComment(comment, isReply: isReply);
     });
+    if (widget.community != null) {
+      if (isReply && comment.parentId != null) {
+        final parent = _comments
+            .where((row) => row.commentId == comment.parentId)
+            .firstOrNull;
+        if (parent != null) await _loadReplies(parent);
+      } else {
+        await _fetch(1);
+      }
+    }
   }
 
   /// Optimistic delete, mirroring webapp's DeleteCommentProcess.
@@ -592,17 +622,23 @@ class PostCommentsState extends State<PostComments> {
   }
 
   /// Called by the screen's docked composer.
-  Future<void> submitComment(String text) async {
+  Future<bool> submitComment(String text,
+      {String? attachment, String? authToken}) async {
+    final actor = _myEntityId;
+    final token = authToken ?? await ApiClient.instance.readToken();
+    if (!mounted || actor != _myEntityId) return false;
     final target = _threadParentFor(_replyingTo);
-    final ok = await NewsfeedApi().addCommentRequest(
+    final ok = await NewsfeedApi(authToken: token).addCommentRequest(
       postId: widget.postId,
       parentId: target?.commentId,
       text: text,
+      attachment: attachment,
+      isAnonymous: widget.community == null ? null : widget.commentAnonymously,
     );
-    if (!mounted) return;
+    if (!mounted || actor != _myEntityId) return false;
     if (!ok) {
       // Already reported by the request (reportedAction).
-      return;
+      return false;
     }
 
     widget.onCountChanged?.call(1);
@@ -617,6 +653,7 @@ class PostCommentsState extends State<PostComments> {
       await _loadReplies(target);
       if (mounted) setState(() => _expanded.add(target.commentId));
     }
+    return true;
   }
 
   @override
@@ -1226,6 +1263,10 @@ class CommentComposer extends StatefulWidget {
   ///
   /// Optional: a composer with no live stream behind it simply omits it.
   final VoidCallback? onTyping;
+  final Community? community;
+  final bool isAnonymous;
+  final Future<bool> Function(String text, String? attachment, String? token)?
+      onSubmitAttachment;
 
   const CommentComposer({
     super.key,
@@ -1234,6 +1275,9 @@ class CommentComposer extends StatefulWidget {
     required this.onCancelReply,
     required this.onSubmit,
     this.onTyping,
+    this.community,
+    this.isAnonymous = false,
+    this.onSubmitAttachment,
   });
 
   @override
@@ -1457,7 +1501,19 @@ class _CommentComposerState extends State<CommentComposer> {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
-    await widget.onSubmit(text);
+    final actor = appStore.state.userAuth.user.entityId;
+    final token = await ApiClient.instance.readToken();
+    if (!mounted || actor != appStore.state.userAuth.user.entityId) return;
+    if (widget.onSubmitAttachment != null) {
+      final sent = await widget.onSubmitAttachment!(text, null, token);
+      if (!mounted) return;
+      if (!sent) {
+        setState(() => _sending = false);
+        return;
+      }
+    } else {
+      await widget.onSubmit(text);
+    }
     if (!mounted) return;
     setState(() {
       _sending = false;

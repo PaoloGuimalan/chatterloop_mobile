@@ -46,8 +46,12 @@ bool realmAcceptsNewMembers(RealmProfile realm) {
 /// Whether picking people for this realm sends them an INVITE rather than
 /// adding them - every kind the server takes invites for that the app manages
 /// (a conference is managed on the web). Matches the webapp's Members tab.
-bool realmInvitesMembers(RealmProfile realm) =>
-    const {'group', 'server', 'page'}.contains(realmFormKind(realm));
+bool realmInvitesMembers(RealmProfile realm) => const {
+      'group',
+      'server',
+      'page',
+      'community'
+    }.contains(realmFormKind(realm));
 
 final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
@@ -225,7 +229,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
     setState(() {
       _results
         ..clear()
-        ..addAll(found);
+        ..addAll(found.where((person) => person.realmType != 'community'));
       _searching = false;
       _searched = true;
     });
@@ -334,8 +338,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(
-          title: Text(_invites ? 'Invite people' : 'Add members')),
+      appBar: AppBar(title: Text(_invites ? 'Invite people' : 'Add members')),
       body: Column(
         children: [
           Padding(
@@ -658,7 +661,9 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
             child: Row(
               children: [
                 CLAvatar(
-                  id: invite.targetEntity?.id ?? invite.targetEmail ?? invite.id,
+                  id: invite.targetEntity?.id ??
+                      invite.targetEmail ??
+                      invite.id,
                   name: invite.targetEntity?.name ?? invite.targetEmail,
                   src: invite.targetEntity?.profile,
                   kind: invite.targetEntity?.type,
@@ -682,8 +687,8 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
                       Text(
                           'Invited ${invite.purposeLabel}'
                           '${invite.targetEntity == null ? ' · by email' : ''}',
-                          style: TextStyle(
-                              fontSize: CLType.meta, color: p.text3)),
+                          style:
+                              TextStyle(fontSize: CLType.meta, color: p.text3)),
                     ],
                   ),
                 ),

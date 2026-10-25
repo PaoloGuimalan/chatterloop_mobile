@@ -65,7 +65,7 @@ class PostUpdates extends ChangeNotifier {
     notifyListeners();
   }
 
-  @visibleForTesting
+  /// Discard cached content after a destination loses access.
   void clear() {
     _patches.clear();
     notifyListeners();

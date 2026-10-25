@@ -7,6 +7,7 @@ import 'package:chatterloop_app/core/utils/content_validator.dart';
 import 'package:chatterloop_app/core/utils/device_token.dart';
 import 'package:chatterloop_app/core/utils/endpoints.dart';
 import 'package:chatterloop_app/core/requests/patched_sse_client.dart';
+import 'package:chatterloop_app/core/requests/community_api.dart';
 import 'package:chatterloop_app/core/utils/jwt_tools.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
 import 'package:event_bus/event_bus.dart';
@@ -69,6 +70,7 @@ class SseConnection {
     final appVersion = AppVersion.header;
 
     _subscription = PatchedSSEClient.subscribeToSSE(
+        onReconnect: () => communityChanges.value++,
         method: SSERequestType.GET,
         url: url,
         header: {

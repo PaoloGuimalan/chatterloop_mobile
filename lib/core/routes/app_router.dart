@@ -63,6 +63,9 @@ import 'package:chatterloop_app/views/user/user_menu_view.dart';
 import 'package:chatterloop_app/views/splash/welcome_view.dart';
 import 'package:chatterloop_app/views/switching/switching_view.dart';
 import 'package:flutter/foundation.dart';
+import 'package:chatterloop_app/views/communities/communities_view.dart';
+import 'package:chatterloop_app/views/communities/create_community_view.dart';
+import 'package:chatterloop_app/views/communities/community_profile_view.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -379,6 +382,16 @@ GoRouter buildAppRouter(AuthController authController) {
           // that branch's children - and it has none, which is a "page not
           // found" rather than a fallthrough to a same-named sibling. Same
           // trap '/server-browser' below exists to avoid.
+          GoRoute(
+              path: '/communities',
+              pageBuilder: (c, s) => _clPage(s, const CommunitiesView())),
+          GoRoute(
+              path: '/communities/create',
+              pageBuilder: (c, s) => _clPage(s, const CreateCommunityView())),
+          GoRoute(
+              path: '/communities/:id',
+              pageBuilder: (c, s) => _clPage(
+                  s, CommunityProfileView(id: s.pathParameters['id']!))),
           GoRoute(
               path: '/new-message',
               pageBuilder: (c, s) =>

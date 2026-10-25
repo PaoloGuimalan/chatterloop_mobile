@@ -252,6 +252,7 @@ class _UserMenuOverlayState extends State<_UserMenuOverlay> {
 
 class UserMenuContent extends StatelessWidget {
   final bool showApps;
+  final VoidCallback? onTapCommunities;
   final List<RealmSummary> realms;
   final bool isLoadingRealms;
   final VoidCallback onTapProfile;
@@ -266,6 +267,7 @@ class UserMenuContent extends StatelessWidget {
   const UserMenuContent({
     super.key,
     this.showApps = false,
+    this.onTapCommunities,
     required this.realms,
     required this.isLoadingRealms,
     required this.onTapProfile,
@@ -422,6 +424,17 @@ class UserMenuContent extends StatelessWidget {
                     ),
                   ),
               ],
+              _MenuRow(
+                  onTap: onTapCommunities ?? () => context.push('/communities'),
+                  child: Row(children: [
+                    Icon(Icons.groups_outlined, size: 18, color: p.text2),
+                    const SizedBox(width: 10),
+                    Text('Communities',
+                        style: TextStyle(
+                            color: p.text,
+                            fontSize: CLType.title,
+                            fontWeight: FontWeight.w600))
+                  ])),
               if (showApps) ...[
                 const SizedBox(height: 18),
                 UserAppShortcuts(

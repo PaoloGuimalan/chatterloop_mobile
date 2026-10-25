@@ -34,8 +34,9 @@ class InviteEntity {
 
   static InviteEntity? fromJson(Object? json) {
     if (json is! Map) return null;
-    final details =
-        json['details'] is Map ? Map<String, dynamic>.from(json['details']) : {};
+    final details = json['details'] is Map
+        ? Map<String, dynamic>.from(json['details'])
+        : {};
     final fullName = [details['first_name'], details['last_name']]
         .where((part) => part != null && part.toString().trim().isNotEmpty)
         .join(' ')
@@ -176,6 +177,8 @@ class RealmInvite {
     switch (realmType) {
       case 'group':
         return '/conversation/$realmId';
+      case 'community':
+        return '/communities/${Uri.encodeComponent(realmId)}';
       case 'server':
         return '/server/$realmId';
       case 'page':

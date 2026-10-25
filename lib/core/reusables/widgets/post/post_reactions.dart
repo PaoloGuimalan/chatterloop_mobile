@@ -18,6 +18,48 @@ import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
 
+class CommunityReactionChoice {
+  final Emoji emoji;
+
+  /// Null means preserve the stored mode when changing the emoji.
+  final bool? isAnonymous;
+  const CommunityReactionChoice(this.emoji, this.isAnonymous);
+  String get emojiId => emoji.emojiId;
+}
+
+Future<CommunityReactionChoice?> showCommunityReactionPicker(
+    BuildContext context,
+    {required String? currentEmojiId,
+    required bool? currentIsAnonymous}) {
+  var anonymous = currentIsAnonymous ?? false;
+  bool? deliberate;
+  return showModalBottomSheet<CommunityReactionChoice>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: cl(context).surface,
+      builder: (sheetContext) => StatefulBuilder(
+          builder: (context, update) => SafeArea(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                SwitchListTile(
+                    title: const Text('React anonymously',
+                        style: TextStyle(fontSize: CLType.label)),
+                    subtitle: Text(
+                        anonymous ? 'Anonymous member' : 'Your current profile',
+                        style: const TextStyle(fontSize: CLType.caption)),
+                    value: anonymous,
+                    onChanged: (value) => update(() {
+                          anonymous = value;
+                          deliberate = value;
+                        })),
+                ReactionPicker(
+                    currentEmojiId: currentEmojiId,
+                    onSelected: (emoji) => Navigator.pop(
+                        sheetContext,
+                        CommunityReactionChoice(emoji,
+                            currentEmojiId == null ? anonymous : deliberate))),
+              ]))));
+}
+
 /// Applies a reaction change to a tally list WITHOUT refetching.
 ///
 /// The server is authoritative and gets asked afterwards, but a reaction has

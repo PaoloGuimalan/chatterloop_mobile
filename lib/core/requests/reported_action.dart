@@ -10,6 +10,7 @@
 
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:dio/dio.dart';
+import 'package:chatterloop_app/core/requests/community_api.dart';
 
 /// Both backends' in-band refusal: `{"status": false}`, or Node's
 /// routes/messages `{"success": false}`.
@@ -56,6 +57,12 @@ Future<T?> reportedRequest<T>(
   try {
     response = await request();
   } catch (e) {
+    if (e is DioException &&
+        [403, 404].contains(e.response?.statusCode) &&
+        (e.requestOptions.path.contains('newsfeed') ||
+            e.requestOptions.path.contains('createpost'))) {
+      communityChanges.value++;
+    }
     CLAlerts.requestError(e, fallback: failure);
     return null;
   }

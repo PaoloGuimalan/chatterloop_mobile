@@ -65,7 +65,7 @@ class EntityApi {
       return results
           .whereType<Map>()
           .map((item) => RealmSummary.fromJson(Map<String, dynamic>.from(item)))
-          .where((realm) => realm.isAdmin)
+          .where((realm) => realm.isAdmin && realm.type == type)
           .toList();
     } catch (e) {
       if (kDebugMode) {

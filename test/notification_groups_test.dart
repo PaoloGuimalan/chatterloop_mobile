@@ -113,6 +113,29 @@ String _sentence(WidgetTester tester) => tester
     .firstWhere((t) => t.contains("reacted") || t.contains("following"));
 
 void main() {
+  testWidgets('community sender shows its marker beside verification',
+      (tester) async {
+    final sender = {
+      ..._sender('garden', 'Garden Club'),
+      'type': 'realm',
+      'realm_type': 'community',
+      'is_verified': true,
+    };
+    final notification = NotificationV2.fromJson(
+      _notification('post_comment', sender),
+    );
+    await tester.pumpWidget(_host(CLNotificationRow(
+      notification: notification,
+      busy: false,
+      onAccept: (_) {},
+      onDecline: (_) {},
+    )));
+
+    expect(find.byIcon(Icons.groups_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.verified), findsOneWidget);
+    expect(find.byIcon(Icons.flag_outlined), findsNothing);
+  });
+
   group('parsing', () {
     test('a grouped answer keeps its groups', () {
       final data = NotificationSectionData.fromJson({
@@ -157,8 +180,8 @@ void main() {
     });
 
     test('mapItems reaches the rows inside a group', () {
-      final read = _reactions().mapItems((n) => n.copyWith(isRead: true),
-          zeroUnread: true);
+      final read = _reactions()
+          .mapItems((n) => n.copyWith(isRead: true), zeroUnread: true);
       expect(read.unread, 0);
       expect(read.items.every((n) => n.isRead), isTrue);
     });

@@ -80,6 +80,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   bool get _viewerIsOwner => _realm.myRole == 'owner';
 
   bool _canActOn(RealmPerson person) {
+    if (_realm.type == 'community' && !_realm.isAdmin) return false;
     if (!widget.members) return true;
     if (_viewerIsOwner) return true;
     return person.role != 'admin' && person.role != 'owner';
@@ -347,7 +348,9 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
         actions: [
           // Members only, and not on a public channel or voice room, whose
           // membership follows the parent server (web's `addableMember`).
-          if (widget.members && realmAcceptsNewMembers(widget.realm))
+          if (widget.members &&
+              (widget.realm.type != 'community' || _realm.isAdmin) &&
+              realmAcceptsNewMembers(widget.realm))
             IconButton(
               // A group, server or page invites; a channel adds directly.
               tooltip: realmInvitesMembers(widget.realm)

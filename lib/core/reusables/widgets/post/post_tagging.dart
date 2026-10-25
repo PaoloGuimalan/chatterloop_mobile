@@ -38,9 +38,13 @@ List<InlineSpan> postDestinationSpans(
       TextSpan(
           text: tags.isEmpty ? ' posted in ' : ' · posted in ',
           style: baseStyle),
-      ...communityNameSpans(context, community,
-          style: baseStyle.copyWith(
-              fontWeight: FontWeight.w700, color: linkColor)),
+      TextSpan(
+          children: communityNameSpans(context, community,
+              style: baseStyle.copyWith(
+                  fontWeight: FontWeight.w700, color: linkColor)),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () => context.push(
+                '/communities/${Uri.encodeComponent(community.realmId)}')),
     ],
   ];
 }
@@ -216,7 +220,8 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
               children: [
                 Icon(Icons.person_add_alt, size: 17, color: p.brand),
                 const SizedBox(width: 6),
-                Text(
+                Expanded(
+                    child: Text(
                   widget.selected.isEmpty
                       ? "Tag people, pages or bots"
                       : "Tagged ${widget.selected.length}",
@@ -225,8 +230,7 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
                     fontWeight: FontWeight.w600,
                     color: p.brand,
                   ),
-                ),
-                const Spacer(),
+                )),
                 Icon(_open ? Icons.expand_less : Icons.expand_more,
                     size: 18, color: p.text3),
               ],

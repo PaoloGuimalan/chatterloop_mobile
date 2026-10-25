@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/requests/community_api.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -268,6 +269,11 @@ class SseEvents {
 
   Future<void> listen(SSEModel event, bool mainListener) async {
     switch (event.event) {
+      case 'community_access_changed':
+      case 'community_members_changed':
+      case 'community_requests_changed':
+        communityChanges.value++;
+        break;
       case "notifications":
         // Raised for anything that earns you a notification: reactions,
         // comments, comment reactions, tags, mentions, contact requests,
