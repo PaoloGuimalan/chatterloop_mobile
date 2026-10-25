@@ -5,6 +5,7 @@
 
 import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 
 /// One entry of the reaction palette (GET /api/newsfeed/emojis).
 ///
@@ -85,6 +86,10 @@ class PostMediaReference {
 /// mentions that author instead of nesting deeper, so a reply never has
 /// children of its own and this model needs no recursion.
 class PostComment {
+  final bool isAnonymous;
+  final bool? isOwner;
+  final Community? community;
+  final bool? entityReactionIsAnonymous;
   final String commentId;
 
   /// null for a top-level comment; the ancestor's id for a reply.
@@ -105,6 +110,10 @@ class PostComment {
   final LinkPreviewData? linkPreview;
 
   const PostComment({
+    this.isAnonymous = false,
+    this.isOwner,
+    this.community,
+    this.entityReactionIsAnonymous,
     required this.commentId,
     this.parentId,
     required this.text,
@@ -124,9 +133,16 @@ class PostComment {
     List<PostReactionCount>? reactions,
     String? entityReaction,
     bool clearEntityReaction = false,
+    bool? entityReactionIsAnonymous,
     int? replyCount,
   }) =>
       PostComment(
+        isAnonymous: isAnonymous,
+        isOwner: isOwner,
+        community: community,
+        entityReactionIsAnonymous: clearEntityReaction
+            ? null
+            : (entityReactionIsAnonymous ?? this.entityReactionIsAnonymous),
         commentId: commentId,
         parentId: parentId,
         text: text,
@@ -147,12 +163,20 @@ class PostComment {
     // parent_comment is the FK id; the serializer emits it flat.
     final parent = json["parent_comment"]?.toString();
     return PostComment(
+      isAnonymous: json['is_anonymous'] == true || json['entity'] == null,
+      isOwner: json['is_owner'] is bool ? json['is_owner'] : null,
+      community: Community.parse(json['community']),
+      entityReactionIsAnonymous: json['entity_reaction_is_anonymous'] is bool
+          ? json['entity_reaction_is_anonymous']
+          : null,
       commentId: (json["comment_id"] ?? "").toString(),
       parentId: (parent == null || parent.isEmpty) ? null : parent,
       text: (json["text"] ?? "").toString(),
       attachment: json["attachment"]?.toString(),
       createdAt: DateTime.tryParse((json["created_at"] ?? "").toString()),
-      author: PostPreviewAuthor.fromEntityJson(json["entity"]),
+      author: json['is_anonymous'] == true
+          ? PostPreviewAuthor.anonymous
+          : PostPreviewAuthor.fromEntityJson(json["entity"]),
       reactions: reactions is List
           ? reactions
               .whereType<Map>()

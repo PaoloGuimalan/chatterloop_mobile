@@ -65,7 +65,8 @@ class ModerationContent {
 
   factory ModerationContent.fromJson(Map<String, dynamic> json) {
     final references = json['references'];
-    final details = (json['entity'] is Map)
+    final anonymous = json['is_anonymous'] == true || json['entity'] == null;
+    final details = (!anonymous && json['entity'] is Map)
         ? (json['entity']['details'] as Map?) ?? const {}
         : const {};
 
@@ -89,9 +90,11 @@ class ModerationContent {
               .toList()
           : const [],
       flaggedReferenceId: json['flagged_reference_id'] as String?,
-      authorName: full.isEmpty
-          ? (details['name'] ?? details['username'])?.toString()
-          : full,
+      authorName: anonymous
+          ? 'Anonymous member'
+          : full.isEmpty
+              ? (details['name'] ?? details['username'])?.toString()
+              : full,
       authorHandle: (details['username'] ?? details['slug'])?.toString(),
       // Both sentinels the platform uses mean "no picture".
       authorPicture: (picture.isEmpty || picture == 'none' || picture == 'N/A')

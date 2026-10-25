@@ -48,7 +48,8 @@ ResponseBody _json(Object body, [int status = 200]) => ResponseBody.fromString(
     );
 
 Dio _dio(_FakeAdapter adapter) =>
-    Dio(BaseOptions(baseUrl: 'https://api.invalid'))..httpClientAdapter = adapter;
+    Dio(BaseOptions(baseUrl: 'https://api.invalid'))
+      ..httpClientAdapter = adapter;
 
 Future<String> _tempFile(String name, int size) async {
   final dir = await Directory.systemTemp.createTemp('uploader_test');
@@ -67,7 +68,10 @@ void main() {
     test('stored values override defaults; a broken entry keeps its own', () {
       UploadLimits.applyJson({
         'limits': {
-          'message': {'maxMB': 50, 'types': ['*']},
+          'message': {
+            'maxMB': 50,
+            'types': ['*']
+          },
           'avatar': {'maxMB': 'lots'},
         },
         'transfer': {'partSizeMB': 1, 'concurrency': 99},
@@ -118,11 +122,37 @@ void main() {
   });
 
   group('MediaUploader', () {
+    test(
+        'anonymous upload context retains boolean and destination on registration',
+        () async {
+      final path = await _tempFile('community.png', 100);
+      Map<String, dynamic>? asked;
+      final api = _FakeAdapter((request, body) {
+        asked = _bodyOf(request);
+        return _json({'message': 'Forbidden'}, 403);
+      });
+      await expectLater(
+          MediaUploader(api: _dio(api)).upload(
+              purpose: UploadFeature.postMedia,
+              paths: [
+                path
+              ],
+              context: {
+                'community_entity_id': 'community-entity-1',
+                'is_anonymous': true
+              }),
+          throwsA(isA<UploadFailure>()
+              .having((failure) => failure.status, 'status', 403)));
+      expect(asked!['context'],
+          {'community_entity_id': 'community-entity-1', 'is_anonymous': true});
+    });
     test('a small file: one signed PUT with its headers, then complete',
         () async {
       final path = await _tempFile('photo.png', 3000);
-      final storage = _FakeAdapter((o, body) =>
-          ResponseBody.fromString('', 200, headers: {'etag': ['"e1"']}));
+      final storage =
+          _FakeAdapter((o, body) => ResponseBody.fromString('', 200, headers: {
+                'etag': ['"e1"']
+              }));
       final api = _FakeAdapter((o, body) {
         if (o.path == '/media/uploads') {
           return _json({
@@ -155,8 +185,8 @@ void main() {
       });
 
       final progress = <double>[];
-      final result = await MediaUploader(api: _dio(api), storage: _dio(storage))
-          .upload(
+      final result =
+          await MediaUploader(api: _dio(api), storage: _dio(storage)).upload(
         purpose: UploadFeature.postMedia,
         paths: [path],
         onProgress: progress.add,
@@ -166,6 +196,7 @@ void main() {
       expect(result.single.kind, 'image');
       final asked = _bodyOf(api.requests.first.options);
       expect(asked['purpose'], 'post_media');
+      expect(asked.containsKey('context'), isFalse);
       expect((asked['files'] as List).single,
           {'name': 'photo.png', 'size': 3000, 'type': 'image/png'});
       final put = storage.requests.single;
@@ -181,7 +212,9 @@ void main() {
       final path = await _tempFile('clip.mp4', 25);
       final storage = _FakeAdapter((o, body) {
         final n = Uri.parse(o.uri.toString()).queryParameters['part'];
-        return ResponseBody.fromString('', 200, headers: {'etag': ['"etag$n"']});
+        return ResponseBody.fromString('', 200, headers: {
+          'etag': ['"etag$n"']
+        });
       });
       Map<String, dynamic>? completed;
       final api = _FakeAdapter((o, body) {
@@ -232,7 +265,8 @@ void main() {
       final bytes = await File(path).readAsBytes();
       for (final r in storage.requests) {
         final n = int.parse(r.options.uri.queryParameters['part']!);
-        expect(r.body, bytes.sublist((n - 1) * 10, (n - 1) * 10 + (n < 3 ? 10 : 5)));
+        expect(r.body,
+            bytes.sublist((n - 1) * 10, (n - 1) * 10 + (n < 3 ? 10 : 5)));
       }
       // The server joins the parts from storage's own list: no ETags sent.
       expect((completed!['uploads'] as List).single, {'uploadID': 'FILE_2'});
@@ -253,7 +287,8 @@ void main() {
           .where((e) => e.path.contains('cl_upload_'))
           .length;
 
-      final storage = _FakeAdapter((o, body) => ResponseBody.fromString('', 200));
+      final storage =
+          _FakeAdapter((o, body) => ResponseBody.fromString('', 200));
       final api = _FakeAdapter((o, body) {
         if (o.path == '/media/uploads') {
           return _json({
@@ -272,7 +307,15 @@ void main() {
         }
         return _json({
           'results': [
-            {'ok': true, 'uploadID': 'FILE_5', 'fileUrl': 'u', 'name': 'beach.jpg', 'mime': 'image/jpeg', 'kind': 'image', 'size': 1}
+            {
+              'ok': true,
+              'uploadID': 'FILE_5',
+              'fileUrl': 'u',
+              'name': 'beach.jpg',
+              'mime': 'image/jpeg',
+              'kind': 'image',
+              'size': 1
+            }
           ]
         });
       });
@@ -287,13 +330,18 @@ void main() {
       expect(exif.gpsIfd.isEmpty, isTrue);
       expect(exif.imageIfd.orientation, 6);
       // The size and name declared are the stripped copy's.
-      final asked = (_bodyOf(api.requests.first.options)['files'] as List).single;
+      final asked =
+          (_bodyOf(api.requests.first.options)['files'] as List).single;
       expect(asked['size'], sent.length);
       expect(asked['name'], 'beach.jpg');
       // The original is untouched; the copy is gone.
-      expect(img.decodeJpgExif(File(path).readAsBytesSync())!.gpsIfd.isEmpty, isFalse);
+      expect(img.decodeJpgExif(File(path).readAsBytesSync())!.gpsIfd.isEmpty,
+          isFalse);
       expect(
-        Directory.systemTemp.listSync().where((e) => e.path.contains('cl_upload_')).length,
+        Directory.systemTemp
+            .listSync()
+            .where((e) => e.path.contains('cl_upload_'))
+            .length,
         tempBefore,
       );
     });
@@ -306,7 +354,9 @@ void main() {
           refused = true;
           return ResponseBody.fromString('', 403);
         }
-        return ResponseBody.fromString('', 200, headers: {'etag': ['"ok"']});
+        return ResponseBody.fromString('', 200, headers: {
+          'etag': ['"ok"']
+        });
       });
       final api = _FakeAdapter((o, body) {
         if (o.path == '/media/uploads') {
@@ -319,8 +369,20 @@ void main() {
                 'mode': 'multipart',
                 'partSize': 10,
                 'parts': [
-                  {'n': 1, 'size': 10, 'method': 'PUT', 'url': 'https://storage.invalid/stale', 'headers': {}},
-                  {'n': 2, 'size': 10, 'method': 'PUT', 'url': 'https://storage.invalid/p2', 'headers': {}},
+                  {
+                    'n': 1,
+                    'size': 10,
+                    'method': 'PUT',
+                    'url': 'https://storage.invalid/stale',
+                    'headers': {}
+                  },
+                  {
+                    'n': 2,
+                    'size': 10,
+                    'method': 'PUT',
+                    'url': 'https://storage.invalid/p2',
+                    'headers': {}
+                  },
                 ],
               }
             ]
@@ -329,13 +391,27 @@ void main() {
         if (o.path.endsWith('/parts')) {
           return _json({
             'parts': [
-              {'n': 1, 'size': 10, 'method': 'PUT', 'url': 'https://storage.invalid/fresh', 'headers': {}}
+              {
+                'n': 1,
+                'size': 10,
+                'method': 'PUT',
+                'url': 'https://storage.invalid/fresh',
+                'headers': {}
+              }
             ]
           });
         }
         return _json({
           'results': [
-            {'ok': true, 'uploadID': 'FILE_3', 'fileUrl': 'u', 'name': 'clip.mp4', 'mime': 'video/mp4', 'kind': 'video', 'size': 20}
+            {
+              'ok': true,
+              'uploadID': 'FILE_3',
+              'fileUrl': 'u',
+              'name': 'clip.mp4',
+              'mime': 'video/mp4',
+              'kind': 'video',
+              'size': 20
+            }
           ]
         });
       });
@@ -344,14 +420,23 @@ void main() {
         purpose: UploadFeature.postMedia,
         paths: [path],
       );
-      expect(api.requests.any((r) => r.options.path == '/media/uploads/FILE_3/parts'), isTrue);
-      expect(storage.requests.any((r) => r.options.uri.toString().contains('fresh')), isTrue);
+      expect(
+          api.requests
+              .any((r) => r.options.path == '/media/uploads/FILE_3/parts'),
+          isTrue);
+      expect(
+          storage.requests
+              .any((r) => r.options.uri.toString().contains('fresh')),
+          isTrue);
     });
 
     test('too big is refused before anything is sent', () async {
       UploadLimits.applyJson({
         'limits': {
-          'avatar': {'maxMB': 0.001, 'types': ['image/*']}
+          'avatar': {
+            'maxMB': 0.001,
+            'types': ['image/*']
+          }
         }
       });
       final path = await _tempFile('big.png', 5000);
@@ -369,7 +454,8 @@ void main() {
     test('a failed upload is cancelled on the server and its progress cleared',
         () async {
       final path = await _tempFile('doc.pdf', 100);
-      final storage = _FakeAdapter((o, body) => ResponseBody.fromString('', 500));
+      final storage =
+          _FakeAdapter((o, body) => ResponseBody.fromString('', 500));
       final api = _FakeAdapter((o, body) => o.path == '/media/uploads'
           ? _json({
               'uploads': [
@@ -399,11 +485,13 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(
         api.requests.any((r) =>
-            r.options.method == 'DELETE' && r.options.path == '/media/uploads/FILE_4'),
+            r.options.method == 'DELETE' &&
+            r.options.path == '/media/uploads/FILE_4'),
         isTrue,
       );
       expect(UploadProgress.of('pending-1').value, isNull);
-      expect(_bodyOf(api.requests.first.options)['context'], {'conversationID': 'c1'});
+      expect(_bodyOf(api.requests.first.options)['context'],
+          {'conversationID': 'c1'});
     });
   });
 }

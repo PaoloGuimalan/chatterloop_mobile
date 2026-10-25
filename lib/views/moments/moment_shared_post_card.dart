@@ -123,6 +123,7 @@ class _MomentSharedPostCardState extends State<MomentSharedPostCard> {
                   id: post.author.entityId,
                   name: post.author.displayName,
                   src: post.author.profile,
+                  kind: post.author.type,
                   size: widget.nested ? 24 : 30),
               const SizedBox(width: 8),
               Expanded(

@@ -77,7 +77,8 @@ class UploadProgress {
 
   static void _set(String? key, double? fraction) {
     if (key == null) return;
-    final notifier = _byKey.putIfAbsent(key, () => ValueNotifier<double?>(null));
+    final notifier =
+        _byKey.putIfAbsent(key, () => ValueNotifier<double?>(null));
     notifier.value = fraction;
     if (fraction == null) _byKey.remove(key);
   }
@@ -149,7 +150,7 @@ class MediaUploader {
   Future<List<UploadedFile>> upload({
     required UploadFeature purpose,
     required List<String> paths,
-    Map<String, String>? context,
+    Map<String, dynamic>? context,
     List<String?> progressKeys = const [],
     List<String?> types = const [],
     void Function(double fraction)? onProgress,
@@ -191,7 +192,7 @@ class MediaUploader {
     required UploadFeature purpose,
     required List<String> paths,
     required List<String> mimes,
-    Map<String, String>? context,
+    Map<String, dynamic>? context,
     List<String?> progressKeys = const [],
     void Function(double fraction)? onProgress,
     CancelToken? cancelToken,
@@ -205,7 +206,8 @@ class MediaUploader {
         throw UploadFailure('Files here can be at most ${limit.label}', 413);
       }
       if (!limit.allows(mime)) {
-        throw const UploadFailure("This type of file can't be uploaded here", 415);
+        throw const UploadFailure(
+            "This type of file can't be uploaded here", 415);
       }
       sizes.add(size);
     }
@@ -233,20 +235,23 @@ class MediaUploader {
         i < progressKeys.length ? progressKeys[i] : null,
         sizes[i] == 0 ? 1 : sent[i] / sizes[i],
       );
-      if (total > 0) onProgress?.call(sent.fold<int>(0, (a, b) => a + b) / total);
+      if (total > 0) {
+        onProgress?.call(sent.fold<int>(0, (a, b) => a + b) / total);
+      }
     }
 
     try {
       final finished = await Future.wait([
         for (var i = 0; i < asked.length; i++)
-          _sendFile(asked[i], paths[i], sizes[i], (n) => tick(i, n), cancelToken)
+          _sendFile(
+                  asked[i], paths[i], sizes[i], (n) => tick(i, n), cancelToken)
               .then((_) => {'uploadID': asked[i]['uploadID']}),
       ]);
 
       final List results;
       try {
-        final response =
-            await _api.post('/media/uploads/complete', data: {'uploads': finished});
+        final response = await _api
+            .post('/media/uploads/complete', data: {'uploads': finished});
         results = response.data['results'] as List;
       } on DioException catch (e) {
         throw _failure(e, "Couldn't finish the upload");
@@ -259,7 +264,8 @@ class MediaUploader {
         );
       }
       return [
-        for (final r in results) UploadedFile.fromJson(Map<String, dynamic>.from(r)),
+        for (final r in results)
+          UploadedFile.fromJson(Map<String, dynamic>.from(r)),
       ];
     } catch (_) {
       // Drop what never finished, so it doesn't wait for the cleanup job.
@@ -301,7 +307,8 @@ class MediaUploader {
       await _storage.request(
         target['url'] as String,
         data: File(path).openRead(start, start + length),
-        options: Options(method: (target['method'] ?? 'PUT') as String, headers: headers),
+        options: Options(
+            method: (target['method'] ?? 'PUT') as String, headers: headers),
         onSendProgress: (sent, _) => onBytes(sent),
         cancelToken: cancelToken,
       );
@@ -340,7 +347,9 @@ class MediaUploader {
           }, cancelToken);
           return;
         } on UploadFailure catch (e) {
-          if (cancelToken?.isCancelled == true || attempt >= _partAttempts) rethrow;
+          if (cancelToken?.isCancelled == true || attempt >= _partAttempts) {
+            rethrow;
+          }
           loaded[n] = 0;
           report();
           // A refused link has usually expired: ask for a fresh one.

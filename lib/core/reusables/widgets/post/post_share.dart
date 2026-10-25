@@ -348,9 +348,10 @@ class _SharedPostPreviewRecursiveState
             children: [
               CLAvatar(
                 id: post.author.entityId,
-                entityId: post.author.entityId,
+                entityId: post.author.presenceEntityId,
                 name: post.author.displayName,
                 src: post.author.profile,
+                kind: post.author.type,
                 size: 30,
               ),
               const SizedBox(width: 8),
@@ -383,6 +384,14 @@ class _SharedPostPreviewRecursiveState
               ],
             ],
           ),
+          if (post.community != null) ...[
+            const SizedBox(height: 4),
+            Text.rich(TextSpan(
+                children: postDestinationSpans(context, post,
+                    baseStyle:
+                        TextStyle(fontSize: CLType.caption, color: p.text2),
+                    linkColor: p.text))),
+          ],
           if (post.caption.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(

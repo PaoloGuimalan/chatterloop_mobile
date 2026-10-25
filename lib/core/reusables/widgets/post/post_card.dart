@@ -311,7 +311,7 @@ class _PostCardState extends State<PostCard> {
 
   void _openAuthor() {
     final author = _post.author;
-    if (author.handle.isEmpty) return;
+    if (!author.canOpenProfile) return;
     context.push(
         author.isRealm ? '/realm/${author.handle}' : '/user/${author.handle}');
   }
@@ -320,7 +320,7 @@ class _PostCardState extends State<PostCard> {
   Widget build(BuildContext context) {
     final p = cl(context);
     final post = _post;
-    final privacyIcon = postPrivacyIcon(post.privacyStatus);
+    final privacyIcon = postPrivacyIcon(post.effectivePrivacyStatus);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,13 +330,14 @@ class _PostCardState extends State<PostCard> {
           child: Row(
             children: [
               InkWell(
-                onTap: _openAuthor,
+                onTap: post.author.canOpenProfile ? _openAuthor : null,
                 borderRadius: BorderRadius.circular(CLRadii.pill),
                 child: CLAvatar(
                   id: post.author.entityId,
-                  entityId: post.author.entityId,
+                  entityId: post.author.presenceEntityId,
                   name: post.author.displayName,
                   src: post.author.profile,
+                  kind: post.author.type,
                   size: 38,
                 ),
               ),
@@ -359,8 +360,9 @@ class _PostCardState extends State<PostCard> {
                             fontWeight: FontWeight.w700,
                             color: p.text,
                           ),
-                          recognizer: TapGestureRecognizer()
-                            ..onTap = _openAuthor,
+                          recognizer: post.author.canOpenProfile
+                              ? (TapGestureRecognizer()..onTap = _openAuthor)
+                              : null,
                         ),
                         if (post.author.isVerified)
                           const TextSpan(text: "\u00A0\u2060"),
@@ -386,9 +388,9 @@ class _PostCardState extends State<PostCard> {
                             style: TextStyle(
                                 fontSize: CLType.title, color: p.text2),
                           ),
-                        ...taggingSummarySpans(
+                        ...postDestinationSpans(
                           context,
-                          post.tagged,
+                          post,
                           baseStyle:
                               TextStyle(fontSize: CLType.title, color: p.text2),
                           linkColor: p.text,
@@ -402,7 +404,7 @@ class _PostCardState extends State<PostCard> {
                         privacyIcon != null) ...[
                       const SizedBox(height: 2),
                       GestureDetector(
-                        onTap: _openAuthor,
+                        onTap: post.author.canOpenProfile ? _openAuthor : null,
                         // Spans rather than a Row for the same reason the line
                         // above uses them: "2h ago + Archived" has to be able
                         // to wrap, and a Row can't.

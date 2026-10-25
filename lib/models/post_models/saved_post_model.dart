@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 // GET /api/newsfeed/saves - the bookmark list.
 //
 // Deliberately its own model rather than [PostPreview]: the rows come from
@@ -31,9 +32,16 @@ class SavedPostAuthor {
     this.profile,
   });
 
-  bool get isRealm => type != "user";
+  bool get isRealm => type == 'realm';
+  String? get presenceEntityId => entityId.isEmpty ? null : entityId;
+  static const anonymous = SavedPostAuthor(
+      entityId: '',
+      type: 'anonymous',
+      displayName: 'Anonymous member',
+      handle: '');
 
   factory SavedPostAuthor.fromJson(Map<String, dynamic> json) {
+    if (json.isEmpty) return anonymous;
     final details = json["details"] is Map
         ? Map<String, dynamic>.from(json["details"])
         : const <String, dynamic>{};
@@ -73,6 +81,9 @@ class SavedPost {
   /// The PostSave row's id, not the post's - this is what the list dedupes on,
   /// since the same post can only be saved once but the ids differ in kind.
   final String id;
+  final bool isAnonymous;
+  final bool? isOwner;
+  final Community? community;
   final String postId;
   final String caption;
 
@@ -83,6 +94,9 @@ class SavedPost {
 
   const SavedPost({
     required this.id,
+    this.isAnonymous = false,
+    this.isOwner,
+    this.community,
     required this.postId,
     required this.caption,
     required this.contentType,
@@ -96,15 +110,20 @@ class SavedPost {
         : const <String, dynamic>{};
     return SavedPost(
       id: (json["id"] ?? "").toString(),
+      isAnonymous: post['is_anonymous'] == true || post['entity'] == null,
+      isOwner: post['is_owner'] is bool ? post['is_owner'] : null,
+      community: Community.parse(post['community']),
       postId: (post["post_id"] ?? "").toString(),
       caption: (post["caption"] ?? "").toString(),
       contentType: (post["content_type"] ?? "").toString(),
       savedAt: DateTime.tryParse((json["saved_at"] ?? "").toString()),
-      author: SavedPostAuthor.fromJson(
-        post["entity"] is Map
-            ? Map<String, dynamic>.from(post["entity"])
-            : const <String, dynamic>{},
-      ),
+      author: post['is_anonymous'] == true
+          ? SavedPostAuthor.anonymous
+          : SavedPostAuthor.fromJson(
+              post["entity"] is Map
+                  ? Map<String, dynamic>.from(post["entity"])
+                  : const <String, dynamic>{},
+            ),
     );
   }
 

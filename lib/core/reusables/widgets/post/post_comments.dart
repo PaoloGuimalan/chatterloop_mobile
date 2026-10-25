@@ -843,11 +843,12 @@ class CommentRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: () => _openAuthor(context, author),
+          onTap:
+              author.canOpenProfile ? () => _openAuthor(context, author) : null,
           borderRadius: BorderRadius.circular(CLRadii.pill),
           child: CLAvatar(
             id: author.entityId,
-            entityId: author.entityId,
+            entityId: author.presenceEntityId,
             name: author.displayName,
             src: author.profile,
             size: avatarSize,
@@ -882,7 +883,9 @@ class CommentRow extends StatelessWidget {
                         // having nothing happen, when the photo beside it works,
                         // reads as broken.
                         InkWell(
-                          onTap: () => _openAuthor(context, author),
+                          onTap: author.canOpenProfile
+                              ? () => _openAuthor(context, author)
+                              : null,
                           child: Row(
                             children: [
                               Flexible(
@@ -985,7 +988,7 @@ class CommentRow extends StatelessWidget {
                 right: 0,
                 child: CommentOptionsButton(
                   commentId: comment.commentId,
-                  isOwn: isOwnComment(author),
+                  isOwn: isOwnComment(author, isOwner: comment.isOwner),
                   onDelete: onDelete,
                   busy: deleting,
                 ),
@@ -999,7 +1002,7 @@ class CommentRow extends StatelessWidget {
 }
 
 void _openAuthor(BuildContext context, PostPreviewAuthor author) {
-  if (author.handle.isEmpty) return;
+  if (!author.canOpenProfile) return;
   // Three kinds, three routes - a bot used to fall into the "not realm"
   // branch and push '/user/<handle>', a profile that does not resolve, so
   // tapping a bot's name in a comment silently went nowhere.
@@ -1061,7 +1064,7 @@ class _CommentAction extends StatelessWidget {
 /// the screen rather than living inside one thread.
 String? replyMentionHandleFor(PostComment? target) {
   if (target == null) return null;
-  if (isOwnComment(target.author)) return null;
+  if (isOwnComment(target.author, isOwner: target.isOwner)) return null;
   final handle = target.author.handle.trim();
   return handle.isEmpty ? null : handle;
 }
@@ -1472,104 +1475,105 @@ class _CommentComposerState extends State<CommentComposer> {
     // keyboard up.
     return TextFieldTapRegion(
       child: Container(
-      decoration: BoxDecoration(
-        color: p.surface,
-        border: Border(top: BorderSide(color: p.border)),
-      ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Above the field, not below: the field is docked to the bottom of
-            // the viewport with the keyboard under it, so there is nowhere
-            // below to put it.
-            if (_mentionStart >= 0 && _mentionSuggestions.isNotEmpty)
-              _MentionSuggestions(
-                suggestions: _mentionSuggestions,
-                onPick: _insertMention,
-              ),
-            if (replyingTo != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        "Replying to $replyingTo",
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: CLType.caption,
-                            fontWeight: FontWeight.w600,
-                            color: p.brand),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: widget.onCancelReply,
-                      child: Icon(Icons.close, size: 16, color: p.text3),
-                    ),
-                  ],
+        decoration: BoxDecoration(
+          color: p.surface,
+          border: Border(top: BorderSide(color: p.border)),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Above the field, not below: the field is docked to the bottom of
+              // the viewport with the keyboard under it, so there is nowhere
+              // below to put it.
+              if (_mentionStart >= 0 && _mentionSuggestions.isNotEmpty)
+                _MentionSuggestions(
+                  suggestions: _mentionSuggestions,
+                  onPick: _insertMention,
                 ),
-              ),
-            Row(
-              // Changed to center so the send button stays vertically aligned with the shorter input box
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Container(
-                    // 1. Reduced minHeight from 44 to 36
-                    constraints: const BoxConstraints(minHeight: 42),
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: p.input,
-                      borderRadius: BorderRadius.circular(CLRadii.md),
-                      border: Border.all(color: p.border2),
-                    ),
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      minLines: 1,
-                      maxLines: 5,
-                      textCapitalization: TextCapitalization.sentences,
-                      style: TextStyle(color: p.text, fontSize: CLType.title),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        // 2. Reduced vertical padding from 12 to 8 to shrink text field height
-                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                        isDense:
-                            true, // 3. Added to collapse unnecessary internal Material padding
-                        hintText: replyingTo == null
-                            ? "Write a comment…"
-                            : "Write a reply…",
-                        hintStyle: TextStyle(color: p.text3),
+              if (replyingTo != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "Replying to $replyingTo",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: CLType.caption,
+                              fontWeight: FontWeight.w600,
+                              color: p.brand),
+                        ),
                       ),
-                      onSubmitted: (_) => _send(),
-                    ),
+                      InkWell(
+                        onTap: widget.onCancelReply,
+                        child: Icon(Icons.close, size: 16, color: p.text3),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                _sending
-                    ? const Padding(
-                        // 4. Slightly reduced padding to match the shorter input height
-                        padding: EdgeInsets.all(7),
-                        child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2)),
-                      )
-                    : CLIconBtn(
-                        icon: Icons.send,
-                        color: p.brand,
-                        tooltip: "Post",
-                        onPressed: _send,
+              Row(
+                // Changed to center so the send button stays vertically aligned with the shorter input box
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Container(
+                      // 1. Reduced minHeight from 44 to 36
+                      constraints: const BoxConstraints(minHeight: 42),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: p.input,
+                        borderRadius: BorderRadius.circular(CLRadii.md),
+                        border: Border.all(color: p.border2),
                       ),
-              ],
-            ),
-          ],
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        minLines: 1,
+                        maxLines: 5,
+                        textCapitalization: TextCapitalization.sentences,
+                        style: TextStyle(color: p.text, fontSize: CLType.title),
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          // 2. Reduced vertical padding from 12 to 8 to shrink text field height
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 8),
+                          isDense:
+                              true, // 3. Added to collapse unnecessary internal Material padding
+                          hintText: replyingTo == null
+                              ? "Write a comment…"
+                              : "Write a reply…",
+                          hintStyle: TextStyle(color: p.text3),
+                        ),
+                        onSubmitted: (_) => _send(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _sending
+                      ? const Padding(
+                          // 4. Slightly reduced padding to match the shorter input height
+                          padding: EdgeInsets.all(7),
+                          child: SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2)),
+                        )
+                      : CLIconBtn(
+                          icon: Icons.send,
+                          color: p.brand,
+                          tooltip: "Post",
+                          onPressed: _send,
+                        ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }

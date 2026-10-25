@@ -230,6 +230,9 @@ class _SavedPostRow extends StatelessWidget {
   Widget _build(BuildContext context) {
     final p = cl(context);
     final display = SavedPost(
+      isAnonymous: item.isAnonymous,
+      isOwner: item.isOwner,
+      community: item.community,
       id: item.id,
       postId: item.postId,
       caption: PostUpdates.instance.captionFor(item.postId, item.caption),
@@ -258,7 +261,8 @@ class _SavedPostRow extends StatelessWidget {
             id: item.author.handle.isNotEmpty
                 ? item.author.handle
                 : item.author.entityId,
-            entityId: item.author.entityId,
+            entityId: item.author.presenceEntityId,
+            kind: item.author.type,
             name: item.author.displayName,
             src: item.author.profile,
             size: 44,

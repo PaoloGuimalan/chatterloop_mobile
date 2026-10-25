@@ -572,7 +572,8 @@ class SearchContentCard extends StatelessWidget {
                   children: [
                     CLAvatar(
                       id: post.author.entityId,
-                      entityId: post.author.entityId,
+                      entityId: post.author.presenceEntityId,
+                      kind: post.author.type,
                       name: post.author.displayName,
                       src: post.author.profile,
                       size: 28,

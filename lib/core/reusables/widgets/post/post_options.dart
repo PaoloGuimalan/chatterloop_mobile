@@ -43,13 +43,16 @@ String _actingEntityId() => appStore.state.userAuth.user.entityId;
 /// True when the acting entity authored [post].
 bool isOwnPost(PostPreview post) {
   final me = _actingEntityId();
-  return me.isNotEmpty && post.author.entityId == me;
+  return post.isOwnedBy(me);
 }
 
 /// True when the acting entity authored the comment.
-bool isOwnComment(PostPreviewAuthor commentAuthor) {
+bool isOwnComment(PostPreviewAuthor commentAuthor, {bool? isOwner}) {
   final me = _actingEntityId();
-  return me.isNotEmpty && commentAuthor.entityId == me;
+  return isOwner ??
+      (!commentAuthor.isAnonymous &&
+          me.isNotEmpty &&
+          commentAuthor.entityId == me);
 }
 
 /// True when the acting entity is tagged on [post] - a page's tag while
@@ -274,10 +277,11 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
               value: _PostOption.edit,
               icon: Icons.edit_outlined,
               label: 'Edit post'),
-          _item(p,
-              value: _PostOption.audience,
-              icon: Icons.people_outline,
-              label: 'Change audience'),
+          if (post.community == null)
+            _item(p,
+                value: _PostOption.audience,
+                icon: Icons.people_outline,
+                label: 'Change audience'),
           const PopupMenuDivider(height: 12),
         ],
         // Save is for everyone, but an archived post isn't a thing you can

@@ -16,6 +16,16 @@ import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+/// Existing anonymous owners must keep uploads scoped to their public projection.
+/// Ordinary user/page uploads keep the established request shape.
+Map<String, dynamic>? postEditUploadContext(PostPreview post) =>
+    post.isAnonymous && post.community != null
+        ? {
+            'community_entity_id': post.community!.entityId,
+            'is_anonymous': true
+          }
+        : null;
+
 /// Capture both the identity and its credential before the editor opens.
 /// Upload completion, retries and the PUT all keep that credential.
 class _PostEditIdentity {
@@ -165,7 +175,7 @@ class _PostEditScreenState extends State<PostEditScreen> {
   }
 
   bool _sameIdentity() =>
-      _identity.isCurrent && _identity.entityId == widget.post.author.entityId;
+      _identity.isCurrent && widget.post.isOwnedBy(_identity.entityId);
 
   Future<void> _save() async {
     if (_saving || !_dirty || !_nonempty) return;
@@ -191,7 +201,9 @@ class _PostEditScreenState extends State<PostEditScreen> {
       setState(() => _progress = 'Uploading ${i + 1} of ${_picked.length}…');
       final upload = await ProfileApi().uploadMediaRequest(
           item.path, item.mimeType ?? item.mediaType,
-          action: 'post', authToken: token);
+          action: 'post',
+          authToken: token,
+          context: postEditUploadContext(widget.post));
       if (!mounted) return;
       if (upload == null) {
         setState(() => _saving = false);
@@ -535,7 +547,7 @@ class _PostAudienceSheetState extends State<PostAudienceSheet> {
     if (_saving) return;
     setState(() => _saving = true);
     final token = await _identity.token;
-    final valid = _identity.entityId == widget.post.author.entityId &&
+    final valid = widget.post.isOwnedBy(_identity.entityId) &&
         await _identity.matches(token);
     if (!mounted) return;
     if (!valid) {

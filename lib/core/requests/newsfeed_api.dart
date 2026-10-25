@@ -100,11 +100,16 @@ class NewsfeedApi {
     required String postId,
     required String emojiId,
     required ReactionMethod method,
+    bool? isAnonymous,
   }) {
     return reportedAction(
       () => _dio.request(
         _endpoints.newsfeedReaction,
-        data: {'post_id': postId, 'emoji_id': emojiId},
+        data: {
+          'post_id': postId,
+          'emoji_id': emojiId,
+          if (isAnonymous != null) 'is_anonymous': isAnonymous
+        },
         options: Options(method: _verb(method)),
       ),
       failure: "We couldn't save that reaction.",
@@ -116,11 +121,16 @@ class NewsfeedApi {
     required String commentId,
     required String emojiId,
     required ReactionMethod method,
+    bool? isAnonymous,
   }) async {
     try {
       final response = await _dio.request(
         _endpoints.newsfeedCommentReaction,
-        data: {'comment_id': commentId, 'emoji_id': emojiId},
+        data: {
+          'comment_id': commentId,
+          'emoji_id': emojiId,
+          if (isAnonymous != null) 'is_anonymous': isAnonymous
+        },
         options: Options(method: _verb(method)),
       );
       return response.statusCode == 200;

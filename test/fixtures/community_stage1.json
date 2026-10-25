@@ -1,0 +1,198 @@
+{
+  "ordinary": {
+    "post_id": "post-1",
+    "caption": "A small idea for our next weekend project.",
+    "references": [],
+    "preview": [],
+    "score": {
+      "likes_count": 0,
+      "comments_count": 1
+    },
+    "entity": {
+      "id": "member-1",
+      "type": "user",
+      "details": {
+        "first_name": "Maya",
+        "last_name": "Reyes",
+        "username": "maya",
+        "is_badged": true
+      }
+    },
+    "is_shared": false,
+    "content_type": "text"
+  },
+  "named": {
+    "post_id": "named-1",
+    "caption": "Who is joining our next community project?",
+    "references": [],
+    "preview": [],
+    "score": {
+      "likes_count": 0,
+      "comments_count": 1
+    },
+    "entity": {
+      "id": "member-1",
+      "type": "user",
+      "details": {
+        "first_name": "Maya",
+        "last_name": "Reyes",
+        "username": "maya",
+        "is_badged": true
+      }
+    },
+    "is_shared": false,
+    "content_type": "text",
+    "community": {
+      "realm_id": "community-1",
+      "entity_id": "community-entity-1",
+      "name": "Weekend Makers",
+      "slug": "weekend-makers",
+      "profile": null,
+      "is_private": false,
+      "is_member": true,
+      "is_verified": true
+    },
+    "is_anonymous": false,
+    "is_owner": false
+  },
+  "anonymous_owner": {
+    "post_id": "anon-1",
+    "caption": "I have an idea to share with the group.",
+    "references": [],
+    "preview": [],
+    "score": {
+      "likes_count": 0,
+      "comments_count": 1
+    },
+    "entity": null,
+    "is_shared": false,
+    "content_type": "text",
+    "is_anonymous": true,
+    "is_owner": true,
+    "community": {
+      "realm_id": "community-1",
+      "entity_id": "community-entity-1",
+      "name": "Weekend Makers",
+      "slug": "weekend-makers",
+      "profile": null,
+      "is_private": false,
+      "is_member": true,
+      "is_verified": true
+    },
+    "entity_reaction": "like",
+    "entity_reaction_is_anonymous": true
+  },
+  "anonymous_visitor": {
+    "post_id": "private-anon-1",
+    "caption": "This private group has been a helpful place.",
+    "references": [],
+    "preview": [],
+    "score": {
+      "likes_count": 0,
+      "comments_count": 1
+    },
+    "entity": null,
+    "is_shared": false,
+    "content_type": "text",
+    "is_anonymous": true,
+    "is_owner": false,
+    "community": {
+      "realm_id": "community-1",
+      "entity_id": "community-entity-1",
+      "name": "Weekend Makers",
+      "slug": "weekend-makers",
+      "profile": null,
+      "is_private": true,
+      "is_member": false,
+      "is_verified": false
+    },
+    "entity_reaction": "like",
+    "entity_reaction_is_anonymous": true
+  },
+  "comment": {
+    "comment_id": "comment-1",
+    "text": "Happy to help with this!",
+    "entity": null,
+    "is_anonymous": true,
+    "is_owner": true,
+    "community": {
+      "realm_id": "community-1",
+      "entity_id": "community-entity-1",
+      "name": "Weekend Makers",
+      "slug": "weekend-makers",
+      "profile": null,
+      "is_private": false,
+      "is_member": true,
+      "is_verified": true
+    },
+    "reply_count": 0,
+    "preview": [],
+    "entity_reaction": null,
+    "entity_reaction_is_anonymous": null
+  },
+  "forbidden": {
+    "detail": "You do not have permission to perform this action."
+  },
+  "not_found": {
+    "detail": "Not found."
+  },
+  "page": {
+    "post_id": "page-1",
+    "caption": "Bring your ideas to the workshop.",
+    "references": [],
+    "preview": [],
+    "score": {
+      "likes_count": 0,
+      "comments_count": 1
+    },
+    "entity": {
+      "id": "page-entity",
+      "type": "realm",
+      "details": {
+        "first_name": "Makers Studio",
+        "username": "makers-studio",
+        "is_badged": true
+      }
+    },
+    "is_shared": false,
+    "content_type": "text"
+  },
+  "named_comment": {
+    "comment_id": "named-comment-1",
+    "text": "Happy to help with this!",
+    "entity": {
+      "id": "member-1",
+      "type": "user",
+      "details": {
+        "first_name": "Maya",
+        "last_name": "Reyes",
+        "username": "maya",
+        "is_badged": true
+      }
+    },
+    "is_anonymous": false,
+    "is_owner": false,
+    "community": {
+      "realm_id": "community-1",
+      "entity_id": "community-entity-1",
+      "name": "Weekend Makers",
+      "slug": "weekend-makers",
+      "profile": null,
+      "is_private": false,
+      "is_member": true,
+      "is_verified": true
+    },
+    "reply_count": 0,
+    "preview": [],
+    "entity_reaction": null,
+    "entity_reaction_is_anonymous": null
+  },
+  "private_join": {
+    "status": true,
+    "message": "Access request submitted",
+    "result": {
+      "status": "pending",
+      "kind": "request"
+    }
+  }
+}

@@ -26,7 +26,6 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_card.dart';
-import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/utils/view_cache.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
@@ -254,7 +253,8 @@ class _PostViewTrackerState extends State<PostViewTracker>
   /// Whether this row is tracked at all. Read per-event rather than cached,
   /// since the acting entity can change under a live row.
   bool get _untracked =>
-      !widget.trackOwnPosts && isActingEntity(widget.post.author.entityId);
+      !widget.trackOwnPosts &&
+      widget.post.isOwnedBy(appStore.state.userAuth.user.entityId);
 
   @override
   void initState() {

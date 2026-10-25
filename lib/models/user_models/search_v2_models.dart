@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 // Search v2 result shapes - the redesigned Explore screen's data. Mirror
 // webapp/src/reusables/vars/interfaces.ts (SearchPersonResult /
 // SearchRealmResult / SearchPostResult / SearchOverview), which in turn
@@ -246,8 +247,16 @@ class SearchPostAuthor {
   });
 
   bool get isRealm => type == "realm";
+  String? get presenceEntityId => entityId.isEmpty ? null : entityId;
+  static const anonymous = SearchPostAuthor(
+      entityId: '',
+      type: 'anonymous',
+      displayName: 'Anonymous member',
+      handle: '',
+      isVerified: false);
 
   factory SearchPostAuthor.fromJson(Map<String, dynamic> json) {
+    if (json.isEmpty) return anonymous;
     return SearchPostAuthor(
       entityId: (json["entity_id"] ?? "").toString(),
       type: (json["type"] ?? "user").toString(),
@@ -263,6 +272,9 @@ class SearchPostAuthor {
 /// counters). The real post is opened separately through
 /// `/api/newsfeed/preview/<post_id>/`, same as on web.
 class SearchPostResult {
+  final bool isAnonymous;
+  final bool? isOwner;
+  final Community? community;
   final String postId;
   final String caption;
   final String contentType;
@@ -273,6 +285,9 @@ class SearchPostResult {
   final SearchPostAuthor author;
 
   const SearchPostResult({
+    this.isAnonymous = false,
+    this.isOwner,
+    this.community,
     required this.postId,
     required this.caption,
     required this.contentType,
@@ -286,6 +301,9 @@ class SearchPostResult {
   factory SearchPostResult.fromJson(Map<String, dynamic> json) {
     final author = json["author"];
     return SearchPostResult(
+      isAnonymous: json['is_anonymous'] == true || json['author'] == null,
+      isOwner: json['is_owner'] is bool ? json['is_owner'] : null,
+      community: Community.parse(json['community']),
       postId: (json["post_id"] ?? "").toString(),
       caption: (json["caption"] ?? "").toString(),
       contentType: (json["content_type"] ?? "").toString(),
@@ -297,8 +315,10 @@ class SearchPostResult {
       commentsCount: json["comments_count"] is num
           ? (json["comments_count"] as num).toInt()
           : 0,
-      author: SearchPostAuthor.fromJson(
-          author is Map ? Map<String, dynamic>.from(author) : const {}),
+      author: json['is_anonymous'] == true
+          ? SearchPostAuthor.anonymous
+          : SearchPostAuthor.fromJson(
+              author is Map ? Map<String, dynamic>.from(author) : const {}),
     );
   }
 }

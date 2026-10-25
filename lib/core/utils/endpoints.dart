@@ -1,4 +1,6 @@
 class Endpoints {
+  String communities = '/api/realm/communities';
+
   /// Sent as the Origin header on every request - both backends 403/reject
   /// requests with no Origin at all (checked for presence only, not value).
   static const String origin = 'https://chatterloop.app';
@@ -282,7 +284,8 @@ class Endpoints {
   /// The command menu for one conversation: /m/conversation/:id/commands.
   /// Built server-side from whoever is in the room, so a bot leaving takes
   /// its commands with it.
-  String getConversationCommands = '/m/conversation/'; // :conversationID/commands
+  String getConversationCommands =
+      '/m/conversation/'; // :conversationID/commands
   String initConversation = '/u/initConversation/'; // :conversationID
   String getConversationInfo =
       '/m/conversationinfo/'; // :conversationID/:conversationType (single, group, server)

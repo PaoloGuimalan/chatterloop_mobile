@@ -9,6 +9,7 @@
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
+import 'package:chatterloop_app/core/reusables/widgets/community_name.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
@@ -18,6 +19,31 @@ import 'package:go_router/go_router.dart';
 
 /// How many tagged entities are named before the rest collapse.
 const int _kMaxNamedTags = 3;
+
+/// A destination is a PostTag, but is not an ordinary "is with" tag.
+List<InlineSpan> postDestinationSpans(
+  BuildContext context,
+  PostPreview post, {
+  required TextStyle baseStyle,
+  required Color linkColor,
+}) {
+  final community = post.community;
+  final tags = community == null
+      ? post.tagged
+      : post.tagged.where((tag) => tag.entityId != community.entityId).toList();
+  return [
+    ...taggingSummarySpans(context, tags,
+        baseStyle: baseStyle, linkColor: linkColor),
+    if (community != null) ...[
+      TextSpan(
+          text: tags.isEmpty ? ' posted in ' : ' · posted in ',
+          style: baseStyle),
+      ...communityNameSpans(context, community,
+          style: baseStyle.copyWith(
+              fontWeight: FontWeight.w700, color: linkColor)),
+    ],
+  ];
+}
 
 /// Inline spans for "is with A, B and C", to be appended after the author's
 /// name in the header's Text.rich.

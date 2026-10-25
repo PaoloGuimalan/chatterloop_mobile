@@ -227,24 +227,29 @@ class CLAvatar extends StatelessWidget {
         shape: cornerRadius == null ? BoxShape.circle : BoxShape.rectangle,
         borderRadius:
             cornerRadius == null ? null : BorderRadius.circular(cornerRadius!),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: grad,
-        ),
+        color: kind == 'anonymous' ? p.surface3 : null,
+        gradient: kind == 'anonymous'
+            ? null
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: grad,
+              ),
       ),
       alignment: Alignment.center,
-      child: kind == 'bot'
-          ? Icon(Icons.smart_toy, color: Colors.white, size: size * 0.56)
-          : Text(
-              _initials(name ?? ''),
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: size * 0.38,
-                letterSpacing: 0.4,
-              ),
-            ),
+      child: kind == 'anonymous'
+          ? Icon(Icons.person_outline, color: p.text3, size: size * 0.56)
+          : kind == 'bot'
+              ? Icon(Icons.smart_toy, color: Colors.white, size: size * 0.56)
+              : Text(
+                  _initials(name ?? ''),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: size * 0.38,
+                    letterSpacing: 0.4,
+                  ),
+                ),
     );
 
     final avatarDecodePx =

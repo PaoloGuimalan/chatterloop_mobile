@@ -7,6 +7,7 @@
 // Both exist because both endpoints exist.
 
 import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 
 /// Appends [incoming] to [into], dropping any post already in the list.
 /// Returns how many actually landed.
@@ -100,10 +101,20 @@ class PostPreviewAuthor {
   });
 
   bool get isRealm => type == "realm";
+  bool get isAnonymous => type == 'anonymous';
+  bool get canOpenProfile =>
+      !isAnonymous && entityId.isNotEmpty && handle.isNotEmpty;
+  String? get presenceEntityId => entityId.isEmpty ? null : entityId;
+  static const anonymous = PostPreviewAuthor(
+      entityId: '',
+      type: 'anonymous',
+      displayName: 'Anonymous member',
+      handle: '',
+      isVerified: false);
 
   factory PostPreviewAuthor.fromEntityJson(dynamic entity) {
-    final map =
-        entity is Map ? Map<String, dynamic>.from(entity) : <String, dynamic>{};
+    if (entity is! Map) return anonymous;
+    final map = Map<String, dynamic>.from(entity);
     final details = map["details"] is Map
         ? Map<String, dynamic>.from(map["details"])
         : const <String, dynamic>{};
@@ -168,13 +179,31 @@ class FeedReason {
     // which is also what makes a page or a bot render properly here.
     final entity = PostPreviewAuthor.fromEntityJson(raw["entity"]);
     // Nobody to name means nothing to say.
-    if (entity.displayName.isEmpty) return null;
+    if (entity.isAnonymous || entity.displayName.isEmpty) return null;
 
     return FeedReason(type: type, entity: entity);
   }
 }
 
 class PostPreview {
+  final bool isAnonymous;
+
+  /// Null on older ordinary payloads; explicit server ownership is authoritative.
+  final bool? isOwner;
+  final Community? community;
+
+  /// Viewer-only reaction identity, never inferred from the contribution.
+  final bool? entityReactionIsAnonymous;
+  bool isOwnedBy(String entityId) =>
+      isOwner ??
+      (!author.isAnonymous &&
+          entityId.isNotEmpty &&
+          author.entityId == entityId);
+  String get effectivePrivacyStatus => community == null
+      ? privacyStatus
+      : community!.isPrivate
+          ? 'private'
+          : 'public';
   final String postId;
   final String caption;
   final DateTime? datePosted;
@@ -232,6 +261,10 @@ class PostPreview {
   final FeedReason? feedReason;
 
   const PostPreview({
+    this.isAnonymous = false,
+    this.isOwner,
+    this.community,
+    this.entityReactionIsAnonymous,
     required this.postId,
     required this.caption,
     this.datePosted,
@@ -275,6 +308,7 @@ class PostPreview {
     List<PostReactionCount>? reactions,
     String? entityReaction,
     bool clearEntityReaction = false,
+    bool? entityReactionIsAnonymous,
     int? commentsCount,
     bool? isSaved,
     bool? isArchived,
@@ -283,6 +317,12 @@ class PostPreview {
     List<PostPreviewAuthor>? tagged,
   }) =>
       PostPreview(
+        isAnonymous: isAnonymous,
+        isOwner: isOwner,
+        community: community,
+        entityReactionIsAnonymous: clearEntityReaction
+            ? null
+            : (entityReactionIsAnonymous ?? this.entityReactionIsAnonymous),
         postId: postId,
         caption: caption ?? this.caption,
         datePosted: datePosted,
@@ -312,6 +352,18 @@ class PostPreview {
   /// The edit endpoint returns canonical content, not a full serializer.
   /// Keep author, engagement, tags, shared pointer and original date intact.
   PostPreview applyPatch(Map<String, dynamic> patch) => PostPreview(
+        isAnonymous:
+            patch['is_anonymous'] is bool ? patch['is_anonymous'] : isAnonymous,
+        isOwner: patch['is_owner'] is bool ? patch['is_owner'] : isOwner,
+        community: patch.containsKey('community')
+            ? Community.parse(patch['community'])
+            : community,
+        entityReactionIsAnonymous:
+            patch.containsKey('entity_reaction_is_anonymous')
+                ? patch['entity_reaction_is_anonymous'] is bool
+                    ? patch['entity_reaction_is_anonymous']
+                    : null
+                : entityReactionIsAnonymous,
         postId: postId,
         caption: patch['caption'] is String ? patch['caption'] : caption,
         datePosted: datePosted,
@@ -359,6 +411,12 @@ class PostPreview {
         : const <String, dynamic>{};
     final linkPreview = json["link_preview"];
     return PostPreview(
+      isAnonymous: json['is_anonymous'] == true || json['entity'] == null,
+      isOwner: json['is_owner'] is bool ? json['is_owner'] : null,
+      community: Community.parse(json['community']),
+      entityReactionIsAnonymous: json['entity_reaction_is_anonymous'] is bool
+          ? json['entity_reaction_is_anonymous']
+          : null,
       postId: (json["post_id"] ?? "").toString(),
       caption: (json["caption"] ?? "").toString(),
       datePosted: DateTime.tryParse((json["date_posted"] ?? "").toString()),
@@ -380,7 +438,9 @@ class PostPreview {
                   PostReactionCount.fromJson(Map<String, dynamic>.from(item)))
               .toList()
           : const [],
-      author: PostPreviewAuthor.fromEntityJson(json["entity"]),
+      author: json['is_anonymous'] == true
+          ? PostPreviewAuthor.anonymous
+          : PostPreviewAuthor.fromEntityJson(json["entity"]),
       likesCount: score["likes_count"] is num
           ? (score["likes_count"] as num).toInt()
           : 0,
@@ -401,7 +461,8 @@ class PostPreview {
               .map((item) => PostPreviewAuthor.fromEntityJson(
                   Map<String, dynamic>.from(item)["entity"]))
               // A tag whose entity didn't resolve has no name to render.
-              .where((entity) => entity.displayName.isNotEmpty)
+              .where((entity) =>
+                  !entity.isAnonymous && entity.displayName.isNotEmpty)
               .toList()
           : const [],
       linkPreview: linkPreview is Map

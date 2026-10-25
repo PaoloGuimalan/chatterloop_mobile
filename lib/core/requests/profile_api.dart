@@ -202,8 +202,7 @@ class ProfileApi {
         bool isAdmin,
         bool canCreateChannel,
         bool hasAccess
-      })>
-      getServerChannelsRequest(String serverId) async {
+      })> getServerChannelsRequest(String serverId) async {
     try {
       final response =
           await _mainDio.get('${_endpoints.initServerChannels}$serverId');
@@ -631,8 +630,7 @@ class ProfileApi {
 
   /// Drops one follower. Keyed by follow_id (the FOLLOW row), not by who they
   /// are - see RealmPerson.removalId.
-  Future<bool> removeRealmFollowerRequest(
-      String realmId, String followId) {
+  Future<bool> removeRealmFollowerRequest(String realmId, String followId) {
     // Any 2xx is a removal - DRF answers a delete with no body to inspect.
     return reportedAction(
       () => _userDio.delete(
@@ -704,6 +702,7 @@ class ProfileApi {
     String filePath,
     String mediaType, {
     required String action,
+    Map<String, dynamic>? context,
     String? authToken,
     void Function(double fraction)? onProgress,
   }) async {
@@ -713,6 +712,7 @@ class ProfileApi {
         api: authToken == null ? null : ApiClient.instance.forToken(authToken),
       ).upload(
         purpose: _actionFeature[action] ?? UploadFeature.postMedia,
+        context: context,
         paths: [filePath],
         // The caller's type beats the extension when it's a real one
         // ("video/mp4"); a bare kind ("image") falls back to the extension.
@@ -848,9 +848,8 @@ class ProfileApi {
       () async => answered = follow
           ? await _userDio.post(_endpoints.realmFollow, data: body)
           : await _userDio.delete(_endpoints.realmFollow, data: body),
-      failure: follow
-          ? "We couldn't follow them."
-          : "We couldn't unfollow them.",
+      failure:
+          follow ? "We couldn't follow them." : "We couldn't unfollow them.",
       accepted: (response) => response.data is Map
           ? response.data["status"] != false
           : response.statusCode == 200,
