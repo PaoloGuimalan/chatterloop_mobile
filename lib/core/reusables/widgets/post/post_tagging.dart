@@ -20,6 +20,20 @@ import 'package:go_router/go_router.dart';
 /// How many tagged entities are named before the rest collapse.
 const int _kMaxNamedTags = 3;
 
+class CommunityPostScope extends InheritedWidget {
+  final String entityId;
+  const CommunityPostScope(
+      {super.key, required this.entityId, required super.child});
+
+  static String? of(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<CommunityPostScope>()
+      ?.entityId;
+
+  @override
+  bool updateShouldNotify(CommunityPostScope oldWidget) =>
+      entityId != oldWidget.entityId;
+}
+
 /// A destination is a PostTag, but is not an ordinary "is with" tag.
 List<InlineSpan> postDestinationSpans(
   BuildContext context,
@@ -29,12 +43,17 @@ List<InlineSpan> postDestinationSpans(
 }) {
   final community = post.community;
   final tags = community == null
-      ? post.tagged
-      : post.tagged.where((tag) => tag.entityId != community.entityId).toList();
+      ? post.tagged.where((tag) => !tag.isCommunity).toList()
+      : post.tagged
+          .where(
+              (tag) => !tag.isCommunity && tag.entityId != community.entityId)
+          .toList();
   return [
     ...taggingSummarySpans(context, tags,
         baseStyle: baseStyle, linkColor: linkColor),
-    if (community != null) ...[
+    if (community != null &&
+        post.author.entityId != community.entityId &&
+        CommunityPostScope.of(context) != community.entityId) ...[
       TextSpan(
           text: tags.isEmpty ? ' posted in ' : ' · posted in ',
           style: baseStyle),

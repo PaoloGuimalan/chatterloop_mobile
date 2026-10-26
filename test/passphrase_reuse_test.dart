@@ -41,7 +41,7 @@ void main() {
     final previous = List<Interceptor>.from(dio.interceptors);
     RequestOptions? mutation;
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -153,7 +153,7 @@ void main() {
     final previous = List<Interceptor>.from(dio.interceptors);
     var mutations = 0;
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -199,7 +199,7 @@ void main() {
     final previous = List<Interceptor>.from(dio.interceptors);
     RequestOptions? mutation;
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -247,7 +247,7 @@ void main() {
     final previous = List<Interceptor>.from(dio.interceptors);
     RequestOptions? mutation;
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -322,7 +322,7 @@ void main() {
     final previous = List<Interceptor>.from(dio.interceptors);
     RequestOptions? historicalRead;
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -423,7 +423,7 @@ void main() {
     final dio = ApiClient.userService.dio;
     final previous = List<Interceptor>.from(dio.interceptors);
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -490,7 +490,7 @@ void main() {
     final dio = ApiClient.userService.dio;
     final previous = List<Interceptor>.from(dio.interceptors);
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -535,7 +535,7 @@ void main() {
     final dio = ApiClient.userService.dio;
     final previous = List<Interceptor>.from(dio.interceptors);
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -594,7 +594,7 @@ void main() {
     final previous = List<Interceptor>.from(dio.interceptors);
     Map<String, dynamic>? submitted;
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -693,7 +693,7 @@ void main() {
     final dio = ApiClient.userService.dio;
     final previous = List<Interceptor>.from(dio.interceptors);
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     final data = fixtureData();
     data['purposes'][0]['is_active'] = false;
@@ -750,7 +750,7 @@ void main() {
     final dio = ApiClient.userService.dio;
     final previous = List<Interceptor>.from(dio.interceptors);
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -783,7 +783,7 @@ void main() {
       final dio = ApiClient.userService.dio;
       final previous = List<Interceptor>.from(dio.interceptors);
       addTearDown(() => dio.interceptors
-        ..clear()
+        ..clear(keepImplyContentTypeInterceptor: false)
         ..addAll(previous));
       dio.interceptors
         ..clear()
@@ -829,7 +829,7 @@ void main() {
     final dio = ApiClient.userService.dio;
     final previous = List<Interceptor>.from(dio.interceptors);
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -856,7 +856,7 @@ void main() {
     final previous = List<Interceptor>.from(dio.interceptors);
     final requests = <RequestOptions>[];
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     DiarySession.instance.clear();
     dio.interceptors
@@ -1058,7 +1058,7 @@ void main() {
     final dio = ApiClient.userService.dio;
     final previous = List<Interceptor>.from(dio.interceptors);
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -1103,7 +1103,7 @@ void main() {
     final reads = <RequestOptions>[];
     RequestOptions? mutation;
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()
@@ -1166,7 +1166,7 @@ void main() {
     final previous = List<Interceptor>.from(dio.interceptors);
     Map<String, dynamic>? mutation;
     addTearDown(() => dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous));
     dio.interceptors
       ..clear()

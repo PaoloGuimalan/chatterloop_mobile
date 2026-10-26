@@ -86,8 +86,9 @@ void main() {
   });
   tearDown(() {
     ApiClient.userService.dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous);
+    expect(ApiClient.userService.dio.interceptors, orderedEquals(previous));
     DiarySession.instance.clear();
   });
 

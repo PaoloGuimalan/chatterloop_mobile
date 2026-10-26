@@ -8,6 +8,8 @@ import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/views/communities/communities_view.dart';
 import 'package:chatterloop_app/views/communities/community_widgets.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +17,58 @@ import 'package:flutter_test/flutter_test.dart';
 import 'community_flows_test.dart' show FixtureCommunityApi;
 
 void main() {
+  test('public nonmembers can interact while private nonmembers cannot', () {
+    expect(
+        const Community(realmId: 'club', entityId: 'club', name: 'Club')
+            .canInteract,
+        isTrue);
+    expect(
+        const Community(
+                realmId: 'club',
+                entityId: 'club',
+                name: 'Club',
+                isPrivate: true)
+            .canInteract,
+        isFalse);
+  });
+
+  testWidgets(
+      'Discover is the default directory and includes private communities',
+      (tester) async {
+    final api = FixtureCommunityApi();
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: CommunitiesView(api: api)));
+    await tester.pumpAndSettle();
+    expect(api.queries.first, 'false::1');
+    final tabs =
+        tester.widget<CommunitySectionTabs>(find.byType(CommunitySectionTabs));
+    expect(tabs.labels, ['Discover', 'Your communities']);
+    expect(tabs.selected, 0);
+    await tester.scrollUntilVisible(find.text('Load more'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Load more'));
+    await tester.pumpAndSettle();
+    expect(find.text('Request to join'), findsOneWidget);
+  });
+
+  testWidgets('destination is omitted inside the community profile',
+      (tester) async {
+    final fixtures = jsonDecode(
+        File('test/fixtures/community_stage1.json').readAsStringSync());
+    final post = PostPreview.fromJson(
+        Map<String, dynamic>.from(fixtures['anonymous_owner']));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: Scaffold(
+            body: CommunityPostScope(
+                entityId: post.community!.entityId,
+                child: PostCard(post: post)))));
+    expect(find.textContaining('posted in', findRichText: true), findsNothing);
+    expect(find.textContaining('Anonymous member', findRichText: true),
+        findsOneWidget);
+  });
+
   testWidgets(
       'community directory fits a shorter card without clipping actions',
       (tester) async {
@@ -29,7 +83,7 @@ void main() {
     await tester.pumpAndSettle();
     final card = tester.getRect(find.byType(CommunityDirectoryCard));
     expect(card.height, lessThanOrEqualTo(220));
-    expect(card.contains(tester.getCenter(find.text('Open'))), isTrue);
+    expect(card.contains(tester.getCenter(find.text('View'))), isTrue);
     expect(tester.takeException(), isNull);
   });
 

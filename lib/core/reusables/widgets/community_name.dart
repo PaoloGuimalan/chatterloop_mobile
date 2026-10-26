@@ -14,7 +14,8 @@ List<InlineSpan> communityNameSpans(
     // One inline placeholder moves the destination as a unit. The name gives
     // up width before either badge, including at larger accessibility sizes.
     WidgetSpan(
-      alignment: PlaceholderAlignment.middle,
+      alignment: PlaceholderAlignment.baseline,
+      baseline: TextBaseline.alphabetic,
       child: GestureDetector(
         onTap: onTap,
         child: Row(

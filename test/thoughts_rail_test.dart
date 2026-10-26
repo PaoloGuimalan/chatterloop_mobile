@@ -82,7 +82,8 @@ void main() {
   testWidgets('a thought is pinned over the top of its avatar', (tester) async {
     await _pumpRail(tester, _rail("ramen tonight?"));
 
-    final rail = tester.getRect(find.byType(SingleChildScrollView).first);
+    final rail = tester.getRect(find.descendant(
+        of: find.byType(ThoughtsRailView), matching: find.byType(ListView)));
     final bubbles = find.byType(ThoughtBubble);
     // Yours ("Share a thought") and Juan's. Marco has none.
     expect(bubbles, findsNWidgets(2));
@@ -108,12 +109,14 @@ void main() {
 
   testWidgets('a long thought grows down, not the rail up', (tester) async {
     await _pumpRail(tester, _rail("ok"));
-    final shortRail = tester.getRect(find.byType(SingleChildScrollView).first);
+    final shortRail = tester.getRect(find.descendant(
+        of: find.byType(ThoughtsRailView), matching: find.byType(ListView)));
     final shortBubble = tester.getRect(find.byType(ThoughtBubble).at(1));
 
     await _pumpRail(
         tester, _rail("Chasing dreams and drinking iced coffee all day long"));
-    final longRail = tester.getRect(find.byType(SingleChildScrollView).first);
+    final longRail = tester.getRect(find.descendant(
+        of: find.byType(ThoughtsRailView), matching: find.byType(ListView)));
     final longBubble = tester.getRect(find.byType(ThoughtBubble).at(1));
     final avatar = tester.getRect(find.byType(CLAvatar).at(1));
 

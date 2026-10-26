@@ -365,6 +365,7 @@ class ServerCard extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onJoin;
   final String? actionLabel;
+  final double coverHeight;
 
   const ServerCard({
     super.key,
@@ -374,6 +375,7 @@ class ServerCard extends StatelessWidget {
     required this.onOpen,
     required this.onJoin,
     this.actionLabel,
+    this.coverHeight = 44,
   });
 
   @override
@@ -407,7 +409,7 @@ class ServerCard extends StatelessWidget {
                 // id so a given server always looks the same - the same trick
                 // CLAvatar uses for a missing photo.
                 SizedBox(
-                  height: 44,
+                  height: coverHeight,
                   width: double.infinity,
                   child: cover != null
                       ? CLNetworkImage(src: cover, fit: BoxFit.cover)

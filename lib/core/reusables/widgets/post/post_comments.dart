@@ -682,6 +682,7 @@ class PostCommentsState extends State<PostComments> {
           )
         else
           ..._comments.map((comment) => _CommentTile(
+                canInteract: widget.community?.canInteract ?? true,
                 comment: comment,
                 busy: _reactionBusy.contains(comment.commentId),
                 deleting: _deleteBusy.contains(comment.commentId),
@@ -724,6 +725,7 @@ class PostCommentsState extends State<PostComments> {
 }
 
 class _CommentTile extends StatelessWidget {
+  final bool canInteract;
   final PostComment comment;
   final bool busy;
   final bool deleting;
@@ -750,6 +752,7 @@ class _CommentTile extends StatelessWidget {
   final ValueChanged<PostComment> onDeleteReply;
 
   const _CommentTile({
+    required this.canInteract,
     required this.comment,
     required this.busy,
     required this.deleting,
@@ -777,6 +780,7 @@ class _CommentTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CommentRow(
+            canInteract: canInteract,
             comment: comment,
             busy: busy,
             deleting: deleting,
@@ -813,6 +817,7 @@ class _CommentTile extends StatelessWidget {
               ...replies.map((reply) => Padding(
                     padding: const EdgeInsets.only(left: 44, top: 8),
                     child: CommentRow(
+                      canInteract: canInteract,
                       comment: reply,
                       busy: replyBusy.contains(reply.commentId),
                       deleting: deleteBusy.contains(reply.commentId),
@@ -845,6 +850,7 @@ class _CommentTile extends StatelessWidget {
 
 /// One comment or reply. Public so a feed row can reuse it for previews.
 class CommentRow extends StatelessWidget {
+  final bool canInteract;
   final PostComment comment;
   final bool busy;
 
@@ -860,6 +866,7 @@ class CommentRow extends StatelessWidget {
   final VoidCallback? onDelete;
 
   const CommentRow({
+    this.canInteract = true,
     super.key,
     required this.comment,
     required this.busy,
@@ -987,14 +994,15 @@ class CommentRow extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2, left: 12, right: 12),
                     child: Row(
                       children: [
-                        _CommentAction(
-                          label: comment.entityReaction != null
-                              ? "Reacted"
-                              : "React",
-                          active: comment.entityReaction != null,
-                          onTap: busy ? null : onReact,
-                        ),
-                        if (onReply != null) ...[
+                        if (canInteract)
+                          _CommentAction(
+                            label: comment.entityReaction != null
+                                ? "Reacted"
+                                : "React",
+                            active: comment.entityReaction != null,
+                            onTap: busy ? null : onReact,
+                          ),
+                        if (canInteract && onReply != null) ...[
                           const SizedBox(width: 12),
                           _CommentAction(label: "Reply", onTap: onReply),
                         ],

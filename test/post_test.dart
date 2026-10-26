@@ -568,12 +568,14 @@ void main() {
       expect(find.text('Delete'), findsOneWidget);
     });
 
-    testWidgets('anyone else gets save only', (tester) async {
+    testWidgets('a visitor gets save and report without author controls',
+        (tester) async {
       actAs('somebody-else');
       await pump(tester, PostCard(post: _post()));
       await openMenu(tester);
 
       expect(find.text('Save'), findsOneWidget);
+      expect(find.text('Report'), findsOneWidget);
       expect(find.text('Archive'), findsNothing);
       expect(find.text('Delete'), findsNothing);
     });
@@ -591,7 +593,8 @@ void main() {
       // Saving is a bookmark for something in a feed; an archived post is in
       // nobody's.
       actAs(_author.entityId);
-      await pump(tester, PostCard(post: _post(archived: true)));
+      await pump(
+          tester, PostCard(post: _post(archived: true), showEngagement: false));
       await openMenu(tester);
 
       expect(find.text('Save'), findsNothing);
@@ -600,23 +603,31 @@ void main() {
       expect(find.text('Delete'), findsOneWidget);
     });
 
-    testWidgets("a stranger's archived post has no menu button",
+    testWidgets("a visitor can report an archived post without changing it",
         (tester) async {
-      // Nothing left to offer - so no ⋯ rather than one that opens empty.
       actAs('somebody-else');
       await pump(tester, PostCard(post: _post(archived: true)));
-      expect(find.byIcon(Icons.more_horiz), findsNothing);
+      await openMenu(tester);
+
+      expect(find.text('Report'), findsOneWidget);
+      expect(find.text('Save'), findsNothing);
+      expect(find.text('Unsave'), findsNothing);
+      expect(find.text('Unarchive'), findsNothing);
+      expect(find.text('Delete'), findsNothing);
     });
 
     testWidgets('a nested shared post carries no options', (tester) async {
-      // showEngagement false is the shared-post recursion mode: the embedded
-      // original is a quotation, and it can be opened in its own right.
+      // Nested cards hide both controls. Archived cards hide engagement while
+      // retaining their options, so these flags are intentionally separate.
       actAs(_author.entityId);
-      await pump(tester, PostCard(post: _post(), showEngagement: false));
+      await pump(tester,
+          PostCard(post: _post(), showEngagement: false, showOptions: false));
       expect(find.byIcon(Icons.more_horiz), findsNothing);
     });
 
-    testWidgets('a comment ⋯ appears only on your own', (tester) async {
+    testWidgets('comment options allow deleting your own and reporting others',
+        (tester) async {
+      var deleted = 0;
       final mine = PostComment(
         commentId: 'c1',
         text: 'Mine',
@@ -629,16 +640,32 @@ void main() {
       actAs(_author.entityId);
       await pump(
         tester,
-        CommentRow(comment: mine, busy: false, onReact: () {}, onDelete: () {}),
+        CommentRow(
+            comment: mine,
+            busy: false,
+            onReact: () {},
+            onDelete: () => deleted++),
       );
-      expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+      await openMenu(tester);
+      expect(find.text('Delete'), findsOneWidget);
+      expect(find.text('Report'), findsNothing);
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(deleted, 1);
 
       actAs('somebody-else');
       await pump(
         tester,
-        CommentRow(comment: mine, busy: false, onReact: () {}, onDelete: () {}),
+        CommentRow(
+            comment: mine,
+            busy: false,
+            onReact: () {},
+            onDelete: () => deleted++),
       );
-      expect(find.byIcon(Icons.more_horiz), findsNothing);
+      await openMenu(tester);
+      expect(find.text('Report'), findsOneWidget);
+      expect(find.text('Delete'), findsNothing);
+      expect(deleted, 1);
     });
 
     // Writing on someone's profile is a post of YOUR OWN that tags them -
@@ -676,7 +703,7 @@ void main() {
         actAs('me');
         await openComposer(tester);
 
-        expect(find.text("Tag people or pages"), findsOneWidget);
+        expect(find.text("Tag people, pages or bots"), findsOneWidget);
         expect(find.text("Tagged 1"), findsNothing);
       });
 
@@ -799,7 +826,7 @@ void main() {
 
           await tester.tap(find.text("Publish a post"));
           await tester.pumpAndSettle();
-          expect(find.text("Tag people or pages"), findsOneWidget);
+          expect(find.text("Tag people, pages or bots"), findsOneWidget);
           expect(find.text("Tagged 1"), findsNothing);
         });
       });

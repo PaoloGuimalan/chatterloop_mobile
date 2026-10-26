@@ -56,10 +56,10 @@ void main() {
   });
   tearDown(() {
     ApiClient.instance.dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(nodeInterceptors);
     ApiClient.userService.dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(userInterceptors);
   });
   Future<GoRouter> mount(WidgetTester tester) async {

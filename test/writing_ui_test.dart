@@ -158,9 +158,12 @@ void main() {
   });
   tearDown(() {
     api.dio.close();
+    // clear() otherwise retains Dio's default interceptor and doubles it
+    // every time the saved interceptor snapshot is restored.
     ApiClient.userService.dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous);
+    expect(ApiClient.userService.dio.interceptors, orderedEquals(previous));
   });
 
   Future<void> show(WidgetTester tester, Widget screen, Brightness brightness,

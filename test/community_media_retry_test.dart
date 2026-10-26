@@ -24,7 +24,7 @@ void main() {
       ));
     }));
     addTearDown(() {
-      dio.interceptors.clear();
+      dio.interceptors.clear(keepImplyContentTypeInterceptor: false);
       dio.interceptors.addAll(previous);
     });
 

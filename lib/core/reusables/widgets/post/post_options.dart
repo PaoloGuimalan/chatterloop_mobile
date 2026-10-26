@@ -201,7 +201,12 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (_) => _EditTagsSheet(
         postId: widget.post.postId,
-        tagged: widget.post.tagged,
+        destinationEntityId: widget.post.community?.entityId,
+        tagged: widget.post.tagged
+            .where((tag) =>
+                !tag.isCommunity &&
+                tag.entityId != widget.post.community?.entityId)
+            .toList(),
         // widget.post read at call time: the post underneath has already
         // been redrawn by the previous removal.
         onChanged: (remaining) {
@@ -300,7 +305,9 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
             icon: Icons.label_off_outlined,
             label: "Remove tag",
           ),
-        if (mine && post.tagged.isNotEmpty)
+        if (mine &&
+            post.tagged.any((tag) =>
+                !tag.isCommunity && tag.entityId != post.community?.entityId))
           _item(
             p,
             value: _PostOption.editTags,
@@ -368,11 +375,13 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
 /// closes itself once nobody is left to list.
 class _EditTagsSheet extends StatefulWidget {
   final String postId;
+  final String? destinationEntityId;
   final List<PostPreviewAuthor> tagged;
   final ValueChanged<List<PostPreviewAuthor>> onChanged;
 
   const _EditTagsSheet({
     required this.postId,
+    this.destinationEntityId,
     required this.tagged,
     required this.onChanged,
   });
@@ -396,11 +405,15 @@ class _EditTagsSheetState extends State<_EditTagsSheet> {
     setState(() => _removingId = null);
     if (remaining == null) return; // Already reported by the request.
     widget.onChanged(remaining);
-    if (remaining.isEmpty) {
+    if (remaining.every((tag) =>
+        tag.isCommunity || tag.entityId == widget.destinationEntityId)) {
       Navigator.of(context).pop();
       return;
     }
-    setState(() => _tagged = remaining);
+    setState(() => _tagged = remaining
+        .where((tag) =>
+            !tag.isCommunity && tag.entityId != widget.destinationEntityId)
+        .toList());
   }
 
   @override
@@ -416,7 +429,7 @@ class _EditTagsSheetState extends State<_EditTagsSheet> {
           Row(children: [
             Icon(Icons.people_outline, color: p.text, size: 20),
             const SizedBox(width: 8),
-            Text("Tagged people",
+            Text("Tagged entities",
                 style: TextStyle(
                     fontSize: CLType.sectionTitle,
                     fontWeight: FontWeight.w700,

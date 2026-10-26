@@ -57,7 +57,7 @@ void main() {
       addTearDown(router.dispose);
       await tester.pumpWidget(MaterialApp.router(
           theme: buildCLTheme(Brightness.light), routerConfig: router));
-      expect(find.byIcon(Icons.groups_outlined), findsNWidgets(2));
+      expect(find.byIcon(Icons.groups_outlined), findsOneWidget);
       expect(find.text('Follow'), findsNothing);
       expect(find.text('Open chat'), findsNothing);
       await tester.tap(find.text('Photography Club').first);
@@ -131,7 +131,7 @@ void main() {
     expect(
         destination.children!
             .whereType<WidgetSpan>()
-            .every((s) => s.alignment == PlaceholderAlignment.middle),
+            .every((s) => s.alignment == PlaceholderAlignment.baseline),
         isTrue);
     await tester.tap(find.text('Photography Club'));
     await tester.pumpAndSettle();

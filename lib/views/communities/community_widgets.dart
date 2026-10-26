@@ -88,7 +88,14 @@ class CommunityDirectoryCard extends StatelessWidget {
       ),
       isMember: community.isMember,
       busy: false,
-      actionLabel: community.isMember ? 'Open' : 'View',
+      coverHeight: 56,
+      actionLabel: community.isMember
+          ? 'Open'
+          : community.requestPending
+              ? 'Request pending'
+              : community.isPrivate
+                  ? 'Request to join'
+                  : 'View',
       onOpen: onOpen,
       onJoin: onOpen,
     );

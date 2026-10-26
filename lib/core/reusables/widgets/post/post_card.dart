@@ -185,7 +185,7 @@ class _PostCardState extends State<PostCard> {
 
   Future<void> _react() async {
     if (_reactionBusy) return;
-    if (_post.community != null && !_post.community!.isMember) {
+    if (_post.community != null && !_post.community!.canInteract) {
       CLAlerts.show('Join this community to react.');
       return;
     }
@@ -653,17 +653,18 @@ class _PostCardState extends State<PostCard> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
               children: [
-                Expanded(
-                  child: _PostAction(
-                    // Reacting reads as the primary action, so it shows WHICH
-                    // reaction is yours rather than a generic thumb.
-                    icon: Icons.emoji_emotions_outlined,
-                    glyph: ReactionPalette.glyphFor(post.entityReaction),
-                    label: post.entityReaction != null ? "Reacted" : "React",
-                    active: post.entityReaction != null,
-                    onTap: _reactionBusy ? null : _react,
+                if (post.community?.canInteract ?? true)
+                  Expanded(
+                    child: _PostAction(
+                      // Reacting reads as the primary action, so it shows WHICH
+                      // reaction is yours rather than a generic thumb.
+                      icon: Icons.emoji_emotions_outlined,
+                      glyph: ReactionPalette.glyphFor(post.entityReaction),
+                      label: post.entityReaction != null ? "Reacted" : "React",
+                      active: post.entityReaction != null,
+                      onTap: _reactionBusy ? null : _react,
+                    ),
                   ),
-                ),
                 Expanded(
                   child: _PostAction(
                     icon: Icons.mode_comment_outlined,

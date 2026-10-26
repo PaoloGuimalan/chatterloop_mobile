@@ -260,7 +260,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                     CommentTypingIndicator(typers: _typers),
                     // Rebuilds only the composer when the reply target changes,
                     // rather than the whole screen.
-                    if (post.community != null && post.community!.isMember)
+                    if (post.community != null && post.community!.canInteract)
                       CommunityIdentityToggle(
                           title: 'Comment anonymously',
                           subtitle: _anonymousComment
@@ -269,7 +269,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                           value: _anonymousComment,
                           onChanged: (value) =>
                               setState(() => _anonymousComment = value)),
-                    if (post.community == null || post.community!.isMember)
+                    if (post.community == null || post.community!.canInteract)
                       ValueListenableBuilder<PostComment?>(
                         valueListenable: _replyTarget,
                         builder: (context, replyingTo, _) => CommentComposer(

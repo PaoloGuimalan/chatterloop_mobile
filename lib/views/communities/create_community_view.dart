@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/community_api.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 
 class CreateCommunityView extends StatefulWidget {
   final CommunityApi? api;
@@ -17,7 +18,6 @@ class _CreateCommunityViewState extends State<CreateCommunityView> {
       _slug = TextEditingController(),
       _description = TextEditingController();
   bool _private = false, _busy = false;
-  String? _error;
   @override
   void dispose() {
     _name.dispose();
@@ -31,7 +31,6 @@ class _CreateCommunityViewState extends State<CreateCommunityView> {
     final actor = appStore.state.userAuth.user.entityId;
     setState(() {
       _busy = true;
-      _error = null;
     });
     try {
       final result = await (widget.api ?? CommunityApi()).create(
@@ -44,10 +43,11 @@ class _CreateCommunityViewState extends State<CreateCommunityView> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error =
-              'Could not create community. Check the name and slug and try again.';
           _busy = false;
         });
+        CLAlerts.requestError(e,
+            fallback:
+                'Could not create community. Check the name and slug and try again.');
       }
     }
   }
@@ -129,12 +129,6 @@ class _CreateCommunityViewState extends State<CreateCommunityView> {
             const Text(
                 'You’ll manage this community through Manage Realm using your current profile.',
                 style: TextStyle(fontSize: CLType.caption)),
-            if (_error != null)
-              Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text(_error!,
-                      style: TextStyle(
-                          fontSize: CLType.caption, color: cl(context).pink))),
             const SizedBox(height: 20),
             FilledButton(
                 onPressed: _busy ? null : _create,

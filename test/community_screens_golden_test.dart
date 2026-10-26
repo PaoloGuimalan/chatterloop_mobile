@@ -147,13 +147,7 @@ void main() {
       await screen('create', CreateCommunityView(api: api));
       await screen(
           'profile_member', CommunityProfileView(id: 'club', api: api));
-      await tester.ensureVisible(find.text('About'));
-      await tester.tap(find.text('About'));
-      await tester.pumpAndSettle();
-      await expectLater(
-          find.byKey(root),
-          matchesGoldenFile(
-              'goldens/community_profile_about_${brightness.name}.png'));
+      expect(find.text('About'), findsNothing);
       await tester.tap(find.text('Members').first);
       await tester.pumpAndSettle();
       await expectLater(

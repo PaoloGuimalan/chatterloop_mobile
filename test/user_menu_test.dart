@@ -32,7 +32,7 @@ void main() {
 
   tearDown(() {
     ApiClient.userService.dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(interceptors);
   });
 

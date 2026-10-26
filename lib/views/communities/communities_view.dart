@@ -7,6 +7,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/community_api.dart';
 import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'community_widgets.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 
 /// A pushed destination: deliberately owns its Scaffold outside the tab shell.
 class CommunitiesView extends StatefulWidget {
@@ -24,7 +25,7 @@ class _CommunitiesViewState extends State<CommunitiesView>
   Timer? _debounce;
   StreamSubscription? _identitySubscription;
   late String _actor;
-  bool _joined = true, _loading = true, _failed = false, _next = false;
+  bool _joined = false, _loading = true, _failed = false, _next = false;
   int _page = 1, _generation = 0;
   @override
   void initState() {
@@ -80,8 +81,9 @@ class _CommunitiesViewState extends State<CommunitiesView>
         _page = page;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted || generation != _generation) return;
+      CLAlerts.requestError(e, fallback: 'Could not load communities.');
       setState(() {
         _items.clear();
         _loading = false;
@@ -144,10 +146,10 @@ class _CommunitiesViewState extends State<CommunitiesView>
               ]),
               const SizedBox(height: 12),
               CommunitySectionTabs(
-                labels: const ['Your communities', 'Discover'],
-                selected: _joined ? 0 : 1,
+                labels: const ['Discover', 'Your communities'],
+                selected: _joined ? 1 : 0,
                 onSelected: (index) {
-                  setState(() => _joined = index == 0);
+                  setState(() => _joined = index == 1);
                   _load();
                 },
               ),
@@ -155,8 +157,6 @@ class _CommunitiesViewState extends State<CommunitiesView>
               if (_failed)
                 CLCard(
                     child: Column(children: [
-                  Text('Could not load communities',
-                      style: TextStyle(fontSize: CLType.body, color: p.text)),
                   TextButton(
                       onPressed: _load,
                       child: const Text('Retry',

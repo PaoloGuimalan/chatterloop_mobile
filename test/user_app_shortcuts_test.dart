@@ -67,7 +67,7 @@ void main() {
   tearDown(() {
     for (final entry in interceptors.entries) {
       entry.key.interceptors
-        ..clear()
+        ..clear(keepImplyContentTypeInterceptor: false)
         ..addAll(entry.value);
     }
   });

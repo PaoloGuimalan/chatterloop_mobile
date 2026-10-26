@@ -13,6 +13,7 @@ class Community {
   final int? memberCount;
   final String? myRole;
   final bool requestPending;
+  bool get canInteract => !isPrivate || isMember;
   const Community(
       {required this.realmId,
       required this.entityId,

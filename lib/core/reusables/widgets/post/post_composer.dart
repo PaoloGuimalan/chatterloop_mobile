@@ -270,33 +270,52 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
           context: context,
           useRootNavigator: true,
           builder: (context) => SafeArea(
-                  child: ListView(shrinkWrap: true, children: [
-                ListTile(
-                    minLeadingWidth: 24,
-                    leading: Icon(Icons.home_outlined,
-                        size: 20, color: cl(context).brand),
-                    subtitle: const Text('Personal timeline',
-                        style: TextStyle(fontSize: CLType.caption)),
-                    title: const Text('Your timeline',
-                        style: TextStyle(fontSize: CLType.title)),
-                    onTap: () => Navigator.pop(
-                        context,
-                        const Community(
-                            realmId: '', entityId: '', name: 'Your timeline'))),
-                for (final choice in choices)
-                  ListTile(
-                      minLeadingWidth: 24,
-                      leading: Icon(Icons.groups_outlined,
-                          size: 20, color: cl(context).brand),
-                      title: Text(choice.name,
-                          style: const TextStyle(fontSize: CLType.title)),
-                      subtitle: Text(
-                          choice.isPrivate
-                              ? 'Private community'
-                              : 'Public community',
-                          style: const TextStyle(fontSize: CLType.caption)),
-                      onTap: () => Navigator.pop(context, choice))
-              ])));
+                  child: ListView(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.all(12),
+                      children: [
+                    const Padding(
+                        padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+                        child: Text('Post in',
+                            style: TextStyle(
+                                fontSize: CLType.title,
+                                fontWeight: FontWeight.w700))),
+                    ListTile(
+                        minLeadingWidth: 20,
+                        visualDensity: VisualDensity.compact,
+                        minTileHeight: 52,
+                        minVerticalPadding: 4,
+                        horizontalTitleGap: 10,
+                        leading: Icon(Icons.home_outlined,
+                            size: 20, color: cl(context).brand),
+                        subtitle: const Text('Personal timeline',
+                            style: TextStyle(fontSize: CLType.caption)),
+                        title: const Text('Your timeline',
+                            style: TextStyle(fontSize: CLType.title)),
+                        onTap: () => Navigator.pop(
+                            context,
+                            const Community(
+                                realmId: '',
+                                entityId: '',
+                                name: 'Your timeline'))),
+                    for (final choice in choices)
+                      ListTile(
+                          minLeadingWidth: 20,
+                          visualDensity: VisualDensity.compact,
+                          minTileHeight: 52,
+                          minVerticalPadding: 4,
+                          horizontalTitleGap: 10,
+                          leading: Icon(Icons.groups_outlined,
+                              size: 20, color: cl(context).brand),
+                          title: Text(choice.name,
+                              style: const TextStyle(fontSize: CLType.title)),
+                          subtitle: Text(
+                              choice.isPrivate
+                                  ? 'Private community'
+                                  : 'Public community',
+                              style: const TextStyle(fontSize: CLType.caption)),
+                          onTap: () => Navigator.pop(context, choice))
+                  ])));
       if (!mounted || result == null) return;
       setState(() {
         _community = result.entityId.isEmpty ? null : result;
@@ -541,58 +560,6 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (!widget.mode.isMedia) ...[
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(CLRadii.sm),
-                        onTap: _posting ? null : _pickDestination,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(children: [
-                            Icon(
-                                _community == null
-                                    ? Icons.home_outlined
-                                    : Icons.groups_outlined,
-                                size: 20,
-                                color: p.brand),
-                            const SizedBox(width: 10),
-                            Expanded(
-                                child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                  Text('Post in',
-                                      style: TextStyle(
-                                          fontSize: CLType.label,
-                                          color: p.text2)),
-                                  const SizedBox(height: 3),
-                                  Text(_community?.name ?? 'Your timeline',
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                          fontSize: CLType.title,
-                                          color: p.text,
-                                          fontWeight: FontWeight.w600)),
-                                ])),
-                            const SizedBox(width: 8),
-                            Icon(Icons.expand_more, size: 20, color: p.text3),
-                          ]),
-                        ),
-                      ),
-                    ),
-                    if (_community != null) ...[
-                      CommunityIdentityToggle(
-                          title: 'Post anonymously',
-                          subtitle: _anonymous
-                              ? 'Anonymous member'
-                              : appStore.state.userAuth.user.activeDisplayName,
-                          value: _anonymous,
-                          onChanged: _posting
-                              ? null
-                              : (value) => setState(() => _anonymous = value)),
-                    ],
-                  ],
                   TextField(
                     controller: _caption,
                     minLines: 3,
@@ -622,6 +589,55 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                       ),
                     ),
                   ),
+                  if (!widget.mode.isMedia) ...[
+                    const SizedBox(height: 8),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(CLRadii.sm),
+                      onTap: _posting ? null : _pickDestination,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(children: [
+                          Icon(
+                              _community == null
+                                  ? Icons.home_outlined
+                                  : Icons.groups_outlined,
+                              size: 18,
+                              color: p.brand),
+                          const SizedBox(width: 8),
+                          Expanded(
+                              child: Text.rich(
+                            TextSpan(children: [
+                              TextSpan(
+                                  text: 'Post in ',
+                                  style: TextStyle(color: p.text2)),
+                              TextSpan(
+                                  text: _community?.name ?? 'Your timeline',
+                                  style: TextStyle(
+                                      color: p.text,
+                                      fontWeight: FontWeight.w600)),
+                            ]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: CLType.label),
+                          )),
+                          const SizedBox(width: 8),
+                          Icon(Icons.expand_more, size: 18, color: p.text3),
+                        ]),
+                      ),
+                    ),
+                    if (_community != null)
+                      CommunityIdentityToggle(
+                        compact: true,
+                        title: 'Post anonymously',
+                        subtitle:
+                            _anonymous ? 'Anonymous member' : 'My profile',
+                        value: _anonymous,
+                        onChanged: _posting
+                            ? null
+                            : (value) => setState(() => _anonymous = value),
+                      ),
+                    const SizedBox(height: 8),
+                  ],
                   // A media mode shows the ONE picked image at full width -
                   // you are choosing your own face or banner, and a 96px
                   // thumbnail is not enough to judge that by. Everything else

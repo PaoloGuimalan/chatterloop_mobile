@@ -210,7 +210,7 @@ void main() {
       }));
     }));
     addTearDown(() {
-      dio.interceptors.clear();
+      dio.interceptors.clear(keepImplyContentTypeInterceptor: false);
       dio.interceptors.addAll(previous);
     });
     await open(
@@ -279,7 +279,7 @@ void main() {
       }));
     }));
     addTearDown(() {
-      dio.interceptors.clear();
+      dio.interceptors.clear(keepImplyContentTypeInterceptor: false);
       dio.interceptors.addAll(previous);
     });
     await open(tester, original.copyWith(references: []));

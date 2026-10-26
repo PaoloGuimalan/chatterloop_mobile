@@ -86,8 +86,9 @@ void main() {
   });
   tearDown(() {
     ApiClient.userService.dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous);
+    expect(ApiClient.userService.dio.interceptors, orderedEquals(previous));
   });
   Future<GoRouter> mount(WidgetTester tester,
       {String initial = '/conversation/direct'}) async {
@@ -195,7 +196,8 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
     await tester.tap(find.text('Home'), warnIfMissed: false);
     await pumpMessages(tester);
-    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+    expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
         1);
     await tester.binding.handlePopRoute();
     await pumpMessages(tester);

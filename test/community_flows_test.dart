@@ -193,13 +193,17 @@ void main() {
     ));
     await tester.tap(find.text('Open composer'));
     await tester.pumpAndSettle();
-    expect(tester.widget<Text>(find.text('Post in')).style?.fontSize,
-        CLType.label);
+    final destination = find.byWidgetPredicate((widget) =>
+        widget is Text &&
+        widget.textSpan?.toPlainText().startsWith('Post in ') == true);
+    expect(tester.widget<Text>(destination).style?.fontSize, CLType.label);
+    expect(tester.getRect(find.byType(TextField).first).bottom,
+        lessThan(tester.getRect(destination).top));
     expect(tester.widget<Text>(find.text('Post anonymously')).style?.fontSize,
         CLType.label);
     await tester.tap(find.text('Post anonymously'));
     await tester.pumpAndSettle();
-    expect(find.text('Anonymous member'), findsOneWidget);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -211,15 +215,34 @@ void main() {
       home: CommunityProfileView(id: 'club', api: api),
     ));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('About'));
-    await tester.tap(find.text('About'));
-    await tester.pumpAndSettle();
-    expect(find.text('About this community'), findsOneWidget);
-    expect(find.byType(ProfileComposerCard), findsNothing);
+    expect(find.text('About'), findsNothing);
+    expect(find.byType(ProfileComposerCard), findsOneWidget);
     await tester.tap(find.text('Members'));
     await tester.pumpAndSettle();
     expect(find.text('Member list is not available.'), findsOneWidget);
     expect(api.member, isTrue);
+  });
+
+  testWidgets('leaving a community requires confirmation', (tester) async {
+    final api = FixtureCommunityApi()..member = true;
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: CommunityProfileView(id: 'club', api: api)));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Leave community'));
+    await tester.tap(find.text('Leave community'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(api.member, isTrue);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(api.member, isTrue);
+    await tester.tap(find.text('Leave community'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(AlertDialog), matching: find.text('Leave community')));
+    await tester.pumpAndSettle();
+    expect(api.member, isFalse);
   });
 
   test('community feed and roster honor the supplied identity snapshot',
@@ -325,7 +348,8 @@ void main() {
     expect(find.byType(ProfileComposerCard), findsNothing);
     expect(
         find.text('This community is unavailable or your access has changed.'),
-        findsOneWidget);
+        findsNothing);
+    expect(find.text('Retry'), findsOneWidget);
     expect(find.textContaining('Anonymous member', findRichText: true),
         findsNothing);
   });
@@ -397,6 +421,9 @@ void main() {
     expect(find.textContaining('Photography Club', findRichText: true),
         findsOneWidget);
     expect(find.byType(BottomNavigationBar), findsNothing);
+    expect(api.queries.last, 'false::1');
+    await tester.tap(find.text('Your communities'));
+    await tester.pumpAndSettle();
     expect(api.queries.last, 'true::1');
     await tester.tap(find.text('Discover'));
     await tester.pumpAndSettle();

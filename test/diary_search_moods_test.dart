@@ -40,7 +40,7 @@ void main() {
   });
   tearDown(() {
     ApiClient.userService.dio.interceptors
-      ..clear()
+      ..clear(keepImplyContentTypeInterceptor: false)
       ..addAll(previous);
   });
   testWidgets('search stays within loaded entries until explicit pagination',

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
@@ -15,6 +14,9 @@ import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/profile/widgets/profile_header.dart';
 import 'community_widgets.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
+import 'package:chatterloop_app/core/reusables/widgets/confirm_dialog.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 
 class CommunityProfileView extends StatefulWidget {
   final String id;
@@ -30,8 +32,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
   Community? _community;
   final _posts = <PostPreview>[];
   final _members = <RealmPerson>[];
-  bool _loading = true, _busy = false, _next = false;
-  String? _error;
+  bool _loading = true, _busy = false, _next = false, _failed = false;
   int _page = 1, _generation = 0;
   int _section = 0;
   StreamSubscription? _identitySubscription;
@@ -74,7 +75,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
     final actor = _actor;
     setState(() {
       _loading = true;
-      _error = null;
+      _failed = false;
       if (page == 1) {
         _posts.clear();
         _members.clear();
@@ -107,16 +108,14 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
       });
     } catch (e) {
       if (!mounted || generation != _generation) return;
+      CLAlerts.requestError(e, fallback: 'Could not load community.');
       PostUpdates.instance.clear();
       setState(() {
         _posts.clear();
         _members.clear();
         _community = null;
         _loading = false;
-        _error =
-            e is DioException && [403, 404].contains(e.response?.statusCode)
-                ? 'This community is unavailable or your access has changed.'
-                : 'Could not load community.';
+        _failed = true;
       });
     }
   }
@@ -126,6 +125,18 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
     final community = _community!;
     final actor = _actor;
     setState(() => _busy = true);
+    if (community.isMember) {
+      final confirmed = await showCLConfirm(context,
+          title: 'Leave community?',
+          message:
+              'You will leave ${community.name}. ${community.isPrivate ? 'Joining again will require approval.' : 'You can join again later.'}',
+          confirmLabel: 'Leave community');
+      if (!mounted) return;
+      if (!confirmed || actor != _actor) {
+        setState(() => _busy = false);
+        return;
+      }
+    }
     try {
       final token = await ApiClient.instance.readToken();
       if (!mounted || actor != _actor) return;
@@ -140,10 +151,8 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
       await _load();
     } catch (e) {
       if (mounted && actor == _actor) {
-        setState(() => _error = e is DioException &&
-                e.response?.statusCode == 400
-            ? 'Transfer ownership through Manage Realm before leaving this community.'
-            : 'Could not update membership. Please retry.');
+        CLAlerts.requestError(e,
+            fallback: 'Could not update membership. Please retry.');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -236,14 +245,11 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                 children: [
                   if (_loading && community == null)
                     const ProfileHeaderSkeleton(),
-                  if (_error != null)
+                  if (_failed)
                     Padding(
                         padding: const EdgeInsets.all(14),
                         child: CLCard(
                             child: Column(children: [
-                          Text(_error!,
-                              style: TextStyle(
-                                  fontSize: CLType.body, color: p.text2)),
                           TextButton(
                               onPressed: _load,
                               child: const Text('Retry',
@@ -280,16 +286,14 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                                       height: 1.45)),
                               const SizedBox(height: 8),
                               CommunitySectionTabs(
-                                  labels: const ['Posts', 'About', 'Members'],
+                                  labels: const ['Posts', 'Members'],
                                   selected: _section,
                                   onSelected: (value) =>
                                       setState(() => _section = value)),
                             ]),
                           ),
                         ])),
-                    if (_section != 1 &&
-                        community.isPrivate &&
-                        !community.isMember)
+                    if (community.isPrivate && !community.isMember)
                       const Padding(
                           padding: EdgeInsets.all(14),
                           child: CLCard(
@@ -304,30 +308,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                             Text('Join to see posts and members.',
                                 style: TextStyle(fontSize: CLType.body))
                           ]))),
-                    if (_section == 1)
-                      Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          child: CLCard(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                const Text('About this community',
-                                    style: TextStyle(
-                                        fontSize: CLType.sectionTitle,
-                                        fontWeight: FontWeight.w700)),
-                                const SizedBox(height: 10),
-                                Text(community.description,
-                                    style: TextStyle(
-                                        fontSize: CLType.body, color: p.text2)),
-                                const SizedBox(height: 12),
-                                Text(
-                                    '${community.isPrivate ? 'Private' : 'Public'} community · ${community.memberCount ?? 0} members',
-                                    style: TextStyle(
-                                        fontSize: CLType.caption,
-                                        color: p.text2))
-                              ]))),
-                    if (_section == 2 &&
+                    if (_section == 1 &&
                         (!community.isPrivate || community.isMember))
                       Padding(
                           padding: const EdgeInsets.symmetric(
@@ -377,16 +358,18 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                       for (final post in _posts)
                         Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 14),
-                            child: PostItem(
-                                post: post,
-                                onChanged: (updated) => setState(() {
-                                      final i = _posts.indexWhere(
-                                          (p) => p.postId == updated.postId);
-                                      if (i >= 0) _posts[i] = updated;
-                                    }),
-                                onDeleted: () => setState(() =>
-                                    _posts.removeWhere(
-                                        (p) => p.postId == post.postId)))),
+                            child: CommunityPostScope(
+                                entityId: community.entityId,
+                                child: PostItem(
+                                    post: post,
+                                    onChanged: (updated) => setState(() {
+                                          final i = _posts.indexWhere((p) =>
+                                              p.postId == updated.postId);
+                                          if (i >= 0) _posts[i] = updated;
+                                        }),
+                                    onDeleted: () => setState(() =>
+                                        _posts.removeWhere(
+                                            (p) => p.postId == post.postId))))),
                     if (_section == 0 && _next && !_loading)
                       TextButton(
                           onPressed: () => _load(page: _page + 1),
