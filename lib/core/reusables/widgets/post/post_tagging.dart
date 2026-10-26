@@ -40,11 +40,10 @@ List<InlineSpan> postDestinationSpans(
           style: baseStyle),
       TextSpan(
           children: communityNameSpans(context, community,
+              onTap: () => context.push(
+                  '/communities/${Uri.encodeComponent(community.realmId)}'),
               style: baseStyle.copyWith(
-                  fontWeight: FontWeight.w700, color: linkColor)),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () => context.push(
-                '/communities/${Uri.encodeComponent(community.realmId)}')),
+                  fontWeight: FontWeight.w700, color: linkColor))),
     ],
   ];
 }

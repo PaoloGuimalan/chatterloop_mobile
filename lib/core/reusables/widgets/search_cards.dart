@@ -4,6 +4,7 @@
 // the rail; full-width variants in the "See all" lists).
 
 import 'package:chatterloop_app/core/reusables/widgets/community_content_guard.dart';
+import 'package:chatterloop_app/core/reusables/widgets/community_name.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
@@ -28,6 +29,7 @@ IconData realmTypeIcon(String realmType) => switch (realmType) {
       "page" => Icons.flag,
       "server" => Icons.dns,
       "group" => Icons.groups,
+      "community" => Icons.groups_outlined,
       _ => Icons.public,
     };
 
@@ -35,6 +37,7 @@ String realmTypeLabel(String realmType) => switch (realmType) {
       "page" => "Page",
       "server" => "Server",
       "group" => "Group",
+      "community" => "Community",
       _ => realmType.isEmpty ? "Realm" : realmType,
     };
 
@@ -51,6 +54,11 @@ String realmTypeLabel(String realmType) => switch (realmType) {
 ///           non-member has no destination; Join is the only affordance.
 void openSearchRealm(BuildContext context, SearchRealmResult realm) {
   switch (realm.realmType) {
+    case "community":
+      if (realm.id.isNotEmpty) {
+        context.push('/communities/${Uri.encodeComponent(realm.id)}');
+      }
+      break;
     case "page":
       if (realm.handle.isNotEmpty) context.push('/realm/${realm.handle}');
       break;
@@ -216,7 +224,7 @@ class SearchRealmCard extends StatelessWidget {
         onPressed: followBusy ? null : () => onToggleFollow(realm),
       );
     }
-    if (realm.realmType == "server") {
+    if (realm.realmType == "server" || realm.realmType == "community") {
       return CLMiniBtn(
         label: "Open",
         block: !wide,
@@ -294,6 +302,10 @@ class SearchRealmCard extends StatelessWidget {
           ),
           // No page flag: this card IS a page, and its meta line says so.
           ...clEntityMarkers(context, isVerified: realm.isVerified),
+          if (realm.realmType == 'community') ...[
+            const SizedBox(width: 3),
+            Icon(Icons.groups_outlined, size: 13, color: p.text3),
+          ],
         ],
       ),
     );
@@ -616,6 +628,22 @@ class SearchContentCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
+                if (post.community case final community?) ...[
+                  Text.rich(TextSpan(children: [
+                    TextSpan(
+                        text: 'Posted in ',
+                        style: TextStyle(
+                            fontSize: CLType.caption, color: p.text2)),
+                    ...communityNameSpans(context, community,
+                        style: TextStyle(
+                            fontSize: CLType.caption,
+                            fontWeight: FontWeight.w600,
+                            color: p.text),
+                        onTap: () => context.push(
+                            '/communities/${Uri.encodeComponent(community.realmId)}')),
+                  ])),
+                  const SizedBox(height: 4),
+                ],
                 Text(
                   PostUpdates.instance.captionFor(post.postId, post.caption),
                   maxLines: 3,

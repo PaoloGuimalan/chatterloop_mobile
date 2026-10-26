@@ -30,9 +30,21 @@ class FixtureCommunityApi extends CommunityApi {
       owner = false,
       denied = false;
   int postLoads = 0;
+  int creations = 0;
   final postsFixture =
       jsonDecode(File('test/fixtures/community_stage1.json').readAsStringSync())
           as Map<String, dynamic>;
+  @override
+  Future<Community> create(
+      {required String name,
+      required String slug,
+      String description = '',
+      bool isPrivate = false}) async {
+    creations++;
+    return Community(
+        realmId: 'club', entityId: 'club-entity', name: name, slug: slug);
+  }
+
   @override
   Future<Community> detail(String id) async {
     if (denied) {
@@ -393,11 +405,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(api.queries.last, 'false:photo:1');
+    await tester.scrollUntilVisible(find.text('Load more'), 200,
+        scrollable: find.byType(Scrollable).first);
     await tester.tap(find.text('Load more'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Weekend Hikers', findRichText: true),
         findsOneWidget);
     api.fail = true;
+    await tester.drag(find.byType(ListView).first, const Offset(0, 1000));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Your communities'));
     await tester.pumpAndSettle();
     expect(find.text('Retry'), findsOneWidget);
@@ -408,6 +424,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Photography Club', findRichText: true),
         findsOneWidget);
+  });
+  testWidgets('create blocks omitted and whitespace-only community slugs',
+      (tester) async {
+    for (final slug in ['', '   ']) {
+      final api = FixtureCommunityApi();
+      await tester.pumpWidget(MaterialApp(
+          key: ValueKey(slug),
+          theme: buildCLTheme(Brightness.light),
+          home: CreateCommunityView(api: api)));
+      await tester.enterText(find.byType(TextFormField).first, 'Readers');
+      await tester.enterText(find.byType(TextFormField).at(1), slug);
+      await tester.scrollUntilVisible(
+          find.widgetWithText(FilledButton, 'Create community'), 200,
+          scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.widgetWithText(FilledButton, 'Create community'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Enter a community slug'), -200,
+          scrollable: find.byType(Scrollable).first);
+      expect(find.text('Enter a community slug'), findsOneWidget);
+      expect(api.creations, 0);
+    }
   });
   testWidgets('create requires a name and exposes privacy explicitly',
       (tester) async {

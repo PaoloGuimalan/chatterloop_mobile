@@ -338,7 +338,7 @@ class ProfileHeader extends StatelessWidget {
           Text("@$username",
               style: TextStyle(color: p.text2, fontSize: CLType.bodySm)),
         if (actions != null) ...[
-          const SizedBox(height: 16),
+          SizedBox(height: type == 'community' ? 10 : 16),
           actions!,
         ],
         if (hasInfoCard) ...[

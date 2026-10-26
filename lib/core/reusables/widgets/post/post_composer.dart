@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/reusables/widgets/community_identity_toggle.dart';
 // Creating a post: the inline trigger card that sits above a profile's feed,
 // and the sheet it opens. Flutter counterpart of webapp's PostsContainer
 // composer row + NewPostModal.
@@ -267,9 +268,15 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
       if (!mounted || _actor != appStore.state.userAuth.user.entityId) return;
       final result = await showModalBottomSheet<Community?>(
           context: context,
+          useRootNavigator: true,
           builder: (context) => SafeArea(
                   child: ListView(shrinkWrap: true, children: [
                 ListTile(
+                    minLeadingWidth: 24,
+                    leading: Icon(Icons.home_outlined,
+                        size: 20, color: cl(context).brand),
+                    subtitle: const Text('Personal timeline',
+                        style: TextStyle(fontSize: CLType.caption)),
                     title: const Text('Your timeline',
                         style: TextStyle(fontSize: CLType.title)),
                     onTap: () => Navigator.pop(
@@ -278,7 +285,9 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                             realmId: '', entityId: '', name: 'Your timeline'))),
                 for (final choice in choices)
                   ListTile(
-                      leading: const Icon(Icons.groups_outlined),
+                      minLeadingWidth: 24,
+                      leading: Icon(Icons.groups_outlined,
+                          size: 20, color: cl(context).brand),
                       title: Text(choice.name,
                           style: const TextStyle(fontSize: CLType.title)),
                       subtitle: Text(
@@ -573,18 +582,11 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                       ),
                     ),
                     if (_community != null) ...[
-                      SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text('Post anonymously',
-                              style: TextStyle(
-                                  fontSize: CLType.label, color: p.text)),
-                          subtitle: Text(
-                              _anonymous
-                                  ? 'Anonymous member'
-                                  : appStore
-                                      .state.userAuth.user.activeDisplayName,
-                              style: TextStyle(
-                                  fontSize: CLType.caption, color: p.text2)),
+                      CommunityIdentityToggle(
+                          title: 'Post anonymously',
+                          subtitle: _anonymous
+                              ? 'Anonymous member'
+                              : appStore.state.userAuth.user.activeDisplayName,
                           value: _anonymous,
                           onChanged: _posting
                               ? null

@@ -116,7 +116,8 @@ class _RealmInviteScreenState extends State<RealmInviteScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text('Invite')),
+      appBar: AppBar(
+          leadingWidth: 48, titleSpacing: 0, title: const Text('Invite')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
             CLSpacing.contentGutter, 24, CLSpacing.contentGutter, 24),

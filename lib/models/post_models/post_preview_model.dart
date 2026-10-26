@@ -90,6 +90,8 @@ class PostPreviewAuthor {
   final String handle;
   final String? profile;
   final bool isVerified;
+  final String? realmType;
+  final String? realmId;
 
   const PostPreviewAuthor({
     required this.entityId,
@@ -98,9 +100,12 @@ class PostPreviewAuthor {
     required this.handle,
     this.profile,
     required this.isVerified,
+    this.realmType,
+    this.realmId,
   });
 
   bool get isRealm => type == "realm";
+  bool get isCommunity => isRealm && realmType == 'community';
   bool get isAnonymous => type == 'anonymous';
   bool get canOpenProfile =>
       !isAnonymous && entityId.isNotEmpty && handle.isNotEmpty;
@@ -143,6 +148,8 @@ class PostPreviewAuthor {
           ? null
           : profile,
       isVerified: details["is_badged"] == true,
+      realmType: details['type']?.toString(),
+      realmId: details['realm_id']?.toString(),
     );
   }
 }

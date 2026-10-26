@@ -197,6 +197,8 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
     return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(
+          leadingWidth: 48,
+          titleSpacing: 0,
           title: Text(
               realm == null ? 'Manage' : 'Manage ${realmKindNoun(realm)}')),
       body: _loading
@@ -407,7 +409,9 @@ class _RealmHeader extends StatelessWidget {
                                 name: realm.name,
                                 isVerified: realm.isVerified),
                             style: TextStyle(
-                                color: p.text, fontWeight: FontWeight.w700))
+                                fontSize: CLType.sectionTitle,
+                                color: p.text,
+                                fontWeight: FontWeight.w700))
                         : [TextSpan(text: realm.name)]),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -575,7 +579,8 @@ class _RealmDetailsScreenState extends State<RealmDetailsScreen> {
     final p = cl(context);
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: const Text('Details')),
+      appBar: AppBar(
+          leadingWidth: 48, titleSpacing: 0, title: const Text('Details')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
             CLSpacing.contentGutter, 16, CLSpacing.contentGutter, 24),

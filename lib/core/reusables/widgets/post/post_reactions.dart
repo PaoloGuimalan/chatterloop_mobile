@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/reusables/widgets/community_identity_toggle.dart';
 // Reaction palette, tally row, and the local tally arithmetic they share.
 //
 // Posts and comments react identically - same verbs, same palette, same
@@ -40,17 +41,18 @@ Future<CommunityReactionChoice?> showCommunityReactionPicker(
       builder: (sheetContext) => StatefulBuilder(
           builder: (context, update) => SafeArea(
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                SwitchListTile(
-                    title: const Text('React anonymously',
-                        style: TextStyle(fontSize: CLType.label)),
-                    subtitle: Text(
-                        anonymous ? 'Anonymous member' : 'Your current profile',
-                        style: const TextStyle(fontSize: CLType.caption)),
-                    value: anonymous,
-                    onChanged: (value) => update(() {
-                          anonymous = value;
-                          deliberate = value;
-                        })),
+                Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: CommunityIdentityToggle(
+                        title: 'React anonymously',
+                        subtitle: anonymous
+                            ? 'Anonymous member'
+                            : 'Your current profile',
+                        value: anonymous,
+                        onChanged: (value) => update(() {
+                              anonymous = value;
+                              deliberate = value;
+                            }))),
                 ReactionPicker(
                     currentEmojiId: currentEmojiId,
                     onSelected: (emoji) => Navigator.pop(

@@ -3,6 +3,7 @@
 // and expanding/collapsing. What may group is the server's call
 // (server/reusables/models/notificationgroups.js, with its own tests).
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/reusables/widgets/notification_row.dart';
 import 'package:chatterloop_app/models/notifications_models/notifications_v2_model.dart';
 import 'package:flutter/material.dart';
@@ -113,6 +114,51 @@ String _sentence(WidgetTester tester) => tester
     .firstWhere((t) => t.contains("reacted") || t.contains("following"));
 
 void main() {
+  testWidgets(
+      'community groups retain named actor and anonymous community avatars',
+      (tester) async {
+    final community = {
+      'entity_id': 'community-entity',
+      'type': 'realm',
+      'realm_type': 'community',
+      'display_name': 'Weekend Makers',
+      'handle': 'weekend-makers',
+      'profile': null,
+      'is_verified': true,
+    };
+    final group = NotificationGroup.fromJson({
+      'key': 'community:weekend-makers',
+      'count': 2,
+      'unread': 2,
+      'actorCount': 2,
+      'action': 'posted in Weekend Makers',
+      'items': [
+        _notification('community_post', _maya, route: '/post/first'),
+        _notification('community_post', community, route: '/post/second'),
+      ],
+    });
+    await tester.pumpWidget(_host(CLGroupedNotificationRow(
+      group: group,
+      expanded: true,
+      onToggle: (_) {},
+      busy: (_) => false,
+      onAccept: (_) {},
+      onDecline: (_) {},
+    )));
+    await tester.pumpAndSettle();
+    final rows = find.byType(CLNotificationRow);
+    expect(rows, findsNWidgets(2));
+    final namedAvatar = tester.widget<CLAvatar>(
+        find.descendant(of: rows.at(0), matching: find.byType(CLAvatar)));
+    final anonymousAvatar = tester.widget<CLAvatar>(
+        find.descendant(of: rows.at(1), matching: find.byType(CLAvatar)));
+    expect(namedAvatar.id, 'maya');
+    expect(namedAvatar.kind, 'user');
+    expect(anonymousAvatar.id, 'community-entity');
+    expect(anonymousAvatar.kind, 'realm');
+    expect(group.key, 'community:weekend-makers');
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('community sender shows its marker beside verification',
       (tester) async {
     final sender = {

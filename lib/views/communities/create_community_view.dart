@@ -36,7 +36,7 @@ class _CreateCommunityViewState extends State<CreateCommunityView> {
     try {
       final result = await (widget.api ?? CommunityApi()).create(
           name: _name.text.trim(),
-          slug: _slug.text.trim().isEmpty ? null : _slug.text.trim(),
+          slug: _slug.text.trim(),
           description: _description.text.trim(),
           isPrivate: _private);
       if (!mounted || actor != appStore.state.userAuth.user.entityId) return;
@@ -88,6 +88,9 @@ class _CreateCommunityViewState extends State<CreateCommunityView> {
             TextFormField(
                 controller: _slug,
                 enabled: !_busy,
+                validator: (value) => (value ?? '').trim().isEmpty
+                    ? 'Enter a community slug'
+                    : null,
                 style:
                     TextStyle(fontSize: CLType.bodySm, color: cl(context).text),
                 decoration: _decoration(context, 'e.g. photography-club')

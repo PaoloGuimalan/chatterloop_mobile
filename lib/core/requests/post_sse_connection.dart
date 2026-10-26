@@ -101,6 +101,13 @@ class PostActivityEvent {
 
   final PostActivityActor? actor;
 
+  /// Viewer-specific echo marker, without identifying an anonymous actor.
+  final bool isSelf;
+
+  bool isFromViewer(String viewerEntityId) =>
+      isSelf ||
+      (viewerEntityId.isNotEmpty && actor?.entityId == viewerEntityId);
+
   const PostActivityEvent({
     required this.postId,
     required this.type,
@@ -109,6 +116,7 @@ class PostActivityEvent {
     this.target = PostActivityTarget.unknown,
     this.action,
     this.actor,
+    this.isSelf = false,
   });
 
   static PostActivityType _typeOf(String? raw) => switch (raw) {
@@ -141,6 +149,7 @@ class PostActivityEvent {
         parentId: result['parent_id']?.toString(),
         target: _targetOf(result['target_type'] as String?),
         action: result['action'] as String?,
+        isSelf: result['is_self'] == true,
         actor: result['is_anonymous'] == true
             ? const PostActivityActor(
                 entityId: 'anonymous',

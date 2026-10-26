@@ -7,27 +7,36 @@ List<InlineSpan> communityNameSpans(
   BuildContext context,
   Community community, {
   required TextStyle style,
+  VoidCallback? onTap,
 }) {
   final palette = cl(context);
-  TextSpan marker(IconData icon, String label, Color color,
-          {double size = 13}) =>
-      TextSpan(
-        text: String.fromCharCode(icon.codePoint),
-        semanticsLabel: label,
-        style: TextStyle(
-          fontFamily: icon.fontFamily,
-          package: icon.fontPackage,
-          fontSize: size,
-          color: color,
-        ),
-      );
   return [
-    TextSpan(text: community.name, style: style),
-    if (community.isVerified) ...[
-      const TextSpan(text: '\u00a0\u2060'),
-      marker(Icons.verified, 'Verified community', palette.brand),
-    ],
-    const TextSpan(text: '\u00a0\u2060'),
-    marker(Icons.groups_outlined, 'Community', palette.text3, size: 17),
+    // One inline placeholder moves the destination as a unit. The name gives
+    // up width before either badge, including at larger accessibility sizes.
+    WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(community.name,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+            ),
+            if (community.isVerified) ...[
+              const SizedBox(width: 3),
+              Icon(Icons.verified,
+                  semanticLabel: 'Verified community',
+                  size: 13,
+                  color: palette.brand),
+            ],
+            const SizedBox(width: 3),
+            Icon(Icons.groups_outlined,
+                semanticLabel: 'Community', size: 17, color: palette.text3),
+          ],
+        ),
+      ),
+    ),
   ];
 }

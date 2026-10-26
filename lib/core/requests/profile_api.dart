@@ -642,10 +642,9 @@ class ProfileApi {
     );
   }
 
-  /// Replaces a realm's avatar or cover, unlike a user's avatar which becomes
-  /// a post - a realm has no feed post to file. The image goes straight to
-  /// storage, uploaded for this realm; the realm is then pointed at it by
-  /// upload id.
+  /// Replaces a realm's avatar or cover. The server also publishes community
+  /// updates to members. Retain [uploadId] on failure to resume that delivery
+  /// without uploading again or creating another post.
   ///
   /// [mediaType] is "profile" or "cover_photo", matching the content_type
   /// values the personal-account flow uses.
@@ -654,27 +653,34 @@ class ProfileApi {
     required String realmType,
     required String mediaType,
     required String filePath,
+    String? uploadId,
+    void Function(String uploadId)? onUploaded,
   }) async {
-    final UploadedFile uploaded;
-    try {
-      [uploaded] = await MediaUploader().upload(
-        purpose:
-            mediaType == 'profile' ? UploadFeature.avatar : UploadFeature.cover,
-        paths: [filePath],
-        context: {'realmID': realmId},
-      );
-    } on UploadFailure catch (e) {
-      CLAlerts.error(e.message);
-      return false;
-    } catch (e) {
-      CLAlerts.requestError(e, fallback: "We couldn't upload that image.");
-      return false;
+    var pendingUploadId = uploadId;
+    if (pendingUploadId == null) {
+      try {
+        final [uploaded] = await MediaUploader().upload(
+          purpose: mediaType == 'profile'
+              ? UploadFeature.avatar
+              : UploadFeature.cover,
+          paths: [filePath],
+          context: {'realmID': realmId},
+        );
+        pendingUploadId = uploaded.uploadId;
+        onUploaded?.call(pendingUploadId);
+      } on UploadFailure catch (e) {
+        CLAlerts.error(e.message);
+        return false;
+      } catch (e) {
+        CLAlerts.requestError(e, fallback: "We couldn't upload that image.");
+        return false;
+      }
     }
     return reportedAction(
       () => _mainDio.post(_endpoints.realmUploadMedia, data: {
         'realm_id': realmId,
         'media_type': mediaType,
-        'uploadID': uploaded.uploadId,
+        'uploadID': pendingUploadId,
       }),
       failure: "We couldn't upload that image.",
       accepted: (r) => r.data is Map && r.data['status'] == true,

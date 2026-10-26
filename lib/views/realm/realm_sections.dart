@@ -344,6 +344,8 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
     return CLScreen(
       backgroundColor: p.bg,
       appBar: AppBar(
+        leadingWidth: 48,
+        titleSpacing: 0,
         title: Text(_title),
         actions: [
           // Members only, and not on a public channel or voice room, whose
@@ -718,9 +720,7 @@ class _RosterRow extends StatelessWidget {
 
 /// Webapp's Media tab - replace the realm's avatar or cover.
 ///
-/// One multipart POST each, unlike a personal account's avatar which goes
-/// through the composer and files a feed post: a realm has no feed post to
-/// file, so /realms/upload-media does the whole job.
+/// The realm endpoint also publishes community media updates to members.
 class RealmMediaScreen extends StatefulWidget {
   final RealmProfile realm;
   const RealmMediaScreen({super.key, required this.realm});
@@ -732,11 +732,16 @@ class RealmMediaScreen extends StatefulWidget {
 class _RealmMediaScreenState extends State<RealmMediaScreen> {
   String? _busy;
   bool _changed = false;
+  final Map<String, ({String path, String uploadId})> _pendingUploads = {};
 
   Future<void> _pickAndUpload(String mediaType) async {
-    final picked =
-        await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
-    final path = picked?.files.single.path;
+    final pending = _pendingUploads[mediaType];
+    String? path = pending?.path;
+    if (path == null) {
+      final picked = await FilePicker.pickFiles(
+          type: FileType.image, allowMultiple: false);
+      path = picked?.files.single.path;
+    }
     if (path == null || !mounted) return;
 
     setState(() => _busy = mediaType);
@@ -748,11 +753,18 @@ class _RealmMediaScreenState extends State<RealmMediaScreen> {
       realmType: realmFormKind(widget.realm),
       mediaType: mediaType,
       filePath: path,
+      uploadId: pending?.uploadId,
+      onUploaded: realmFormKind(widget.realm) == 'community'
+          ? (uploadId) {
+              _pendingUploads[mediaType] = (path: path!, uploadId: uploadId);
+            }
+          : null,
     );
     if (!mounted) return;
     setState(() {
       _busy = null;
       _changed = _changed || ok;
+      if (ok) _pendingUploads.remove(mediaType);
     });
 
     // A failed upload has already said why (reportedAction).
@@ -771,6 +783,8 @@ class _RealmMediaScreenState extends State<RealmMediaScreen> {
       child: CLScreen(
         backgroundColor: p.bg,
         appBar: AppBar(
+          leadingWidth: 48,
+          titleSpacing: 0,
           title: const Text('Media'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
@@ -788,6 +802,7 @@ class _RealmMediaScreenState extends State<RealmMediaScreen> {
               preview: widget.realm.profile,
               rounded: true,
               busy: _busy == 'profile',
+              retrying: _pendingUploads.containsKey('profile'),
               onPick: _busy == null ? () => _pickAndUpload('profile') : null,
             ),
             // Pages and servers only - see realmHasCoverPhoto. Nothing else
@@ -801,6 +816,7 @@ class _RealmMediaScreenState extends State<RealmMediaScreen> {
                 preview: widget.realm.coverPhoto,
                 rounded: false,
                 busy: _busy == 'cover_photo',
+                retrying: _pendingUploads.containsKey('cover_photo'),
                 onPick:
                     _busy == null ? () => _pickAndUpload('cover_photo') : null,
               ),
@@ -818,6 +834,7 @@ class _MediaTile extends StatelessWidget {
   final String? preview;
   final bool rounded;
   final bool busy;
+  final bool retrying;
   final VoidCallback? onPick;
 
   const _MediaTile({
@@ -826,6 +843,7 @@ class _MediaTile extends StatelessWidget {
     required this.preview,
     required this.rounded,
     required this.busy,
+    this.retrying = false,
     required this.onPick,
   });
 
@@ -874,7 +892,11 @@ class _MediaTile extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           CLBtn(
-            label: busy ? 'Uploading…' : 'Choose a photo',
+            label: busy
+                ? 'Uploading…'
+                : retrying
+                    ? 'Retry update'
+                    : 'Choose a photo',
             iconL: Icons.photo_library_outlined,
             variant: CLBtnVariant.outline,
             block: true,

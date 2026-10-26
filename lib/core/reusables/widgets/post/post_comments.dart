@@ -309,7 +309,7 @@ class PostCommentsState extends State<PostComments> {
     final actor = event.actor;
     // Your own keystrokes come back to you: the event goes to the post's
     // channel, and you are on it. Nobody needs telling that they are typing.
-    if (actor == null || actor.entityId == _myEntityId) return;
+    if (actor == null || event.isFromViewer(_myEntityId)) return;
 
     _typers[actor.entityId] = CommentTyper(
       entityId: actor.entityId,

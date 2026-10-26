@@ -271,14 +271,14 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                                   style: TextStyle(
                                       fontSize: CLType.caption,
                                       color: p.text2)),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
                               Text(community.description,
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                       fontSize: CLType.body,
                                       color: p.text2,
                                       height: 1.45)),
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 8),
                               CommunitySectionTabs(
                                   labels: const ['Posts', 'About', 'Members'],
                                   selected: _section,
@@ -338,7 +338,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                                   children: [
                                 const Text('Members',
                                     style: TextStyle(
-                                        fontSize: CLType.sectionTitle,
+                                        fontSize: CLType.title,
                                         fontWeight: FontWeight.w700)),
                                 for (final person in _members)
                                   Material(
@@ -364,7 +364,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                               ]))),
                     if (_section == 0 && community.isMember)
                       Padding(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
                           child: ProfileComposerCard.forActingEntity(
                             community: community,
                             placeholder:

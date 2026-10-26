@@ -58,18 +58,24 @@ class CommunityApi {
   Future<Community> detail(String id) async =>
       _community((await _dio.get(_path(id), options: _options)).data);
   Future<Community> create(
-          {required String name,
-          String? slug,
-          String description = '',
-          bool isPrivate = false}) async =>
-      _community(
-          (await _dio.post(_endpoints.communities, options: _options, data: {
-        'name': name,
-        'description': description,
-        'is_private': isPrivate,
-        if (slug != null) 'slug': slug
-      }))
-              .data);
+      {required String name,
+      required String slug,
+      String description = '',
+      bool isPrivate = false}) async {
+    final profileSlug = slug.trim();
+    if (profileSlug.isEmpty) {
+      throw ArgumentError.value(slug, 'slug', 'Enter a community slug');
+    }
+    return _community(
+        (await _dio.post(_endpoints.communities, options: _options, data: {
+      'name': name,
+      'description': description,
+      'is_private': isPrivate,
+      'slug': profileSlug
+    }))
+            .data);
+  }
+
   Future<CommunityMembership> join(String realmId) async =>
       CommunityMembership.fromJson(Map<String, dynamic>.from(
           (await _dio.post('${_path(realmId)}/join', options: _options)).data));

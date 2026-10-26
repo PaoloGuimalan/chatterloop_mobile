@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/reusables/widgets/community_identity_toggle.dart';
 // The post screen: one post in full, with its reactions, comments and share.
 //
 // Reached from an Explore content card today, and from the newsfeed once that
@@ -260,15 +261,11 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                     // Rebuilds only the composer when the reply target changes,
                     // rather than the whole screen.
                     if (post.community != null && post.community!.isMember)
-                      SwitchListTile(
-                          title: const Text('Comment anonymously',
-                              style: TextStyle(fontSize: CLType.label)),
-                          subtitle: Text(
-                              _anonymousComment
-                                  ? 'Anonymous member'
-                                  : 'Your current profile',
-                              style: TextStyle(
-                                  fontSize: CLType.caption, color: p.text2)),
+                      CommunityIdentityToggle(
+                          title: 'Comment anonymously',
+                          subtitle: _anonymousComment
+                              ? 'Anonymous member'
+                              : 'Your current profile',
                           value: _anonymousComment,
                           onChanged: (value) =>
                               setState(() => _anonymousComment = value)),

@@ -364,6 +364,7 @@ class ServerCard extends StatelessWidget {
   final bool busy;
   final VoidCallback onOpen;
   final VoidCallback onJoin;
+  final String? actionLabel;
 
   const ServerCard({
     super.key,
@@ -372,6 +373,7 @@ class ServerCard extends StatelessWidget {
     required this.busy,
     required this.onOpen,
     required this.onJoin,
+    this.actionLabel,
   });
 
   @override
@@ -465,6 +467,11 @@ class ServerCard extends StatelessWidget {
                                     isVerified: server.isVerified,
                                     badgeSize: 13,
                                     gap: 3),
+                                if (server.type == 'community') ...[
+                                  const SizedBox(width: 3),
+                                  Icon(Icons.groups_outlined,
+                                      size: 13, color: p.text3),
+                                ],
                               ],
                             ),
                           ),
@@ -529,9 +536,7 @@ class ServerCard extends StatelessWidget {
                             // definition looking at what you would be giving up.
                             label: busy
                                 ? '…'
-                                : isMember
-                                    ? 'Open'
-                                    : 'Join',
+                                : actionLabel ?? (isMember ? 'Open' : 'Join'),
                             // Deliberately NOT the same button twice. Two cards side
                             // by side, one joined and one not, were identical gold
                             // blocks you had to READ to tell apart - which is the
@@ -560,7 +565,7 @@ class ServerCard extends StatelessWidget {
           // against the card-wide InkWell above.
           RealmCardReportButton(
             targetId: server.entityId.isNotEmpty ? server.entityId : server.id,
-            realmType: 'server',
+            realmType: server.type,
           ),
         ],
       ),

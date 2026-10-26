@@ -21,6 +21,7 @@ import 'package:chatterloop_app/core/requests/community_api.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
+import 'package:chatterloop_app/core/reusables/widgets/community_name.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_options.dart';
@@ -32,6 +33,7 @@ import 'package:chatterloop_app/core/utils/date_words.dart';
 import 'package:chatterloop_app/core/utils/hashtags.dart';
 import 'package:chatterloop_app/core/utils/post_updates.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -378,8 +380,11 @@ class _PostCardState extends State<PostCard> {
   void _openAuthor() {
     final author = _post.author;
     if (!author.canOpenProfile) return;
-    context.push(
-        author.isRealm ? '/realm/${author.handle}' : '/user/${author.handle}');
+    context.push(author.isCommunity
+        ? '/communities/${Uri.encodeComponent(author.realmId ?? author.handle)}'
+        : author.isRealm
+            ? '/realm/${author.handle}'
+            : '/user/${author.handle}');
   }
 
   @override
@@ -425,20 +430,37 @@ class _PostCardState extends State<PostCard> {
                     // the author's own name to an ellipsis.
                     Text.rich(
                       TextSpan(children: [
-                        TextSpan(
-                          text: post.author.displayName,
-                          style: TextStyle(
-                            fontSize: CLType.title,
-                            fontWeight: FontWeight.w700,
-                            color: p.text,
+                        if (post.author.isCommunity)
+                          ...communityNameSpans(
+                            context,
+                            Community(
+                                realmId:
+                                    post.author.realmId ?? post.author.handle,
+                                entityId: post.author.entityId,
+                                name: post.author.displayName,
+                                isVerified: post.author.isVerified),
+                            style: TextStyle(
+                                fontSize: CLType.title,
+                                fontWeight: FontWeight.w700,
+                                color: p.text),
+                            onTap:
+                                post.author.canOpenProfile ? _openAuthor : null,
+                          )
+                        else
+                          TextSpan(
+                            text: post.author.displayName,
+                            style: TextStyle(
+                              fontSize: CLType.title,
+                              fontWeight: FontWeight.w700,
+                              color: p.text,
+                            ),
+                            recognizer: post.author.canOpenProfile
+                                ? (TapGestureRecognizer()..onTap = _openAuthor)
+                                : null,
                           ),
-                          recognizer: post.author.canOpenProfile
-                              ? (TapGestureRecognizer()..onTap = _openAuthor)
-                              : null,
-                        ),
-                        if (post.author.isVerified)
+                        if (post.author.isVerified && !post.author.isCommunity)
                           const TextSpan(text: "\u00A0\u2060"),
-                        if (post.author.isVerified)
+                        if (post.author.isVerified && !post.author.isCommunity)
                           TextSpan(
                             text: String.fromCharCode(Icons.verified.codePoint),
                             style: TextStyle(

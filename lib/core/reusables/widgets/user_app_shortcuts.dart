@@ -9,9 +9,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 class UserAppShortcuts extends StatelessWidget {
   final VoidCallback onSettings;
+  final VoidCallback? onCommunities;
   final bool isActingAsPage;
   const UserAppShortcuts(
-      {super.key, required this.onSettings, this.isActingAsPage = false});
+      {super.key,
+      required this.onSettings,
+      this.onCommunities,
+      this.isActingAsPage = false});
 
   Future<void> _openPages() async {
     try {
@@ -48,6 +52,8 @@ class UserAppShortcuts extends StatelessWidget {
                 'settings', onSettings),
             _tile(context, 'Servers', 'servers',
                 () => context.push('/server-browser')),
+            _tile(context, 'Community', 'community',
+                onCommunities ?? () => context.push('/communities')),
             _tile(context, 'Pages', 'pages', _openPages),
             if (appStore.state.userAuth.user.allowedModules
                 .contains('module.diary.access'))
@@ -84,8 +90,12 @@ class UserAppShortcuts extends StatelessWidget {
                   width: 40,
                   height: 40,
                   child: Center(
-                    child: Image.asset('assets/images/app-icon-$iconName.png',
-                        width: 28, height: 28, excludeFromSemantics: true),
+                    child: iconName == 'community'
+                        ? Icon(Icons.groups,
+                            size: 28,
+                            color: Theme.of(context).colorScheme.primary)
+                        : Image.asset('assets/images/app-icon-$iconName.png',
+                            width: 28, height: 28, excludeFromSemantics: true),
                   ),
                 ),
                 const SizedBox(height: 6),

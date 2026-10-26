@@ -338,7 +338,10 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
 
     return CLScreen(
       backgroundColor: p.bg,
-      appBar: AppBar(title: Text(_invites ? 'Invite people' : 'Add members')),
+      appBar: AppBar(
+          leadingWidth: 48,
+          titleSpacing: 0,
+          title: Text(_invites ? 'Invite people' : 'Add members')),
       body: Column(
         children: [
           Padding(

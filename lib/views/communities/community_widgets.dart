@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
-import 'package:chatterloop_app/core/design/widgets.dart';
-import 'package:chatterloop_app/core/reusables/widgets/community_name.dart';
 import 'package:chatterloop_app/models/user_models/community_model.dart';
+import 'package:chatterloop_app/models/user_models/realm_model.dart';
+import 'package:chatterloop_app/views/servers/servers_view.dart';
 
 class CommunitySectionTabs extends StatelessWidget {
   final List<String> labels;
@@ -69,77 +69,28 @@ class CommunityDirectoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = cl(context);
-    final cover = community.coverPhoto;
-    return CLCard(
-      padding: EdgeInsets.zero,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(CLRadii.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              height: 76,
-              decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [p.brandSoft, p.surface3])),
-              child: cover == null || cover.isEmpty || cover == 'none'
-                  ? null
-                  : Image.network(cover,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(children: [
-                    CLAvatar(
-                        id: community.realmId,
-                        src: community.profile,
-                        name: community.name,
-                        size: 28),
-                    const SizedBox(width: 8),
-                    Expanded(
-                        child: Text.rich(
-                      TextSpan(
-                          children: communityNameSpans(context, community,
-                              style: TextStyle(
-                                  color: p.text,
-                                  fontSize: CLType.title,
-                                  fontWeight: FontWeight.w700))),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    )),
-                  ]),
-                  const SizedBox(height: 10),
-                  Text(community.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: CLType.caption,
-                          color: p.text2,
-                          height: 1.45)),
-                  const SizedBox(height: 10),
-                  Text(
-                      '${community.isPrivate ? 'Private' : 'Public'} · ${community.memberCount ?? 0} members',
-                      style: TextStyle(fontSize: CLType.meta, color: p.text3)),
-                  const SizedBox(height: 12),
-                  CLBtn(
-                      label: community.isMember ? 'Open' : 'View',
-                      onPressed: onOpen,
-                      variant: community.isMember
-                          ? CLBtnVariant.outline
-                          : CLBtnVariant.primary,
-                      size: CLBtnSize.sm,
-                      labelSize: CLType.label,
-                      block: true),
-                ],
-              ),
-            ),
-          ],
-        ),
+    return ServerCard(
+      server: RealmProfile(
+        id: community.realmId,
+        entityId: community.entityId,
+        name: community.name,
+        slug: community.slug,
+        profile: community.profile,
+        coverPhoto: community.coverPhoto,
+        description: community.description,
+        type: 'community',
+        isPrivate: community.isPrivate,
+        followersCount: 0,
+        membersCount: community.memberCount ?? 0,
+        isMember: community.isMember,
+        isAdmin: false,
+        isVerified: community.isVerified,
       ),
+      isMember: community.isMember,
+      busy: false,
+      actionLabel: community.isMember ? 'Open' : 'View',
+      onOpen: onOpen,
+      onJoin: onOpen,
     );
   }
 }

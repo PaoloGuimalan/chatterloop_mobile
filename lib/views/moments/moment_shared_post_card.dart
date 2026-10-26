@@ -1,4 +1,5 @@
 import 'package:chatterloop_app/core/reusables/widgets/community_content_guard.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
@@ -146,6 +147,14 @@ class _MomentSharedPostCardState extends State<MomentSharedPostCard> {
               ),
             ],
           ),
+          if (post.community != null) ...[
+            const SizedBox(height: 4),
+            Text.rich(TextSpan(
+                children: postDestinationSpans(context, post,
+                    baseStyle:
+                        TextStyle(fontSize: CLType.caption, color: p.text2),
+                    linkColor: p.text))),
+          ],
           if (post.caption.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(post.caption,

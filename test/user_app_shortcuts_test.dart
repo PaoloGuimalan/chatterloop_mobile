@@ -72,6 +72,27 @@ void main() {
     }
   });
 
+  testWidgets('Community is an Apps tile and uses its navigation callback',
+      (tester) async {
+    var opened = false;
+    await tester.pumpWidget(MaterialApp(
+      theme: buildCLTheme(Brightness.light),
+      home: Scaffold(
+        body: UserAppShortcuts(
+          onSettings: () {},
+          onCommunities: () => opened = true,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final tile = find.text('Community');
+    expect(find.ancestor(of: tile, matching: find.byType(GridView)),
+        findsOneWidget);
+    expect(find.byIcon(Icons.groups), findsOneWidget);
+    await tester.tap(tile);
+    expect(opened, isTrue);
+  });
+
   testWidgets('Servers shortcut opens the full browser directly',
       (tester) async {
     final router = shortcutRouter();

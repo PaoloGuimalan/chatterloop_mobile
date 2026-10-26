@@ -108,6 +108,11 @@ class _CommunitiesViewState extends State<CommunitiesView>
                         controller: _search,
                         style: TextStyle(fontSize: CLType.title, color: p.text),
                         decoration: InputDecoration(
+                            constraints:
+                                const BoxConstraints.tightFor(height: 38),
+                            isDense: true,
+                            prefixIconConstraints: const BoxConstraints(
+                                minWidth: 38, minHeight: 38),
                             hintText: 'Search communities',
                             hintStyle: TextStyle(
                                 fontSize: CLType.caption, color: p.text3),
@@ -162,21 +167,26 @@ class _CommunitiesViewState extends State<CommunitiesView>
                         MediaQuery.textScalerOf(context).scale(1) <= 1.3
                     ? 2
                     : 1;
-                final width =
-                    (constraints.maxWidth - (columns - 1) * 12) / columns;
-                return Wrap(spacing: 12, runSpacing: 12, children: [
-                  for (final community in _items)
-                    SizedBox(
-                        width: width,
-                        child: CommunityDirectoryCard(
-                          community: community,
-                          onOpen: () async {
-                            await context.push(
-                                '/communities/${Uri.encodeComponent(community.realmId)}');
-                            if (mounted) _load();
-                          },
-                        )),
-                ]);
+                return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        childAspectRatio: columns == 2 ? 0.84 : 1.4),
+                    itemCount: _items.length,
+                    itemBuilder: (context, index) {
+                      final community = _items[index];
+                      return CommunityDirectoryCard(
+                        community: community,
+                        onOpen: () async {
+                          await context.push(
+                              '/communities/${Uri.encodeComponent(community.realmId)}');
+                          if (mounted) _load();
+                        },
+                      );
+                    });
               }),
               if (_loading) const Center(child: CircularProgressIndicator()),
               if (!_loading && !_failed && _items.isEmpty)

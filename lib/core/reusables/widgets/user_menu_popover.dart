@@ -424,20 +424,10 @@ class UserMenuContent extends StatelessWidget {
                     ),
                   ),
               ],
-              _MenuRow(
-                  onTap: onTapCommunities ?? () => context.push('/communities'),
-                  child: Row(children: [
-                    Icon(Icons.groups_outlined, size: 18, color: p.text2),
-                    const SizedBox(width: 10),
-                    Text('Communities',
-                        style: TextStyle(
-                            color: p.text,
-                            fontSize: CLType.title,
-                            fontWeight: FontWeight.w600))
-                  ])),
               if (showApps) ...[
                 const SizedBox(height: 18),
                 UserAppShortcuts(
+                    onCommunities: onTapCommunities,
                     onSettings: user.isActingAsEntity
                         ? onTapManageRealm
                         : onTapSettings,

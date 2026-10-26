@@ -54,12 +54,11 @@ void main() {
       final header = tester
           .widgetList<RichText>(find.byType(RichText))
           .firstWhere((text) => text.text.toPlainText().contains('posted in'));
-      final text = header.text.toPlainText(includeSemanticsLabels: false);
-      expect(text, contains('Weekend Makers'));
-      expect(
-          text, contains(String.fromCharCode(Icons.groups_outlined.codePoint)));
-      expect(text.contains(String.fromCharCode(Icons.verified.codePoint)),
-          verified);
+      expect(header.text.toPlainText(), contains('posted in'));
+      expect(find.text('Weekend Makers'), findsOneWidget);
+      expect(find.byIcon(Icons.groups_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.verified),
+          verified ? findsOneWidget : findsNothing);
     }
   });
   void actAs(String entityId) => appStore.dispatch(DispatchModel(
@@ -230,9 +229,17 @@ void main() {
     final api = CommunityApi(dio: dio);
     expect((await api.detail('weekend makers')).isMember, isTrue);
     expect(requests.last.path, '/api/realm/communities/weekend%20makers');
-    await api.create(name: 'Weekend Makers', isPrivate: true);
+    await api.create(
+        name: 'Weekend Makers', slug: ' weekend-makers ', isPrivate: true);
     expect(requests.last.method, 'POST');
     expect(requests.last.data['is_private'], isTrue);
+    expect(requests.last.data['slug'], 'weekend-makers');
+    final requestCount = requests.length;
+    for (final slug in ['', '   ']) {
+      await expectLater(
+          api.create(name: 'Weekend Makers', slug: slug), throwsArgumentError);
+    }
+    expect(requests.length, requestCount);
     body = {
       'count': 1,
       'next': null,
