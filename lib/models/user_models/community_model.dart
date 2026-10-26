@@ -47,4 +47,20 @@ class Community {
   static Community? parse(dynamic value) => value is Map
       ? Community.fromJson(Map<String, dynamic>.from(value))
       : null;
+
+  Community withMembership({required bool member, required bool pending}) =>
+      Community(
+          realmId: realmId,
+          entityId: entityId,
+          name: name,
+          slug: slug,
+          profile: profile,
+          isPrivate: isPrivate,
+          isMember: member,
+          isVerified: isVerified,
+          description: description,
+          coverPhoto: coverPhoto,
+          memberCount: memberCount,
+          myRole: member ? myRole : null,
+          requestPending: pending);
 }

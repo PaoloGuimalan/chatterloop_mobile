@@ -67,7 +67,6 @@ class _CommunityRequestsViewState extends State<CommunityRequestsView> {
     setState(() => _busy = null);
     if (settled != null) {
       communityChanges.value++;
-      await _load();
     }
   }
 

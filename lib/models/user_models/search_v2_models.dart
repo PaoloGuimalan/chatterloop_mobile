@@ -91,6 +91,8 @@ class SearchPersonResult {
 /// per kind: page -> Follow toggle, server -> Open, group -> Join, or Open
 /// chat once `is_member`.
 class SearchRealmResult {
+  final bool isPrivate;
+  final bool requestPending;
   final String entityId;
   final String displayName;
   final String handle;
@@ -107,6 +109,8 @@ class SearchRealmResult {
   final String id;
 
   const SearchRealmResult({
+    this.isPrivate = false,
+    this.requestPending = false,
     required this.entityId,
     required this.displayName,
     required this.handle,
@@ -120,8 +124,11 @@ class SearchRealmResult {
     required this.id,
   });
 
-  SearchRealmResult copyWith({bool? isFollower, bool? isMember}) =>
+  SearchRealmResult copyWith(
+          {bool? isFollower, bool? isMember, bool? requestPending}) =>
       SearchRealmResult(
+        isPrivate: isPrivate,
+        requestPending: requestPending ?? this.requestPending,
         entityId: entityId,
         displayName: displayName,
         handle: handle,
@@ -137,6 +144,8 @@ class SearchRealmResult {
 
   factory SearchRealmResult.fromJson(Map<String, dynamic> json) {
     return SearchRealmResult(
+      isPrivate: json['is_private'] == true,
+      requestPending: json['request_pending'] == true,
       entityId: (json["entity_id"] ?? "").toString(),
       displayName: (json["display_name"] ?? "").toString(),
       handle: (json["handle"] ?? "").toString(),

@@ -298,7 +298,10 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                               if (changed == true) _load();
                             },
                           ),
-                        if (realm.type == 'community')
+                        if ((realm.type == 'community' &&
+                                ['owner', 'admin', 'moderator']
+                                    .contains(realm.myRole)) ||
+                            (realm.type == 'server' && realm.isAdmin))
                           _SectionTile(
                               icon: Icons.person_add_alt,
                               title: 'Join requests',

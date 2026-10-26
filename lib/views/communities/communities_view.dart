@@ -8,6 +8,7 @@ import 'package:chatterloop_app/core/requests/community_api.dart';
 import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'community_widgets.dart';
 import 'package:chatterloop_app/core/ui/cl_alerts.dart';
+import 'package:chatterloop_app/views/servers/servers_view.dart';
 
 /// A pushed destination: deliberately owns its Scaffold outside the tab shell.
 class CommunitiesView extends StatefulWidget {
@@ -175,8 +176,11 @@ class _CommunitiesViewState extends State<CommunitiesView>
                         crossAxisSpacing: 10,
                         mainAxisSpacing: 10,
                         childAspectRatio: columns == 2 ? 0.84 : 1.4),
-                    itemCount: _items.length,
+                    itemCount: _items.length + (_loading ? 4 : 0),
                     itemBuilder: (context, index) {
+                      if (index >= _items.length) {
+                        return const ServerCardSkeleton(coverHeight: 56);
+                      }
                       final community = _items[index];
                       return CommunityDirectoryCard(
                         community: community,
@@ -188,7 +192,6 @@ class _CommunitiesViewState extends State<CommunitiesView>
                       );
                     });
               }),
-              if (_loading) const Center(child: CircularProgressIndicator()),
               if (!_loading && !_failed && _items.isEmpty)
                 const CLSectionEmpty(
                     icon: Icons.groups_outlined,

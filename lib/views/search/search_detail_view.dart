@@ -13,6 +13,7 @@ import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/requests/interests_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
+import 'package:chatterloop_app/core/requests/invites_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/entity_row.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/core/reusables/widgets/popular_topics.dart';
@@ -252,6 +253,21 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
   Future<void> _joinGroup(SearchRealmResult realm) async {
     if (_joinBusy.contains(realm.entityId)) return;
     setState(() => _joinBusy.add(realm.entityId));
+    if (realm.realmType == 'server' && realm.isPrivate) {
+      final requested = await InvitesApi().requestJoin(realm.id);
+      if (!mounted) return;
+      setState(() {
+        _joinBusy.remove(realm.entityId);
+        if (requested) {
+          for (var i = 0; i < _realms.length; i++) {
+            if (_realms[i].entityId == realm.entityId) {
+              _realms[i] = _realms[i].copyWith(requestPending: true);
+            }
+          }
+        }
+      });
+      return;
+    }
     final conversationId = await SearchApi().joinGroupRealmRequest(realm.id);
     if (!mounted) return;
     setState(() {

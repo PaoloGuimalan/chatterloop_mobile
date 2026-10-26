@@ -54,7 +54,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
   }
 
   void _changed() {
-    _load();
+    if (!_busy) _load();
   }
 
   @override
@@ -86,11 +86,14 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
       final community = await _api.detail(widget.id);
       if (!mounted || generation != _generation || actor != _actor) return;
       final canRead = !community.isPrivate || community.isMember;
-      final posts =
-          canRead ? await _api.posts(community.realmId, page: page) : null;
-      final members = page == 1 && community.isMember
-          ? await _api.members(community.realmId)
-          : null;
+      final (posts, members) = await (
+        canRead
+            ? _api.posts(community.realmId, page: page)
+            : Future.value(null),
+        page == 1 && community.isMember
+            ? _api.members(community.realmId)
+            : Future.value(null),
+      ).wait;
       if (!mounted || generation != _generation || actor != _actor) return;
       setState(() {
         _community = community;
@@ -141,14 +144,19 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
       final token = await ApiClient.instance.readToken();
       if (!mounted || actor != _actor) return;
       final api = widget.api ?? CommunityApi(authToken: token);
-      if (community.isMember || community.requestPending) {
-        await api.leave(community.realmId);
-      } else {
-        await api.join(community.realmId);
-      }
+      final leaving = community.isMember || community.requestPending;
+      final result = leaving
+          ? await api.leave(community.realmId)
+          : await api.join(community.realmId);
       if (!mounted || actor != _actor) return;
+      final member = result.isMember ?? (!leaving && !community.isPrivate);
+      setState(() {
+        _community = community.withMembership(
+            member: member, pending: result.requestPending);
+        _busy = false;
+      });
       PostUpdates.instance.clear();
-      await _load();
+      if (community.isMember != member) await _load();
     } catch (e) {
       if (mounted && actor == _actor) {
         CLAlerts.requestError(e,
@@ -160,6 +168,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
   }
 
   Widget _buildActions(Community community) {
+    if (community.isMember) return const SizedBox.shrink();
     final canManage =
         ['owner', 'admin', 'moderator'].contains(community.myRole);
     return Padding(
@@ -189,7 +198,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                     : CLBtnVariant.primary,
                 onPressed: _busy ? null : _membership,
               )),
-          if (canManage)
+          if (canManage && !community.isMember)
             SizedBox(
                 width: width,
                 child: CLBtn(
@@ -219,6 +228,42 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
             surfaceTintColor: Colors.transparent,
             elevation: 0,
             scrolledUnderElevation: 0,
+            actions: [
+              if (community != null &&
+                  (community.isMember ||
+                      ['owner', 'admin', 'moderator']
+                          .contains(community.myRole)))
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: PopupMenuButton<String>(
+                    tooltip: 'Community options',
+                    enabled: !_busy,
+                    color: p.surface,
+                    icon: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: p.surface,
+                        child: Icon(Icons.more_horiz, size: 20, color: p.text)),
+                    onSelected: (value) async {
+                      if (value == 'leave') {
+                        await _membership();
+                      } else {
+                        await context.push(
+                            '/realm/${Uri.encodeComponent(community.realmId)}/manage');
+                        if (mounted) _load();
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      if (['owner', 'admin', 'moderator']
+                          .contains(community.myRole))
+                        const PopupMenuItem(
+                            value: 'manage', child: Text('Manage Realm')),
+                      if (community.isMember)
+                        const PopupMenuItem(
+                            value: 'leave', child: Text('Leave community')),
+                    ],
+                  ),
+                ),
+            ],
             leading: IconButton(
               tooltip: 'Back',
               onPressed: () => context.pop(),
@@ -268,7 +313,9 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                               isBadged: community.isVerified,
                               isPrivate: community.isPrivate,
                               type: 'community',
-                              actions: _buildActions(community)),
+                              actions: community.isMember
+                                  ? null
+                                  : _buildActions(community)),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 14),
                             child: Column(children: [
@@ -325,14 +372,18 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                                   Material(
                                       color: Colors.transparent,
                                       child: ListTile(
+                                          dense: true,
+                                          visualDensity: VisualDensity.compact,
+                                          minVerticalPadding: 4,
                                           contentPadding: EdgeInsets.zero,
                                           leading: CLAvatar(
+                                              size: 32,
                                               id: person.entityId,
                                               src: person.profile,
                                               name: person.displayName),
                                           title: Text(person.displayName,
                                               style: TextStyle(
-                                                  fontSize: CLType.title,
+                                                  fontSize: CLType.bodySm,
                                                   color: p.text)),
                                           subtitle: Text(
                                               person.role ?? 'Member',
@@ -354,6 +405,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                               if (mounted) _load();
                             },
                           )),
+                    if (_section == 0) const SizedBox(height: 10),
                     if (_section == 0)
                       for (final post in _posts)
                         Padding(

@@ -161,6 +161,7 @@ List<InlineSpan> taggingSummarySpans(
 /// remove. Selection is reported as ENTITY ids, which is what `tagging.users`
 /// takes.
 class TagEntityPicker extends StatefulWidget {
+  final String? communityEntityId;
   final List<SearchResultUser> selected;
   final ValueChanged<List<SearchResultUser>> onChanged;
 
@@ -168,6 +169,7 @@ class TagEntityPicker extends StatefulWidget {
     super.key,
     required this.selected,
     required this.onChanged,
+    this.communityEntityId,
   });
 
   @override
@@ -179,6 +181,18 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
   List<SearchResultUser> _results = const [];
   bool _searching = false;
   bool _open = false;
+  int _generation = 0;
+
+  @override
+  void didUpdateWidget(covariant TagEntityPicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.communityEntityId != widget.communityEntityId) {
+      _generation++;
+      _controller.clear();
+      _results = const [];
+      _searching = false;
+    }
+  }
 
   @override
   void dispose() {
@@ -187,6 +201,7 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
   }
 
   Future<void> _search(String query) async {
+    final generation = ++_generation;
     if (query.trim().isEmpty) {
       setState(() {
         _results = const [];
@@ -198,9 +213,13 @@ class _TagEntityPickerState extends State<TagEntityPicker> {
     // The flat entity search - people, pages AND bots in one list, which is
     // exactly what can be tagged. realmTypes stays at its "page" default: a
     // server or a group chat is not a taggable subject.
-    final found = await SearchApi()
-        .searchEntitiesRequest(query.trim(), types: "user,realm,bot");
-    if (!mounted || _controller.text.trim() != query.trim()) return;
+    final found = await SearchApi().searchEntitiesRequest(query.trim(),
+        types: "user,realm,bot", communityEntityId: widget.communityEntityId);
+    if (!mounted ||
+        generation != _generation ||
+        _controller.text.trim() != query.trim()) {
+      return;
+    }
     setState(() {
       _results = found;
       _searching = false;

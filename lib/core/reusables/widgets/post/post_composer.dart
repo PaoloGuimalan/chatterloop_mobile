@@ -29,6 +29,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/community_destination_picker.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post_video_widget.dart';
 import 'package:chatterloop_app/core/utils/upload_limits.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
@@ -255,74 +256,24 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   }
 
   Future<void> _pickDestination() async {
-    if (_posting) return;
+    if (_posting || widget.autoTag != null) return;
     try {
-      final choices = <Community>[];
-      var page = 1;
-      while (true) {
-        final result =
-            await CommunityApi().discover(joined: true, page: page++);
-        choices.addAll(result.results.where((c) => c.isMember));
-        if (!result.hasNext) break;
+      final result = await pickCommunityDestination(context,
+          taggedEntityIds: _tagged.map((entity) => entity.entityId).toList());
+      if (!mounted ||
+          result == null ||
+          _actor != appStore.state.userAuth.user.entityId) {
+        return;
       }
-      if (!mounted || _actor != appStore.state.userAuth.user.entityId) return;
-      final result = await showModalBottomSheet<Community?>(
-          context: context,
-          useRootNavigator: true,
-          builder: (context) => SafeArea(
-                  child: ListView(
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.all(12),
-                      children: [
-                    const Padding(
-                        padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
-                        child: Text('Post in',
-                            style: TextStyle(
-                                fontSize: CLType.title,
-                                fontWeight: FontWeight.w700))),
-                    ListTile(
-                        minLeadingWidth: 20,
-                        visualDensity: VisualDensity.compact,
-                        minTileHeight: 52,
-                        minVerticalPadding: 4,
-                        horizontalTitleGap: 10,
-                        leading: Icon(Icons.home_outlined,
-                            size: 20, color: cl(context).brand),
-                        subtitle: const Text('Personal timeline',
-                            style: TextStyle(fontSize: CLType.caption)),
-                        title: const Text('Your timeline',
-                            style: TextStyle(fontSize: CLType.title)),
-                        onTap: () => Navigator.pop(
-                            context,
-                            const Community(
-                                realmId: '',
-                                entityId: '',
-                                name: 'Your timeline'))),
-                    for (final choice in choices)
-                      ListTile(
-                          minLeadingWidth: 20,
-                          visualDensity: VisualDensity.compact,
-                          minTileHeight: 52,
-                          minVerticalPadding: 4,
-                          horizontalTitleGap: 10,
-                          leading: Icon(Icons.groups_outlined,
-                              size: 20, color: cl(context).brand),
-                          title: Text(choice.name,
-                              style: const TextStyle(fontSize: CLType.title)),
-                          subtitle: Text(
-                              choice.isPrivate
-                                  ? 'Private community'
-                                  : 'Public community',
-                              style: const TextStyle(fontSize: CLType.caption)),
-                          onTap: () => Navigator.pop(context, choice))
-                  ])));
-      if (!mounted || result == null) return;
       setState(() {
         _community = result.entityId.isEmpty ? null : result;
         _anonymous = false;
       });
-    } catch (_) {
-      _toast('Could not load your communities');
+    } catch (error) {
+      if (mounted) {
+        CLAlerts.requestError(error,
+            fallback: 'Could not load your communities.');
+      }
     }
   }
 
@@ -589,7 +540,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                       ),
                     ),
                   ),
-                  if (!widget.mode.isMedia) ...[
+                  if (!widget.mode.isMedia && widget.autoTag == null) ...[
                     const SizedBox(height: 8),
                     InkWell(
                       borderRadius: BorderRadius.circular(CLRadii.sm),
@@ -749,6 +700,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                   // tagging list for these too.
                   if (!widget.mode.isMedia)
                     TagEntityPicker(
+                      communityEntityId: _community?.entityId,
                       selected: _tagged,
                       onChanged: (next) => setState(() => _tagged = next),
                     ),

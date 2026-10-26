@@ -55,6 +55,7 @@ class SearchApi {
     String query, {
     String types = "user,realm",
     String realmTypes = "page",
+    String? communityEntityId,
   }) async {
     if (query.trim().isEmpty) return const [];
 
@@ -66,6 +67,8 @@ class SearchApi {
           "page_size": 15,
           "types": types,
           "realm_types": realmTypes,
+          if (communityEntityId != null)
+            "community_entity_id": communityEntityId,
         },
       );
 

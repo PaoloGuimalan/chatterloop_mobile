@@ -8,6 +8,7 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/requests/community_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/realm/realm_add_members_view.dart';
@@ -63,6 +64,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   bool _hasNext = false;
   bool _loading = true;
   bool _loadingMore = false;
+  int _generation = 0;
   String? _busyId;
 
   /// Kept locally because a transfer changes MY OWN role here, and every
@@ -131,17 +133,24 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   @override
   void initState() {
     super.initState();
+    communityChanges.addListener(_realmChanged);
     _fetch(1);
     _scroll.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    communityChanges.removeListener(_realmChanged);
     _searchDebounce?.cancel();
     _scroll.removeListener(_onScroll);
     _scroll.dispose();
     _search.dispose();
     super.dispose();
+  }
+
+  void _realmChanged() {
+    _fetch(1);
+    _refreshRealm();
   }
 
   void _onScroll() {
@@ -163,6 +172,8 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   }
 
   Future<void> _fetch(int page) async {
+    final generation = ++_generation;
+    final actor = appStore.state.userAuth.user.entityId;
     if (page == 1) {
       setState(() => _loading = true);
     } else {
@@ -176,7 +187,11 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
             page: page, search: _search.text)
         : await api.getRealmFollowersRequest(widget.realm.id,
             page: page, search: _search.text);
-    if (!mounted) return;
+    if (!mounted ||
+        generation != _generation ||
+        actor != appStore.state.userAuth.user.entityId) {
+      return;
+    }
 
     setState(() {
       if (page == 1) _people.clear();

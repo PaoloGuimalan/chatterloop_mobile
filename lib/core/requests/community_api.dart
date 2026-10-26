@@ -23,12 +23,17 @@ class CommunityApi {
   String _path(String id) =>
       '${_endpoints.communities}/${Uri.encodeComponent(id)}';
   Future<PagedResult<Community>> discover(
-      {String search = '', bool joined = false, int page = 1}) async {
+      {String search = '',
+      bool joined = false,
+      int page = 1,
+      List<String> taggedEntityIds = const []}) async {
     final response = await _dio
         .get(_endpoints.communities, options: _options, queryParameters: {
       'page': page,
       if (search.isNotEmpty) 'search': search,
-      if (joined) 'joined': 'true'
+      if (joined) 'joined': 'true',
+      if (taggedEntityIds.isNotEmpty)
+        'tagged_entities': taggedEntityIds.join(','),
     });
     return PagedResult.fromDrf(response.data, Community.fromJson);
   }

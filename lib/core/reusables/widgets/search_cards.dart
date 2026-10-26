@@ -216,6 +216,14 @@ class SearchRealmCard extends StatelessWidget {
   });
 
   Widget _action() {
+    if (realm.realmType == 'server' && realm.isPrivate && !realm.isMember) {
+      return CLMiniBtn(
+          label: realm.requestPending ? 'Request pending' : 'Request to join',
+          block: !wide,
+          onPressed: joinBusy || realm.requestPending
+              ? null
+              : () => onJoinGroup(realm));
+    }
     if (realm.realmType == "page") {
       return CLMiniBtn(
         label: realm.isFollower ? "Following" : "Follow",

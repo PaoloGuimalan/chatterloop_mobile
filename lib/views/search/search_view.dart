@@ -39,6 +39,7 @@ import 'package:chatterloop_app/core/redux/state.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
 import 'package:chatterloop_app/core/requests/search_api.dart';
+import 'package:chatterloop_app/core/requests/invites_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/search_cards.dart';
 import 'package:chatterloop_app/core/utils/recent_searches.dart';
 import 'package:chatterloop_app/models/user_models/search_v2_models.dart';
@@ -333,7 +334,7 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  void _applyMember(String entityId, bool next) {
+  void _applyMember(String entityId, bool next, {bool requestPending = false}) {
     final overview = _overview;
     if (overview == null) return;
     setState(() {
@@ -342,7 +343,8 @@ class _SearchScreenState extends State<SearchScreen> {
           hasMore: overview.realms.hasMore,
           results: overview.realms.results
               .map((realm) => realm.entityId == entityId
-                  ? realm.copyWith(isMember: next)
+                  ? realm.copyWith(
+                      isMember: next, requestPending: requestPending)
                   : realm)
               .toList(),
         ),
@@ -356,6 +358,13 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _joinGroup(SearchRealmResult realm) async {
     if (_joinBusy.contains(realm.entityId)) return;
     setState(() => _joinBusy.add(realm.entityId));
+    if (realm.realmType == 'server' && realm.isPrivate) {
+      final requested = await InvitesApi().requestJoin(realm.id);
+      if (!mounted) return;
+      setState(() => _joinBusy.remove(realm.entityId));
+      if (requested) _applyMember(realm.entityId, false, requestPending: true);
+      return;
+    }
     final conversationId = await SearchApi().joinGroupRealmRequest(realm.id);
     if (!mounted) return;
     setState(() => _joinBusy.remove(realm.entityId));

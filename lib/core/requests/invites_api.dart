@@ -20,6 +20,11 @@ class InvitesApi {
     return RealmInvite.fromJson(Map<String, dynamic>.from(body['result']));
   }
 
+  Future<bool> requestJoin(String realmId) => reportedAction(
+      () => _dio.post(_endpoints.realmInvites,
+          data: {'realm_id': realmId, 'kind': 'request'}),
+      failure: "We couldn't request to join this server.");
+
   /// One invite by its token - what the invite screen opens. Null when it
   /// cannot be read; the screen says so rather than repeating why.
   Future<RealmInvite?> getByToken(String token) async {

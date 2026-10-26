@@ -12,6 +12,8 @@ import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/views/search/post_preview_view.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_reactions.dart';
+import 'package:chatterloop_app/core/reusables/widgets/post/post_share.dart';
+import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/post_models/newsfeed_models.dart';
 import 'package:chatterloop_app/views/communities/communities_view.dart';
 import 'package:chatterloop_app/views/communities/create_community_view.dart';
@@ -147,6 +149,14 @@ void main() {
       await screen('create', CreateCommunityView(api: api));
       await screen(
           'profile_member', CommunityProfileView(id: 'club', api: api));
+      await tester.tap(find.byTooltip('Community options'));
+      await tester.pumpAndSettle();
+      await expectLater(
+          find.byKey(root),
+          matchesGoldenFile(
+              'goldens/community_profile_options_${brightness.name}.png'));
+      await tester.tapAt(const Offset(12, 500));
+      await tester.pumpAndSettle();
       expect(find.text('About'), findsNothing);
       await tester.tap(find.text('Members').first);
       await tester.pumpAndSettle();
@@ -218,6 +228,36 @@ void main() {
           find.byKey(root),
           matchesGoldenFile(
               'goldens/community_reactions_${brightness.name}.png'));
+      await tester.pumpWidget(RepaintBoundary(
+          key: root,
+          child: MaterialApp(
+              debugShowCheckedModeBanner: false,
+              key: const ValueKey('share'),
+              theme: buildCLTheme(brightness),
+              home: Scaffold(
+                  body: Builder(
+                      builder: (context) => TextButton(
+                          onPressed: () => showSharePostSheet(context,
+                              post: PostPreview.fromJson(
+                                      api.postsFixture['anonymous_owner'])
+                                  .applyPatch({
+                                'community': {
+                                  'realm_id': 'club',
+                                  'entity_id': 'club-entity',
+                                  'name': 'Photography Club',
+                                  'is_private': true,
+                                  'is_member': true,
+                                  'is_verified': true
+                                }
+                              })),
+                          child: const Text('Share post')))))));
+      await tester.tap(find.text('Share post'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Post anonymously'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await expectLater(find.byKey(root),
+          matchesGoldenFile('goldens/community_share_${brightness.name}.png'));
       requests = false;
     });
   }

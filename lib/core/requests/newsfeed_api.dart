@@ -716,8 +716,12 @@ class NewsfeedApi {
     String caption = "",
     String privacy = "public",
     List<String> taggedEntityIds = const [],
+    String? communityEntityId,
+    bool? isAnonymous,
   }) {
     final payload = {
+      if (communityEntityId != null) 'community_entity_id': communityEntityId,
+      if (communityEntityId != null) 'is_anonymous': isAnonymous ?? false,
       'content': {
         'isShared': true,
         'references': [
@@ -746,6 +750,7 @@ class NewsfeedApi {
     return reportedAction(
       () => _nodeDio.post(
         _endpoints.createPost,
+        options: _identityOptions,
         data: {'token': JwtCodec.sign(payload)},
       ),
       failure: "We couldn't share that post.",

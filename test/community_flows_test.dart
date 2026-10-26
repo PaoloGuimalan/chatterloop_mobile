@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:chatterloop_app/core/requests/invites_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_card.dart';
 import 'dart:io';
@@ -11,8 +12,11 @@ import 'package:chatterloop_app/views/communities/community_profile_view.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_composer.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
+import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/core/requests/post_sse_connection.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/requests/community_api.dart';
 import 'package:chatterloop_app/models/http_models/paged_result.dart';
@@ -21,9 +25,11 @@ import 'package:chatterloop_app/views/communities/communities_view.dart';
 import 'package:chatterloop_app/views/communities/create_community_view.dart';
 
 class FixtureCommunityApi extends CommunityApi {
+  Completer<void>? postsGate;
   final queries = <String>[];
   bool fail = false;
   int memberLoads = 0;
+  int detailLoads = 0;
   bool member = false,
       pending = false,
       private = true,
@@ -47,6 +53,7 @@ class FixtureCommunityApi extends CommunityApi {
 
   @override
   Future<Community> detail(String id) async {
+    detailLoads++;
     if (denied) {
       throw DioException(
           requestOptions: RequestOptions(path: '/community'),
@@ -71,6 +78,7 @@ class FixtureCommunityApi extends CommunityApi {
   @override
   Future<PagedResult<PostPreview>> posts(String id, {int page = 1}) async {
     postLoads++;
+    if (postsGate != null) await postsGate!.future;
     return PagedResult(count: 1, hasNext: false, results: [
       PostPreview.fromJson(postsFixture['anonymous_owner']).applyPatch({
         'community': {
@@ -117,7 +125,10 @@ class FixtureCommunityApi extends CommunityApi {
 
   @override
   Future<PagedResult<Community>> discover(
-      {String search = '', bool joined = false, int page = 1}) async {
+      {String search = '',
+      bool joined = false,
+      int page = 1,
+      List<String> taggedEntityIds = const []}) async {
     queries.add('$joined:$search:$page');
     if (fail) throw Exception('offline');
     return PagedResult(count: 1, hasNext: page == 1, results: [
@@ -136,6 +147,47 @@ class FixtureCommunityApi extends CommunityApi {
 }
 
 void main() {
+  testWidgets('profile starts members and posts together after access check',
+      (tester) async {
+    final api = FixtureCommunityApi()
+      ..member = true
+      ..postsGate = Completer<void>();
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: CommunityProfileView(id: 'club', api: api)));
+    await tester.pump();
+    expect(api.postLoads, 1);
+    expect(api.memberLoads, 1);
+    api.postsGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfileComposerCard), findsOneWidget);
+  });
+  test('community shares preserve destination, identity, tags and actor token',
+      () async {
+    final dio = ApiClient.instance.dio;
+    RequestOptions? sent;
+    final interceptor = InterceptorsWrapper(onRequest: (request, handler) {
+      sent = request;
+      handler.resolve(Response(
+          requestOptions: request, statusCode: 200, data: {'status': true}));
+    });
+    dio.interceptors.insert(0, interceptor);
+    addTearDown(() => dio.interceptors.remove(interceptor));
+    final ok = await NewsfeedApi(authToken: 'original-actor').sharePostRequest(
+        postId: 'original',
+        communityEntityId: 'club',
+        isAnonymous: true,
+        taggedEntityIds: ['member'],
+        privacy: 'private');
+    expect(ok, isTrue);
+    final payload = JwtCodec.decode(sent!.data['token'] as String)!;
+    expect(payload['community_entity_id'], 'club');
+    expect(payload['is_anonymous'], isTrue);
+    expect(payload['tagging']['users'], ['member']);
+    expect(payload['content']['isShared'], isTrue);
+    expect(payload['content']['references'][0]['reference'], 'original');
+    expect(sent!.extra['authToken'], 'original-actor');
+  });
   for (final brightness in Brightness.values) {
     testWidgets(
         'create form separates labels, hints and entered text in ${brightness.name}',
@@ -144,7 +196,7 @@ void main() {
         theme: buildCLTheme(brightness),
         home: CreateCommunityView(api: FixtureCommunityApi()),
       ));
-      final description = find.byType(TextFormField).at(2);
+      final description = find.byType(TextField).at(2);
       await tester.ensureVisible(description);
       await tester.pumpAndSettle();
       expect(tester.getRect(find.text('Description')).bottom,
@@ -229,7 +281,8 @@ void main() {
         theme: buildCLTheme(Brightness.light),
         home: CommunityProfileView(id: 'club', api: api)));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Leave community'));
+    await tester.tap(find.byTooltip('Community options'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Leave community'));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
@@ -237,6 +290,8 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(api.member, isTrue);
+    await tester.tap(find.byTooltip('Community options'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Leave community'));
     await tester.pumpAndSettle();
     await tester.tap(find.descendant(
@@ -333,6 +388,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Request to join'), findsOneWidget);
     expect(api.postLoads, 0);
+    expect(api.detailLoads, 1,
+        reason: 'Request state settles without reloading the whole profile');
   });
   testWidgets('access loss clears previously visible private contributions',
       (tester) async {
@@ -460,16 +517,18 @@ void main() {
           key: ValueKey(slug),
           theme: buildCLTheme(Brightness.light),
           home: CreateCommunityView(api: api)));
-      await tester.enterText(find.byType(TextFormField).first, 'Readers');
-      await tester.enterText(find.byType(TextFormField).at(1), slug);
+      await tester.enterText(find.byType(TextField).first, 'Readers');
+      await tester.enterText(find.byType(TextField).at(1), slug);
       await tester.scrollUntilVisible(
-          find.widgetWithText(FilledButton, 'Create community'), 200,
+          find.widgetWithText(CLBtn, 'Create community'), 200,
           scrollable: find.byType(Scrollable).first);
-      await tester.tap(find.widgetWithText(FilledButton, 'Create community'));
+      await tester.tap(find.widgetWithText(CLBtn, 'Create community'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('Enter a community slug'), -200,
-          scrollable: find.byType(Scrollable).first);
-      expect(find.text('Enter a community slug'), findsOneWidget);
+      expect(
+          CLAlerts.active.value
+              .any((alert) => alert.message == 'Enter a community slug'),
+          isTrue);
+      CLAlerts.resetForTest();
       expect(api.creations, 0);
     }
   });
@@ -479,13 +538,15 @@ void main() {
         theme: buildCLTheme(Brightness.light),
         home: CreateCommunityView(api: FixtureCommunityApi())));
     await tester.scrollUntilVisible(
-        find.widgetWithText(FilledButton, 'Create community'), 200,
+        find.widgetWithText(CLBtn, 'Create community'), 200,
         scrollable: find.byType(Scrollable).first);
-    await tester.tap(find.widgetWithText(FilledButton, 'Create community'));
+    await tester.tap(find.widgetWithText(CLBtn, 'Create community'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Enter a community name'), -200,
-        scrollable: find.byType(Scrollable).first);
-    expect(find.text('Enter a community name'), findsOneWidget);
+    expect(
+        CLAlerts.active.value
+            .any((alert) => alert.message == 'Enter a community name'),
+        isTrue);
+    CLAlerts.resetForTest();
     expect(find.text('Private'), findsOneWidget);
   });
 }

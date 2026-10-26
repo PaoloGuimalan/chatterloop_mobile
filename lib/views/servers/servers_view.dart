@@ -25,6 +25,7 @@ import 'dart:async';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/requests/invites_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/paginated_scroll.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
@@ -112,6 +113,7 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
   /// Servers joined in THIS session - see _join. Merged with the payload's
   /// is_member so a card flips without the list reordering under the finger.
   final Set<String> _joined = {};
+  final Set<String> _requested = {};
 
   Timer? _searchDebounce;
   int _page = 1;
@@ -191,10 +193,16 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
   /// joinServerRequest, not the group join: a server has no join route, and the
   /// group one silently no-ops on a server. See joinServerRequest.
   Future<void> _join(RealmProfile server) async {
-    if (_busyId != null) return;
+    if (_busyId != null ||
+        server.requestPending ||
+        _requested.contains(server.id)) {
+      return;
+    }
     setState(() => _busyId = server.id);
 
-    final joined = await ProfileApi().joinServerRequest(server.id);
+    final joined = server.isPrivate
+        ? await InvitesApi().requestJoin(server.id)
+        : await ProfileApi().joinServerRequest(server.id);
     if (!mounted) return;
     setState(() {
       _busyId = null;
@@ -202,10 +210,11 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
       // ranked and reshuffles between requests, so a refetch moved the card you
       // just acted on somewhere else on screen - web keeps its own isJoined
       // flag for the same reason.
-      if (joined) _joined.add(server.id);
+      if (joined && !server.isPrivate) _joined.add(server.id);
+      if (joined && server.isPrivate) _requested.add(server.id);
     });
     // The server is yours now, so it belongs in the rail beside this pane.
-    if (joined) widget.onServersChanged?.call();
+    if (joined && !server.isPrivate) widget.onServersChanged?.call();
     // A failed join has already said why (reportedAction).
   }
 
@@ -335,6 +344,11 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
                   server: server,
                   isMember: server.isMember || _joined.contains(server.id),
                   busy: _busyId == server.id,
+                  actionLabel: server.isPrivate
+                      ? (server.requestPending || _requested.contains(server.id)
+                          ? 'Request pending'
+                          : 'Request to join')
+                      : null,
                   onOpen: () => widget.onOpenServer(server),
                   onJoin: () => _join(server),
                 );
@@ -366,6 +380,8 @@ class ServerCard extends StatelessWidget {
   final VoidCallback onJoin;
   final String? actionLabel;
   final double coverHeight;
+  final CLBtnVariant joinVariant;
+  final List<Color>? coverColors;
 
   const ServerCard({
     super.key,
@@ -376,6 +392,8 @@ class ServerCard extends StatelessWidget {
     required this.onJoin,
     this.actionLabel,
     this.coverHeight = 44,
+    this.joinVariant = CLBtnVariant.gold,
+    this.coverColors,
   });
 
   @override
@@ -418,7 +436,8 @@ class ServerCard extends StatelessWidget {
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: clEntityGradient(server.id),
+                              colors:
+                                  coverColors ?? clEntityGradient(server.id),
                             ),
                           ),
                         ),
@@ -549,9 +568,8 @@ class ServerCard extends StatelessWidget {
                             // and the whole card opens it anyway. No icons - fill
                             // and border already carry that difference, and at this
                             // card width a glyph only steals room from the label.
-                            variant: isMember
-                                ? CLBtnVariant.outline
-                                : CLBtnVariant.gold,
+                            variant:
+                                isMember ? CLBtnVariant.outline : joinVariant,
                             onPressed:
                                 busy ? null : (isMember ? onOpen : onJoin),
                           ),
@@ -578,7 +596,8 @@ class ServerCard extends StatelessWidget {
 /// A card-shaped placeholder, matching ServerCard so the grid does not reflow
 /// when the real thing arrives.
 class ServerCardSkeleton extends StatelessWidget {
-  const ServerCardSkeleton({super.key});
+  final double coverHeight;
+  const ServerCardSkeleton({super.key, this.coverHeight = 44});
 
   @override
   Widget build(BuildContext context) {
@@ -593,9 +612,9 @@ class ServerCardSkeleton extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CLSkeleton(
+          CLSkeleton(
               width: double.infinity,
-              height: 44,
+              height: coverHeight,
               borderRadius: BorderRadius.zero),
           // Avatar and name side by side, as the card now has them - a
           // placeholder that promises the old stacked layout made the content

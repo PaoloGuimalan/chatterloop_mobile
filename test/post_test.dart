@@ -697,6 +697,8 @@ void main() {
         // The picker's own summary, plus the chip itself.
         expect(find.text("Tagged 1"), findsOneWidget);
         expect(find.text("Bea"), findsOneWidget);
+        expect(
+            find.textContaining('Post in ', findRichText: true), findsNothing);
       });
 
       testWidgets('your own profile starts with nobody tagged', (tester) async {
@@ -828,6 +830,8 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.text("Tag people, pages or bots"), findsOneWidget);
           expect(find.text("Tagged 1"), findsNothing);
+          expect(find.textContaining('Post in ', findRichText: true),
+              findsOneWidget);
         });
       });
 

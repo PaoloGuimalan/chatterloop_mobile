@@ -73,6 +73,7 @@ class RealmProfile {
   /// manage screen needed them.
   final String? email;
   final bool isPrivate;
+  final bool requestPending;
 
   final int followersCount;
 
@@ -128,6 +129,7 @@ class RealmProfile {
     this.parentName,
     this.email,
     this.isPrivate = false,
+    this.requestPending = false,
     required this.followersCount,
     this.membersCount = 0,
     this.isMember = false,
@@ -164,6 +166,7 @@ class RealmProfile {
           json["parent"] is Map ? json["parent"]["name"]?.toString() : null,
       email: json["email"]?.toString(),
       isPrivate: json["is_private"] == true,
+      requestPending: json["request_pending"] == true,
       followersCount: json["followers_count"] is int
           ? json["followers_count"]
           : int.tryParse(json["followers_count"]?.toString() ?? '') ?? 0,

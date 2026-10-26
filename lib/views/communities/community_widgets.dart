@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
+import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/views/servers/servers_view.dart';
@@ -89,6 +90,11 @@ class CommunityDirectoryCard extends StatelessWidget {
       isMember: community.isMember,
       busy: false,
       coverHeight: 56,
+      joinVariant: CLBtnVariant.primary,
+      coverColors: [
+        cl(context).brand,
+        cl(context).brand.withValues(alpha: 0.65)
+      ],
       actionLabel: community.isMember
           ? 'Open'
           : community.requestPending

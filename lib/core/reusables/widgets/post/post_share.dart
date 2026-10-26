@@ -3,8 +3,8 @@
 // This is web's share, not the OS share sheet: web's PostItem opens the
 // composer with `toShare` set, which creates a NEW post whose single reference
 // points at the original. Same thing here, minus the full composer - a caption
-// field and a privacy choice is everything the share path actually uses (no
-// media, no tagging: a share carries the original as its content).
+// field, destination, identity and tags describe the new post; the original
+// remains its referenced content.
 //
 // The preview at the top is the shared post as it will appear, so what you're
 // about to publish is visible before you publish it.
@@ -12,6 +12,7 @@
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/requests/newsfeed_api.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/feed_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/link_preview_card.dart';
 import 'package:chatterloop_app/core/reusables/widgets/post/post_attachments.dart';
@@ -20,6 +21,11 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_tagging.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/user_models/search_result_model.dart';
 import 'package:flutter/material.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
+import 'package:chatterloop_app/models/user_models/community_model.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
+import 'community_destination_picker.dart';
+import '../community_identity_toggle.dart';
 
 /// Privacy options, matching the composer's `privacy.status` values on web.
 const List<(String, String, IconData)> _kPrivacyOptions = [
@@ -47,7 +53,8 @@ Future<bool> showSharePostSheet(
       // the field no longer autofocuses, so this only applies after you do.
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-      child: _SharePostSheet(post: post),
+      child: _SharePostSheet(
+          post: post, allowCommunity: communityDestinationAllowed(context)),
     ),
   );
   return result == true;
@@ -55,8 +62,9 @@ Future<bool> showSharePostSheet(
 
 class _SharePostSheet extends StatefulWidget {
   final PostPreview post;
+  final bool allowCommunity;
 
-  const _SharePostSheet({required this.post});
+  const _SharePostSheet({required this.post, required this.allowCommunity});
 
   @override
   State<_SharePostSheet> createState() => _SharePostSheetState();
@@ -67,6 +75,37 @@ class _SharePostSheetState extends State<_SharePostSheet> {
   String _privacy = 'public';
   bool _sharing = false;
   List<SearchResultUser> _tagged = const [];
+  bool _anonymous = false;
+  final _actor = appStore.state.userAuth.user.entityId;
+  late Community? _community =
+      widget.allowCommunity && widget.post.community?.isPrivate == true
+          ? widget.post.community
+          : null;
+
+  Future<void> _pickDestination() async {
+    if (_sharing) return;
+    try {
+      final result = await pickCommunityDestination(context,
+          taggedEntityIds: _tagged.map((entity) => entity.entityId).toList(),
+          privateSource: widget.post.community?.isPrivate == true
+              ? widget.post.community
+              : null);
+      if (!mounted ||
+          result == null ||
+          _actor != appStore.state.userAuth.user.entityId) {
+        return;
+      }
+      setState(() {
+        _community = result.entityId.isEmpty ? null : result;
+        _anonymous = false;
+      });
+    } catch (error) {
+      if (mounted) {
+        CLAlerts.requestError(error,
+            fallback: 'Could not load community destinations.');
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -76,15 +115,26 @@ class _SharePostSheetState extends State<_SharePostSheet> {
 
   Future<void> _share() async {
     if (_sharing) return;
+    if (_actor != appStore.state.userAuth.user.entityId) {
+      CLAlerts.show('Your profile changed. Reopen the share composer.');
+      return;
+    }
     setState(() => _sharing = true);
-
-    final ok = await NewsfeedApi().sharePostRequest(
+    final token = await ApiClient.instance.readToken();
+    if (!mounted || _actor != appStore.state.userAuth.user.entityId) return;
+    final ok = await NewsfeedApi(authToken: token).sharePostRequest(
       postId: widget.post.postId,
       caption: _caption.text.trim(),
-      privacy: _privacy,
+      privacy: _community == null
+          ? _privacy
+          : _community!.isPrivate
+              ? 'private'
+              : 'public',
       taggedEntityIds: _tagged.map((entity) => entity.entityId).toList(),
+      communityEntityId: _community?.entityId,
+      isAnonymous: _community == null ? null : _anonymous,
     );
-    if (!mounted) return;
+    if (!mounted || _actor != appStore.state.userAuth.user.entityId) return;
 
     if (!ok) {
       setState(() => _sharing = false);
@@ -101,7 +151,8 @@ class _SharePostSheetState extends State<_SharePostSheet> {
     // not a SafeArea wrapped around content that already pads itself, which
     // stacks the two into a band of empty sheet on any device with a
     // navigation bar.
-    return Padding(
+    return SingleChildScrollView(
+        child: Padding(
       padding: EdgeInsets.only(
           bottom: clSheetBottomGap(context, minimum: 16, extra: 8)),
       child: Padding(
@@ -130,6 +181,13 @@ class _SharePostSheetState extends State<_SharePostSheet> {
               ),
             ),
             const SizedBox(height: 12),
+            if (widget.post.community?.isPrivate == true &&
+                !widget.allowCommunity)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text('Open the community to share this private post.',
+                    style: TextStyle(fontSize: CLType.bodySm, color: p.text2)),
+              ),
             TextField(
               controller: _caption,
               minLines: 2,
@@ -168,24 +226,50 @@ class _SharePostSheetState extends State<_SharePostSheet> {
             ),
             const SizedBox(height: 10),
             TagEntityPicker(
+              communityEntityId: _community?.entityId,
               selected: _tagged,
               onChanged: (next) => setState(() => _tagged = next),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                for (final option in _kPrivacyOptions)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: CLChip(
+            if (widget.allowCommunity)
+              ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading:
+                      Icon(Icons.groups_outlined, color: p.brand, size: 20),
+                  title: Text.rich(
+                      TextSpan(children: [
+                        const TextSpan(text: 'Post in '),
+                        TextSpan(
+                            text: _community?.name ?? 'Your timeline',
+                            style: const TextStyle(fontWeight: FontWeight.w600))
+                      ]),
+                      style: const TextStyle(fontSize: CLType.label)),
+                  trailing: const Icon(Icons.expand_more, size: 18),
+                  onTap: _sharing ? null : _pickDestination),
+            if (_community != null)
+              CommunityIdentityToggle(
+                  compact: true,
+                  title: 'Post anonymously',
+                  subtitle: _anonymous ? 'Anonymous member' : 'My profile',
+                  value: _anonymous,
+                  onChanged: _sharing
+                      ? null
+                      : (value) => setState(() => _anonymous = value)),
+            if (_community == null)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final option in _kPrivacyOptions)
+                    CLChip(
                       label: option.$2,
                       icon: option.$3,
                       active: _privacy == option.$1,
                       onTap: () => setState(() => _privacy = option.$1),
                     ),
-                  ),
-              ],
-            ),
+                ],
+              ),
             const SizedBox(height: 16),
             _sharing
                 ? const Center(
@@ -202,12 +286,15 @@ class _SharePostSheetState extends State<_SharePostSheet> {
                     iconL: Icons.share_outlined,
                     block: true,
                     size: CLBtnSize.lg,
-                    onPressed: _share,
+                    onPressed: widget.post.community?.isPrivate == true &&
+                            !widget.allowCommunity
+                        ? null
+                        : _share,
                   ),
           ],
         ),
       ),
-    );
+    ));
   }
 }
 
