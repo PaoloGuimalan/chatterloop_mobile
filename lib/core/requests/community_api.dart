@@ -84,10 +84,13 @@ class CommunityApi {
   Future<CommunityMembership> join(String realmId) async =>
       CommunityMembership.fromJson(Map<String, dynamic>.from(
           (await _dio.post('${_path(realmId)}/join', options: _options)).data));
-  Future<CommunityMembership> leave(String realmId) async =>
-      CommunityMembership.fromJson(Map<String, dynamic>.from(
-          (await _dio.post('${_path(realmId)}/leave', options: _options))
-              .data));
+  Future<CommunityMembership> leave(String realmId,
+          {bool cancelRequestOnly = false}) async =>
+      CommunityMembership.fromJson(Map<String, dynamic>.from((await _dio.post(
+              '${_path(realmId)}/leave',
+              options: _options,
+              data: cancelRequestOnly ? {'cancel_request': true} : null))
+          .data));
   Community _community(dynamic data) =>
       Community.fromJson(Map<String, dynamic>.from(data['result']));
 }

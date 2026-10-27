@@ -113,7 +113,7 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
   /// Servers joined in THIS session - see _join. Merged with the payload's
   /// is_member so a card flips without the list reordering under the finger.
   final Set<String> _joined = {};
-  final Set<String> _requested = {};
+  final Map<String, bool> _requested = {};
 
   Timer? _searchDebounce;
   int _page = 1;
@@ -193,15 +193,14 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
   /// joinServerRequest, not the group join: a server has no join route, and the
   /// group one silently no-ops on a server. See joinServerRequest.
   Future<void> _join(RealmProfile server) async {
-    if (_busyId != null ||
-        server.requestPending ||
-        _requested.contains(server.id)) {
-      return;
-    }
+    if (_busyId != null) return;
+    final pending = _requested[server.id] ?? server.requestPending;
     setState(() => _busyId = server.id);
 
     final joined = server.isPrivate
-        ? await InvitesApi().requestJoin(server.id)
+        ? pending
+            ? await InvitesApi().cancelJoinRequest(server.id)
+            : await InvitesApi().requestJoin(server.id)
         : await ProfileApi().joinServerRequest(server.id);
     if (!mounted) return;
     setState(() {
@@ -211,7 +210,7 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
       // just acted on somewhere else on screen - web keeps its own isJoined
       // flag for the same reason.
       if (joined && !server.isPrivate) _joined.add(server.id);
-      if (joined && server.isPrivate) _requested.add(server.id);
+      if (joined && server.isPrivate) _requested[server.id] = !pending;
     });
     // The server is yours now, so it belongs in the rail beside this pane.
     if (joined && !server.isPrivate) widget.onServersChanged?.call();
@@ -345,8 +344,8 @@ class _ServersScreenState extends State<ServersDirectoryPane> {
                   isMember: server.isMember || _joined.contains(server.id),
                   busy: _busyId == server.id,
                   actionLabel: server.isPrivate
-                      ? (server.requestPending || _requested.contains(server.id)
-                          ? 'Request pending'
+                      ? (_requested[server.id] ?? server.requestPending
+                          ? 'Cancel request'
                           : 'Request to join')
                       : null,
                   onOpen: () => widget.onOpenServer(server),

@@ -23,6 +23,7 @@ class _CommunitiesViewState extends State<CommunitiesView>
   late final _api = widget.api ?? CommunityApi();
   final _search = TextEditingController();
   final _items = <Community>[];
+  final _membershipBusy = <String>{};
   Timer? _debounce;
   StreamSubscription? _identitySubscription;
   late String _actor;
@@ -37,17 +38,18 @@ class _CommunitiesViewState extends State<CommunitiesView>
       final actor = appStore.state.userAuth.user.entityId;
       if (actor != _actor) {
         _actor = actor;
+        _membershipBusy.clear();
         _load();
       }
     });
-    communityChanges.addListener(_load);
+    communityChanges.addListener(_changed);
     _load();
   }
 
   @override
   void dispose() {
     _identitySubscription?.cancel();
-    communityChanges.removeListener(_load);
+    communityChanges.removeListener(_changed);
     WidgetsBinding.instance.removeObserver(this);
     _debounce?.cancel();
     _search.dispose();
@@ -90,6 +92,42 @@ class _CommunitiesViewState extends State<CommunitiesView>
         _loading = false;
         _failed = true;
       });
+    }
+  }
+
+  void _changed() {
+    if (_membershipBusy.isEmpty) _load();
+  }
+
+  Future<void> _membership(Community community) async {
+    if (_membershipBusy.contains(community.realmId) || community.isMember) {
+      return;
+    }
+    final actor = _actor;
+    setState(() => _membershipBusy.add(community.realmId));
+    try {
+      final cancelling = community.requestPending;
+      final result = cancelling
+          ? await _api.leave(community.realmId, cancelRequestOnly: true)
+          : await _api.join(community.realmId);
+      if (!mounted || actor != _actor) return;
+      final member = result.isMember ?? (!community.isPrivate && !cancelling);
+      setState(() {
+        final index =
+            _items.indexWhere((row) => row.realmId == community.realmId);
+        if (index >= 0) {
+          _items[index] = _items[index]
+              .withMembership(member: member, pending: result.requestPending);
+        }
+      });
+    } catch (error) {
+      if (mounted && actor == _actor) {
+        CLAlerts.requestError(error, fallback: 'Could not update membership.');
+      }
+    } finally {
+      if (mounted && actor == _actor) {
+        setState(() => _membershipBusy.remove(community.realmId));
+      }
     }
   }
 
@@ -184,6 +222,8 @@ class _CommunitiesViewState extends State<CommunitiesView>
                       final community = _items[index];
                       return CommunityDirectoryCard(
                         community: community,
+                        busy: _membershipBusy.contains(community.realmId),
+                        onJoin: () => _membership(community),
                         onOpen: () async {
                           await context.push(
                               '/communities/${Uri.encodeComponent(community.realmId)}');

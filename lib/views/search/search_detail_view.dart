@@ -254,14 +254,17 @@ class _SearchDetailScreenState extends State<SearchDetailScreen>
     if (_joinBusy.contains(realm.entityId)) return;
     setState(() => _joinBusy.add(realm.entityId));
     if (realm.realmType == 'server' && realm.isPrivate) {
-      final requested = await InvitesApi().requestJoin(realm.id);
+      final requested = realm.requestPending
+          ? await InvitesApi().cancelJoinRequest(realm.id)
+          : await InvitesApi().requestJoin(realm.id);
       if (!mounted) return;
       setState(() {
         _joinBusy.remove(realm.entityId);
         if (requested) {
           for (var i = 0; i < _realms.length; i++) {
             if (_realms[i].entityId == realm.entityId) {
-              _realms[i] = _realms[i].copyWith(requestPending: true);
+              _realms[i] =
+                  _realms[i].copyWith(requestPending: !realm.requestPending);
             }
           }
         }

@@ -25,6 +25,7 @@ import 'package:chatterloop_app/views/communities/communities_view.dart';
 import 'package:chatterloop_app/views/communities/create_community_view.dart';
 
 class FixtureCommunityApi extends CommunityApi {
+  List<RealmPerson> people = const [];
   Completer<void>? postsGate;
   final queries = <String>[];
   bool fail = false;
@@ -103,7 +104,7 @@ class FixtureCommunityApi extends CommunityApi {
               requestOptions: RequestOptions(path: '/members'),
               statusCode: 401));
     }
-    return PagedResult.empty();
+    return PagedResult(count: people.length, hasNext: false, results: people);
   }
 
   @override
@@ -117,10 +118,11 @@ class FixtureCommunityApi extends CommunityApi {
   }
 
   @override
-  Future<CommunityMembership> leave(String id) async {
-    member = false;
+  Future<CommunityMembership> leave(String id,
+      {bool cancelRequestOnly = false}) async {
+    if (!cancelRequestOnly) member = false;
     pending = false;
-    return const CommunityMembership(isMember: false);
+    return CommunityMembership(isMember: member);
   }
 
   @override
@@ -522,12 +524,11 @@ void main() {
       await tester.scrollUntilVisible(
           find.widgetWithText(CLBtn, 'Create community'), 200,
           scrollable: find.byType(Scrollable).first);
-      await tester.tap(find.widgetWithText(CLBtn, 'Create community'));
-      await tester.pumpAndSettle();
       expect(
-          CLAlerts.active.value
-              .any((alert) => alert.message == 'Enter a community slug'),
-          isTrue);
+          tester
+              .widget<CLBtn>(find.widgetWithText(CLBtn, 'Create community'))
+              .onPressed,
+          isNull);
       CLAlerts.resetForTest();
       expect(api.creations, 0);
     }
@@ -540,12 +541,11 @@ void main() {
     await tester.scrollUntilVisible(
         find.widgetWithText(CLBtn, 'Create community'), 200,
         scrollable: find.byType(Scrollable).first);
-    await tester.tap(find.widgetWithText(CLBtn, 'Create community'));
-    await tester.pumpAndSettle();
     expect(
-        CLAlerts.active.value
-            .any((alert) => alert.message == 'Enter a community name'),
-        isTrue);
+        tester
+            .widget<CLBtn>(find.widgetWithText(CLBtn, 'Create community'))
+            .onPressed,
+        isNull);
     CLAlerts.resetForTest();
     expect(find.text('Private'), findsOneWidget);
   });

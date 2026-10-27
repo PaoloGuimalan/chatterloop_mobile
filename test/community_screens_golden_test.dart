@@ -8,6 +8,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/models/redux_models/dispatch_model.dart';
 import 'package:chatterloop_app/models/user_models/user_auth_model.dart';
+import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'package:chatterloop_app/core/requests/jwt_codec.dart';
 import 'package:chatterloop_app/views/search/post_preview_view.dart';
@@ -52,7 +53,33 @@ void main() {
           .load();
       final api = FixtureCommunityApi()
         ..member = true
-        ..owner = true;
+        ..owner = true
+        ..people = const [
+          RealmPerson(
+              entityId: 'alex',
+              accountId: 'alex',
+              displayName: 'Alex Rivera',
+              handle: 'alex',
+              isVerified: true,
+              entityType: 'user',
+              role: 'owner'),
+          RealmPerson(
+              entityId: 'page',
+              accountId: 'page',
+              displayName: 'Garden Page',
+              handle: 'garden-page',
+              isVerified: true,
+              entityType: 'realm',
+              realmType: 'page',
+              role: 'member'),
+          RealmPerson(
+              entityId: 'bot',
+              accountId: 'bot',
+              displayName: 'Garden Bot',
+              handle: 'garden-bot',
+              entityType: 'bot',
+              role: 'member'),
+        ];
       final dio = ApiClient.userService.dio;
       var requests = true;
       final interceptor = InterceptorsWrapper(onRequest: (request, handler) {

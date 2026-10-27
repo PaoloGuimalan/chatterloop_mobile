@@ -270,7 +270,16 @@ class _PostCardState extends State<PostCard> {
   /// (post_send.dart); the feed repost is confirmed here as it always was.
   Future<void> _share() async {
     if (_post.community?.isPrivate == true) {
-      CLAlerts.show('Only members of this community can open this post.');
+      if (!_post.community!.isMember) {
+        CLAlerts.show('Only members of this community can open this post.');
+        return;
+      }
+      // Private sources can only be reposted inside the same community.
+      final shared = await showSharePostSheet(context, post: _post);
+      if (mounted && shared) {
+        CLAlerts.show('Shared in ${_post.community!.name}',
+            type: CLAlertType.success);
+      }
       return;
     }
     final choice = await showShareOptionsSheet(context);

@@ -61,7 +61,6 @@ class UserAppShortcuts extends StatelessWidget {
             if (appStore.state.userAuth.user.allowedModules
                 .contains('module.notes.access'))
               _tile(context, 'Notes', 'notes', () => context.push('/notes')),
-            _tile(context, 'Chatterloop Extension', 'extension', null),
           ],
         ),
         const SizedBox(height: 8),

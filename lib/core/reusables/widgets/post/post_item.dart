@@ -21,6 +21,7 @@
 // being a tap target that opens the post.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
@@ -263,8 +264,18 @@ class _PostViewTrackerState extends State<PostViewTracker>
   }
 
   void _onVisibilityChanged(VisibilityInfo info) {
-    if (_untracked) return;
-    _visible = info.visibleFraction >= PostViewTracker.visibleThreshold;
+    if (!mounted || _untracked) return;
+    final viewport = Scrollable.maybeOf(context)?.context.findRenderObject();
+    final viewportSize = viewport is RenderBox && viewport.hasSize
+        ? viewport.size
+        : MediaQuery.sizeOf(context);
+    // Measure against the area the viewport can actually show. A long post
+    // must not need 60% of its entire off-screen height to register a view.
+    final readableArea = math.min(info.size.width, viewportSize.width) *
+        math.min(info.size.height, viewportSize.height);
+    final visibleArea = info.visibleBounds.width * info.visibleBounds.height;
+    _visible = readableArea > 0 &&
+        visibleArea / readableArea >= PostViewTracker.visibleThreshold;
     if (_visible) {
       _openSession(credit: true);
     } else {

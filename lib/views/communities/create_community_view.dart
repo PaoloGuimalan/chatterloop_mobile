@@ -18,6 +18,17 @@ class _CreateCommunityViewState extends State<CreateCommunityView> {
       _slug = TextEditingController(),
       _description = TextEditingController();
   bool _private = false, _busy = false;
+  bool get _canCreate =>
+      _name.text.trim().isNotEmpty && _slug.text.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _name.addListener(_fieldsChanged);
+    _slug.addListener(_fieldsChanged);
+  }
+
+  void _fieldsChanged() => setState(() {});
   @override
   void dispose() {
     _name.dispose();
@@ -135,7 +146,7 @@ class _CreateCommunityViewState extends State<CreateCommunityView> {
                   iconL: Icons.groups_outlined,
                   block: true,
                   size: CLBtnSize.lg,
-                  onPressed: _busy ? null : _create)),
+                  onPressed: _busy || !_canCreate ? null : _create)),
         ]));
   }
 }

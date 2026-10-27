@@ -83,7 +83,8 @@ void main() {
     await tester.pumpAndSettle();
     final card = tester.getRect(find.byType(CommunityDirectoryCard));
     expect(card.height, lessThanOrEqualTo(220));
-    expect(card.contains(tester.getCenter(find.text('View'))), isTrue);
+    expect(
+        card.contains(tester.getCenter(find.text('Join community'))), isTrue);
     expect(tester.takeException(), isNull);
   });
 

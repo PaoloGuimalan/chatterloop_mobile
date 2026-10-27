@@ -24,6 +24,8 @@ import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/requests/profile_api.dart';
+import 'package:chatterloop_app/core/requests/community_api.dart';
+import 'package:chatterloop_app/core/requests/invites_api.dart';
 import 'package:chatterloop_app/core/reusables/widgets/report_sheet.dart';
 import 'package:chatterloop_app/core/calls/voice_room_presence.dart';
 import 'package:chatterloop_app/core/utils/sse_events.dart';
@@ -88,11 +90,16 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
   /// useful thing to offer here is Join.
   bool _hasAccess = true;
   bool _joining = false;
+  RealmProfile? _server;
+  bool _requestPending = false;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     _load();
+    communityChanges.addListener(_onAccessChanged);
+    realmMembershipChanges.addListener(_onMembershipChanged);
     // Refetch whenever a message lands anywhere - web re-runs its channels
     // fetch on the messages list for the same reason. The SSE signal is used
     // rather than the redux conversation list because that list comes from
@@ -113,6 +120,8 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
 
   @override
   void dispose() {
+    communityChanges.removeListener(_onAccessChanged);
+    realmMembershipChanges.removeListener(_onMembershipChanged);
     messagesListSignals.removeListener(_onMessagesSignal);
     serverChannelsChanges.removeListener(_onChannelsChanged);
     VoiceRoomPresence.instance.revision.removeListener(_onPresenceChanged);
@@ -136,9 +145,29 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     if (mounted) setState(() {});
   }
 
+  void _onAccessChanged() {
+    if (mounted && !_joining) _load();
+  }
+
+  void _onMembershipChanged() {
+    if (realmMembershipChanges.value?.realmId == widget.serverId) {
+      _onAccessChanged();
+    }
+  }
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final actor = appStore.state.userAuth.user.entityId;
     final result = await ProfileApi().getServerChannelsRequest(widget.serverId);
-    if (!mounted) return;
+    final server = result.hasAccess
+        ? null
+        : await ProfileApi()
+            .getRealmProfileRequest(widget.serverId, forManage: true);
+    if (!mounted ||
+        generation != _loadGeneration ||
+        actor != appStore.state.userAuth.user.entityId) {
+      return;
+    }
     for (final channel in result.channels) {
       if (channel.isVoice) {
         VoiceRoomPresence.instance
@@ -150,6 +179,8 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
       _isAdmin = result.isAdmin;
       _canCreateChannel = result.canCreateChannel;
       _hasAccess = result.hasAccess;
+      _server = server;
+      _requestPending = server?.requestPending ?? false;
       _loading = false;
     });
   }
@@ -159,13 +190,23 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
   /// what turns this screen into the real thing; the rail picks the server up
   /// on its own, from the membership event the join publishes.
   Future<void> _join() async {
-    if (_joining) return;
+    if (_joining || _server == null) return;
+    final cancelling = _requestPending;
     setState(() => _joining = true);
-    final joined = await ProfileApi().joinServerRequest(widget.serverId);
+    final private = _server!.isPrivate;
+    final joined = private
+        ? cancelling
+            ? await InvitesApi().cancelJoinRequest(widget.serverId)
+            : await InvitesApi().requestJoin(widget.serverId)
+        : await ProfileApi().joinServerRequest(widget.serverId);
     if (!mounted) return;
     setState(() => _joining = false);
     // The request has already said why (reportedAction).
     if (!joined) return;
+    if (private) {
+      setState(() => _requestPending = !cancelling);
+      return;
+    }
     setState(() => _loading = true);
     await _load();
   }
@@ -430,15 +471,37 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
                 iconBorderColor: p.border,
                 compact: true,
                 title: 'You are not in this server',
-                subtitle: 'Join to see its channels and take part in them.',
+                subtitle: _server == null
+                    ? 'Could not load membership status. Try again.'
+                    : _requestPending
+                        ? 'Your request is waiting for an administrator to approve it.'
+                        : _server!.isPrivate
+                            ? 'Request access to see its channels and take part in them.'
+                            : 'Join to see its channels and take part in them.',
               ),
               const SizedBox(height: 18),
               CLBtn(
-                label: _joining ? 'Joining…' : 'Join server',
-                iconL: Icons.add,
+                label: _joining
+                    ? (_requestPending
+                        ? 'Cancelling…'
+                        : _server?.isPrivate == true
+                            ? 'Requesting…'
+                            : 'Joining…')
+                    : _server == null
+                        ? 'Try again'
+                        : _requestPending
+                            ? 'Cancel request'
+                            : _server!.isPrivate
+                                ? 'Request to join'
+                                : 'Join server',
+                iconL: _requestPending ? Icons.close : Icons.add,
                 variant: CLBtnVariant.gold,
                 size: CLBtnSize.md,
-                onPressed: _joining ? null : _join,
+                onPressed: _joining
+                    ? null
+                    : _server == null
+                        ? _load
+                        : _join,
               ),
             ],
           ),

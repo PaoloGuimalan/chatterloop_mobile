@@ -359,10 +359,15 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_joinBusy.contains(realm.entityId)) return;
     setState(() => _joinBusy.add(realm.entityId));
     if (realm.realmType == 'server' && realm.isPrivate) {
-      final requested = await InvitesApi().requestJoin(realm.id);
+      final requested = realm.requestPending
+          ? await InvitesApi().cancelJoinRequest(realm.id)
+          : await InvitesApi().requestJoin(realm.id);
       if (!mounted) return;
       setState(() => _joinBusy.remove(realm.entityId));
-      if (requested) _applyMember(realm.entityId, false, requestPending: true);
+      if (requested) {
+        _applyMember(realm.entityId, false,
+            requestPending: !realm.requestPending);
+      }
       return;
     }
     final conversationId = await SearchApi().joinGroupRealmRequest(realm.id);

@@ -146,7 +146,8 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
       final api = widget.api ?? CommunityApi(authToken: token);
       final leaving = community.isMember || community.requestPending;
       final result = leaving
-          ? await api.leave(community.realmId)
+          ? await api.leave(community.realmId,
+              cancelRequestOnly: !community.isMember)
           : await api.join(community.realmId);
       if (!mounted || actor != _actor) return;
       final member = result.isMember ?? (!leaving && !community.isPrivate);
@@ -376,15 +377,39 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                                           visualDensity: VisualDensity.compact,
                                           minVerticalPadding: 4,
                                           contentPadding: EdgeInsets.zero,
+                                          onTap: person.handle.isEmpty
+                                              ? null
+                                              : () {
+                                                  final prefix = person.isBot
+                                                      ? 'bot'
+                                                      : person.isRealmEntity
+                                                          ? 'realm'
+                                                          : 'user';
+                                                  context.push(
+                                                      '/$prefix/${Uri.encodeComponent(person.handle)}');
+                                                },
                                           leading: CLAvatar(
                                               size: 32,
                                               id: person.entityId,
                                               src: person.profile,
                                               name: person.displayName),
-                                          title: Text(person.displayName,
-                                              style: TextStyle(
-                                                  fontSize: CLType.bodySm,
-                                                  color: p.text)),
+                                          title: Row(children: [
+                                            Flexible(
+                                                child: Text(person.displayName,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                        fontSize: CLType.bodySm,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color: p.text))),
+                                            ...clEntityMarkers(context,
+                                                isVerified: person.isVerified &&
+                                                    !person.isBot,
+                                                isPage: person.isPage,
+                                                isBot: person.isBot),
+                                          ]),
                                           subtitle: Text(
                                               person.role ?? 'Member',
                                               style: TextStyle(
@@ -396,7 +421,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                               ]))),
                     if (_section == 0 && community.isMember)
                       Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
                           child: ProfileComposerCard.forActingEntity(
                             community: community,
                             placeholder:
@@ -405,7 +430,8 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                               if (mounted) _load();
                             },
                           )),
-                    if (_section == 0) const SizedBox(height: 10),
+                    if (_section == 0 && !community.isMember)
+                      const SizedBox(height: 10),
                     if (_section == 0)
                       for (final post in _posts)
                         Padding(

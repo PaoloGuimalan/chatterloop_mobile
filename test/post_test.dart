@@ -1090,6 +1090,31 @@ void main() {
       ));
     }
 
+    testWidgets('a tall post is viewed when it fills its scroll viewport',
+        (tester) async {
+      actAs('viewer');
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: SizedBox(
+                  height: 400,
+                  child: ListView(
+                      padding: const EdgeInsets.only(top: 350),
+                      children: [
+                        PostViewTracker(
+                            post: _post(), child: const SizedBox(height: 1800)),
+                      ])))));
+      await tester.pumpAndSettle();
+      expect(await ViewCache.instance.snapshot('viewer'), isEmpty);
+      await tester.drag(find.byType(ListView), const Offset(0, -350));
+      await tester.pumpAndSettle();
+      final views = await ViewCache.instance.snapshot('viewer');
+      expect(views, hasLength(1));
+      expect(views.single['post_id'], 'p1');
+      await tester.pumpWidget(const MaterialApp(home: Scaffold()));
+      await ViewCache.instance.snapshot('viewer');
+      await tester.pump(const Duration(milliseconds: 350));
+    });
+
     test('repeat views of one post accumulate into a single entry', () async {
       await ViewCache.instance.record('p1',
           viewerEntityId: 'viewer-1',

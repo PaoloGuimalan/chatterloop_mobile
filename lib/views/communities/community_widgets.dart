@@ -64,9 +64,15 @@ class CommunitySectionTabs extends StatelessWidget {
 class CommunityDirectoryCard extends StatelessWidget {
   final Community community;
   final VoidCallback onOpen;
+  final VoidCallback? onJoin;
+  final bool busy;
 
   const CommunityDirectoryCard(
-      {super.key, required this.community, required this.onOpen});
+      {super.key,
+      required this.community,
+      required this.onOpen,
+      this.onJoin,
+      this.busy = false});
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +94,7 @@ class CommunityDirectoryCard extends StatelessWidget {
         isVerified: community.isVerified,
       ),
       isMember: community.isMember,
-      busy: false,
+      busy: busy,
       coverHeight: 56,
       joinVariant: CLBtnVariant.primary,
       coverColors: [
@@ -98,12 +104,12 @@ class CommunityDirectoryCard extends StatelessWidget {
       actionLabel: community.isMember
           ? 'Open'
           : community.requestPending
-              ? 'Request pending'
+              ? 'Cancel request'
               : community.isPrivate
                   ? 'Request to join'
-                  : 'View',
+                  : 'Join community',
       onOpen: onOpen,
-      onJoin: onOpen,
+      onJoin: onJoin ?? onOpen,
     );
   }
 }

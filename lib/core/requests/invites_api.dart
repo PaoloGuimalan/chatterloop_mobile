@@ -25,6 +25,11 @@ class InvitesApi {
           data: {'realm_id': realmId, 'kind': 'request'}),
       failure: "We couldn't request to join this server.");
 
+  Future<bool> cancelJoinRequest(String realmId) => reportedAction(
+      () => _dio.patch(_endpoints.realmInvites,
+          data: {'realm_id': realmId, 'status': 'revoked'}),
+      failure: "We couldn't cancel this request.");
+
   /// One invite by its token - what the invite screen opens. Null when it
   /// cannot be read; the screen says so rather than repeating why.
   Future<RealmInvite?> getByToken(String token) async {
