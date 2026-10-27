@@ -269,6 +269,9 @@ class SseEvents {
 
   Future<void> listen(SSEModel event, bool mainListener) async {
     switch (event.event) {
+      case 'community_notifications_changed':
+        communityNotificationsChanges.value++;
+        break;
       case 'community_access_changed':
       case 'community_members_changed':
       case 'community_requests_changed':

@@ -208,6 +208,7 @@ class NotificationV2 {
   final String? time;
   final String type;
   final bool isRead;
+  final int? activityRevision;
 
   /// Server-driven destination and buttons, ALREADY filtered to this platform
   /// at parse time - see fromJson. Empty when the server sent none (an older
@@ -228,6 +229,7 @@ class NotificationV2 {
     this.time,
     required this.type,
     required this.isRead,
+    this.activityRevision,
     this.redirects = const [],
     this.actions = const [],
   });
@@ -254,6 +256,7 @@ class NotificationV2 {
         time: time,
         type: type,
         isRead: isRead ?? this.isRead,
+        activityRevision: activityRevision,
         redirects: redirects,
         actions: actions,
       );
@@ -300,6 +303,10 @@ class NotificationV2 {
       type: (json["type"] ?? "").toString(),
       // Absent means read, matching v1's parsing.
       isRead: json["isRead"] ?? true,
+      activityRevision:
+          json['activity_revision'] is int && json['activity_revision'] >= 0
+              ? json['activity_revision'] as int
+              : null,
       // Filtered to THIS platform here, once, so nothing downstream has to
       // remember to - a widget that forgot would render another platform's
       // buttons, and a route from the wrong route table goes nowhere.

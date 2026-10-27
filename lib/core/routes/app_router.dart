@@ -39,6 +39,7 @@ import 'package:chatterloop_app/views/profile/realm_profile_view.dart';
 import 'package:chatterloop_app/views/profile/bot_profile_view.dart';
 import 'package:chatterloop_app/views/realm/realm_invite_view.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
+import 'package:chatterloop_app/views/communities/community_notifications_view.dart';
 import 'package:chatterloop_app/views/profile/user_profile_view.dart';
 import 'package:chatterloop_app/views/search/post_preview_view.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
@@ -644,6 +645,15 @@ GoRouter buildAppRouter(AuthController authController) {
             path: '/realm/:slug/manage',
             pageBuilder: (c, s) =>
                 _clPage(s, RealmManageScreen(slug: s.pathParameters['slug']!)),
+            routes: [
+              GoRoute(
+                path: 'notifications',
+                pageBuilder: (c, s) => _clPage(
+                    s,
+                    CommunityNotificationsView(
+                        realmId: s.pathParameters['slug']!)),
+              ),
+            ],
           ),
         ],
       ),

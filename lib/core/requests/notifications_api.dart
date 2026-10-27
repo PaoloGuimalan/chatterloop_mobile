@@ -58,8 +58,8 @@ class NotificationsApi {
   Future<NotificationsOverviewV2?> notificationsOverviewV2Request(
       {int range = 10}) async {
     for (final path in ['grouped/overview', 'overview']) {
-      final decoded = await _getDecoded('${_endpoints.notificationsV2}$path',
-          {'range': range.toString()});
+      final decoded = await _getDecoded(
+          '${_endpoints.notificationsV2}$path', {'range': range.toString()});
       if (decoded != null) return NotificationsOverviewV2.fromJson(decoded);
     }
     return null;
@@ -73,8 +73,7 @@ class NotificationsApi {
     int range = 10,
   }) async {
     for (final path in ['grouped/${section.slug}', section.slug]) {
-      final decoded =
-          await _getDecoded('${_endpoints.notificationsV2}$path', {
+      final decoded = await _getDecoded('${_endpoints.notificationsV2}$path', {
         'page': page.toString(),
         'range': range.toString(),
       });
@@ -100,13 +99,30 @@ class NotificationsApi {
     }
   }
 
-  Future<EncodedResponse?> readNotificationsRequest() async {
+  /// Ordinary notifications retain bulk-read behavior. Community summaries
+  /// acknowledge only revisions present in the displayed overview.
+  Future<int?> readNotificationsRequest({
+    Iterable<NotificationV2> notifications = const [],
+  }) async {
     ContentValidator()
         .printer('${_endpoints.apiUrl}${_endpoints.readNotifications}');
     try {
-      final response = await _dio.post(_endpoints.readNotifications);
+      final summaries = notifications
+          .where((item) =>
+              item.type == 'community_admin_activity' &&
+              item.notificationID.isNotEmpty &&
+              item.activityRevision != null)
+          .map((item) => {
+                'notificationID': item.notificationID,
+                'activity_revision': item.activityRevision,
+              })
+          .toList();
+      final response = await _dio.post(_endpoints.readNotifications,
+          data: {'community_summaries': summaries});
       if (response.data["status"] == false) return null;
-      return EncodedResponse(response.data["message"]);
+      final unread = response.data['totalunread'];
+      if (unread == null) return 0; // Compatibility with older servers.
+      return unread is int && unread >= 0 ? unread : null;
     } catch (e) {
       if (kDebugMode) {
         print("ERROR");

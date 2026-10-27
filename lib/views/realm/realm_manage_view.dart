@@ -310,6 +310,14 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                                   MaterialPageRoute(
                                       builder: (_) => CommunityRequestsView(
                                           realmId: realm.id)))),
+                        if (realm.type == 'community')
+                          _SectionTile(
+                            icon: Icons.notifications_none,
+                            title: 'Notifications',
+                            subtitle: 'Join requests, comments and reactions',
+                            onTap: () => context.push(
+                                '/realm/${Uri.encodeComponent(realm.id)}/manage/notifications'),
+                          ),
                         _SectionTile(
                           icon: Icons.group_outlined,
                           title: 'Members',

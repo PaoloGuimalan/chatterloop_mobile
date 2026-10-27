@@ -6,8 +6,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
+import 'package:chatterloop_app/models/notifications_models/community_notification_model.dart';
 
 final communityChanges = ValueNotifier<int>(0);
+
+/// Only management activity changed; directory/profile lists need no refetch.
+final communityNotificationsChanges = ValueNotifier<int>(0);
 
 /// Lifecycle transport only. Existing signed Dio interceptors remain authoritative.
 /// Errors propagate with status/body so callers distinguish lost access from empty lists.
@@ -22,6 +26,20 @@ class CommunityApi {
         _authToken = authToken;
   String _path(String id) =>
       '${_endpoints.communities}/${Uri.encodeComponent(id)}';
+
+  Future<CommunityNotificationsPage> notifications(String realmId,
+      {int page = 1}) async {
+    final response = await _dio.get('${_path(realmId)}/notifications',
+        options: _options, queryParameters: {'page': page});
+    return CommunityNotificationsPage.fromJson(response.data);
+  }
+
+  Future<void> acknowledgeNotifications(String realmId,
+      {required int activityRevision}) async {
+    await _dio.post('${_path(realmId)}/notifications/read',
+        options: _options, data: {'activity_revision': activityRevision});
+  }
+
   Future<PagedResult<Community>> discover(
       {String search = '',
       bool joined = false,

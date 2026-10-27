@@ -131,34 +131,41 @@ class _NotificationsViewState extends State<NotificationsView> {
     });
   }
 
-  /// Marks everything read AND zeroes the topbar badge.
-  ///
-  /// The badge has to be zeroed here because nothing else will:
-  /// POST /u/readnotifications only updates Mongo and returns - it emits NO
-  /// SSE (routes/users/index.js), so the redux slice that feeds the badge
-  /// never hears about it. Without this the count sat there unchanged for the
-  /// rest of the session no matter how many times you opened the screen.
-  ///
-  /// The list itself is left alone: only `totalunread` drives the badge, and
-  /// this screen renders its own v2 sections rather than that v1 list.
-  void _readAll() {
-    NotificationsApi().readNotificationsRequest();
+  /// Preserve unread summaries that advanced after this overview was loaded.
+  /// A newer SSE badge refresh takes precedence over this response.
+  Future<void> _readAll() async {
+    final actor = appStore.state.userAuth.user.entityId;
     final current = appStore.state.notificationsstate;
-    if (current.totalunread == 0) return;
+    final overview = _overview;
+    final unread = await NotificationsApi().readNotificationsRequest(
+      notifications: overview == null
+          ? const []
+          : [overview.activity, overview.connections, overview.system]
+              .expand((section) => section.groups)
+              .expand((group) => group.items),
+    );
+    if (!mounted ||
+        unread == null ||
+        actor != appStore.state.userAuth.user.entityId ||
+        !identical(current, appStore.state.notificationsstate)) {
+      return;
+    }
     appStore.dispatch(DispatchModel(
       setNotificationsListT,
       NotificationsStateModel(
         current.notificationsList,
-        0,
+        unread,
         current.total,
         current.next,
       ),
     ));
   }
 
-  void _markAllRead() {
-    _readAll();
+  Future<void> _markAllRead() async {
+    final read = _readAll();
     _mapSections((item) => item.copyWith(isRead: true), zeroUnread: true);
+    await read;
+    if (mounted) await _load();
   }
 
   /// Accept/decline reuse the SAME contact endpoints as everywhere else;
