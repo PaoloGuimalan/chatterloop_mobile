@@ -108,10 +108,11 @@ class _CommunityNotificationsViewState extends State<CommunityNotificationsView>
         _page = page;
         _loading = _loadingMore = false;
       });
-      if (page == 1 && result.activityRevision != null) {
+      if (result.activityRevision != null) {
         try {
           await api.acknowledgeNotifications(widget.realmId,
-              activityRevision: result.activityRevision!);
+              activityRevision: result.activityRevision!,
+              notificationIds: result.results.map((item) => item.id).toList());
         } catch (error) {
           if (!_isCurrent(generation, actor)) return;
           CLAlerts.requestError(error,

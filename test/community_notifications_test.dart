@@ -69,6 +69,7 @@ CommunityNotificationsPage fixturePage(List<Map<String, dynamic>> rows,
 class FixtureNotificationsApi extends CommunityApi {
   final loads = <int>[];
   final acknowledgements = <int>[];
+  final acknowledgedIds = <List<String>>[];
   Future<CommunityNotificationsPage> Function(int)? respond;
   CommunityNotificationsPage page = fixturePage([]);
   bool ackFails = false;
@@ -88,8 +89,10 @@ class FixtureNotificationsApi extends CommunityApi {
 
   @override
   Future<void> acknowledgeNotifications(String id,
-      {required int activityRevision}) async {
+      {required int activityRevision,
+      List<String> notificationIds = const []}) async {
     acknowledgements.add(activityRevision);
+    acknowledgedIds.add(notificationIds);
     if (ackFails) throw StateError('Acknowledgement unavailable');
   }
 }
@@ -175,14 +178,18 @@ void main() {
     final api = CommunityApi(dio: dio, authToken: 'actor-token');
     final result = await api.notifications('club/id', page: 2);
     await api.acknowledgeNotifications('club/id',
-        activityRevision: result.activityRevision!);
+        activityRevision: result.activityRevision!,
+        notificationIds: ['notice-1']);
     expect(
         requests.first.path, '/api/realm/communities/club%2Fid/notifications');
     expect(requests.first.queryParameters, {'page': 2});
     expect(requests.first.extra['authToken'], 'actor-token');
     expect(requests.last.path,
         '/api/realm/communities/club%2Fid/notifications/read');
-    expect(requests.last.data, {'activity_revision': 9});
+    expect(requests.last.data, {
+      'activity_revision': 9,
+      'notification_ids': ['notice-1']
+    });
   });
 
   test(
@@ -199,7 +206,7 @@ void main() {
     expect(match.fullPath, '/realm/:slug/manage/notifications');
   });
 
-  testWidgets('deduplicates pages and acknowledges only the first page',
+  testWidgets('deduplicates pages and acknowledges each exact loaded page',
       (tester) async {
     final api = FixtureNotificationsApi()
       ..respond = (page) async => fixturePage(
@@ -210,7 +217,11 @@ void main() {
     await tester.tap(find.text('Load more'));
     await tester.pumpAndSettle();
     expect(api.loads, [1, 2]);
-    expect(api.acknowledgements, [7]);
+    expect(api.acknowledgements, [7, 7]);
+    expect(api.acknowledgedIds, [
+      ['a'],
+      ['a', 'b']
+    ]);
     expect(
         find.textContaining('Maya Chen', findRichText: true), findsNWidgets(2));
     expect(tester.takeException(), isNull);
@@ -260,6 +271,10 @@ void main() {
         SSEModel(event: 'community_notifications_changed', data: '{}'), true);
     await tester.pumpAndSettle();
     expect(communityChanges.value, before);
+    expect(api.loads, [1, 1]);
+    await SseEvents().listen(
+        SSEModel(event: 'community_admin_preview_changed', data: '{}'), true);
+    await tester.pumpAndSettle();
     expect(api.loads, [1, 1]);
     communityChanges.value++;
     await tester.pumpAndSettle();

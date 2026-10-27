@@ -35,9 +35,13 @@ class CommunityApi {
   }
 
   Future<void> acknowledgeNotifications(String realmId,
-      {required int activityRevision}) async {
-    await _dio.post('${_path(realmId)}/notifications/read',
-        options: _options, data: {'activity_revision': activityRevision});
+      {required int activityRevision,
+      List<String> notificationIds = const []}) async {
+    await _dio
+        .post('${_path(realmId)}/notifications/read', options: _options, data: {
+      'activity_revision': activityRevision,
+      'notification_ids': notificationIds,
+    });
   }
 
   Future<PagedResult<Community>> discover(

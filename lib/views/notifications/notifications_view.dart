@@ -82,7 +82,10 @@ class _NotificationsViewState extends State<NotificationsView> {
     // highlights this screen is showing survive the auto-read - which is the
     // behaviour we want anyway.
     _eventBusSubscription = eventBus.on<SSEModel>().listen((event) {
-      if (event.event != "notifications") return;
+      if (event.event != "notifications" &&
+          event.event != "community_admin_preview_changed") {
+        return;
+      }
       _load();
     });
   }
