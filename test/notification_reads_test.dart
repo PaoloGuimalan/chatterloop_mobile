@@ -27,7 +27,7 @@ void main() {
     expect(await NotificationsApi().readNotificationsRequest(), 1);
   });
 
-  test('read requests preserve the displayed revision through model updates',
+  test('read requests use immutable preview IDs without additional schema fields',
       () async {
     final dio = ApiClient.instance.dio;
     final saved = dio.interceptors.toList();
@@ -44,23 +44,22 @@ void main() {
           statusCode: 200,
           data: {'status': true, 'totalunread': 0}));
     }));
-    NotificationV2 item(String type, dynamic revision) =>
-        NotificationV2.fromJson({
-          'notificationID': type,
+    NotificationV2 item(String id, String type) => NotificationV2.fromJson({
+          'notificationID': id,
           'type': type,
           'isRead': false,
-          'activity_revision': revision,
         }).copyWith(referenceStatus: true);
 
     await NotificationsApi().readNotificationsRequest(notifications: [
-      item('community_admin_activity', 3),
-      item('community_admin_activity', -1),
-      item('community_admin_activity', '4'),
-      item('follow', 5),
+      item('preview-one', 'community_admin_activity'),
+      item('preview-two', 'community_admin_activity'),
+      item('', 'community_admin_activity'),
+      item('ordinary', 'follow'),
     ]);
     expect(requests.single.data, {
       'community_summaries': [
-        {'notificationID': 'community_admin_activity', 'activity_revision': 3},
+        {'notificationID': 'preview-one'},
+        {'notificationID': 'preview-two'},
       ]
     });
     expect(requests.single.path, '/u/readnotifications');

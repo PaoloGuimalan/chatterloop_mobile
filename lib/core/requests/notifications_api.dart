@@ -110,12 +110,8 @@ class NotificationsApi {
       final summaries = notifications
           .where((item) =>
               item.type == 'community_admin_activity' &&
-              item.notificationID.isNotEmpty &&
-              item.activityRevision != null)
-          .map((item) => {
-                'notificationID': item.notificationID,
-                'activity_revision': item.activityRevision,
-              })
+              item.notificationID.isNotEmpty)
+          .map((item) => {'notificationID': item.notificationID})
           .toList();
       final response = await _dio.post(_endpoints.readNotifications,
           data: {'community_summaries': summaries});
