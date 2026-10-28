@@ -35,7 +35,7 @@ Map<String, dynamic> notificationFixture(String id,
       'id': id,
       'type': type,
       'description': type == 'community_join_request'
-          ? '$name requested to join Photography Club.'
+          ? '$name requested to join the community.'
           : '${anonymous ? 'An anonymous member' : name} ${type == 'post_comment' ? 'commented on' : 'reacted to'} the community’s cover photo.',
       'actor': {
         'id': 'entity-$id',
@@ -124,6 +124,24 @@ void main() {
     CLAlerts.clear();
   });
   tearDown(CLAlerts.clear);
+
+  test('new-post notices open the post and join notices remain informational',
+      () {
+    final post = CommunityNotification.fromJson({
+      'id': 'post-notice',
+      'type': 'community_post_created',
+      'description': 'Maya posted in the community.',
+      'post_id': 'new-post',
+    });
+    final joined = CommunityNotification.fromJson({
+      'id': 'joined-notice',
+      'type': 'community_member_joined',
+      'description': 'Maya joined the community.',
+    });
+    expect(post.postRoute, '/post/new-post');
+    expect(joined.postRoute, isNull);
+    expect(joined.canReview, isFalse);
+  });
 
   test(
       'parses entity identities, anonymity, statuses and safe post destinations',
@@ -459,6 +477,20 @@ void main() {
           .load();
       final api = FixtureNotificationsApi()
         ..page = fixturePage([
+          {
+            ...notificationFixture('joined'),
+            'type': 'community_member_joined',
+            'description': 'Maya Chen joined the community.',
+            'post_id': null,
+            'request_id': null
+          },
+          {
+            ...notificationFixture('posted'),
+            'type': 'community_post_created',
+            'description': 'Maya Chen posted in the community.',
+            'post_id': 'new-post',
+            'anchor': null
+          },
           notificationFixture('join',
               type: 'community_join_request', status: 'pending'),
           notificationFixture('page',

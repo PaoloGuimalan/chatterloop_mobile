@@ -251,6 +251,8 @@ class _CommunityNotificationRow extends StatelessWidget {
     final actor = item.isAnonymous ? null : item.actor;
     final badge = switch (item.type) {
       'community_join_request' => (Icons.person_add, p.brand),
+      'community_member_joined' => (Icons.group_add, p.brand),
+      'community_post_created' => (Icons.article_outlined, p.brand),
       'post_comment' => (Icons.mode_comment, p.green),
       'post_reaction' || 'comment_reaction' => (Icons.favorite, p.pink),
       _ => (Icons.notifications, p.text3),

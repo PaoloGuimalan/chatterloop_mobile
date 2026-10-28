@@ -54,6 +54,7 @@ class CommunityNotification {
       requestStatus == 'pending';
 
   String? get postRoute => const [
+            'community_post_created',
             'post_comment',
             'post_reaction',
             'comment_reaction'

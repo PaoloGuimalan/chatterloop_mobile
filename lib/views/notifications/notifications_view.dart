@@ -54,6 +54,7 @@ class _NotificationsViewState extends State<NotificationsView> {
 
   NotificationsOverviewV2? _overview;
   bool _isLoading = true;
+  int _loadGeneration = 0;
 
   /// Auto-read on open is kept behavior - fire once per visit, after the first
   /// successful load.
@@ -97,9 +98,10 @@ class _NotificationsViewState extends State<NotificationsView> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     final result = await NotificationsApi()
         .notificationsOverviewV2Request(range: kNotificationsRange);
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
     setState(() {
       if (result != null) _overview = result;
       _isLoading = false;
