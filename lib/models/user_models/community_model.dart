@@ -12,6 +12,7 @@ class Community {
   final String? coverPhoto;
   final int? memberCount;
   final String? myRole;
+  final int? myRoleId;
   final bool requestPending;
   bool get canInteract => !isPrivate || isMember;
   const Community(
@@ -27,6 +28,7 @@ class Community {
       this.coverPhoto,
       this.memberCount,
       this.myRole,
+      this.myRoleId,
       this.requestPending = false});
   factory Community.fromJson(Map<String, dynamic> json) => Community(
       realmId: (json['realm_id'] ?? '').toString(),
@@ -43,6 +45,7 @@ class Community {
           ? (json['member_count'] as num).toInt()
           : null,
       myRole: json['my_role']?.toString(),
+      myRoleId: int.tryParse(json['my_role_id']?.toString() ?? ''),
       requestPending: json['request_pending'] == true);
   static Community? parse(dynamic value) => value is Map
       ? Community.fromJson(Map<String, dynamic>.from(value))
@@ -62,5 +65,6 @@ class Community {
           coverPhoto: coverPhoto,
           memberCount: memberCount,
           myRole: member ? myRole : null,
+          myRoleId: member ? myRoleId : null,
           requestPending: pending);
 }

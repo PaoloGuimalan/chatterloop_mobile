@@ -1,3 +1,5 @@
+import 'package:chatterloop_app/core/requests/roles_api.dart';
+import 'package:chatterloop_app/models/user_models/role_model.dart';
 // Adding members to a realm.
 //
 // Two deliberate differences from webapp's ContactMember, both product
@@ -119,16 +121,52 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
 
   /// What a page invites people to do: follow it, or help run it as a
   /// moderator or an admin. Every other realm has one purpose.
-  String _pageChoice = 'moderator';
+  String _pageChoice = 'manage';
+  List<RoleDefinition> _roles = [];
+  int? _selectedRoleId;
+  bool _loadingRoles = false;
+  bool _rolesError = false;
+  List<RoleDefinition> get _manageRoles => _roles
+      .where((role) => role.name == 'admin' || role.name == 'moderator')
+      .toList();
+  int? get _roleId =>
+      _selectedRoleId ??
+      RoleDefinition.defaultFor(_manageRoles, 'moderator')?.id;
+  bool get _roleReady =>
+      !_isPage ||
+      _pageChoice == 'follow' ||
+      (!_loadingRoles &&
+          !_rolesError &&
+          _manageRoles.any((role) => role.id == _roleId));
+
+  Future<void> _loadRoles() async {
+    setState(() {
+      _loadingRoles = true;
+      _rolesError = false;
+    });
+    try {
+      final roles = await RolesApi().list();
+      if (mounted) setState(() => _roles = roles);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _roles = [];
+          _rolesError = true;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loadingRoles = false);
+    }
+  }
 
   bool get _invites => realmInvitesMembers(widget.realm);
   bool get _isPage => widget.realm.type == 'page';
 
-  Map<String, String> get _purpose => !_isPage
+  Map<String, dynamic> get _purpose => !_isPage
       ? const {}
       : _pageChoice == 'follow'
           ? const {'purpose': 'follow'}
-          : {'purpose': 'manage', 'role': _pageChoice};
+          : {'purpose': 'manage', 'role_id': _roleId};
 
   @override
   void initState() {
@@ -136,6 +174,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
     // Nothing to type for a server-sourced list - show it immediately.
     if (_fromParentServer) _search();
     if (_invites) _loadPending();
+    if (_invites && _isPage) _loadRoles();
   }
 
   Future<void> _loadPending() async {
@@ -164,13 +203,13 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
   }
 
   Future<void> _inviteEmail(String email) async {
-    if (_emailing) return;
+    if (_emailing || !_roleReady) return;
     setState(() => _emailing = true);
     final sent = await _invitesApi.create(
       realmId: widget.realm.id,
       target: email,
       purpose: _purpose['purpose'],
-      role: _purpose['role'],
+      roleId: _purpose['role_id'],
     );
     if (!mounted) return;
     setState(() => _emailing = false);
@@ -272,6 +311,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
   /// Invites everyone picked, one each. Leaves the screen once any went out;
   /// a refusal has already said why.
   Future<void> _invite() async {
+    if (!_roleReady) return;
     setState(() => _adding = true);
     var sent = 0;
     for (final entity in _selected.values.toList()) {
@@ -279,7 +319,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
         realmId: widget.realm.id,
         targetEntityId: entity.entityId,
         purpose: _purpose['purpose'],
-        role: _purpose['role'],
+        roleId: _purpose['role_id'],
       );
       if (result != null) {
         sent++;
@@ -371,8 +411,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
                 children: [
                   for (final choice in const [
                     ('follow', 'To follow'),
-                    ('moderator', 'As moderator'),
-                    ('admin', 'As admin'),
+                    ('manage', 'Help run'),
                   ])
                     CLChip(
                       label: choice.$2,
@@ -381,6 +420,49 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
                     ),
                 ],
               ),
+            ),
+
+          if (_invites && _isPage && _pageChoice == 'manage')
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: CLSpacing.contentGutter, vertical: 6),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_loadingRoles) const LinearProgressIndicator(),
+                    if (_rolesError)
+                      Row(children: [
+                        const Expanded(child: Text('Could not load roles.')),
+                        TextButton(
+                            onPressed: _loadRoles, child: const Text('Retry')),
+                      ]),
+                    DropdownButtonFormField<int>(
+                      key: ValueKey(_roleId),
+                      initialValue:
+                          _manageRoles.any((role) => role.id == _roleId)
+                              ? _roleId
+                              : null,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Role'),
+                      hint: const Text('Choose a role'),
+                      items: [
+                        for (final role in _manageRoles)
+                          DropdownMenuItem(
+                            value: role.id,
+                            child: Text(role.label,
+                                overflow: TextOverflow.ellipsis),
+                          )
+                      ],
+                      onChanged: _loadingRoles ||
+                              _rolesError ||
+                              _adding ||
+                              _emailing
+                          ? null
+                          : (value) => setState(() => _selectedRoleId = value),
+                    ),
+                    if (!_loadingRoles && !_rolesError && _manageRoles.isEmpty)
+                      const Text('No assignable roles are available.'),
+                  ]),
             ),
 
           // The running selection, so you can see what you are about to add
@@ -439,7 +521,8 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
               iconL: Icons.person_add_alt,
               block: true,
               size: CLBtnSize.lg,
-              onPressed: selected.isEmpty || _adding ? null : _add,
+              onPressed:
+                  selected.isEmpty || _adding || !_roleReady ? null : _add,
             ),
           ),
         ],
@@ -610,7 +693,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
   Widget _emailTile(CLPalette p, String email) {
     return InkWell(
       borderRadius: BorderRadius.circular(CLRadii.md),
-      onTap: _emailing ? null : () => _inviteEmail(email),
+      onTap: _emailing || !_roleReady ? null : () => _inviteEmail(email),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         child: Row(

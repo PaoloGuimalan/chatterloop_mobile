@@ -1,3 +1,5 @@
+import 'package:chatterloop_app/core/requests/roles_api.dart';
+import 'package:chatterloop_app/models/user_models/role_model.dart';
 // The manage screen's sections that are lists or uploads rather than a form:
 // Members, Followers and Media. Split from realm_manage_view.dart only for
 // size - the per-kind rules all still live there.
@@ -329,16 +331,59 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  /// Promote to admin / demote to member. Webapp offers exactly these two,
-  /// toggled on the member's current role.
-  Future<void> _setRole(RealmPerson person, String role) async {
+  /// Choose an exact permission definition while preserving role names for hierarchy.
+  Future<void> _chooseRole(RealmPerson person) async {
+    setState(() => _busyId = person.removalId);
+    List<RoleDefinition> roles;
+    try {
+      roles = (await RolesApi().list())
+          .where((role) => role.name != 'owner')
+          .toList();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busyId = null);
+      CLAlerts.show('Could not load roles. Please try again.',
+          type: CLAlertType.warning);
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _busyId = null);
+    final selected = await showDialog<RoleDefinition>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Choose role'),
+        children: [
+          if (roles.isEmpty)
+            const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No assignable roles are available.')),
+          for (final role in roles)
+            SimpleDialogOption(
+              onPressed: role.id == person.roleId
+                  ? null
+                  : () => Navigator.pop(context, role),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(role.label),
+                subtitle: Text(role.summary),
+                trailing:
+                    role.id == person.roleId ? const Icon(Icons.check) : null,
+              ),
+            ),
+        ],
+      ),
+    );
+    if (selected != null && mounted) await _setRole(person, selected.id);
+  }
+
+  Future<void> _setRole(RealmPerson person, int roleId) async {
     setState(() => _busyId = person.removalId);
     final realmId =
         person.realmId.isNotEmpty ? person.realmId : widget.realm.id;
     final ok = await ProfileApi().updateRealmMemberRoleRequest(
       realmId: realmId,
       memberId: person.memberId,
-      role: role,
+      roleId: roleId,
     );
     if (!mounted) return;
     setState(() => _busyId = null);
@@ -478,7 +523,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                               onSetRole: widget.members &&
                                       actionable &&
                                       person.memberId.isNotEmpty
-                                  ? (role) => _setRole(person, role)
+                                  ? () => _chooseRole(person)
                                   : null,
                               // Owner-exclusive, and pointless on whoever
                               // already owns it.
@@ -556,8 +601,8 @@ class _RosterRow extends StatelessWidget {
   final bool busy;
   final VoidCallback? onRemove;
 
-  /// Takes "admin" or "member". Null for a follower, and for your own row.
-  final void Function(String role)? onSetRole;
+  /// Select an exact role definition. Null for a follower or your own row.
+  final VoidCallback? onSetRole;
 
   /// Hand the realm to this person. Null unless the viewer owns it.
   final VoidCallback? onTransfer;
@@ -665,7 +710,7 @@ class _RosterRow extends StatelessWidget {
                 } else if (value == 'leave') {
                   onLeave?.call();
                 } else {
-                  onSetRole?.call(value);
+                  onSetRole?.call();
                 }
               },
               itemBuilder: (context) => [
@@ -682,21 +727,12 @@ class _RosterRow extends StatelessWidget {
                   ),
                 if (onSetRole != null)
                   PopupMenuItem(
-                    // Toggled on their CURRENT role, exactly as web does it:
-                    // an admin can only be demoted, anyone else promoted.
-                    value: person.isRealmAdmin ? 'member' : 'admin',
+                    value: 'role',
                     child: Row(children: [
-                      Icon(
-                          person.isRealmAdmin
-                              ? Icons.arrow_circle_down
-                              : Icons.arrow_circle_up,
-                          size: 18,
-                          color: p.text2),
+                      Icon(Icons.manage_accounts_outlined,
+                          size: 18, color: p.text2),
                       const SizedBox(width: 10),
-                      Text(
-                          person.isRealmAdmin
-                              ? 'Demote to Member'
-                              : 'Promote to Admin',
+                      Text('Change role',
                           style:
                               TextStyle(color: p.text, fontSize: CLType.body)),
                     ]),

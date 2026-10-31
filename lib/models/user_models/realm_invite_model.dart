@@ -73,6 +73,7 @@ class RealmInvite {
 
   /// admin | moderator, for a "manage" invite.
   final String? role;
+  final int? roleId;
   final InviteEntity? inviter;
   final String? targetEmail;
   final InviteEntity? targetEntity;
@@ -89,6 +90,7 @@ class RealmInvite {
     required this.status,
     required this.purpose,
     this.role,
+    this.roleId,
     this.inviter,
     this.targetEmail,
     this.targetEntity,
@@ -108,6 +110,7 @@ class RealmInvite {
         status: next,
         purpose: purpose,
         role: role,
+        roleId: roleId,
         inviter: inviter,
         targetEmail: targetEmail,
         targetEntity: targetEntity,
@@ -125,6 +128,7 @@ class RealmInvite {
         status: (json['status'] ?? 'pending').toString(),
         purpose: (json['purpose'] ?? 'join').toString(),
         role: InviteEntity._usable(json['role']),
+        roleId: int.tryParse(json['role_id']?.toString() ?? ''),
         inviter: InviteEntity.fromJson(json['inviter']),
         targetEmail: InviteEntity._usable(json['target_email']),
         targetEntity: InviteEntity.fromJson(json['target_entity']),

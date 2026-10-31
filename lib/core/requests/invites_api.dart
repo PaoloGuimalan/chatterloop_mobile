@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 // Realm invites (Django user_service, community/invites.py) - by email or by
 // username, into a group, a server, a conference or a page. The person is
 // not added: they get an invite they accept or decline.
@@ -12,7 +13,8 @@ import 'package:chatterloop_app/models/user_models/realm_invite_model.dart';
 import 'package:flutter/foundation.dart';
 
 class InvitesApi {
-  final _dio = ApiClient.userService.dio;
+  final Dio _dio;
+  InvitesApi({Dio? client}) : _dio = client ?? ApiClient.userService.dio;
   final _endpoints = Endpoints();
 
   static RealmInvite? _inviteFrom(Object? body) {
@@ -83,7 +85,7 @@ class InvitesApi {
     String? target,
     String? targetEntityId,
     String? purpose,
-    String? role,
+    int? roleId,
   }) {
     return reportedRequest(
       () => _dio.post(_endpoints.realmInvites, data: {
@@ -92,7 +94,7 @@ class InvitesApi {
         if (target != null) 'target': target,
         if (targetEntityId != null) 'target_entity_id': targetEntityId,
         if (purpose != null) 'purpose': purpose,
-        if (role != null) 'role': role,
+        if (roleId != null) 'role_id': roleId,
       }),
       failure: "We couldn't send that invite.",
       parse: (response) {

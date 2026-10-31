@@ -356,7 +356,7 @@ class Endpoints {
   String realmFollowers = '/api/realm/realm-followers';
 
   /// DJANGO realm invites (community/invites.py). POST {realm_id, target |
-  /// target_entity_id, purpose?, role?} invites by email or username; GET
+  /// target_entity_id, purpose?, role_id?} invites by email or username; GET
   /// ?invite_token= reads one, ?realm_id=&kind=invite&status=pending lists a
   /// realm's; PATCH {invite_token, status} answers (accepted/declined) or
   /// withdraws (revoked) one. Same endpoint as webapp's *RealmInviteRequest.
@@ -368,7 +368,7 @@ class Endpoints {
   /// NODE. Multipart {realm_id, realm_type, media_type, image}.
   String realmUploadMedia = '/realms/upload-media';
 
-  /// NODE. PUT {realm_id, member_id, new_role} - "admin" or "member".
+  /// NODE. PUT {realm_id, member_id, new_role_id} - exact numeric role ID.
   /// Note the /s/ prefix, not /realms/.
   String realmMemberRole = '/s/update-member-realm-role';
 

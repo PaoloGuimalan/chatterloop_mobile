@@ -96,6 +96,7 @@ class RealmProfile {
   /// Server-side it resolves acting-AS-the-realm to "owner", matching what
   /// the write routes allow (see community/annotations.py).
   final String? myRole;
+  final int? myRoleId;
 
   /// Realm.is_verified - the same blue badge a person's profile gets. Arrives
   /// on every realm payload (RealmSerializer is fields="__all__"); the app
@@ -135,6 +136,7 @@ class RealmProfile {
     this.isMember = false,
     required this.isAdmin,
     this.myRole,
+    this.myRoleId,
     this.isVerified = false,
     this.isFollower = false,
     this.hasConnection = false,
@@ -176,6 +178,7 @@ class RealmProfile {
       isMember: json["is_member"] == true,
       isAdmin: json["is_admin"] == true,
       myRole: json["my_role"]?.toString(),
+      myRoleId: int.tryParse(json["my_role_id"]?.toString() ?? ""),
       isVerified: json["is_verified"] == true,
       isFollower: json["is_follower"] == true,
       hasConnection: connection["is_connection_present"] == true,
@@ -225,6 +228,7 @@ class RealmPerson {
 
   /// Members only; null for a follower, who has no role. "admin" or "member".
   final String? role;
+  final int? roleId;
 
   /// The MEMBER ROW's id, which the role endpoint takes (member_id). Members
   /// only.
@@ -250,6 +254,7 @@ class RealmPerson {
     this.entityType = '',
     this.realmType,
     this.role,
+    this.roleId,
     this.memberId = '',
     this.realmId = '',
     this.removalId = '',
@@ -316,6 +321,7 @@ class RealmPerson {
       entityType: entity is Map ? (entity["type"] ?? "").toString() : "",
       realmType: person.realmType,
       role: json["role"]?.toString(),
+      roleId: int.tryParse(json["role_id"]?.toString() ?? ""),
       memberId: (json["member_id"] ?? "").toString(),
       realmId: (json["realm"] ?? "").toString(),
       // The ENTITY id, despite the endpoint calling the field `account_ids` -

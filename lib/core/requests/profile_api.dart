@@ -585,16 +585,20 @@ class ProfileApi {
   /// Promote to admin / demote to member. NODE, and keyed by the MEMBER ROW's
   /// id rather than by who the person is - webapp's UpdateMemberRoleRequest.
   ///
-  /// [role] is "admin" or "member"; those two are the only values web sends.
+  /// [roleId] identifies the selected permission definition, including duplicates.
   Future<bool> updateRealmMemberRoleRequest({
     required String realmId,
     required String memberId,
-    required String role,
+    required int roleId,
   }) async {
     return reportedAction(
       () => _mainDio.put(
         _endpoints.realmMemberRole,
-        data: {'realm_id': realmId, 'member_id': memberId, 'new_role': role},
+        data: {
+          'realm_id': realmId,
+          'member_id': memberId,
+          'new_role_id': roleId
+        },
       ),
       failure: "We couldn't change their role.",
     );
