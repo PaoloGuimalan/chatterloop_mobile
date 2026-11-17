@@ -58,6 +58,8 @@ class AuthController extends ChangeNotifier {
       response = null;
     }
 
+    // Another request may have recovered a revoked realm while restore waited.
+    if (await ApiClient.instance.readToken() != token) return;
     if (response == null) {
       await ApiClient.instance.clearToken();
       _store.dispatch(

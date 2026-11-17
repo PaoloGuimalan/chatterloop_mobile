@@ -1,3 +1,5 @@
+import 'community_approvals_view.dart';
+import 'package:chatterloop_app/models/user_models/realm_approval_model.dart';
 import 'dart:async';
 
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -135,7 +137,7 @@ class _CommunityNotificationsViewState extends State<CommunityNotificationsView>
     }
   }
 
-  Future<void> _review() async {
+  Future<void> _review(CommunityNotification item) async {
     if (_reviewing) return;
     final actor = _actor;
     final generation = _generation;
@@ -149,7 +151,17 @@ class _CommunityNotificationsViewState extends State<CommunityNotificationsView>
       final community = await api.detail(widget.realmId);
       if (!mounted || !_isCurrent(generation, actor)) return;
       await Navigator.of(context).push(MaterialPageRoute<void>(
-          builder: (_) => CommunityRequestsView(realmId: community.realmId)));
+          builder: (_) =>
+              community.capabilities.values.isNotEmpty || item.approvalPending
+                  ? CommunityApprovalsView(
+                      realmId: community.realmId,
+                      initialKind: item.approvalKind == 'posts'
+                          ? ApprovalKind.posts
+                          : item.approvalKind == 'invites'
+                              ? ApprovalKind.invites
+                              : ApprovalKind.joins,
+                      targetId: item.approvalTargetId ?? item.requestId)
+                  : CommunityRequestsView(realmId: community.realmId)));
       if (_isCurrent(generation, actor)) _load();
     } catch (error) {
       if (_isCurrent(generation, actor)) {
@@ -206,7 +218,7 @@ class _CommunityNotificationsViewState extends State<CommunityNotificationsView>
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _CommunityNotificationRow(
                     item: item,
-                    onReview: _reviewing ? null : _review,
+                    onReview: _reviewing ? null : () => _review(item),
                     onOpen: item.postRoute == null
                         ? null
                         : () => context.push(item.postRoute!),

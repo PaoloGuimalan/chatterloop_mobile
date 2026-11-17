@@ -170,8 +170,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
 
   Widget _buildActions(Community community) {
     if (community.isMember) return const SizedBox.shrink();
-    final canManage =
-        ['owner', 'admin', 'moderator'].contains(community.myRole);
+    final canManage = community.canManage;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: LayoutBuilder(builder: (context, constraints) {
@@ -231,9 +230,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
             scrolledUnderElevation: 0,
             actions: [
               if (community != null &&
-                  (community.isMember ||
-                      ['owner', 'admin', 'moderator']
-                          .contains(community.myRole)))
+                  (community.isMember || community.canManage))
                 Padding(
                   padding: const EdgeInsets.only(right: 10),
                   child: PopupMenuButton<String>(
@@ -254,8 +251,7 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                       }
                     },
                     itemBuilder: (_) => [
-                      if (['owner', 'admin', 'moderator']
-                          .contains(community.myRole))
+                      if (community.canManage)
                         const PopupMenuItem(
                             value: 'manage', child: Text('Manage Realm')),
                       if (community.isMember)
@@ -419,7 +415,10 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                                   const Text('Member list is not available.',
                                       style: TextStyle(fontSize: CLType.body))
                               ]))),
-                    if (_section == 0 && community.isMember)
+                    if (_section == 0 &&
+                        community.isMember &&
+                        community.capabilities.values["can_submit_posts"] !=
+                            false)
                       Padding(
                           padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
                           child: ProfileComposerCard.forActingEntity(
@@ -430,7 +429,10 @@ class _CommunityProfileViewState extends State<CommunityProfileView>
                               if (mounted) _load();
                             },
                           )),
-                    if (_section == 0 && !community.isMember)
+                    if (_section == 0 &&
+                        (!community.isMember ||
+                            community.capabilities.values["can_submit_posts"] ==
+                                false))
                       const SizedBox(height: 10),
                     if (_section == 0)
                       for (final post in _posts)

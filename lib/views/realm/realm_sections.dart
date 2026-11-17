@@ -1,3 +1,4 @@
+import 'community_archive_view.dart';
 import 'package:chatterloop_app/core/requests/roles_api.dart';
 import 'package:chatterloop_app/models/user_models/role_model.dart';
 // The manage screen's sections that are lists or uploads rather than a form:
@@ -84,7 +85,13 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   bool get _viewerIsOwner => _realm.myRole == 'owner';
 
   bool _canActOn(RealmPerson person) {
-    if (_realm.type == 'community' && !_realm.isAdmin) return false;
+    if (_realm.type == 'community' &&
+        (_realm.capabilities.values.isNotEmpty
+            ? !(_realm.capabilities.allows('can_assign_roles') ||
+                _realm.capabilities.allows('can_remove_members'))
+            : !_realm.isAdmin)) {
+      return false;
+    }
     if (!widget.members) return true;
     if (_viewerIsOwner) return true;
     return person.role != 'admin' && person.role != 'owner';
@@ -174,6 +181,16 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   }
 
   Future<void> _fetch(int page) async {
+    if (_realm.type == "community" &&
+        _realm.capabilities.values.isNotEmpty &&
+        !_realm.capabilities.allows("can_view_members")) {
+      setState(() {
+        _people.clear();
+        _loading = false;
+        _hasNext = false;
+      });
+      return;
+    }
     final generation = ++_generation;
     final actor = appStore.state.userAuth.user.entityId;
     if (page == 1) {
@@ -333,12 +350,13 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
 
   /// Choose an exact permission definition while preserving role names for hierarchy.
   Future<void> _chooseRole(RealmPerson person) async {
+    final actor = appStore.state.userAuth.user.entityId;
+    final realmId =
+        person.realmId.isNotEmpty ? person.realmId : widget.realm.id;
     setState(() => _busyId = person.removalId);
     List<RoleDefinition> roles;
     try {
-      roles = (await RolesApi().list())
-          .where((role) => role.name != 'owner')
-          .toList();
+      roles = await RolesApi().list(realmId: realmId);
     } catch (_) {
       if (!mounted) return;
       setState(() => _busyId = null);
@@ -346,12 +364,17 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
           type: CLAlertType.warning);
       return;
     }
-    if (!mounted) return;
+    if (!mounted ||
+        actor != appStore.state.userAuth.user.entityId ||
+        realmId !=
+            (person.realmId.isNotEmpty ? person.realmId : widget.realm.id)) {
+      return;
+    }
     setState(() => _busyId = null);
     final selected = await showDialog<RoleDefinition>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Choose role'),
+        title: const Text('Assign different role'),
         children: [
           if (roles.isEmpty)
             const Padding(
@@ -359,13 +382,14 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                 child: Text('No assignable roles are available.')),
           for (final role in roles)
             SimpleDialogOption(
-              onPressed: role.id == person.roleId
+              onPressed: role.id == person.roleId || !role.assignable
                   ? null
                   : () => Navigator.pop(context, role),
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(role.label),
-                subtitle: Text(role.summary),
+                subtitle: Text(role.disabledReason ?? role.summary),
+                enabled: role.assignable,
                 trailing:
                     role.id == person.roleId ? const Icon(Icons.check) : null,
               ),
@@ -373,7 +397,13 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
         ],
       ),
     );
-    if (selected != null && mounted) await _setRole(person, selected.id);
+    if (selected != null &&
+        mounted &&
+        actor == appStore.state.userAuth.user.entityId &&
+        realmId ==
+            (person.realmId.isNotEmpty ? person.realmId : widget.realm.id)) {
+      await _setRole(person, selected.id);
+    }
   }
 
   Future<void> _setRole(RealmPerson person, int roleId) async {
@@ -411,7 +441,10 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
           // Members only, and not on a public channel or voice room, whose
           // membership follows the parent server (web's `addableMember`).
           if (widget.members &&
-              (widget.realm.type != 'community' || _realm.isAdmin) &&
+              (widget.realm.type != 'community' ||
+                  (_realm.capabilities.values.isNotEmpty
+                      ? _realm.capabilities.allows('can_invite_members')
+                      : _realm.isAdmin)) &&
               realmAcceptsNewMembers(widget.realm))
             IconButton(
               // A group, server or page invites; a channel adds directly.
@@ -521,6 +554,10 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                                   : null,
                               // Followers have no role to change.
                               onSetRole: widget.members &&
+                                      (_realm.type != "community" ||
+                                          _realm.capabilities.values.isEmpty ||
+                                          _realm.capabilities
+                                              .allows("can_assign_roles")) &&
                                       actionable &&
                                       person.memberId.isNotEmpty
                                   ? () => _chooseRole(person)
@@ -732,7 +769,7 @@ class _RosterRow extends StatelessWidget {
                       Icon(Icons.manage_accounts_outlined,
                           size: 18, color: p.text2),
                       const SizedBox(width: 10),
-                      Text('Change role',
+                      Text('Assign different role',
                           style:
                               TextStyle(color: p.text, fontSize: CLType.body)),
                     ]),
@@ -846,20 +883,34 @@ class _RealmMediaScreenState extends State<RealmMediaScreen> {
           padding: const EdgeInsets.fromLTRB(
               CLSpacing.contentGutter, 16, CLSpacing.contentGutter, 24),
           children: [
-            _MediaTile(
-              title: 'Profile picture',
-              subtitle: 'Shown beside this ${realmKindNoun(widget.realm)} '
-                  'everywhere it appears.',
-              preview: widget.realm.profile,
-              rounded: true,
-              busy: _busy == 'profile',
-              retrying: _pendingUploads.containsKey('profile'),
-              onPick: _busy == null ? () => _pickAndUpload('profile') : null,
-            ),
+            if (widget.realm.type != 'community' ||
+                widget.realm.capabilities.values.isEmpty ||
+                widget.realm.capabilities.allows('can_update_media'))
+              _MediaTile(
+                title: 'Profile picture',
+                subtitle: 'Shown beside this ${realmKindNoun(widget.realm)} '
+                    'everywhere it appears.',
+                preview: widget.realm.profile,
+                rounded: true,
+                busy: _busy == 'profile',
+                retrying: _pendingUploads.containsKey('profile'),
+                onPick: _busy == null ? () => _pickAndUpload('profile') : null,
+              ),
+            if (widget.realm.type == 'community' &&
+                widget.realm.capabilities.allows('can_archive_community_posts'))
+              ListTile(
+                  leading: const Icon(Icons.inventory_2_outlined),
+                  title: const Text('Community archive'),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) =>
+                          CommunityArchiveView(realmId: widget.realm.id)))),
             // Pages and servers only - see realmHasCoverPhoto. Nothing else
             // has a surface that renders a banner, so an upload there is a
             // file that goes nowhere.
-            if (realmHasCoverPhoto(widget.realm)) ...[
+            if (realmHasCoverPhoto(widget.realm) &&
+                (widget.realm.type != 'community' ||
+                    widget.realm.capabilities.values.isEmpty ||
+                    widget.realm.capabilities.allows('can_update_media'))) ...[
               const SizedBox(height: 12),
               _MediaTile(
                 title: 'Cover photo',

@@ -1,3 +1,4 @@
+import 'widgets/submissions_feed.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
 import 'package:chatterloop_app/core/design/widgets.dart';
 import 'package:chatterloop_app/core/redux/state.dart';
@@ -43,6 +44,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   /// their OWN key: the two hold separate list state, and sharing a key would
   /// hand the archive whatever the posts feed had already paged.
   final GlobalKey<ProfileFeedState> _archiveKey = GlobalKey<ProfileFeedState>();
+  final GlobalKey<SubmissionsFeedState> _submissionsKey =
+      GlobalKey<SubmissionsFeedState>();
   final GlobalKey<SavedPostsFeedState> _savesKey =
       GlobalKey<SavedPostsFeedState>();
 
@@ -63,6 +66,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           _savesKey.currentState?.loadMore();
         case ProfileFeedMode.archives:
           _archiveKey.currentState?.loadMore();
+        case ProfileFeedMode.submissions:
+          _submissionsKey.currentState?.loadMore();
       }
     }
   }
@@ -83,6 +88,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ProfileFeedMode.posts => _feedKey.currentState?.reload(),
       ProfileFeedMode.saves => _savesKey.currentState?.reload(),
       ProfileFeedMode.archives => _archiveKey.currentState?.reload(),
+      ProfileFeedMode.submissions => _submissionsKey.currentState?.reload(),
     };
     await Future.wait([_load(), feed ?? Future<void>.value()]);
   }
@@ -405,7 +411,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isSelf(BuildContext context) {
     if (profile == null) return false;
     final me = StoreProvider.of<AppState>(context).state.userAuth.user;
-    return me.username == profile!.username;
+    return me.entityId == profile!.entityId;
   }
 
   /// Opens the composer in avatar/cover mode. Changing either IS a post -
@@ -776,6 +782,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                     ? "Posts you share will show up here."
                                     : "${profile!.displayName} hasn't posted anything yet.",
                               ),
+                            ProfileFeedMode.submissions => SubmissionsFeed(
+                                key: _submissionsKey,
+                                ownerEntityId: profile!.entityId),
                             ProfileFeedMode.saves =>
                               SavedPostsFeed(key: _savesKey),
                             // Archived feed posts, or expired Moments.

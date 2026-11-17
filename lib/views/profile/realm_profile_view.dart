@@ -1,3 +1,4 @@
+import 'widgets/submissions_feed.dart';
 // Read-only profile for a page/realm - the counterpart to
 // user_profile_view.dart, and deliberately built on the same ProfileHeader
 // hero so the two read as one screen with different content rather than two
@@ -58,6 +59,8 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
   /// it holds its own list state and sharing a key would hand it whatever the
   /// posts feed had already paged.
   final GlobalKey<ProfileFeedState> _archiveKey = GlobalKey<ProfileFeedState>();
+  final GlobalKey<SubmissionsFeedState> _submissionsKey =
+      GlobalKey<SubmissionsFeedState>();
   final GlobalKey<SavedPostsFeedState> _savesKey =
       GlobalKey<SavedPostsFeedState>();
 
@@ -115,6 +118,8 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
           _savesKey.currentState?.loadMore();
         case ProfileFeedMode.archives:
           _archiveKey.currentState?.loadMore();
+        case ProfileFeedMode.submissions:
+          _submissionsKey.currentState?.loadMore();
       }
     }
   }
@@ -147,6 +152,7 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
       ProfileFeedMode.posts => _feedKey.currentState?.reload(),
       ProfileFeedMode.saves => _savesKey.currentState?.reload(),
       ProfileFeedMode.archives => _archiveKey.currentState?.reload(),
+      ProfileFeedMode.submissions => _submissionsKey.currentState?.reload(),
     };
     await Future.wait([_load(), feed ?? Future<void>.value()]);
   }
@@ -428,6 +434,9 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
                               emptyMessage:
                                   "${realm.name} hasn't posted anything yet.",
                             ),
+                          ProfileFeedMode.submissions => SubmissionsFeed(
+                              key: _submissionsKey,
+                              ownerEntityId: realm.entityId),
                           ProfileFeedMode.saves =>
                             SavedPostsFeed(key: _savesKey),
                           // Archived feed posts, or the page's expired

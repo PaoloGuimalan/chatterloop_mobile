@@ -1,3 +1,5 @@
+import 'package:chatterloop_app/models/user_models/realm_policy_model.dart';
+
 /// Item from GET /api/realm/my-list (Django, RealmSerializer - fields =
 /// "__all__" plus annotated is_admin/is_member/is_follower/followers_count/
 /// members). Not wrapped in {status, result} - plain DRF paginated response
@@ -42,6 +44,9 @@ class RealmSummary {
 /// realm profile screen wants that the switcher list doesn't need. Response
 /// itself is {"data": {...}}, matching PublicProfile's envelope.
 class RealmProfile {
+  final RealmCapabilities capabilities;
+  final Map<String, bool> features;
+  final String? myRoleName;
   final String id;
 
   /// The realm's ENTITY id (RealmSerializer's `entity`). This - not `id` -
@@ -118,6 +123,9 @@ class RealmProfile {
   final bool? isConnectionInitiator;
 
   const RealmProfile({
+    this.capabilities = const RealmCapabilities(),
+    this.features = const {},
+    this.myRoleName,
     required this.id,
     required this.entityId,
     required this.name,
@@ -150,6 +158,12 @@ class RealmProfile {
         ? Map<String, dynamic>.from(json["connection"])
         : const <String, dynamic>{};
     return RealmProfile(
+      capabilities: RealmCapabilities.fromJson(json['capabilities']),
+      features: json['features'] is Map
+          ? Map.unmodifiable((json['features'] as Map)
+              .map((key, value) => MapEntry(key.toString(), value == true)))
+          : const {},
+      myRoleName: json['my_role_name']?.toString(),
       id: (json["id"] ?? "").toString(),
       entityId: (json["entity"] ?? "").toString(),
       name: (json["name"] ?? "").toString(),

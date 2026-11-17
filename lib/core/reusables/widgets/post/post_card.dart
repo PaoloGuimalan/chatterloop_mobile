@@ -108,6 +108,7 @@ class _PostCardState extends State<PostCard> {
   PostPreview? _validatedPost;
   int _accessGeneration = 0;
   Future<void> _communityChanged() async {
+    if (widget.post.readOnly) return;
     if (widget.post.community == null) {
       _syncSharedPostFuture();
       if (mounted) setState(() {});
@@ -139,6 +140,7 @@ class _PostCardState extends State<PostCard> {
     super.initState();
     PostUpdates.instance.addListener(_postUpdated);
     communityChanges.addListener(_communityChanged);
+    communityPostChanges.addListener(_postStateChanged);
     _syncSharedPostFuture();
   }
 
@@ -146,10 +148,19 @@ class _PostCardState extends State<PostCard> {
     if (mounted) setState(() {});
   }
 
+  void _postStateChanged() {
+    final change = communityPostChanges.value;
+    if (change?.postId == widget.post.postId ||
+        change?.postId == widget.post.sharedPostId) {
+      _communityChanged();
+    }
+  }
+
   @override
   void dispose() {
     PostUpdates.instance.removeListener(_postUpdated);
     communityChanges.removeListener(_communityChanged);
+    communityPostChanges.removeListener(_postStateChanged);
     super.dispose();
   }
 
@@ -373,7 +384,7 @@ class _PostCardState extends State<PostCard> {
               border: Border.all(color: p.border),
             ),
             child: PostCard(
-              post: shared,
+              post: _post.readOnly ? shared.copyWith(readOnly: true) : shared,
               onOpen: () => context.push('/post/${shared.postId}'),
               showEngagement: false,
               showOptions: false,
@@ -399,7 +410,8 @@ class _PostCardState extends State<PostCard> {
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    if (_communityUnavailable) {
+    if (_communityUnavailable ||
+        (_post.isHiddenCommunityPost && !_post.readOnly)) {
       return const Padding(
           padding: EdgeInsets.all(14),
           child: Text('Community post unavailable',
@@ -568,7 +580,7 @@ class _PostCardState extends State<PostCard> {
                   ],
                 ),
               ),
-              if (widget.showOptions)
+              if (widget.showOptions && !post.readOnly)
                 PostOptionsButton(
                   post: post,
                   onChanged: widget.onChanged,
@@ -628,7 +640,7 @@ class _PostCardState extends State<PostCard> {
             // per url; see SharedVideoControllers.
             child: PostAttachments(references: post.references),
           ),
-        if (widget.showEngagement)
+        if (widget.showEngagement && !post.readOnly)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
             child: Row(
@@ -652,12 +664,12 @@ class _PostCardState extends State<PostCard> {
               ],
             ),
           ),
-        if (widget.showEngagement)
+        if (widget.showEngagement && !post.readOnly)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Divider(height: 1, color: p.border),
           ),
-        if (widget.showEngagement)
+        if (widget.showEngagement && !post.readOnly)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(

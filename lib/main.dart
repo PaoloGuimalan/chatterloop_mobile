@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:chatterloop_app/core/auth/realm_access_recovery.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/requests/entity_api.dart';
 
 import 'package:chatterloop_app/core/auth/auth_controller.dart';
 import 'package:chatterloop_app/core/design/theme_provider.dart';
@@ -151,6 +154,17 @@ class _MyAppState extends State<MyApp> {
     // from AppBarTheme.systemOverlayStyle; see clSystemOverlayStyle.
     _authController = AuthController(appStore);
     _router = buildAppRouter(_authController);
+    realmAccessRecovery.readToken = ApiClient.instance.readToken;
+    realmAccessRecovery.switchBack =
+        (token) => EntityApi().switchBackRequest(expectedToken: token);
+    realmAccessRecovery.onRecovered = (message) {
+      final username = appStore.state.userAuth.user.username;
+      _router.go(
+          username.isEmpty ? '/' : '/user/${Uri.encodeComponent(username)}');
+      CLAlerts.warning(message);
+    };
+    realmAccessRecovery.onFailure = () => CLAlerts.error(
+        "We couldn't switch back to your account. Please try again from the account menu.");
     // Firebase is already initialized in main(); wire FCM now that the router
     // exists so notification taps can deep-link. Fire-and-forget - it caches
     // the token (sent via the fcm-token header) and sets up display/tap

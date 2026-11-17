@@ -96,7 +96,7 @@ class SseConnection {
           if (appVersion != null) "X-Platform": AppVersion.platform,
         }).listen((event) {
       eventBus.fire(event);
-      SseEvents().listen(event, true);
+      SseEvents().listen(event, true, token: token);
       // ContentValidator().printer({"event": event.event, "data": event.data});
     });
   }

@@ -34,7 +34,7 @@ Future<Community?> pickCommunityDestination(BuildContext context,
     final result = await CommunityApi()
         .discover(joined: true, page: page++, taggedEntityIds: taggedEntityIds);
     choices.addAll(result.results.where((community) =>
-        community.isMember &&
+        community.isMember && community.capabilities.values["can_submit_posts"] != false &&
         (privateSource == null ||
             community.entityId == privateSource.entityId)));
     if (!result.hasNext) break;

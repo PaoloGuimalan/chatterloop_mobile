@@ -1,3 +1,7 @@
+import 'package:chatterloop_app/views/realm/realm_permissions_view.dart';
+import 'package:chatterloop_app/views/communities/community_approvals_view.dart';
+import 'package:chatterloop_app/views/moderation/community_review_detail_view.dart';
+import 'package:chatterloop_app/models/user_models/realm_approval_model.dart';
 // Single GoRouter config, replacing the old three-tier
 // GlobalKey<NavigatorState> / nested-MaterialApp structure in app_routes.dart
 // (outer navigatorKey, private privateNavigatorKey, and a third
@@ -488,6 +492,12 @@ GoRouter buildAppRouter(AuthController authController) {
           // Opened from a moderation notification. Pushed like any other
           // detail screen, so Back returns to the notification list.
           GoRoute(
+              path: '/realm-review/:decisionID',
+              pageBuilder: (c, s) => _clPage(
+                  s,
+                  CommunityReviewDetailView(
+                      decisionId: s.pathParameters['decisionID']!))),
+          GoRoute(
             path: '/moderation/:moderationID',
             pageBuilder: (c, s) => _clPage(
                 s,
@@ -646,6 +656,23 @@ GoRouter buildAppRouter(AuthController authController) {
             pageBuilder: (c, s) =>
                 _clPage(s, RealmManageScreen(slug: s.pathParameters['slug']!)),
             routes: [
+              GoRoute(
+                  path: 'permissions',
+                  pageBuilder: (c, s) => _clPage(
+                      s,
+                      RealmPermissionsView(
+                          realmId: s.pathParameters['slug']!))),
+              GoRoute(
+                  path: 'approvals',
+                  pageBuilder: (c, s) => _clPage(
+                      s,
+                      CommunityApprovalsView(
+                          realmId: s.pathParameters['slug']!,
+                          initialKind: ApprovalKind.values
+                              .where((kind) =>
+                                  kind.name == s.uri.queryParameters['kind'])
+                              .firstOrNull,
+                          targetId: s.uri.queryParameters['target']))),
               GoRoute(
                 path: 'notifications',
                 pageBuilder: (c, s) => _clPage(

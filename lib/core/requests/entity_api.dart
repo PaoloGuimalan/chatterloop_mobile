@@ -81,9 +81,15 @@ class EntityApi {
         () => _dio.post(_endpoints.entitySwitch, data: {"realm_id": realmId}));
   }
 
-  Future<bool> switchBackRequest() async {
+  Future<bool> switchBackRequest({String? expectedToken}) async {
     return _switchAndRefresh(
-        () => _dio.post(_endpoints.entitySwitchBack, data: {}));
+        () => _dio.post(_endpoints.entitySwitchBack,
+            data: {},
+            options: Options(extra: {
+              'skipRealmRecovery': true,
+              if (expectedToken != null) 'authToken': expectedToken,
+            })),
+        expectedToken: expectedToken);
   }
 
   /// Both switch endpoints re-issue the authtoken with a different `entity`
@@ -100,16 +106,39 @@ class EntityApi {
   /// assist state all actually clear instead of briefly showing the
   /// previous entity's stale data. HomeTabScaffold separately detects the
   /// entityId change and re-fetches each of those lists fresh.
-  Future<bool> _switchAndRefresh(Future<dynamic> Function() request) async {
+  Future<bool> _switchAndRefresh(Future<dynamic> Function() request,
+      {String? expectedToken}) async {
     try {
+      if (expectedToken != null &&
+          await ApiClient.instance.readToken() != expectedToken) {
+        return false;
+      }
+      final previous = appStore.state.userAuth.user;
       final response = await request();
+      if (expectedToken != null &&
+          await ApiClient.instance.readToken() != expectedToken) {
+        return false;
+      }
       if (response.data["status"] == false) return false;
       final authtoken = response.data["result"]?["authtoken"]?.toString();
       if (authtoken == null || authtoken.isEmpty) return false;
       await ApiClient.instance.writeToken(authtoken);
+      if (expectedToken != null) {
+        final claims = JwtCodec.readClaims(authtoken);
+        final personalId = claims?['entity']?.toString();
+        if (personalId == null || personalId.isEmpty) return false;
+        appStore.dispatch(DispatchModel(
+            resetAppStateT,
+            UserAuth(
+                true,
+                previous.asPersonalEntity(personalId,
+                    accountId: claims?['userID']?.toString(),
+                    username: claims?['username']?.toString()))));
+      }
 
       final refreshed = await AuthApi().jwtCheckerRequest();
-      if (refreshed == null) return false;
+      if (await ApiClient.instance.readToken() != authtoken) return false;
+      if (refreshed == null) return expectedToken != null;
       final payload = JwtCodec.decode(refreshed.usertoken);
       final account = UserAccount.fromNodeJwt(payload ?? const {},
           allowedModules: refreshed.allowedModules,

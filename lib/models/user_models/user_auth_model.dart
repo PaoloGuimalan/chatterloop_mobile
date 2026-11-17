@@ -124,6 +124,30 @@ class UserAccount {
     );
   }
 
+  /// Clear realm-specific authority while retaining the account holder's data.
+  UserAccount asPersonalEntity(String entityId,
+          {String? accountId, String? username}) =>
+      UserAccount(
+          accountId ?? id,
+          username ?? this.username,
+          firstname,
+          middlename,
+          lastname,
+          email,
+          isActivated,
+          isVerified,
+          profile,
+          coverphoto,
+          gender,
+          birthdate,
+          personalEntityId: entityId,
+          allowedModules: const [],
+          joinedDate: joinedDate,
+          isBadged: isBadged,
+          isPrivate: isPrivate,
+          isComplete: isComplete,
+          pendingConsents: pendingConsents);
+
   /// The entity id messages.sender/receivers/seeners are actually keyed by
   /// - distinct from `id`, which is the Django Account row's id. Both
   /// backends' jwtchecker middleware resolves entity_id from the acting

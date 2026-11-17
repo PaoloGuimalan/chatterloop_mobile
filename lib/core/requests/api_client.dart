@@ -14,6 +14,7 @@
 // server's matching decryptNonce, byte for byte.
 
 import 'dart:convert';
+import 'package:chatterloop_app/core/auth/realm_access_recovery.dart';
 import 'dart:math';
 
 import 'package:chatterloop_app/core/configs/keys.dart';
@@ -80,6 +81,19 @@ class ApiClient {
           options.headers['X-Platform'] = AppVersion.platform;
         }
         handler.next(options);
+      },
+      onError: (error, handler) async {
+        if (error.requestOptions.extra['skipRealmRecovery'] != true &&
+            await realmAccessRecovery.handle(error.response?.data,
+                token: error.requestOptions.headers['x-access-token']
+                    as String?)) {
+          handler.reject(DioException(
+              requestOptions: error.requestOptions,
+              type: DioExceptionType.cancel,
+              message: 'Acting identity changed.'));
+        } else {
+          handler.next(error);
+        }
       },
     ));
     return d;

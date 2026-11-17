@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/auth/realm_access_recovery.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -215,12 +216,19 @@ class PostActivityConnection {
       "Cache-Control": "no-cache",
       if (appVersion != null) "X-App-Version": appVersion,
       if (appVersion != null) "X-Platform": AppVersion.platform,
-    }).listen((event) {
+    }).listen((event) async {
       if (event.event != 'post_activity') return;
 
       final data = event.data;
       if (data == null || data.trim().isEmpty) return;
 
+      try {
+        if (await realmAccessRecovery.handle(jsonDecode(data), token: token)) {
+          return;
+        }
+      } on FormatException {
+        return;
+      }
       final parsed = PostActivityEvent.fromFrame(data);
       if (parsed == null) return;
       if (parsed.type == PostActivityType.unknown) return;

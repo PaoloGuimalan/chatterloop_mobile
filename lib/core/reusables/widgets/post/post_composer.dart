@@ -379,7 +379,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
         final current =
             await CommunityApi(authToken: token).detail(_community!.realmId);
         if (!_canSubmit(submissionEpoch)) return;
-        if (!current.isMember ||
+        if (!current.isMember || current.capabilities.values["can_submit_posts"] == false ||
             _actor != appStore.state.userAuth.user.entityId) {
           if (!mounted) return;
           Navigator.of(context).pop(false);

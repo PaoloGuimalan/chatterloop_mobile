@@ -57,6 +57,9 @@ class PostItem extends StatelessWidget {
   /// Share on something nobody can open reads as a bug.
   final bool showEngagement;
 
+  /// The surrounding review card already provides the surface and spacing.
+  final bool embedded;
+
   const PostItem({
     super.key,
     required this.post,
@@ -65,6 +68,7 @@ class PostItem extends StatelessWidget {
     this.onDeleted,
     this.trackOwnPosts = false,
     this.showEngagement = true,
+    this.embedded = false,
   });
 
   @override
@@ -79,13 +83,15 @@ class PostItem extends StatelessWidget {
       post: post,
       trackOwnPosts: trackOwnPosts,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(
-          color: p.surface,
-          border: Border.all(color: p.border),
-          borderRadius: BorderRadius.circular(CLRadii.md),
-        ),
-        clipBehavior: Clip.antiAlias,
+        margin: embedded ? EdgeInsets.zero : const EdgeInsets.only(bottom: 10),
+        decoration: embedded
+            ? null
+            : BoxDecoration(
+                color: p.surface,
+                border: Border.all(color: p.border),
+                borderRadius: BorderRadius.circular(CLRadii.md),
+              ),
+        clipBehavior: embedded ? Clip.none : Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -254,8 +260,10 @@ class _PostViewTrackerState extends State<PostViewTracker>
   /// Whether this row is tracked at all. Read per-event rather than cached,
   /// since the acting entity can change under a live row.
   bool get _untracked =>
+      widget.post.readOnly ||
+      widget.post.isHiddenCommunityPost ||
       !widget.trackOwnPosts &&
-      widget.post.isOwnedBy(appStore.state.userAuth.user.entityId);
+          widget.post.isOwnedBy(appStore.state.userAuth.user.entityId);
 
   @override
   void initState() {

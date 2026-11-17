@@ -7,11 +7,19 @@ import 'package:flutter/foundation.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/user_models/realm_model.dart';
 import 'package:chatterloop_app/models/notifications_models/community_notification_model.dart';
+import 'package:chatterloop_app/models/user_models/realm_approval_model.dart';
 
 final communityChanges = ValueNotifier<int>(0);
 
 /// Only management activity changed; directory/profile lists need no refetch.
 final communityNotificationsChanges = ValueNotifier<int>(0);
+
+class CommunityPostChange {
+  final String realmId, postId;
+  const CommunityPostChange(this.realmId, this.postId);
+}
+
+final communityPostChanges = ValueNotifier<CommunityPostChange?>(null);
 
 /// Lifecycle transport only. Existing signed Dio interceptors remain authoritative.
 /// Errors propagate with status/body so callers distinguish lost access from empty lists.
@@ -26,6 +34,59 @@ class CommunityApi {
         _authToken = authToken;
   String _path(String id) =>
       '${_endpoints.communities}/${Uri.encodeComponent(id)}';
+
+  Future<CommunityApprovalsPage> approvals(String realmId,
+      {ApprovalKind kind = ApprovalKind.posts,
+      String state = 'pending',
+      int page = 1, String? targetId}) async {
+    final response = await _dio.get('${_path(realmId)}/approvals',
+        options: _options,
+        queryParameters: {'kind': kind.name, 'state': state, 'page': page, if(targetId!=null)'target_id':targetId});
+    return CommunityApprovalsPage.fromJson(response.data, kind);
+  }
+
+  Future<void> reviewPost(String realmId, String postId,
+      {required String action,
+      required int expectedApproval,
+      required String expectedVersion,
+      String reason = ''}) async {
+    await _dio.post(
+        '${_path(realmId)}/approvals/posts/${Uri.encodeComponent(postId)}',
+        options: _options,
+        data: {
+          'action': action,
+          'expected_approval': expectedApproval,
+          'expected_version': expectedVersion,
+          'reason': reason,
+        });
+  }
+
+  Future<void> reviewInvitation(String realmId, String inviteId,
+      {required ApprovalKind kind,
+      required String action,
+      required String expectedStatus}) async {
+    if (kind == ApprovalKind.posts) {
+      throw ArgumentError('Choose invitations or join requests.');
+    }
+    await _dio.post(
+        '${_path(realmId)}/approvals/${kind.name}/${Uri.encodeComponent(inviteId)}',
+        options: _options,
+        data: {'action': action, 'expected_status': expectedStatus});
+  }
+
+  Future<PagedResult<PostPreview>> archive(String realmId,
+          {int page = 1}) async =>
+      PagedResult.fromDrf(
+          (await _dio.get('${_path(realmId)}/archive',
+                  options: _options, queryParameters: {'page': page}))
+              .data,
+          PostPreview.fromJson);
+
+  Future<void> archivePost(String realmId, String postId,
+      {required bool archived}) async {
+    await _dio.post('${_path(realmId)}/archive/${Uri.encodeComponent(postId)}',
+        options: _options, data: {'is_archived': archived});
+  }
 
   Future<CommunityNotificationsPage> notifications(String realmId,
       {int page = 1}) async {

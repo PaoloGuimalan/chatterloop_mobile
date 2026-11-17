@@ -95,7 +95,15 @@ void main() {
     });
     await tester.pumpAndSettle();
     await tester.tap(find.text('Post'));
-    await tester.pump(const Duration(milliseconds: 100));
+    // File reads complete on the real IO loop, not Flutter's fake clock.
+    // Wait for the upload boundary before dismissing the composer.
+    await tester.runAsync(() async {
+      final deadline = DateTime.now().add(const Duration(seconds: 3));
+      while (!upload.started && DateTime.now().isBefore(deadline)) {
+        await tester.pump(const Duration(milliseconds: 10));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    });
     expect(upload.started, true);
     tester.state<NavigatorState>(find.byType(Navigator)).pop();
     await tester.pumpAndSettle();

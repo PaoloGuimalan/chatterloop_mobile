@@ -1,3 +1,5 @@
+import 'realm_private_state.dart';
+import 'package:chatterloop_app/core/requests/community_api.dart';
 // Manage a realm - the mobile counterpart of webapp's ManageRealm.
 //
 // A realm is a page, a group, a channel (a group with a parent), a voice room
@@ -41,6 +43,8 @@ import 'package:chatterloop_app/views/communities/community_requests_view.dart';
 import 'package:chatterloop_app/core/reusables/widgets/community_name.dart';
 import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'package:go_router/go_router.dart';
+import 'realm_permissions_view.dart';
+import 'package:chatterloop_app/views/communities/community_approvals_view.dart';
 
 /// A realm's kind for the purposes of this screen.
 ///
@@ -165,24 +169,47 @@ class RealmManageScreen extends StatefulWidget {
   State<RealmManageScreen> createState() => _RealmManageScreenState();
 }
 
-class _RealmManageScreenState extends State<RealmManageScreen> {
+class _RealmManageScreenState extends RealmPrivateState<RealmManageScreen> {
   RealmProfile? _realm;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    communityChanges.addListener(reloadPrivate);
     _load();
   }
 
+  @override
+  void reloadPrivate() {
+    _load();
+  }
+
+  @override
+  void dispose() {
+    communityChanges.removeListener(reloadPrivate);
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant RealmManageScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.slug != widget.slug) _load();
+  }
+
   Future<void> _load() async {
+    setState(() {
+      _realm = null;
+      _loading = true;
+    });
+    final ticket = await requestTicket();
     // forManage mirrors webapp's ManageRealmContainer, which asks the same
     // profile route with ?type=manage. `slug` is whatever the caller had: a
     // real slug from a page profile, or a conversation's contactID from a
     // group chat - the route resolves both.
     final realm =
         await ProfileApi().getRealmProfileRequest(widget.slug, forManage: true);
-    if (!mounted) return;
+    if (!await isCurrent(ticket)) return;
     setState(() {
       _realm = realm;
       _loading = false;
@@ -193,6 +220,10 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
   Widget build(BuildContext context) {
     final p = cl(context);
     final realm = _realm;
+    bool allows(String key, bool fallback) =>
+        realm?.type == 'community' && realm!.capabilities.values.isNotEmpty
+            ? realm.capabilities.allows(key)
+            : fallback;
 
     return CLScreen(
       backgroundColor: p.bg,
@@ -228,8 +259,11 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
               // only on save, which is a worse answer than being told plainly.
               // is_admin is annotated by the server, so the two copies read the
               // same field rather than each deciding for themselves.
-              : !(realm.isAdmin ||
-                      realm.type == 'community' && realm.myRole == 'moderator')
+              : !allows(
+                      'can_manage',
+                      realm.isAdmin ||
+                          realm.type == 'community' &&
+                              realm.myRole == 'moderator')
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
@@ -254,7 +288,7 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                       children: [
                         _RealmHeader(realm: realm),
                         const SizedBox(height: 16),
-                        if (realm.isAdmin)
+                        if (allows('can_update_realm', realm.isAdmin))
                           _SectionTile(
                             icon: Icons.tune,
                             title: 'Profile Details',
@@ -282,7 +316,9 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                             subtitle: 'Not available yet',
                             enabled: false,
                           ),
-                        if (realm.isAdmin && realmHasMedia(realm))
+                        if ((allows('can_update_media', realm.isAdmin) ||
+                                allows('can_archive_community_posts', false)) &&
+                            realmHasMedia(realm))
                           _SectionTile(
                             icon: Icons.photo_library_outlined,
                             title: 'Media',
@@ -299,6 +335,7 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                             },
                           ),
                         if ((realm.type == 'community' &&
+                                realm.capabilities.values.isEmpty &&
                                 ['owner', 'admin', 'moderator']
                                     .contains(realm.myRole)) ||
                             (realm.type == 'server' && realm.isAdmin))
@@ -310,7 +347,8 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                                   MaterialPageRoute(
                                       builder: (_) => CommunityRequestsView(
                                           realmId: realm.id)))),
-                        if (realm.type == 'community')
+                        if (realm.type == 'community' &&
+                            allows('can_view_notifications', true))
                           _SectionTile(
                             icon: Icons.notifications_none,
                             title: 'Notifications',
@@ -318,21 +356,49 @@ class _RealmManageScreenState extends State<RealmManageScreen> {
                             onTap: () => context.push(
                                 '/realm/${Uri.encodeComponent(realm.id)}/manage/notifications'),
                           ),
-                        _SectionTile(
-                          icon: Icons.group_outlined,
-                          title: 'Members',
-                          subtitle: 'Who belongs to this '
-                              '${realmKindNoun(realm)}',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => RealmRosterScreen(
-                                  realm: realm,
-                                  members: true,
-                                  allowRemoval: realm.isAdmin &&
-                                      realmAllowsMemberRemoval(realm)),
+                        if (realm.type == 'community' &&
+                            (allows('can_review_posts', false) ||
+                                allows('can_review_invites', false) ||
+                                allows('can_review_join_requests', false) ||
+                                allows('can_decline_join_requests', false)))
+                          _SectionTile(
+                              icon: Icons.fact_check_outlined,
+                              title: 'Approvals',
+                              subtitle:
+                                  'Review posts, invitations and join requests',
+                              onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => CommunityApprovalsView(
+                                          realmId: realm.id)))),
+                        if (realm.type == 'community' &&
+                            (allows('can_manage_roles', false) ||
+                                allows('can_manage_permissions', false)))
+                          _SectionTile(
+                              icon: Icons.admin_panel_settings_outlined,
+                              title: 'Permissions',
+                              subtitle: 'Configure roles and permissions',
+                              onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => RealmPermissionsView(
+                                          realmId: realm.id)))),
+                        if (allows('can_view_members', true) ||
+                            allows('can_invite_members', false))
+                          _SectionTile(
+                            icon: Icons.group_outlined,
+                            title: 'Members',
+                            subtitle: 'Who belongs to this '
+                                '${realmKindNoun(realm)}',
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => RealmRosterScreen(
+                                    realm: realm,
+                                    members: true,
+                                    allowRemoval: allows('can_remove_members',
+                                            realm.isAdmin) &&
+                                        realmAllowsMemberRemoval(realm)),
+                              ),
                             ),
                           ),
-                        ),
                         // Pages only - a group has members, not followers, and
                         // webapp hides this button entirely for them rather than
                         // showing an empty list.

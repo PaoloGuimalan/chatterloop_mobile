@@ -24,6 +24,8 @@ class CommunityNotificationsPage extends PagedResult<CommunityNotification> {
 
 /// Community management activity, separate from the personal bell.
 class CommunityNotification {
+  final String? approvalId, approvalTargetId, approvalKind;
+  final bool approvalPending;
   final String id;
   final String type;
   final String description;
@@ -36,6 +38,10 @@ class CommunityNotification {
   final String? anchor;
 
   const CommunityNotification({
+    this.approvalId,
+    this.approvalTargetId,
+    this.approvalKind,
+    this.approvalPending = false,
     required this.id,
     required this.type,
     required this.description,
@@ -49,9 +55,7 @@ class CommunityNotification {
   });
 
   bool get canReview =>
-      type == 'community_join_request' &&
-      requestId != null &&
-      requestStatus == 'pending';
+      (type == 'community_join_request' && requestId != null && requestStatus == 'pending') || (approvalPending && approvalTargetId != null && const ['posts','invites'].contains(approvalKind));
 
   String? get postRoute => const [
             'community_post_created',
@@ -73,6 +77,10 @@ class CommunityNotification {
 
     final anonymous = json['is_anonymous'] == true;
     return CommunityNotification(
+      approvalId: optional('approval_id'),
+      approvalTargetId: optional('approval_target_id'),
+      approvalKind: optional('approval_kind'),
+      approvalPending: json['approval_pending'] == true,
       id: (json['id'] ?? '').toString(),
       type: (json['type'] ?? '').toString(),
       description: (json['description'] ?? '').toString(),

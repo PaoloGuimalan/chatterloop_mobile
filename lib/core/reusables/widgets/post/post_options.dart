@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/views/realm/realm_text_dialog.dart';
 // The ⋯ menus on a post and on a comment, and the rules for what they offer.
 //
 // Ported from webapp's PostOptions.tsx and the CommentOptions it renders from
@@ -36,6 +37,10 @@ import 'package:chatterloop_app/core/reusables/widgets/post/post_edit.dart';
 import 'package:chatterloop_app/core/utils/post_updates.dart';
 import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:flutter/material.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'package:chatterloop_app/core/requests/community_api.dart';
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
+import 'package:chatterloop_app/models/user_models/community_model.dart';
 
 /// The acting entity - follows entity switching, unlike the account id.
 String _actingEntityId() => appStore.state.userAuth.user.entityId;
@@ -72,11 +77,14 @@ enum _PostOption {
   archive,
   unarchive,
   delete,
-  report
+  report,
+  communityArchive,
+  takeDown
 }
 
 class PostOptionsButton extends StatefulWidget {
   final PostPreview post;
+  final CommunityApi? communityApi;
 
   /// Reports the post back after save/archive so the owner updates in place.
   final ValueChanged<PostPreview>? onChanged;
@@ -88,6 +96,7 @@ class PostOptionsButton extends StatefulWidget {
   const PostOptionsButton({
     super.key,
     required this.post,
+    this.communityApi,
     this.onChanged,
     this.onDeleted,
   });
@@ -232,51 +241,60 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final p = cl(context);
+  Future<void> _openMenu() async {
+    if (_busy || widget.post.readOnly) return;
     final post = widget.post;
-    final mine = isOwnPost(post);
-
-    // Report keeps the menu non-empty for a visitor looking at an archived
-    // post, so the old "nothing to offer" bail-out no longer applies - an
-    // archived post is still reportable.
-
-    return PopupMenuButton<_PostOption>(
-      enabled: !_busy,
-      tooltip: "Post options",
-      padding: EdgeInsets.zero,
-      color: p.surface,
-      icon: Icon(Icons.more_horiz, size: 20, color: p.text2),
-      // Tighter than the 48x48 default, which would set the header's height
-      // rather than the 38px avatar - still a comfortable target.
-      constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
-      splashRadius: 20,
-      onSelected: (option) {
-        switch (option) {
-          case _PostOption.edit:
-            _edit();
-          case _PostOption.audience:
-            _edit(audience: true);
-          case _PostOption.save:
-            _setSaved(true);
-          case _PostOption.unsave:
-            _setSaved(false);
-          case _PostOption.removeTag:
-            _removeMyTag();
-          case _PostOption.editTags:
-            _editTags();
-          case _PostOption.archive:
-            _setArchived(true);
-          case _PostOption.unarchive:
-            _setArchived(false);
-          case _PostOption.delete:
-            _delete();
-          case _PostOption.report:
-            _report();
+    final actor = _actingEntityId();
+    final token = await ApiClient.instance.readToken();
+    if (!mounted || actor != _actingEntityId()) return;
+    Community? community;
+    if (post.community != null) {
+      setState(() => _busy = true);
+      try {
+        community =
+            await (widget.communityApi ?? CommunityApi(authToken: token))
+                .detail(post.community!.realmId);
+      } catch (error) {
+        if (mounted && actor == _actingEntityId()) {
+          CLAlerts.requestError(error,
+              fallback: 'Could not load post actions.');
         }
-      },
-      itemBuilder: (context) => [
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+    }
+    if (!mounted ||
+        actor != _actingEntityId() ||
+        token != await ApiClient.instance.readToken()) {
+      return;
+    }
+    if (!mounted) return;
+    final p = cl(context);
+    final mine = isOwnPost(post);
+    final box = context.findRenderObject()! as RenderBox;
+    final overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final rect = Rect.fromPoints(
+        box.localToGlobal(Offset.zero, ancestor: overlay),
+        box.localToGlobal(box.size.bottomRight(Offset.zero),
+            ancestor: overlay));
+    final option = await showMenu<_PostOption>(
+        context: context,
+        color: p.surface,
+        position: RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+        items: _menuItems(p, post, mine, community));
+    if (!mounted ||
+        option == null ||
+        actor != _actingEntityId() ||
+        token != await ApiClient.instance.readToken()) {
+      return;
+    }
+    await _runOption(option, post, token);
+  }
+
+  List<PopupMenuEntry<_PostOption>> _menuItems(
+          CLPalette p, PostPreview post, bool mine, Community? community) =>
+      [
         if (mine) ...[
           _item(p,
               value: _PostOption.edit,
@@ -342,8 +360,156 @@ class _PostOptionsButtonState extends State<PostOptionsButton> {
             // neutral action, and the two menus must agree on that.
             danger: true,
           ),
-      ],
-    );
+
+        if (!mine &&
+            post.community != null &&
+            post.author.entityId == post.community!.entityId &&
+            community?.capabilities.allows('can_archive_community_posts') ==
+                true)
+          _item(p,
+              value: _PostOption.communityArchive,
+              icon: Icons.archive_outlined,
+              label: post.isArchived ? 'Unarchive' : 'Archive'),
+        if (!mine &&
+            post.community != null &&
+            post.author.entityId != post.community!.entityId &&
+            post.approval == 1 &&
+            (post.updatedAt ?? post.datePosted) != null &&
+            community?.capabilities.allows('can_take_down_posts') == true)
+          _item(p,
+              value: _PostOption.takeDown,
+              icon: Icons.remove_circle_outline,
+              label: 'Take down post',
+              danger: true),
+      ];
+
+  Future<void> _runOption(
+      _PostOption option, PostPreview post, String? token) async {
+    switch (option) {
+      case _PostOption.edit:
+        _edit();
+      case _PostOption.audience:
+        _edit(audience: true);
+      case _PostOption.save:
+        _setSaved(true);
+      case _PostOption.unsave:
+        _setSaved(false);
+      case _PostOption.removeTag:
+        _removeMyTag();
+      case _PostOption.editTags:
+        _editTags();
+      case _PostOption.archive:
+        _setArchived(true);
+      case _PostOption.unarchive:
+        _setArchived(false);
+      case _PostOption.delete:
+        _delete();
+      case _PostOption.report:
+        _report();
+
+      case _PostOption.communityArchive:
+        await _communityAction(post, token, archive: true);
+      case _PostOption.takeDown:
+        await _communityAction(post, token);
+    }
+  }
+
+  Future<void> _communityAction(PostPreview post, String? token,
+      {bool archive = false}) async {
+    final actor = _actingEntityId();
+    final comment = archive
+        ? ''
+        : await showDialog<String>(
+            context: context,
+            builder: (_) => const RealmTextDialog(
+                title: 'Take down this post?',
+                label: 'Reason for the author',
+                confirmLabel: 'Take down'));
+    if (!mounted || comment == null) return;
+    if (archive) {
+      final accepted = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+                  title: const Text('Archive this community post?'),
+                  content: const Text('The post will be hidden from feeds.'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel')),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Confirm'))
+                  ]));
+      if (accepted != true) return;
+    }
+    if (!mounted ||
+        actor != _actingEntityId() ||
+        token != await ApiClient.instance.readToken()) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final api = widget.communityApi ?? CommunityApi(authToken: token);
+      if (archive) {
+        await api.archivePost(post.community!.realmId, post.postId,
+            archived: !post.isArchived);
+      } else {
+        await api.reviewPost(post.community!.realmId, post.postId,
+            action: 'takedown',
+            expectedApproval: post.approval,
+            expectedVersion:
+                (post.updatedAt ?? post.datePosted)!.toIso8601String(),
+            reason: comment);
+      }
+      if (!mounted ||
+          actor != _actingEntityId() ||
+          token != await ApiClient.instance.readToken()) {
+        return;
+      }
+      PostUpdates.instance.apply({
+        'post_id': post.postId,
+        if (archive) 'is_archived': !post.isArchived,
+        if (!archive) 'approval': 2
+      });
+      widget.onChanged?.call(archive
+          ? post.copyWith(isArchived: !post.isArchived)
+          : post.copyWith(approval: 2));
+    } catch (error) {
+      if (mounted && actor == _actingEntityId()) {
+        CLAlerts.requestError(error,
+            fallback:
+                'The post may have changed. Refresh before trying again.');
+        communityChanges.value++;
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.post.readOnly) return const SizedBox.shrink();
+    final p = cl(context);
+    if (widget.post.community == null) {
+      return PopupMenuButton<_PostOption>(
+          enabled: !_busy,
+          tooltip: 'Post options',
+          padding: EdgeInsets.zero,
+          color: p.surface,
+          icon: Icon(Icons.more_horiz, size: 20, color: p.text2),
+          constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+          splashRadius: 20,
+          onSelected: (option) => _runOption(option, widget.post, null),
+          itemBuilder: (_) =>
+              _menuItems(p, widget.post, isOwnPost(widget.post), null));
+    }
+    return IconButton(
+        tooltip: 'Post options',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+        splashRadius: 20,
+        icon: Icon(Icons.more_horiz, size: 20, color: p.text2),
+        onPressed: _busy ? null : _openMenu);
   }
 
   PopupMenuItem<_PostOption> _item(

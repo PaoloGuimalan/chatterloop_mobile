@@ -15,7 +15,8 @@ import 'package:flutter/material.dart';
 enum ProfileFeedMode {
   posts("Posts", Icons.grid_view_outlined),
   saves("Saved", Icons.bookmark_border),
-  archives("Archived", Icons.inventory_2_outlined);
+  archives("Archived", Icons.inventory_2_outlined),
+  submissions("Submissions", Icons.fact_check_outlined);
 
   const ProfileFeedMode(this.label, this.icon);
 
@@ -58,7 +59,9 @@ class ProfileFeedSwitcher extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
                   curve: Curves.easeOut,
-                  height: 34,
+                  constraints: const BoxConstraints(minHeight: 42),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
                   decoration: BoxDecoration(
                     color: mode == active ? p.brand : Colors.transparent,
                     // One step down from the track, so the highlight sits
@@ -66,23 +69,21 @@ class ProfileFeedSwitcher extends StatelessWidget {
                     // corners.
                     borderRadius: BorderRadius.circular(CLRadii.sm),
                   ),
-                  child: Row(
+                  child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(mode.icon,
                           size: 16,
                           color: mode == active ? Colors.white : p.text2),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          mode.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: mode == active ? Colors.white : p.text2,
-                            fontSize: CLType.bodySm,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      const SizedBox(height: 3),
+                      Text(
+                        mode.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: mode == active ? Colors.white : p.text2,
+                          fontSize: CLType.bodySm,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],

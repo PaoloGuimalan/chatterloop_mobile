@@ -8,16 +8,59 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+      'scoped roles retain server assignment restrictions and stable default codes',
+      () async {
+    final client = Dio();
+    client.interceptors.add(InterceptorsWrapper(onRequest: (request, handler) {
+      expect(request.queryParameters['realm_id'], 'community-A');
+      handler.resolve(Response(requestOptions: request, data: {
+        'status': true,
+        'result': [
+          {
+            'id': 21,
+            'name': 'Review team',
+            'code': 'moderator',
+            'realm_id': 'community-A',
+            'is_default': true,
+            'assignable': false,
+            'disabled_reason': 'Owner only',
+            'editable': false
+          },
+        ]
+      }));
+    }));
+    final roles = await RolesApi(client: client).list(realmId: 'community-A');
+    expect(RoleDefinition.defaultFor(roles, 'moderator')?.id, 21);
+    expect(roles.single.assignable, isFalse);
+    expect(roles.single.editable, isFalse);
+    expect(roles.single.disabledReason, 'Owner only');
+    expect(
+        RoleDefinition.defaultFor([
+          RoleDefinition.fromJson({
+            'id': 22,
+            'name': 'moderator',
+            'code': 'custom',
+            'realm_id': 'A',
+            'is_default': true
+          })
+        ], 'moderator'),
+        isNull);
+  });
   final rows = [
     {
       'id': 10,
       'name': 'moderator',
+      'code': 'moderator',
+      'realm_id': 'community-A',
       'is_default': true,
       'permissions': ['posts.review']
     },
     {
       'id': 11,
       'name': 'moderator',
+      'code': 'moderator',
+      'realm_id': 'community-A',
       'is_default': false,
       'permissions': ['posts.delete']
     },

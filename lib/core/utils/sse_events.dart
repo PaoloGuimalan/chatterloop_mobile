@@ -1,4 +1,6 @@
+import 'package:chatterloop_app/core/auth/realm_access_recovery.dart';
 import 'package:chatterloop_app/core/requests/community_api.dart';
+import 'package:chatterloop_app/core/requests/api_client.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -267,8 +269,32 @@ class SseEvents {
   /// findable across calls - keyed by "userID|conversationID".
   static final Map<String, Timer> _typingRemovalTimers = {};
 
-  Future<void> listen(SSEModel event, bool mainListener) async {
+  Future<void> listen(SSEModel event, bool mainListener,
+      {String? token}) async {
+    try {
+      if (event.data != null &&
+          await realmAccessRecovery.handle(jsonDecode(event.data!),
+              token: token)) {
+        return;
+      }
+    } on FormatException {/* Existing handlers own ordinary event parsing. */}
     switch (event.event) {
+      case 'community_posts_changed':
+        if (token != null && token != await ApiClient.instance.readToken()) {
+          return;
+        }
+        if (!_isAuthedOk(event.data)) return;
+        final decoded = jsonDecode(event.data!);
+        final signal = decoded['result'] is Map ? decoded['result'] : decoded;
+        final realmId = signal['realm_id'], postId = signal['target_id'];
+        if (realmId is! String ||
+            realmId.isEmpty ||
+            postId is! String ||
+            postId.isEmpty) {
+          return;
+        }
+        communityPostChanges.value = CommunityPostChange(realmId, postId);
+        break;
       case 'community_notifications_changed':
         communityNotificationsChanges.value++;
         break;

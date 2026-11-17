@@ -237,6 +237,7 @@ class _PostEditScreenState extends State<PostEditScreen> {
     final current = await _identity.matches(token);
     if (patch != null && current) {
       PostUpdates.instance.apply(patch, forSession: _identity.session);
+      if (widget.post.community != null && patch["approval"] == 0) CLAlerts.info("Your post was submitted for approval. View it under Submissions on your profile.");
     }
     if (!mounted) return;
     if (patch == null || !current) {
@@ -563,6 +564,7 @@ class _PostAudienceSheetState extends State<PostAudienceSheet> {
     final current = await _identity.matches(token);
     if (patch != null && current) {
       PostUpdates.instance.apply(patch, forSession: _identity.session);
+      if (widget.post.community != null && patch["approval"] == 0) CLAlerts.info("Your post was submitted for approval. View it under Submissions on your profile.");
     }
     if (!mounted) return;
     if (patch == null || !current) {

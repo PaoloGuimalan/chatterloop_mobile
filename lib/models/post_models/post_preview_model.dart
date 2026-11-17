@@ -9,6 +9,12 @@
 import 'package:chatterloop_app/models/messages_models/link_preview_model.dart';
 import 'package:chatterloop_app/models/user_models/community_model.dart';
 
+int parsePostApproval(dynamic value) => value == null
+    ? 1
+    : value is int && const [0, 1, 2].contains(value)
+        ? value
+        : 0;
+
 /// Appends [incoming] to [into], dropping any post already in the list.
 /// Returns how many actually landed.
 ///
@@ -193,6 +199,10 @@ class FeedReason {
 }
 
 class PostPreview {
+  final int approval;
+  final bool readOnly;
+  final bool canArchive;
+  bool get isHiddenCommunityPost => community != null && approval != 1;
   final bool isAnonymous;
 
   /// Null on older ordinary payloads; explicit server ownership is authoritative.
@@ -268,6 +278,9 @@ class PostPreview {
   final FeedReason? feedReason;
 
   const PostPreview({
+    this.approval = 1,
+    this.readOnly = false,
+    this.canArchive = false,
     this.isAnonymous = false,
     this.isOwner,
     this.community,
@@ -308,6 +321,9 @@ class PostPreview {
       reactions.fold(0, (sum, reaction) => sum + reaction.count);
 
   PostPreview copyWith({
+    int? approval,
+    bool? readOnly,
+    bool? canArchive,
     String? caption,
     List<PostReference>? references,
     DateTime? updatedAt,
@@ -324,6 +340,9 @@ class PostPreview {
     List<PostPreviewAuthor>? tagged,
   }) =>
       PostPreview(
+        approval: approval ?? this.approval,
+        readOnly: readOnly ?? this.readOnly,
+        canArchive: canArchive ?? this.canArchive,
         isAnonymous: isAnonymous,
         isOwner: isOwner,
         community: community,
@@ -359,6 +378,12 @@ class PostPreview {
   /// The edit endpoint returns canonical content, not a full serializer.
   /// Keep author, engagement, tags, shared pointer and original date intact.
   PostPreview applyPatch(Map<String, dynamic> patch) => PostPreview(
+        approval: patch.containsKey('approval')
+            ? parsePostApproval(patch['approval'])
+            : approval,
+        readOnly: patch['read_only'] is bool ? patch['read_only'] : readOnly,
+        canArchive:
+            patch['can_archive'] is bool ? patch['can_archive'] : canArchive,
         isAnonymous:
             patch['is_anonymous'] is bool ? patch['is_anonymous'] : isAnonymous,
         isOwner: patch['is_owner'] is bool ? patch['is_owner'] : isOwner,
@@ -418,6 +443,9 @@ class PostPreview {
         : const <String, dynamic>{};
     final linkPreview = json["link_preview"];
     return PostPreview(
+      approval: parsePostApproval(json['approval']),
+      readOnly: json['read_only'] == true,
+      canArchive: json['can_archive'] == true,
       isAnonymous: json['is_anonymous'] == true || json['entity'] == null,
       isOwner: json['is_owner'] is bool ? json['is_owner'] : null,
       community: Community.parse(json['community']),

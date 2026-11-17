@@ -1,3 +1,4 @@
+import 'package:chatterloop_app/core/ui/cl_alerts.dart';
 // Newsfeed interactions (Django user_service): reactions, comments, saves,
 // post creation and sharing. Verified against webapp's requests.ts (ReactionSaveRequest,
 // CommentReactionSaveRequest, GetReactionTotalRequest, GetCommentsRequest,
@@ -21,6 +22,7 @@ import 'package:chatterloop_app/models/post_models/post_preview_model.dart';
 import 'package:chatterloop_app/models/post_models/saved_post_model.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:chatterloop_app/models/user_models/realm_approval_model.dart';
 
 /// Which HTTP verb a reaction tap becomes. The three endpoints below share one
 /// URL and differ only by method, exactly as on web:
@@ -61,12 +63,31 @@ bool isOwnProfileHandle(String handle) {
 
 class NewsfeedApi {
   final String? _authToken;
-  NewsfeedApi({String? authToken}) : _authToken = authToken;
+  NewsfeedApi({String? authToken, Dio? client})
+      : _authToken = authToken,
+        _dio = client ?? ApiClient.userService.dio;
   Options? get _identityOptions =>
       _authToken == null ? null : Options(extra: {'authToken': _authToken});
-  final _dio = ApiClient.userService.dio;
+  final Dio _dio;
   final _nodeDio = ApiClient.instance.dio;
   final _endpoints = Endpoints();
+
+  Future<PagedResult<CommunitySubmission>> submissions({int page = 1}) async =>
+      PagedResult.fromDrf(
+          (await _dio.get('/api/newsfeed/submissions',
+                  options: _identityOptions, queryParameters: {'page': page}))
+              .data,
+          CommunitySubmission.fromJson);
+  Future<CommunitySubmission> submission(String postId) async =>
+      CommunitySubmission.fromJson(Map<String, dynamic>.from((await _dio.get(
+              '/api/newsfeed/submissions/${Uri.encodeComponent(postId)}',
+              options: _identityOptions))
+          .data['result']));
+  Future<RealmReviewDetail> reviewDecision(String decisionId) async =>
+      RealmReviewDetail.fromJson(Map<String, dynamic>.from((await _dio.get(
+              '/api/entity/realm-review/${Uri.encodeComponent(decisionId)}/',
+              options: _identityOptions))
+          .data['data']));
 
   String _verb(ReactionMethod method) => switch (method) {
         ReactionMethod.add => 'POST',
@@ -692,14 +713,19 @@ class NewsfeedApi {
         'is_anonymous': isAnonymous,
     };
 
-    return reportedAction(
+    return reportedRequest<bool>(
       () => _nodeDio.post(
         _endpoints.createPost,
         options: _identityOptions,
         data: {'token': JwtCodec.sign(payload)},
       ),
       failure: "We couldn't create that post.",
-    );
+      parse: (response) {
+        final message = communityPublicationMessage(response.data);
+        if (message != null) CLAlerts.info(message);
+        return true;
+      },
+    ).then((result) => result ?? false);
   }
 
   /// Share a post onto the viewer's own feed, with an optional caption.
@@ -747,13 +773,18 @@ class NewsfeedApi {
       'onfeed': 'feed',
     };
 
-    return reportedAction(
+    return reportedRequest<bool>(
       () => _nodeDio.post(
         _endpoints.createPost,
         options: _identityOptions,
         data: {'token': JwtCodec.sign(payload)},
       ),
       failure: "We couldn't share that post.",
-    );
+      parse: (response) {
+        final message = communityPublicationMessage(response.data);
+        if (message != null) CLAlerts.info(message);
+        return true;
+      },
+    ).then((result) => result ?? false);
   }
 }

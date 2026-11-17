@@ -1,4 +1,5 @@
 import 'package:chatterloop_app/core/requests/roles_api.dart';
+import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/models/user_models/role_model.dart';
 // Adding members to a realm.
 //
@@ -126,9 +127,9 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
   int? _selectedRoleId;
   bool _loadingRoles = false;
   bool _rolesError = false;
-  List<RoleDefinition> get _manageRoles => _roles
-      .where((role) => role.name == 'admin' || role.name == 'moderator')
-      .toList();
+  int _rolesGeneration = 0;
+  List<RoleDefinition> get _manageRoles =>
+      _roles.where((role) => role.canInvite).toList();
   int? get _roleId =>
       _selectedRoleId ??
       RoleDefinition.defaultFor(_manageRoles, 'moderator')?.id;
@@ -140,22 +141,31 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
           _manageRoles.any((role) => role.id == _roleId));
 
   Future<void> _loadRoles() async {
+    final actor = appStore.state.userAuth.user.entityId;
+    final realmId = widget.realm.id;
+    final generation = ++_rolesGeneration;
+    bool current() =>
+        mounted &&
+        generation == _rolesGeneration &&
+        actor == appStore.state.userAuth.user.entityId &&
+        realmId == widget.realm.id;
     setState(() {
+      _roles = [];
       _loadingRoles = true;
       _rolesError = false;
     });
     try {
-      final roles = await RolesApi().list();
-      if (mounted) setState(() => _roles = roles);
+      final roles = await RolesApi().list(realmId: realmId);
+      if (current()) setState(() => _roles = roles);
     } catch (_) {
-      if (mounted) {
+      if (current()) {
         setState(() {
           _roles = [];
           _rolesError = true;
         });
       }
     } finally {
-      if (mounted) setState(() => _loadingRoles = false);
+      if (current()) setState(() => _loadingRoles = false);
     }
   }
 
@@ -215,9 +225,11 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
     setState(() => _emailing = false);
     if (sent == null) return;
     CLAlerts.show(
-      sent.alreadyInvited
-          ? '$email already has an invite waiting.'
-          : 'Invite emailed to $email.',
+      sent.invite.status == 'for_approval'
+          ? 'Invitation submitted for approval.'
+          : sent.alreadyInvited
+              ? '$email already has an invite waiting.'
+              : 'Invite emailed to $email.',
       type: sent.alreadyInvited ? CLAlertType.info : CLAlertType.success,
     );
     _query.clear();
@@ -314,6 +326,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
     if (!_roleReady) return;
     setState(() => _adding = true);
     var sent = 0;
+    var awaitingApproval = 0;
     for (final entity in _selected.values.toList()) {
       final result = await _invitesApi.create(
         realmId: widget.realm.id,
@@ -323,6 +336,7 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
       );
       if (result != null) {
         sent++;
+        if (result.invite.status == "for_approval") awaitingApproval++;
         _selected.remove(entity.entityId);
       }
     }
@@ -330,7 +344,11 @@ class _RealmAddMembersScreenState extends State<RealmAddMembersScreen> {
     setState(() => _adding = false);
     if (sent == 0) return;
     CLAlerts.show(
-      sent == 1 ? 'Invite sent.' : '$sent invites sent.',
+      awaitingApproval > 0
+          ? '$awaitingApproval invitations submitted for approval.'
+          : sent == 1
+              ? 'Invite sent.'
+              : '$sent invites sent.',
       type: CLAlertType.success,
     );
     // Nobody joined yet - they will once they accept - so the roster behind

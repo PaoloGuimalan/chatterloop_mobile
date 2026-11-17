@@ -171,6 +171,7 @@ class PushPayload {
     '/user/',
     '/realm/',
     '/notifications',
+    '/realm-review/',
     '/profile',
     '/settings',
     // Reaction pushes: a post opens its page, a moment opens the owner's
