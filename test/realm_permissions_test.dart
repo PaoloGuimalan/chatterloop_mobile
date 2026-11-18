@@ -41,8 +41,10 @@ class RolesFixture extends RolesApi {
         ],
         'catalog': [
           {
+            'code': 'realm.post.submit',
             'permission': 'realm.post.submit',
-            'description': 'Submit posts',
+            'name': 'Submit community posts',
+            'description': 'Submit posts for review when required.',
             'grantable': true
           }
         ]
@@ -55,6 +57,22 @@ class RolesFixture extends RolesApi {
 
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+  for (final brightness in Brightness.values) {
+    testWidgets(
+        'permission descriptions are smaller secondary text in ${brightness.name}',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+          theme: buildCLTheme(brightness),
+          home: RealmPermissionsView(realmId: 'r', api: RolesFixture())));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Writers'));
+      await tester.pumpAndSettle();
+      final description = find.text('Submit posts for review when required.');
+      final text = tester.widget<Text>(description);
+      expect(text.style?.fontSize, CLType.bodySm);
+      expect(text.style?.color, cl(tester.element(description)).text2);
+    });
+  }
   testWidgets(
       'Owner is immutable and configurable role changes are saved explicitly',
       (tester) async {
@@ -67,6 +85,9 @@ void main() {
     expect(find.text('Always allowed all permissions'), findsOneWidget);
     await tester.tap(find.text('Writers'));
     await tester.pumpAndSettle();
+    expect(find.text('Submit community posts'), findsOneWidget);
+    expect(find.text('Submit posts for review when required.'), findsOneWidget);
+    expect(find.text('realm.post.submit'), findsNothing);
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pump();
     expect(api.saves, isEmpty);

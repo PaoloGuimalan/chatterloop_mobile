@@ -1,3 +1,16 @@
+class RolePermissionDetail {
+  final String code, name, description;
+  const RolePermissionDetail(
+      {required this.code, required this.name, this.description = ''});
+  factory RolePermissionDetail.fromJson(Map<String, dynamic> json) =>
+      RolePermissionDetail(
+          code: (json['code'] ?? '').toString(),
+          name: json['name']?.toString().trim().isNotEmpty == true
+              ? json['name'].toString()
+              : (json['code'] ?? '').toString(),
+          description: (json['description'] ?? '').toString());
+}
+
 /// One exact permission set. Equal names do not make two definitions equal.
 class RoleDefinition {
   final int id;
@@ -10,6 +23,7 @@ class RoleDefinition {
   final String? disabledReason;
   final bool isDefault;
   final List<String> permissions;
+  final List<RolePermissionDetail> permissionDetails;
 
   const RoleDefinition(
       {required this.id,
@@ -21,7 +35,8 @@ class RoleDefinition {
       this.assignable = true,
       this.disabledReason,
       this.isDefault = false,
-      this.permissions = const []});
+      this.permissions = const [],
+      this.permissionDetails = const []});
 
   factory RoleDefinition.fromJson(Map<String, dynamic> json) => RoleDefinition(
         id: int.parse(json['id'].toString()),
@@ -33,6 +48,11 @@ class RoleDefinition {
         assignable: json['assignable'] != false,
         disabledReason: json['disabled_reason']?.toString(),
         isDefault: json['is_default'] == true,
+        permissionDetails: (json['permission_details'] as List? ?? const [])
+            .whereType<Map>()
+            .map((row) =>
+                RolePermissionDetail.fromJson(Map<String, dynamic>.from(row)))
+            .toList(),
         permissions: (json['permissions'] as List? ?? const [])
             .map((value) => value.toString())
             .toList(),
@@ -40,13 +60,18 @@ class RoleDefinition {
 
   String get label =>
       '${name.isEmpty ? '' : name[0].toUpperCase() + name.substring(1)} · #$id${isDefault ? ' (default)' : ''}';
-  String get summary =>
-      permissions.isEmpty ? 'No permissions' : permissions.join(', ');
-  bool get canInvite =>
-      assignable && realmId != null && code != 'owner';
+  String get summary => permissions.isEmpty
+      ? 'No permissions'
+      : permissions.map((code) {
+          final detail = permissionDetails
+              .where((entry) => entry.code == code)
+              .firstOrNull;
+          return detail?.name ?? code;
+        }).join(', ');
+  bool get canInvite => assignable && realmId != null && code != 'owner';
 
-  static RoleDefinition? defaultFor(
-      Iterable<RoleDefinition> roles, String name, {String? realmId}) {
+  static RoleDefinition? defaultFor(Iterable<RoleDefinition> roles, String name,
+      {String? realmId}) {
     for (final role in roles) {
       if (role.code == name &&
           role.isDefault &&

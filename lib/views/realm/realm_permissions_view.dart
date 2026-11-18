@@ -224,9 +224,14 @@ class _RealmPermissionsViewState
                             for (final entry
                                 in _data?.catalog ?? <RealmPermissionEntry>[])
                               CheckboxListTile(
-                                  title: Text(entry.description.isEmpty
-                                      ? entry.permission
-                                      : entry.description),
+                                  title: Text(entry.name),
+                                  subtitle: entry.description.isNotEmpty &&
+                                          entry.description != entry.name
+                                      ? Text(entry.description,
+                                          style: TextStyle(
+                                              fontSize: CLType.bodySm,
+                                              color: p.text2))
+                                      : null,
                                   value: _draft[role.id]!
                                       .contains(entry.permission),
                                   onChanged: !_saving &&

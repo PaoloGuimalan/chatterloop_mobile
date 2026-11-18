@@ -635,11 +635,19 @@ class CLSkeleton extends StatefulWidget {
   final double height;
   final BorderRadiusGeometry borderRadius;
 
+  /// Optional base for placeholders on a contrasting surface.
+  final Color? baseColor;
+
+  /// Optional pulse endpoint for larger placeholders; default contrast is kept.
+  final Color? highlightColor;
+
   const CLSkeleton({
     super.key,
     required this.width,
     required this.height,
     this.borderRadius = const BorderRadius.all(Radius.circular(6)),
+    this.baseColor,
+    this.highlightColor,
   });
 
   @override
@@ -684,7 +692,8 @@ class _CLSkeletonState extends State<CLSkeleton>
             // background. border2 gives real contrast against both p.bg
             // and p.surface, in both themes, regardless of what it's
             // sitting on.
-            color: Color.lerp(p.surface3, p.border2, _controller.value),
+            color: Color.lerp(widget.baseColor ?? p.surface3,
+                widget.highlightColor ?? p.border2, _controller.value),
             borderRadius: widget.borderRadius,
           ),
         );

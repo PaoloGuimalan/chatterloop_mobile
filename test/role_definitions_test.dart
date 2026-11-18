@@ -9,6 +9,24 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
+      'role permission summaries display names while preserving permission codes',
+      () {
+    final role = RoleDefinition.fromJson({
+      'id': 42,
+      'name': 'Writers',
+      'permissions': ['realm.post.submit'],
+      'permission_details': [
+        {
+          'code': 'realm.post.submit',
+          'name': 'Submit community posts',
+          'description': 'Submit for review.'
+        }
+      ]
+    });
+    expect(role.summary, 'Submit community posts');
+    expect(role.permissions, ['realm.post.submit']);
+  });
+  test(
       'scoped roles retain server assignment restrictions and stable default codes',
       () async {
     final client = Dio();

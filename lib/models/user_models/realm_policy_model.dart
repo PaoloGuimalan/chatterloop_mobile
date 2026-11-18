@@ -29,10 +29,19 @@ class RealmPermissionSettings {
 }
 
 class RealmPermissionEntry {
-  final String permission, description;
+  final String code, name, description;
+  String get permission => code;
   final bool grantable;
   RealmPermissionEntry.fromJson(Map<String, dynamic> json)
-      : permission = (json['permission'] ?? '').toString(),
+      : code = (json['code'] ?? json['permission'] ?? '').toString(),
+        name = [
+          json['name'],
+          json['description'],
+          json['code'],
+          json['permission']
+        ]
+            .map((value) => (value ?? '').toString())
+            .firstWhere((value) => value.trim().isNotEmpty, orElse: () => ''),
         description = (json['description'] ?? '').toString(),
         grantable = json['grantable'] == true;
 }

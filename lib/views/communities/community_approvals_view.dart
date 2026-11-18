@@ -99,7 +99,7 @@ class _CommunityApprovalsViewState
       final api = widget.api ?? CommunityApi(authToken: ticket.token);
       final community = await api.detail(widget.realmId);
       if (!await isCurrent(ticket)) return;
-      _community = community;
+      setState(() => _community = community);
       final kinds = _kinds;
       final kind = kinds.contains(_kind)
           ? _kind
@@ -113,7 +113,7 @@ class _CommunityApprovalsViewState
         });
         return;
       }
-      _kind = kind;
+      setState(() => _kind = kind);
       final result = await api.approvals(widget.realmId,
           kind: kind,
           state: _state,
@@ -213,7 +213,10 @@ class _CommunityApprovalsViewState
   @override
   Widget build(BuildContext context) {
     final p = cl(context);
-    final kinds = _kinds;
+    final loadingContent = _loading && _page == null;
+    final kinds =
+        _community == null && loadingContent ? ApprovalKind.values : _kinds;
+    final displayKind = _kind ?? widget.initialKind ?? ApprovalKind.posts;
     return CLScreen(
         appBar: AppBar(
             leadingWidth: 48, titleSpacing: 0, title: const Text('Approvals')),
@@ -221,6 +224,7 @@ class _CommunityApprovalsViewState
           if (kinds.isNotEmpty)
             RealmReviewTabs<ApprovalKind>(
                 value: _kind,
+                loading: loadingContent,
                 tabs: [
                   for (final kind in kinds)
                     (
@@ -239,11 +243,13 @@ class _CommunityApprovalsViewState
                         reloadPrivate();
                       }),
           const SizedBox(height: 12),
-          if (_kind == ApprovalKind.posts)
+          if (displayKind == ApprovalKind.posts &&
+              (loadingContent || _kind != null))
             Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: RealmReviewTabs<String>(
                     value: _state,
+                    loading: loadingContent,
                     tabs: const [
                       (value: 'pending', label: 'Pending'),
                       (value: 'not_approved', label: 'Not approved')
@@ -261,7 +267,11 @@ class _CommunityApprovalsViewState
                   reloadPrivate();
                 },
                 child: const Text('Show all submissions')),
-          if (_loading && _page == null) const PostItemSkeleton(),
+          if (loadingContent)
+            if (displayKind == ApprovalKind.posts)
+              const PostItemSkeleton()
+            else
+              for (var i = 0; i < 3; i++) const RealmRequestReviewSkeleton(),
           if (_failed) CLBtn(label: 'Retry', onPressed: reloadPrivate),
           if (!_loading &&
               !_failed &&
