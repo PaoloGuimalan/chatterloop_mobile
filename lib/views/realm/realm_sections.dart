@@ -1,6 +1,6 @@
-import 'community_archive_view.dart';
 import 'package:chatterloop_app/core/requests/roles_api.dart';
 import 'package:chatterloop_app/models/user_models/role_model.dart';
+import 'realm_role_assignment_dialog.dart';
 // The manage screen's sections that are lists or uploads rather than a form:
 // Members, Followers and Media. Split from realm_manage_view.dart only for
 // size - the per-kind rules all still live there.
@@ -348,7 +348,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  /// Choose an exact permission definition while preserving role names for hierarchy.
+  /// Confirm an exact realm-owned role while retaining current actor checks.
   Future<void> _chooseRole(RealmPerson person) async {
     final actor = appStore.state.userAuth.user.entityId;
     final realmId =
@@ -371,30 +371,12 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
       return;
     }
     setState(() => _busyId = null);
-    final selected = await showDialog<RoleDefinition>(
+    final selected = await showDialog<int>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Assign different role'),
-        children: [
-          if (roles.isEmpty)
-            const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('No assignable roles are available.')),
-          for (final role in roles)
-            SimpleDialogOption(
-              onPressed: role.id == person.roleId || !role.assignable
-                  ? null
-                  : () => Navigator.pop(context, role),
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(role.label),
-                subtitle: Text(role.disabledReason ?? role.summary),
-                enabled: role.assignable,
-                trailing:
-                    role.id == person.roleId ? const Icon(Icons.check) : null,
-              ),
-            ),
-        ],
+      builder: (context) => RealmRoleAssignmentDialog(
+        roles: roles,
+        currentRoleId: person.roleId,
+        memberName: person.displayName,
       ),
     );
     if (selected != null &&
@@ -402,7 +384,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
         actor == appStore.state.userAuth.user.entityId &&
         realmId ==
             (person.realmId.isNotEmpty ? person.realmId : widget.realm.id)) {
-      await _setRole(person, selected.id);
+      await _setRole(person, selected);
     }
   }
 
@@ -769,9 +751,10 @@ class _RosterRow extends StatelessWidget {
                       Icon(Icons.manage_accounts_outlined,
                           size: 18, color: p.text2),
                       const SizedBox(width: 10),
-                      Text('Assign different role',
-                          style:
-                              TextStyle(color: p.text, fontSize: CLType.body)),
+                      Expanded(
+                          child: Text('Assign different role',
+                              style: TextStyle(
+                                  color: p.text, fontSize: CLType.body))),
                     ]),
                   ),
                 if (onTransfer != null)
@@ -781,9 +764,10 @@ class _RosterRow extends StatelessWidget {
                       Icon(Icons.workspace_premium_outlined,
                           size: 18, color: p.text2),
                       const SizedBox(width: 10),
-                      Text('Transfer ownership',
-                          style:
-                              TextStyle(color: p.text, fontSize: CLType.body)),
+                      Expanded(
+                          child: Text('Transfer ownership',
+                              style: TextStyle(
+                                  color: p.text, fontSize: CLType.body))),
                     ]),
                   ),
                 if (onRemove != null)
@@ -896,14 +880,6 @@ class _RealmMediaScreenState extends State<RealmMediaScreen> {
                 retrying: _pendingUploads.containsKey('profile'),
                 onPick: _busy == null ? () => _pickAndUpload('profile') : null,
               ),
-            if (widget.realm.type == 'community' &&
-                widget.realm.capabilities.allows('can_archive_community_posts'))
-              ListTile(
-                  leading: const Icon(Icons.inventory_2_outlined),
-                  title: const Text('Community archive'),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) =>
-                          CommunityArchiveView(realmId: widget.realm.id)))),
             // Pages and servers only - see realmHasCoverPhoto. Nothing else
             // has a surface that renders a banner, so an upload there is a
             // file that goes nowhere.

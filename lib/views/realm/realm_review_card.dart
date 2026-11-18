@@ -44,7 +44,7 @@ class RealmReviewTabs<T> extends StatelessWidget {
     final p = cl(context);
     final style = TextStyle(
         fontFamily: 'Inter',
-        fontSize: CLType.meta,
+        fontSize: CLType.bodySm,
         fontWeight: FontWeight.w600);
     return Container(
         padding: const EdgeInsets.all(3),

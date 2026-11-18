@@ -16,6 +16,7 @@ import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'package:chatterloop_app/views/communities/community_notifications_view.dart';
 import 'package:chatterloop_app/views/communities/community_requests_view.dart';
 import 'package:chatterloop_app/views/realm/realm_manage_view.dart';
+import 'package:chatterloop_app/views/realm/community_archive_view.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -428,6 +429,54 @@ void main() {
     expect(find.byType(CommunityRequestsView), findsOneWidget);
     expect(api.details, ['club']);
     expect(requestsRealmId, 'canonical-club');
+  });
+
+  testWidgets(
+      'community archive is directly accessible to archive delegates only',
+      (tester) async {
+    var canArchive = true;
+    final archiveRequests = <String>[];
+    final dio = ApiClient.userService.dio;
+    final interceptor = InterceptorsWrapper(onRequest: (request, handler) {
+      if (request.path.endsWith('/archive')) {
+        archiveRequests.add(request.path);
+        handler.resolve(Response(
+            requestOptions: request,
+            statusCode: 200,
+            data: {'count': 0, 'next': null, 'results': []}));
+        return;
+      }
+      handler.resolve(Response(requestOptions: request, statusCode: 200, data: {
+        'data': {
+          'id': 'club',
+          'name': 'Club',
+          'type': 'community',
+          'capabilities': {
+            'can_manage': true,
+            'can_archive_community_posts': canArchive
+          }
+        }
+      }));
+    });
+    dio.interceptors.insert(0, interceptor);
+    addTearDown(() => dio.interceptors.remove(interceptor));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const RealmManageScreen(slug: 'club')));
+    await tester.pumpAndSettle();
+    expect(find.text('Archived'), findsOneWidget);
+    expect(find.text('Media'), findsNothing);
+    await tester.tap(find.text('Archived'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CommunityArchiveView), findsOneWidget);
+    expect(archiveRequests, hasLength(1));
+    canArchive = false;
+    await tester.pumpWidget(MaterialApp(
+        theme: buildCLTheme(Brightness.light),
+        home: const RealmManageScreen(
+            key: ValueKey('no-archive'), slug: 'club')));
+    await tester.pumpAndSettle();
+    expect(find.text('Archived'), findsNothing);
   });
 
   testWidgets('moderator gets community Notifications tile and pages do not',

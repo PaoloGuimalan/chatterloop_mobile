@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -153,6 +154,11 @@ void main() {
     testWidgets(
         'approval filters fill each row and use web selections at $width',
         (tester) async {
+      final font = FontLoader('Inter');
+      for (final weight in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
+        font.addFont(rootBundle.load('assets/fonts/Inter-$weight.ttf'));
+      }
+      await font.load();
       await mount(
           tester,
           CommunityApprovalsView(

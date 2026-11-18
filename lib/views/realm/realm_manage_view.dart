@@ -44,6 +44,7 @@ import 'package:chatterloop_app/core/reusables/widgets/community_name.dart';
 import 'package:chatterloop_app/models/user_models/community_model.dart';
 import 'package:go_router/go_router.dart';
 import 'realm_permissions_view.dart';
+import 'community_archive_view.dart';
 import 'package:chatterloop_app/views/communities/community_approvals_view.dart';
 
 /// A realm's kind for the purposes of this screen.
@@ -316,8 +317,7 @@ class _RealmManageScreenState extends RealmPrivateState<RealmManageScreen> {
                             subtitle: 'Not available yet',
                             enabled: false,
                           ),
-                        if ((allows('can_update_media', realm.isAdmin) ||
-                                allows('can_archive_community_posts', false)) &&
+                        if (allows('can_update_media', realm.isAdmin) &&
                             realmHasMedia(realm))
                           _SectionTile(
                             icon: Icons.photo_library_outlined,
@@ -369,6 +369,17 @@ class _RealmManageScreenState extends RealmPrivateState<RealmManageScreen> {
                               onTap: () => Navigator.of(context).push(
                                   MaterialPageRoute(
                                       builder: (_) => CommunityApprovalsView(
+                                          realmId: realm.id)))),
+                        if (realm.type == 'community' &&
+                            allows('can_archive_community_posts', false))
+                          _SectionTile(
+                              icon: Icons.inventory_2_outlined,
+                              title: 'Archived',
+                              subtitle:
+                                  'View and restore the community’s archived posts',
+                              onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => CommunityArchiveView(
                                           realmId: realm.id)))),
                         if (realm.type == 'community' &&
                             (allows('can_manage_roles', false) ||
