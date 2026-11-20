@@ -69,7 +69,7 @@ void main() {
       await tester.pumpAndSettle();
       final description = find.text('Submit posts for review when required.');
       final text = tester.widget<Text>(description);
-      expect(text.style?.fontSize, CLType.bodySm);
+      expect(text.style?.fontSize, CLType.caption);
       expect(text.style?.color, cl(tester.element(description)).text2);
     });
   }
@@ -91,6 +91,8 @@ void main() {
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pump();
     expect(api.saves, isEmpty);
+    await tester.ensureVisible(find.text('Save permissions'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save permissions'));
     await tester.pumpAndSettle();
     expect(api.saves.single[2], ['realm.post.submit']);

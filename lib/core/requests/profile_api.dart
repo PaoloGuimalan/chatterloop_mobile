@@ -200,6 +200,7 @@ class ProfileApi {
       ({
         List<ServerChannel> channels,
         bool isAdmin,
+        bool canManage,
         bool canCreateChannel,
         bool hasAccess
       })> getServerChannelsRequest(String serverId) async {
@@ -210,6 +211,7 @@ class ProfileApi {
         return (
           channels: const <ServerChannel>[],
           isAdmin: false,
+          canManage: false,
           canCreateChannel: false,
           // A `status: false` body is the route's own error path, not a denial -
           // the denial is the 401 caught below.
@@ -237,12 +239,18 @@ class ProfileApi {
         return (
           channels: const <ServerChannel>[],
           isAdmin: false,
+          canManage: false,
           canCreateChannel: false,
           hasAccess: true
         );
       }
       final first = rows.first;
       final isAdmin = first is Map && first["is_admin"] == true;
+      final caps = first is Map ? first['capabilities'] : null;
+      final canManage = isAdmin ||
+          (caps is Map &&
+              (caps['can_manage_roles'] == true ||
+                  caps['can_manage_permissions'] == true));
       // The server's own answer to "may I create a channel here", computed
       // by the check /u/createchannel applies. Absent from an older server:
       // is_admin, which matches the default roles, stands in.
@@ -257,6 +265,7 @@ class ProfileApi {
         return (
           channels: const <ServerChannel>[],
           isAdmin: isAdmin,
+          canManage: canManage,
           canCreateChannel: canCreateChannel,
           hasAccess: true
         );
@@ -271,6 +280,7 @@ class ProfileApi {
                 ServerChannel.fromJson(Map<String, dynamic>.from(item)))
             .toList(),
         isAdmin: isAdmin,
+        canManage: canManage,
         canCreateChannel: canCreateChannel,
         hasAccess: true,
       );
@@ -285,6 +295,7 @@ class ProfileApi {
       return (
         channels: const <ServerChannel>[],
         isAdmin: false,
+        canManage: false,
         canCreateChannel: false,
         hasAccess: e.response?.statusCode != 401,
       );
@@ -296,6 +307,7 @@ class ProfileApi {
       return (
         channels: const <ServerChannel>[],
         isAdmin: false,
+        canManage: false,
         canCreateChannel: false,
         hasAccess: true
       );

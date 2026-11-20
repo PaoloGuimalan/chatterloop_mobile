@@ -79,7 +79,7 @@ Future<ConversationAction?> showConversationOptionsSheet(
       conversationType != "single" &&
       ((await ConversationsApi().getConversationInfoModelRequest(
                   conversationId, conversationType))
-              ?.isAdmin ??
+              ?.canManageRealm ??
           false);
   if (!context.mounted) return null;
 

@@ -10,6 +10,70 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  for (final members in [true, false]) {
+    testWidgets(
+        members
+            ? 'server removal-only manager cannot assign roles'
+            : 'page follower removal uses its own grant', (tester) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final userDio = ApiClient.userService.dio;
+      final mainDio = ApiClient.instance.dio;
+      final person = {
+        'id': 'other-person',
+        'type': 'user',
+        'details': {
+          'id': 'other-account',
+          'first_name': 'Maya',
+          'username': 'maya'
+        }
+      };
+      final interceptor = InterceptorsWrapper(onRequest: (request, handler) {
+        handler
+            .resolve(Response(requestOptions: request, statusCode: 200, data: {
+          'count': 1,
+          'next': null,
+          'results': [
+            {
+              'member_id': 'membership',
+              'follow_id': 'follow',
+              'realm': 'realm',
+              'role': 'member',
+              'role_id': 3,
+              'entity': person,
+              'follower': person
+            }
+          ]
+        }));
+      });
+      userDio.interceptors.insert(0, interceptor);
+      mainDio.interceptors.insert(0, interceptor);
+      addTearDown(() {
+        userDio.interceptors.remove(interceptor);
+        mainDio.interceptors.remove(interceptor);
+      });
+      await tester.pumpWidget(MaterialApp(
+          theme: buildCLTheme(Brightness.light),
+          home: RealmRosterScreen(
+              members: members,
+              realm: RealmProfile.fromJson({
+                'id': 'realm',
+                'name': 'Realm',
+                'type': members ? 'server' : 'page',
+                'my_role': 'member',
+                'capabilities': {
+                  'can_view_members': true,
+                  'can_remove_members': members,
+                  'can_assign_roles': false,
+                  'can_remove_followers': !members
+                }
+              }))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Options'));
+      await tester.pumpAndSettle();
+      expect(find.text('Assign different role'), findsNothing);
+      expect(find.text('Remove'), findsOneWidget);
+    });
+  }
   for (final width in [320.0, 390.0]) {
     for (final brightness in [Brightness.light, Brightness.dark]) {
       testWidgets(

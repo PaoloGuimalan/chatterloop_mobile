@@ -22,22 +22,19 @@ class ConversationInfoModel {
   /// Node group id (a 20-digit string), NOT the Django realm UUID, so it can
   /// never be matched against the realm list to infer this.
   bool isAdmin;
+  bool hasRoleManagement;
+  bool get canManageRealm => isAdmin || hasRoleManagement;
 
   /// The conversation payload nests this under `conversationInfo.privacy` - true
   /// means private. Drives the channel header icon (lock vs hash), the same
   /// distinction the channels list draws.
   bool isPrivate;
 
-  ConversationInfoModel(
-      this.contactID,
-      this.actionBy,
-      this.actionDate,
-      this.status,
-      this.users,
-      this.type,
-      this.usersWithInfo,
+  ConversationInfoModel(this.contactID, this.actionBy, this.actionDate,
+      this.status, this.users, this.type, this.usersWithInfo,
       {this.isArchived = false,
       this.isAdmin = false,
+      this.hasRoleManagement = false,
       this.isPrivate = false});
 
   /// The server can legitimately return an empty/near-empty object here -
@@ -72,6 +69,9 @@ class ConversationInfoModel {
                 json["chatHistory"]["isArchived"] == true) ||
             json["isArchived"] == true,
         isAdmin: json["is_admin"] == true,
+        hasRoleManagement: json['capabilities'] is Map &&
+            (json['capabilities']['can_manage_roles'] == true ||
+                json['capabilities']['can_manage_permissions'] == true),
         isPrivate: (json["conversationInfo"] is Map &&
                 json["conversationInfo"]["privacy"] == true) ||
             json["privacy"] == true);

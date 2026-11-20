@@ -51,7 +51,7 @@ class InvitesApi {
   /// none - or when this account may not see them, which is not an error
   /// worth showing.
   Future<List<RealmInvite>> pending(String realmId,
-      {String kind = 'invite'}) async {
+      {String kind = 'invite', bool throwOnError = false}) async {
     try {
       final response = await _dio.get(
         _endpoints.realmInvites,
@@ -62,12 +62,19 @@ class InvitesApi {
         },
       );
       final result = response.data is Map ? response.data['result'] : null;
+      if (throwOnError &&
+          (response.data is! Map ||
+              response.data['status'] == false ||
+              result is! List)) {
+        throw StateError('Could not load join requests.');
+      }
       if (result is! List) return const [];
       return result
           .whereType<Map>()
           .map((item) => RealmInvite.fromJson(Map<String, dynamic>.from(item)))
           .toList();
     } catch (e) {
+      if (throwOnError) rethrow;
       if (kDebugMode) print('pending invites failed: $e');
       return const [];
     }

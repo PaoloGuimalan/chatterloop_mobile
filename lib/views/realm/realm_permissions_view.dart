@@ -1,6 +1,7 @@
 import 'package:chatterloop_app/views/realm/realm_review_card.dart';
 import 'package:flutter/foundation.dart';
-import 'realm_text_dialog.dart';
+import 'realm_role_name_dialog.dart';
+import 'package:chatterloop_app/core/design/app_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:chatterloop_app/core/design/tokens.dart';
@@ -116,30 +117,34 @@ class _RealmPermissionsViewState
   }
 
   Future<void> _roleAction({RoleDefinition? role, bool remove = false}) async {
+    if (_saving) return;
     final ticket = await requestTicket(invalidate: false);
     if (!mounted) return;
     final value = remove
         ? await showDialog<String>(
             context: context,
-            builder: (ctx) => AlertDialog(
-                    title: const Text('Delete role?'),
-                    content: const Text(
-                        'Roles referenced by members or invitations cannot be deleted.'),
+            builder: (ctx) => AppDialog(
+                    title: 'Delete role?',
+                    description:
+                        'Roles referenced by members or invitations cannot be deleted.',
+                    icon: Icons.delete_outline,
+                    iconBesideTitle: true,
                     actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cancel')),
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, 'delete'),
-                          child: const Text('Delete'))
+                      AppDialogAction(
+                        label: 'Cancel',
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                      AppDialogAction(
+                        label: 'Delete',
+                        destructive: true,
+                        onPressed: () => Navigator.pop(ctx, 'delete'),
+                      )
                     ]))
         : await showDialog<String>(
             context: context,
-            builder: (_) => RealmTextDialog(
+            builder: (_) => RealmRoleNameDialog(
                 title: role == null ? 'Create role' : 'Rename role',
-                label: 'Role name',
-                initialValue: role?.name ?? '',
-                maxLength: 100));
+                initialValue: role?.name ?? ''));
     if (value == null || value.isEmpty || !await isCurrent(ticket)) return;
     setState(() => _saving = true);
     try {
@@ -169,112 +174,153 @@ class _RealmPermissionsViewState
             titleSpacing: 0,
             title: const Text('Permissions')),
         body: _loading
-            ? ListView(padding: const EdgeInsets.all(16), children: [
-                for (var i = 0; i < 4; i++)
-                  const RealmReviewCard(
-                      child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                CLSkeleton(width: 140, height: 16),
-                                SizedBox(height: 10),
-                                CLSkeleton(width: 210, height: 12),
-                              ])))
-              ])
-            : ListView(padding: const EdgeInsets.all(16), children: [
-                if (_failed)
-                  Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: CLBtn(label: 'Retry', onPressed: reloadPrivate)),
-                if (!_failed) ...[
-                  const Text('Roles and permissions',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 8),
-                  const Text(
-                      'The Owner always has all available permissions. Changes apply only to this realm.'),
-                  const SizedBox(height: 12),
-                  if (_data?.capabilities.allows('can_manage_roles') == true ||
-                      _roles.any((role) => role.editable))
-                    Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: CLBtn(
-                                label: 'Create role',
-                                onPressed:
-                                    _saving ? null : () => _roleAction()))),
-                  for (final role in _roles)
-                    RealmReviewCard(
-                        child: ExpansionTile(
-                            shape: const Border(),
-                            collapsedShape: const Border(),
-                            childrenPadding:
-                                const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                            title: Text(role.name,
-                                style: TextStyle(
-                                    color: p.text,
-                                    fontWeight: FontWeight.w600)),
-                            subtitle: role.code == 'owner' && role.isDefault
-                                ? const Text('Always allowed all permissions')
-                                : null,
-                            children: [
-                          if (role.code != 'owner')
-                            for (final entry
-                                in _data?.catalog ?? <RealmPermissionEntry>[])
-                              CheckboxListTile(
-                                  title: Text(entry.name),
-                                  subtitle: entry.description.isNotEmpty &&
-                                          entry.description != entry.name
-                                      ? Text(entry.description,
+            ? ListView(
+                padding: const EdgeInsets.all(CLSpacing.contentGutter),
+                children: [
+                    for (var i = 0; i < 4; i++)
+                      const _PermissionsCard(
+                          child: Padding(
+                              padding: EdgeInsets.all(14),
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    CLSkeleton(width: 140, height: 16),
+                                    SizedBox(height: 10),
+                                    CLSkeleton(width: 210, height: 12),
+                                  ])))
+                  ])
+            : ListView(
+                padding: const EdgeInsets.all(CLSpacing.contentGutter),
+                children: [
+                    if (_failed)
+                      Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child:
+                              CLBtn(label: 'Retry', onPressed: reloadPrivate)),
+                    if (!_failed) ...[
+                      const Text('Roles and permissions',
+                          style: TextStyle(
+                              fontSize: CLType.sectionTitle,
+                              fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Text(
+                          'The Owner always has all available permissions. Changes apply only to this realm.',
+                          style:
+                              TextStyle(fontSize: CLType.body, color: p.text2)),
+                      const SizedBox(height: 12),
+                      if (_data?.capabilities.allows('can_manage_roles') ==
+                              true ||
+                          _roles.any((role) => role.editable))
+                        Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: AppDialogAction(
+                                    label: 'Create role',
+                                    onPressed:
+                                        _saving ? null : () => _roleAction()))),
+                      for (final role in _roles)
+                        _PermissionsCard(
+                            child: ExpansionTile(
+                                shape: const Border(),
+                                collapsedShape: const Border(),
+                                tilePadding:
+                                    const EdgeInsets.symmetric(horizontal: 14),
+                                childrenPadding:
+                                    const EdgeInsets.only(bottom: 14),
+                                title: Text(role.name,
+                                    style: TextStyle(
+                                        color: p.text,
+                                        fontSize: CLType.title,
+                                        fontWeight: FontWeight.w600)),
+                                subtitle: role.code == 'owner' && role.isDefault
+                                    ? Text('Always allowed all permissions',
+                                        style: TextStyle(
+                                            fontSize: CLType.caption,
+                                            color: p.text2))
+                                    : null,
+                                children: [
+                              if (role.code != 'owner')
+                                for (final entry in _data?.catalog ??
+                                    <RealmPermissionEntry>[])
+                                  CheckboxListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 14),
+                                      controlAffinity:
+                                          ListTileControlAffinity.trailing,
+                                      title: Text(entry.name,
                                           style: TextStyle(
-                                              fontSize: CLType.bodySm,
-                                              color: p.text2))
-                                      : null,
-                                  value: _draft[role.id]!
-                                      .contains(entry.permission),
-                                  onChanged: !_saving &&
-                                          role.permissionsEditable &&
-                                          (entry.grantable ||
-                                              _draft[role.id]!
-                                                  .contains(entry.permission))
-                                      ? (value) => setState(() {
-                                            if (value == true) {
-                                              _draft[role.id]!
-                                                  .add(entry.permission);
-                                            } else {
-                                              _draft[role.id]!
-                                                  .remove(entry.permission);
-                                            }
-                                          })
-                                      : null),
-                          if (role.editable)
-                            Padding(
-                                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                                child: RealmReviewActions(children: [
-                                  TextButton(
-                                      onPressed: _saving
-                                          ? null
-                                          : () => _roleAction(role: role),
-                                      child: const Text('Rename')),
-                                  if (!role.isDefault)
-                                    TextButton(
+                                              fontSize: CLType.title,
+                                              fontWeight: FontWeight.w500,
+                                              color: p.text)),
+                                      subtitle: entry.description.isNotEmpty &&
+                                              entry.description != entry.name
+                                          ? Text(entry.description,
+                                              style: TextStyle(
+                                                  fontSize: CLType.caption,
+                                                  color: p.text2))
+                                          : null,
+                                      value: _draft[role.id]!
+                                          .contains(entry.permission),
+                                      onChanged: !_saving &&
+                                              role.permissionsEditable &&
+                                              (entry.grantable ||
+                                                  _draft[role.id]!.contains(
+                                                      entry.permission))
+                                          ? (value) => setState(() {
+                                                if (value == true) {
+                                                  _draft[role.id]!
+                                                      .add(entry.permission);
+                                                } else {
+                                                  _draft[role.id]!
+                                                      .remove(entry.permission);
+                                                }
+                                              })
+                                          : null),
+                              if (role.editable)
+                                Padding(
+                                    padding:
+                                        const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                                    child: RealmReviewActions(children: [
+                                      AppDialogAction(
+                                        label: 'Rename',
                                         onPressed: _saving
                                             ? null
-                                            : () => _roleAction(
-                                                role: role, remove: true),
-                                        child: const Text('Delete')),
-                                ])),
-                        ])),
-                  if (_data?.capabilities.allows('can_manage_permissions') ==
-                      true)
-                    Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: CLBtn(
-                            label: _saving ? 'Saving…' : 'Save permissions',
-                            onPressed: _saving ? null : _save)),
-                ]
-              ]));
+                                            : () => _roleAction(role: role),
+                                      ),
+                                      if (!role.isDefault)
+                                        AppDialogAction(
+                                          label: 'Delete',
+                                          destructive: true,
+                                          onPressed: _saving
+                                              ? null
+                                              : () => _roleAction(
+                                                  role: role, remove: true),
+                                        ),
+                                    ])),
+                            ])),
+                      if (_data?.capabilities
+                              .allows('can_manage_permissions') ==
+                          true)
+                        Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: AppDialogAction(
+                                primary: true,
+                                label: _saving ? 'Saving…' : 'Save permissions',
+                                onPressed: _saving ? null : _save)),
+                    ]
+                  ]));
   }
+}
+
+class _PermissionsCard extends StatelessWidget {
+  const _PermissionsCard({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: CLCard(
+          padding: EdgeInsets.zero,
+          child: Material(type: MaterialType.transparency, child: child)));
 }

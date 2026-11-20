@@ -75,7 +75,7 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
   /// cannot resolve a server (servers have no slug - `forManage: true` is what
   /// switches that lookup to realm_id), and my own member row does not say
   /// "admin" for an owner.
-  bool _isAdmin = false;
+  bool _canManage = false;
 
   /// Whether I may create channels here - the server's own permission answer
   /// (realm.channel.create), not inferred from the role, so an edited role
@@ -176,7 +176,7 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
     }
     setState(() {
       _channels = result.channels;
-      _isAdmin = result.isAdmin;
+      _canManage = result.canManage;
       _canCreateChannel = result.canCreateChannel;
       _hasAccess = result.hasAccess;
       _server = server;
@@ -407,7 +407,7 @@ class _ServerChannelsPaneState extends State<ServerChannelsPane> {
                   // but offering the entry means every non-admin who taps it
                   // gets a screen that can only fail - and Leave, the thing they
                   // actually want, sits right under it.
-                  if (_isAdmin)
+                  if (_canManage)
                     _menuItem(p, 'manage', Icons.tune, 'Manage server'),
                   // Above Leave, matching web's server info modal: Leave is the
                   // destructive one and stays last, so Report never sits where

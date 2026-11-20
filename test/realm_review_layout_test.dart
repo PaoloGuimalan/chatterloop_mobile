@@ -110,7 +110,7 @@ void main() {
         tester,
         RealmPermissionsView(realmId: 'club', api: permissions.RolesFixture()),
         390);
-    final create = tester.getRect(find.widgetWithText(CLBtn, 'Create role'));
+    final create = tester.getRect(find.widgetWithText(AppDialogAction, 'Create role'));
     final owner = tester.getRect(find
         .ancestor(of: find.text('Owner'), matching: find.byType(CLCard))
         .first);

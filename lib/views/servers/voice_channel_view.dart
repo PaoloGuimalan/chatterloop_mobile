@@ -520,7 +520,7 @@ class _VoiceChannelScreenState extends State<VoiceChannelScreen> {
                 // non-admin's edits, so the entry could only ever fail for them.
                 // This channel's own is_admin, not the server's - they are
                 // usually the same and the channel is the one being managed.
-                if (_info?.isAdmin ?? false)
+                if (_info?.canManageRealm ?? false)
                   _menuItem(p, 'manage', Icons.tune, 'Manage channel'),
                 // Private only - see _leaveChannel.
                 if (widget.isPrivate || (_info?.isPrivate ?? false))

@@ -120,9 +120,8 @@ class _ConversationTypingIndicator extends StatelessWidget {
           child: TypingIndicator(
             isTyping: isTyping,
             p: p,
-            faces: isTyping && facesFor != null
-                ? facesFor!(vm.typers)
-                : const [],
+            faces:
+                isTyping && facesFor != null ? facesFor!(vm.typers) : const [],
           ),
         );
       },
@@ -153,7 +152,11 @@ class _TypersVm {
 class ConversationView extends StatefulWidget {
   final String conversationId;
 
-  const ConversationView({super.key, required this.conversationId, this.initialSetup, this.setupRequest});
+  const ConversationView(
+      {super.key,
+      required this.conversationId,
+      this.initialSetup,
+      this.setupRequest});
   final Map<String, dynamic>? initialSetup;
   final Future<Map<String, dynamic>?>? setupRequest;
 
@@ -260,8 +263,9 @@ class ConversationStateView extends State<ConversationView> {
   /// this step first, that exact case left the screen spinning forever.
   Future<void> _startLoading() async {
     final setup = widget.initialSetup ??
-        await (widget.setupRequest ?? ConversationsApi()
-            .getConversationSetupRequest(widget.conversationId));
+        await (widget.setupRequest ??
+            ConversationsApi()
+                .getConversationSetupRequest(widget.conversationId));
     if (!mounted) return;
     if (setup == null) {
       setState(() {
@@ -482,7 +486,8 @@ class ConversationStateView extends State<ConversationView> {
   /// Whether to offer Manage: webapp's exact condition, `type !== "single" &&
   /// is_admin`, read from the same conversation info payload.
   bool get _canManageRealm =>
-      _conversationType != "single" && (conversationInfo?.isAdmin ?? false);
+      _conversationType != "single" &&
+      (conversationInfo?.canManageRealm ?? false);
 
   /// Pushes the info screen, handing it the model this screen already has.
   /// Identity comes from the same two getters the header uses, so the two
@@ -1564,9 +1569,7 @@ class ConversationStateView extends State<ConversationView> {
           }()
       ];
       return SeenFacesRow(
-          messageId: item.messageID,
-          faces: faces,
-          tracker: _seenFaceTracker);
+          messageId: item.messageID, faces: faces, tracker: _seenFaceTracker);
     }
 
     final info = conversationInfo;
@@ -1956,7 +1959,8 @@ class ConversationStateView extends State<ConversationView> {
         opacity: 0.6,
         child: bubble(Text("Message deleted",
             style: TextStyle(
-                fontSize: CLType.title, fontStyle: FontStyle.italic,
+                fontSize: CLType.title,
+                fontStyle: FontStyle.italic,
                 color: quotedMine ? Colors.white : p.text2))),
       );
     } else if (target.messageType == "text") {
@@ -1970,8 +1974,7 @@ class ConversationStateView extends State<ConversationView> {
             base: TextStyle(
                 fontSize: CLType.title,
                 color: quotedMine ? Colors.white : p.text),
-            mentionColor:
-                quotedMine ? Colors.white : CLAccent.textOf(context),
+            mentionColor: quotedMine ? Colors.white : CLAccent.textOf(context),
           ),
         )),
       );
@@ -2611,8 +2614,12 @@ class ConversationStateView extends State<ConversationView> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: isImage
-                ? CLNetworkImage(src: file.path, isLocal: true,
-                    width: 60, height: 60, fit: BoxFit.cover)
+                ? CLNetworkImage(
+                    src: file.path,
+                    isLocal: true,
+                    width: 60,
+                    height: 60,
+                    fit: BoxFit.cover)
                 : isVideo
                     ? Stack(
                         fit: StackFit.expand,
@@ -2630,9 +2637,9 @@ class ConversationStateView extends State<ConversationView> {
                         ],
                       )
                     : Center(
-                    child: Icon(Icons.insert_drive_file_outlined,
-                        color: Color(0xFF565656), size: 26),
-                  ),
+                        child: Icon(Icons.insert_drive_file_outlined,
+                            color: Color(0xFF565656), size: 26),
+                      ),
           ),
           Positioned(
             top: -6,
@@ -3242,9 +3249,12 @@ class ConversationStateView extends State<ConversationView> {
                                                       // Rows are keyed (see _rowKeyOf), so a row keeps its element - and
                                                       // its state - as newer rows push it up, and a pending send hands its
                                                       // row to the sent message instead of vanishing.
-                                                      findChildIndexCallback: _threadChildIndex,
-                                                      itemBuilder: (context, index) =>
-                                                          _threadRow(index, (() {
+                                                      findChildIndexCallback:
+                                                          _threadChildIndex,
+                                                      itemBuilder:
+                                                          (context, index) =>
+                                                              _threadRow(index,
+                                                                  (() {
                                                         if (index ==
                                                             combinedPendingAndMessagesList
                                                                     .length -
@@ -3310,10 +3320,8 @@ class ConversationStateView extends State<ConversationView> {
                                                                               true,
                                                                           // Only the sole loaded item
                                                                           // has nothing newer below it.
-                                                                          endsRun: endsSenderRun(
-                                                                                  (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent),
-                                                                                  index > 0 ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - index] : null) ||
-                                                                              _dividerAbove(index > 0 ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - index] : null),
+                                                                          endsRun:
+                                                                              endsSenderRun((combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent), index > 0 ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - index] : null) || _dividerAbove(index > 0 ? combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - index] : null),
                                                                           currentUserID: state
                                                                               .userAuth
                                                                               .user
@@ -3345,7 +3353,11 @@ class ConversationStateView extends State<ConversationView> {
                                                                             1 -
                                                                             index]
                                                                         is MessageContent)
-                                                                      _seenRow((combinedPendingAndMessagesList[combinedPendingAndMessagesList.length - 1 - index] as MessageContent), index,
+                                                                      _seenRow(
+                                                                          (combinedPendingAndMessagesList[combinedPendingAndMessagesList.length -
+                                                                              1 -
+                                                                              index] as MessageContent),
+                                                                          index,
                                                                           state.userAuth),
                                                                     if (index ==
                                                                         0)
@@ -3438,26 +3450,31 @@ class ConversationStateView extends State<ConversationView> {
                                                             // crosses it: the unread side opens with
                                                             // the name, the read side closes with
                                                             // the face.
-                                                            final startsRun =
-                                                                startsSenderRun(
-                                                                        contentItem,
-                                                                        combinedPendingAndMessagesList[
-                                                                            combinedPendingAndMessagesList.length -
-                                                                                2 -
-                                                                                index]) ||
-                                                                    _dividerAbove(contentItem);
+                                                            final startsRun = startsSenderRun(
+                                                                    contentItem,
+                                                                    combinedPendingAndMessagesList[
+                                                                        combinedPendingAndMessagesList.length -
+                                                                            2 -
+                                                                            index]) ||
+                                                                _dividerAbove(
+                                                                    contentItem);
 
                                                             // The item drawn just BELOW: one
                                                             // place later, or nothing for the
                                                             // newest (index 0).
-                                                            final newer = index > 0
+                                                            final newer = index >
+                                                                    0
                                                                 ? combinedPendingAndMessagesList[
-                                                                    combinedPendingAndMessagesList.length -
+                                                                    combinedPendingAndMessagesList
+                                                                            .length -
                                                                         index]
                                                                 : null;
                                                             final endsRun =
-                                                                endsSenderRun(contentItem, newer) ||
-                                                                    _dividerAbove(newer);
+                                                                endsSenderRun(
+                                                                        contentItem,
+                                                                        newer) ||
+                                                                    _dividerAbove(
+                                                                        newer);
 
                                                             return Column(
                                                               children: [
@@ -3493,7 +3510,11 @@ class ConversationStateView extends State<ConversationView> {
                                                                         }),
                                                                   ),
                                                                 ),
-                                                                _seenRow(contentItem, index, state.userAuth),
+                                                                _seenRow(
+                                                                    contentItem,
+                                                                    index,
+                                                                    state
+                                                                        .userAuth),
                                                                 index == 0
                                                                     ? const SizedBox
                                                                         .shrink()
@@ -3950,387 +3971,427 @@ class ConversationStateView extends State<ConversationView> {
                                   child: _mentionSuggestionList(p)),
                               TextFieldTapRegion(
                                 child: Container(
-                                decoration: BoxDecoration(
-                                  color: p.surface,
-                                  border: Border(
-                                    top: BorderSide(
-                                      width: 0.5,
-                                      color: p.border,
+                                  decoration: BoxDecoration(
+                                    color: p.surface,
+                                    border: Border(
+                                      top: BorderSide(
+                                        width: 0.5,
+                                        color: p.border,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                width: MediaQuery.of(context).size.width,
-                                // A floor, not a height: the field grows with
-                                // what is typed, and the bar with it.
-                                constraints:
-                                    const BoxConstraints(minHeight: 55),
-                                child: Padding(
-                                  padding: EdgeInsets.only(left: 5, right: 2),
-                                  child: Center(
-                                    child: Row(
-                                      // The buttons stay on the bottom line
-                                      // as the field grows upward.
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
-                                      children: [
-                                        AnimatedSize(
-                                          duration:
-                                              const Duration(milliseconds: 150),
-                                          curve: Curves.easeOut,
-                                          child: SizedBox(
-                                        height: 55,
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.center,
-                                          children: [
-                                            if (_composerCollapsed)
-                                              _composerExpandButton(p),
-                                            if (!_conversationReady) ...[
-                                              _controlSkeletonBox(),
-                                              _controlSkeletonBox(),
-                                              // The mic, which a loaded channel
-                                              // will not have - but until the
-                                              // type is known the composer shows
-                                              // the shape a conversation has.
-                                              _controlSkeletonBox(),
-                                            ],
-                                            if (_conversationReady &&
-                                                !_composerCollapsed)
-                                              ConstrainedBox(
-                                                constraints: BoxConstraints(
-                                                    maxWidth: 40,
-                                                    maxHeight: 40),
-                                                child: ElevatedButton(
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                            backgroundColor:
-                                                                Colors
-                                                                    .transparent,
-                                                            elevation: 0,
-                                                            padding:
-                                                                EdgeInsets.only(
-                                                                    top: 0,
-                                                                    bottom: 0,
-                                                                    left: 0,
-                                                                    right: 0)),
-                                                    onPressed: _pickFiles,
-                                                    child: Center(
-                                                      child: Icon(
-                                                        Icons
-                                                            .add_circle_rounded,
-                                                        color: _accentFor(p),
-                                                        size: 22,
-                                                      ),
-                                                    )),
+                                  width: MediaQuery.of(context).size.width,
+                                  // A floor, not a height: the field grows with
+                                  // what is typed, and the bar with it.
+                                  constraints:
+                                      const BoxConstraints(minHeight: 55),
+                                  child: Padding(
+                                    padding: EdgeInsets.only(left: 5, right: 2),
+                                    child: Center(
+                                      child: Row(
+                                        // The buttons stay on the bottom line
+                                        // as the field grows upward.
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          AnimatedSize(
+                                            duration: const Duration(
+                                                milliseconds: 150),
+                                            curve: Curves.easeOut,
+                                            child: SizedBox(
+                                              height: 55,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                children: [
+                                                  if (_composerCollapsed)
+                                                    _composerExpandButton(p),
+                                                  if (!_conversationReady) ...[
+                                                    _controlSkeletonBox(),
+                                                    _controlSkeletonBox(),
+                                                    // The mic, which a loaded channel
+                                                    // will not have - but until the
+                                                    // type is known the composer shows
+                                                    // the shape a conversation has.
+                                                    _controlSkeletonBox(),
+                                                  ],
+                                                  if (_conversationReady &&
+                                                      !_composerCollapsed)
+                                                    ConstrainedBox(
+                                                      constraints:
+                                                          BoxConstraints(
+                                                              maxWidth: 40,
+                                                              maxHeight: 40),
+                                                      child: ElevatedButton(
+                                                          style: ElevatedButton.styleFrom(
+                                                              backgroundColor:
+                                                                  Colors
+                                                                      .transparent,
+                                                              elevation: 0,
+                                                              padding: EdgeInsets
+                                                                  .only(
+                                                                      top: 0,
+                                                                      bottom: 0,
+                                                                      left: 0,
+                                                                      right:
+                                                                          0)),
+                                                          onPressed: _pickFiles,
+                                                          child: Center(
+                                                            child: Icon(
+                                                              Icons
+                                                                  .add_circle_rounded,
+                                                              color:
+                                                                  _accentFor(p),
+                                                              size: 22,
+                                                            ),
+                                                          )),
+                                                    ),
+                                                  if (_conversationReady &&
+                                                      !_composerCollapsed)
+                                                    ConstrainedBox(
+                                                      constraints:
+                                                          BoxConstraints(
+                                                              maxWidth: 40,
+                                                              maxHeight: 40),
+                                                      child: ElevatedButton(
+                                                          style: ElevatedButton.styleFrom(
+                                                              backgroundColor:
+                                                                  Colors
+                                                                      .transparent,
+                                                              elevation: 0,
+                                                              padding: EdgeInsets
+                                                                  .only(
+                                                                      top: 0,
+                                                                      bottom: 0,
+                                                                      left: 0,
+                                                                      right:
+                                                                          0)),
+                                                          onPressed:
+                                                              _pickImages,
+                                                          child: Center(
+                                                            child: Icon(
+                                                              Icons
+                                                                  .add_photo_alternate_rounded,
+                                                              color:
+                                                                  _accentFor(p),
+                                                              size: 24,
+                                                            ),
+                                                          )),
+                                                    ),
+                                                  if (_isRecordingVoice)
+                                                    ConstrainedBox(
+                                                      constraints:
+                                                          BoxConstraints(
+                                                              maxWidth: 40,
+                                                              maxHeight: 40),
+                                                      child: ElevatedButton(
+                                                          style: ElevatedButton.styleFrom(
+                                                              backgroundColor:
+                                                                  Colors
+                                                                      .transparent,
+                                                              elevation: 0,
+                                                              padding: EdgeInsets
+                                                                  .only(
+                                                                      top: 0,
+                                                                      bottom: 0,
+                                                                      left: 0,
+                                                                      right:
+                                                                          0)),
+                                                          onPressed:
+                                                              _cancelVoiceRecording,
+                                                          child: Center(
+                                                            child: Icon(
+                                                              Icons
+                                                                  .close_rounded,
+                                                              color:
+                                                                  CLColors.pink,
+                                                              size: 22,
+                                                            ),
+                                                          )),
+                                                    ),
+                                                  if (_showsVoiceNote &&
+                                                      !_composerCollapsed)
+                                                    ConstrainedBox(
+                                                      constraints:
+                                                          BoxConstraints(
+                                                              maxWidth: 40,
+                                                              maxHeight: 40),
+                                                      child: ElevatedButton(
+                                                          style: ElevatedButton.styleFrom(
+                                                              backgroundColor:
+                                                                  Colors
+                                                                      .transparent,
+                                                              elevation: 0,
+                                                              padding: EdgeInsets
+                                                                  .only(
+                                                                      top: 0,
+                                                                      bottom: 0,
+                                                                      left: 0,
+                                                                      right:
+                                                                          0)),
+                                                          onPressed: _isRecordingVoice
+                                                              ? () =>
+                                                                  _stopAndSendVoiceRecording(
+                                                                      state)
+                                                              : _startVoiceRecording,
+                                                          child: Center(
+                                                            child: Icon(
+                                                              _isRecordingVoice
+                                                                  ? Icons
+                                                                      .stop_circle
+                                                                  : Icons
+                                                                      .mic_none_rounded,
+                                                              color: _isRecordingVoice
+                                                                  ? CLColors
+                                                                      .pink
+                                                                  : _accentFor(
+                                                                      p),
+                                                              size: 24,
+                                                            ),
+                                                          )),
+                                                    )
+                                                ],
                                               ),
-                                            if (_conversationReady &&
-                                                !_composerCollapsed)
-                                              ConstrainedBox(
-                                                constraints: BoxConstraints(
-                                                    maxWidth: 40,
-                                                    maxHeight: 40),
-                                                child: ElevatedButton(
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                            backgroundColor:
-                                                                Colors
-                                                                    .transparent,
-                                                            elevation: 0,
-                                                            padding:
-                                                                EdgeInsets.only(
-                                                                    top: 0,
-                                                                    bottom: 0,
-                                                                    left: 0,
-                                                                    right: 0)),
-                                                    onPressed: _pickImages,
-                                                    child: Center(
-                                                      child: Icon(
-                                                        Icons
-                                                            .add_photo_alternate_rounded,
-                                                        color: _accentFor(p),
-                                                        size: 24,
-                                                      ),
-                                                    )),
-                                              ),
-                                            if (_isRecordingVoice)
-                                              ConstrainedBox(
-                                                constraints: BoxConstraints(
-                                                    maxWidth: 40,
-                                                    maxHeight: 40),
-                                                child: ElevatedButton(
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                            backgroundColor:
-                                                                Colors
-                                                                    .transparent,
-                                                            elevation: 0,
-                                                            padding:
-                                                                EdgeInsets.only(
-                                                                    top: 0,
-                                                                    bottom: 0,
-                                                                    left: 0,
-                                                                    right: 0)),
-                                                    onPressed:
-                                                        _cancelVoiceRecording,
-                                                    child: Center(
-                                                      child: Icon(
-                                                        Icons.close_rounded,
-                                                        color: CLColors.pink,
-                                                        size: 22,
-                                                      ),
-                                                    )),
-                                              ),
-                                            if (_showsVoiceNote &&
-                                                !_composerCollapsed)
-                                              ConstrainedBox(
-                                                constraints: BoxConstraints(
-                                                    maxWidth: 40,
-                                                    maxHeight: 40),
-                                                child: ElevatedButton(
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                            backgroundColor:
-                                                                Colors
-                                                                    .transparent,
-                                                            elevation: 0,
-                                                            padding:
-                                                                EdgeInsets.only(
-                                                                    top: 0,
-                                                                    bottom: 0,
-                                                                    left: 0,
-                                                                    right: 0)),
-                                                    onPressed: _isRecordingVoice
-                                                        ? () =>
-                                                            _stopAndSendVoiceRecording(
-                                                                state)
-                                                        : _startVoiceRecording,
-                                                    child: Center(
-                                                      child: Icon(
-                                                        _isRecordingVoice
-                                                            ? Icons.stop_circle
-                                                            : Icons
-                                                                .mic_none_rounded,
-                                                        color: _isRecordingVoice
-                                                            ? CLColors.pink
-                                                            : _accentFor(p),
-                                                        size: 24,
-                                                      ),
-                                                    )),
-                                              )
-                                          ],
-                                        ),
+                                            ),
                                           ),
-                                        ),
-                                        SizedBox(
-                                          width: 0,
-                                        ),
-                                        Expanded(
-                                            child: Padding(
-                                          // 3.5 vertically, not 5: one line of
-                                          // the field is the decorator's own
-                                          // 48, so the bar stays 55 tall.
-                                          padding: EdgeInsets.symmetric(
-                                              horizontal: 5, vertical: 3.5),
-                                          // A bar of the same height and corner
-                                          // radius as the input it stands in
-                                          // for. Rendering the real field
-                                          // disabled instead left the composer
-                                          // looking finished while everything
-                                          // around it was still arriving.
-                                          child: !_conversationReady
-                                              ? CLSkeleton(
-                                                  width: double.infinity,
-                                                  height: 48,
-                                                  borderRadius:
-                                                      BorderRadius.circular(10))
-                                              // No height of its own: the
-                                              // field sets it - 48 for one
-                                              // line, growing to five.
-                                              : Container(
-                                                  decoration: BoxDecoration(
-                                                      color: p.input,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              10)),
-                                                  child: TextField(
-                                                    controller: _controller,
-                                                    focusNode: _composerFocus,
-                                                    // Enter is a new line and
-                                                    // the button sends. Five
-                                                    // lines, then it scrolls -
-                                                    // the comment composer's
-                                                    // limit.
-                                                    minLines: 1,
-                                                    maxLines: 5,
-                                                    onChanged: (value) {
-                                                      if (!mounted) return;
-                                                      // Plain assignment, NOT setState:
-                                                      // messageValue is only read at send
-                                                      // time (the button's onPressed),
-                                                      // never during build/layout, so a
-                                                      // keystroke must not rebuild the
-                                                      // whole conversation tree - that was
-                                                      // the typing lag. isTypingTimeout
-                                                      // does its own throttled setState
-                                                      // (once per typing burst), which is
-                                                      // cheap and still needed.
-                                                      messageValue = value;
-                                                      // Same reasoning - drives a
-                                                      // ValueNotifier, so only the
-                                                      // suggestion overlay rebuilds.
-                                                      _refreshMentionSuggestions(
-                                                          value);
-                                                      _refreshCommandSuggestions(
-                                                          value);
-                                                      if (value.trim() != "" &&
-                                                          conversationInfo !=
-                                                              null) {
-                                                        isTypingTimeout(
-                                                            widget
-                                                                .conversationId,
-                                                            conversationInfo!
-                                                                .users
-                                                                .map((user) => user
-                                                                    .entityID
-                                                                    .toString())
-                                                                .toList());
-                                                      }
-                                                    },
-                                                    style: TextStyle(
-                                                        fontSize:
-                                                            CLType.caption,
-                                                        color: p.text),
-                                                    decoration: InputDecoration(
-                                                        contentPadding:
-                                                            EdgeInsets.only(
-                                                                top: 6,
-                                                                bottom: 6,
-                                                                left: 8,
-                                                                right: 8),
-                                                        hintText:
-                                                            'Write a message....',
-                                                        hintStyle: TextStyle(
-                                                            color: p.text3),
-                                                        border:
-                                                            InputBorder.none),
-                                                  ),
-                                                ),
-                                        )),
-                                        SizedBox(
-                                          width: 0,
-                                        ),
-                                        // A bar-high box, so the button sits
-                                        // on the bottom line like the ones on
-                                        // the left as the field grows.
-                                        SizedBox(
-                                          height: 55,
-                                          child: Center(
+                                          SizedBox(
+                                            width: 0,
+                                          ),
+                                          Expanded(
+                                              child: Padding(
+                                            // 3.5 vertically, not 5: one line of
+                                            // the field is the decorator's own
+                                            // 48, so the bar stays 55 tall.
+                                            padding: EdgeInsets.symmetric(
+                                                horizontal: 5, vertical: 3.5),
+                                            // A bar of the same height and corner
+                                            // radius as the input it stands in
+                                            // for. Rendering the real field
+                                            // disabled instead left the composer
+                                            // looking finished while everything
+                                            // around it was still arriving.
                                             child: !_conversationReady
-                                                ? _controlSkeletonBox()
-                                                : ConstrainedBox(
-                                            constraints: BoxConstraints(
-                                                maxWidth: 45, maxHeight: 40),
-                                            child: ElevatedButton(
-                                                key: ValueKey(
-                                                    "${combinedPendingAndMessagesList.length}_${pendingMessagesList.length}_${conversationContentList.length}"),
-                                                style: ElevatedButton.styleFrom(
-                                                    backgroundColor:
-                                                        Colors.transparent,
-                                                    elevation: 0,
-                                                    padding: EdgeInsets.only(
-                                                        top: 0,
-                                                        bottom: 0,
-                                                        left: 0,
-                                                        right: 0)),
-                                                onPressed: () {
-                                                  if (conversationInfo ==
-                                                      null) {
-                                                    return;
-                                                  }
-                                                  final hasText = messageValue
-                                                      .trim()
-                                                      .isNotEmpty;
-                                                  final hasFiles =
-                                                      _stagedFiles.isNotEmpty;
-                                                  if (!hasText && !hasFiles) {
-                                                    return;
-                                                  }
-
-                                                  // Captured before either send
-                                                  // call - sendMessageProcess
-                                                  // resets isReplying via
-                                                  // setState synchronously (the
-                                                  // part of an async function
-                                                  // before its first await runs
-                                                  // immediately), so reading
-                                                  // isReplying again afterward
-                                                  // for the files send would see
-                                                  // it already cleared.
-                                                  final wasReplying =
-                                                      isReplying.isReply;
-                                                  final replyingToId =
-                                                      isReplying.replyingTo;
-
-                                                  if (hasText) {
-                                                    sendMessageProcess(
-                                                        state.userAuth.user
-                                                            .entityId,
-                                                        widget.conversationId,
-                                                        conversationInfo!.users
-                                                            .map((user) =>
-                                                                user.entityID)
-                                                            .toList(),
-                                                        "text",
-                                                        conversationInfo?.type
-                                                            as String,
-                                                        messageValue,
-                                                        wasReplying,
-                                                        replyingToId);
-                                                  }
-                                                  if (hasFiles) {
-                                                    final filesToSend =
-                                                        _stagedFiles;
-                                                    setState(() =>
-                                                        _stagedFiles = []);
-                                                    sendFilesProcess(
-                                                        state.userAuth.user
-                                                            .entityId,
-                                                        widget.conversationId,
-                                                        conversationInfo?.type
-                                                            as String,
-                                                        filesToSend,
-                                                        wasReplying,
-                                                        replyingToId);
-                                                  }
-                                                  StoreProvider.of<AppState>(
-                                                          context)
-                                                      .dispatch(DispatchModel(
-                                                          setIsUsingReplyAssistT,
-                                                          false));
-                                                  StoreProvider.of<AppState>(
-                                                          context)
-                                                      .dispatch(DispatchModel(
-                                                          clearReplyAssistContextT,
-                                                          []));
-                                                },
-                                                child: Center(
-                                                  child: Icon(
-                                                    Icons.send_rounded,
-                                                    color:
-                                                        _accentFor(cl(context)),
-                                                    size: 24,
+                                                ? CLSkeleton(
+                                                    width: double.infinity,
+                                                    height: 48,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            10))
+                                                // No height of its own: the
+                                                // field sets it - 48 for one
+                                                // line, growing to five.
+                                                : Container(
+                                                    decoration: BoxDecoration(
+                                                        color: p.input,
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(10)),
+                                                    child: TextField(
+                                                      controller: _controller,
+                                                      focusNode: _composerFocus,
+                                                      // Enter is a new line and
+                                                      // the button sends. Five
+                                                      // lines, then it scrolls -
+                                                      // the comment composer's
+                                                      // limit.
+                                                      minLines: 1,
+                                                      maxLines: 5,
+                                                      onChanged: (value) {
+                                                        if (!mounted) return;
+                                                        // Plain assignment, NOT setState:
+                                                        // messageValue is only read at send
+                                                        // time (the button's onPressed),
+                                                        // never during build/layout, so a
+                                                        // keystroke must not rebuild the
+                                                        // whole conversation tree - that was
+                                                        // the typing lag. isTypingTimeout
+                                                        // does its own throttled setState
+                                                        // (once per typing burst), which is
+                                                        // cheap and still needed.
+                                                        messageValue = value;
+                                                        // Same reasoning - drives a
+                                                        // ValueNotifier, so only the
+                                                        // suggestion overlay rebuilds.
+                                                        _refreshMentionSuggestions(
+                                                            value);
+                                                        _refreshCommandSuggestions(
+                                                            value);
+                                                        if (value.trim() !=
+                                                                "" &&
+                                                            conversationInfo !=
+                                                                null) {
+                                                          isTypingTimeout(
+                                                              widget
+                                                                  .conversationId,
+                                                              conversationInfo!
+                                                                  .users
+                                                                  .map((user) => user
+                                                                      .entityID
+                                                                      .toString())
+                                                                  .toList());
+                                                        }
+                                                      },
+                                                      style: TextStyle(
+                                                          fontSize:
+                                                              CLType.caption,
+                                                          color: p.text),
+                                                      decoration: InputDecoration(
+                                                          contentPadding:
+                                                              EdgeInsets.only(
+                                                                  top: 6,
+                                                                  bottom: 6,
+                                                                  left: 8,
+                                                                  right: 8),
+                                                          hintText:
+                                                              'Write a message....',
+                                                          hintStyle: TextStyle(
+                                                              color: p.text3),
+                                                          border:
+                                                              InputBorder.none),
+                                                    ),
                                                   ),
-                                                )),
+                                          )),
+                                          SizedBox(
+                                            width: 0,
                                           ),
+                                          // A bar-high box, so the button sits
+                                          // on the bottom line like the ones on
+                                          // the left as the field grows.
+                                          SizedBox(
+                                            height: 55,
+                                            child: Center(
+                                              child: !_conversationReady
+                                                  ? _controlSkeletonBox()
+                                                  : ConstrainedBox(
+                                                      constraints:
+                                                          BoxConstraints(
+                                                              maxWidth: 45,
+                                                              maxHeight: 40),
+                                                      child: ElevatedButton(
+                                                          key: ValueKey(
+                                                              "${combinedPendingAndMessagesList.length}_${pendingMessagesList.length}_${conversationContentList.length}"),
+                                                          style: ElevatedButton.styleFrom(
+                                                              backgroundColor:
+                                                                  Colors
+                                                                      .transparent,
+                                                              elevation: 0,
+                                                              padding: EdgeInsets
+                                                                  .only(
+                                                                      top: 0,
+                                                                      bottom: 0,
+                                                                      left: 0,
+                                                                      right:
+                                                                          0)),
+                                                          onPressed: () {
+                                                            if (conversationInfo ==
+                                                                null) {
+                                                              return;
+                                                            }
+                                                            final hasText =
+                                                                messageValue
+                                                                    .trim()
+                                                                    .isNotEmpty;
+                                                            final hasFiles =
+                                                                _stagedFiles
+                                                                    .isNotEmpty;
+                                                            if (!hasText &&
+                                                                !hasFiles) {
+                                                              return;
+                                                            }
+
+                                                            // Captured before either send
+                                                            // call - sendMessageProcess
+                                                            // resets isReplying via
+                                                            // setState synchronously (the
+                                                            // part of an async function
+                                                            // before its first await runs
+                                                            // immediately), so reading
+                                                            // isReplying again afterward
+                                                            // for the files send would see
+                                                            // it already cleared.
+                                                            final wasReplying =
+                                                                isReplying
+                                                                    .isReply;
+                                                            final replyingToId =
+                                                                isReplying
+                                                                    .replyingTo;
+
+                                                            if (hasText) {
+                                                              sendMessageProcess(
+                                                                  state
+                                                                      .userAuth
+                                                                      .user
+                                                                      .entityId,
+                                                                  widget
+                                                                      .conversationId,
+                                                                  conversationInfo!
+                                                                      .users
+                                                                      .map((user) =>
+                                                                          user
+                                                                              .entityID)
+                                                                      .toList(),
+                                                                  "text",
+                                                                  conversationInfo
+                                                                          ?.type
+                                                                      as String,
+                                                                  messageValue,
+                                                                  wasReplying,
+                                                                  replyingToId);
+                                                            }
+                                                            if (hasFiles) {
+                                                              final filesToSend =
+                                                                  _stagedFiles;
+                                                              setState(() =>
+                                                                  _stagedFiles =
+                                                                      []);
+                                                              sendFilesProcess(
+                                                                  state
+                                                                      .userAuth
+                                                                      .user
+                                                                      .entityId,
+                                                                  widget
+                                                                      .conversationId,
+                                                                  conversationInfo
+                                                                          ?.type
+                                                                      as String,
+                                                                  filesToSend,
+                                                                  wasReplying,
+                                                                  replyingToId);
+                                                            }
+                                                            StoreProvider.of<
+                                                                        AppState>(
+                                                                    context)
+                                                                .dispatch(
+                                                                    DispatchModel(
+                                                                        setIsUsingReplyAssistT,
+                                                                        false));
+                                                            StoreProvider.of<
+                                                                        AppState>(
+                                                                    context)
+                                                                .dispatch(
+                                                                    DispatchModel(
+                                                                        clearReplyAssistContextT,
+                                                                        []));
+                                                          },
+                                                          child: Center(
+                                                            child: Icon(
+                                                              Icons
+                                                                  .send_rounded,
+                                                              color: _accentFor(
+                                                                  cl(context)),
+                                                              size: 24,
+                                                            ),
+                                                          )),
+                                                    ),
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
                               ),
                             ],
                           ),

@@ -83,16 +83,22 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   /// (see the NOTE in entity/permissions.py). Followers have no roles, so it
   /// only applies to the members list.
   bool get _viewerIsOwner => _realm.myRole == 'owner';
+  bool get _canTransferOwnership =>
+      _realm.capabilities.values.containsKey('can_transfer_ownership')
+          ? _realm.capabilities.allows('can_transfer_ownership')
+          : _viewerIsOwner;
 
   bool _canActOn(RealmPerson person) {
-    if (_realm.type == 'community' &&
-        (_realm.capabilities.values.isNotEmpty
-            ? !(_realm.capabilities.allows('can_assign_roles') ||
-                _realm.capabilities.allows('can_remove_members'))
-            : !_realm.isAdmin)) {
+    if (!widget.members) {
+      return _realm.capabilities.values.isEmpty ||
+          _realm.capabilities.allows('can_remove_followers');
+    }
+    if ((_realm.capabilities.values.isNotEmpty
+        ? !(_realm.capabilities.allows('can_assign_roles') ||
+            _realm.capabilities.allows('can_remove_members'))
+        : _realm.type == 'community' && !_realm.isAdmin)) {
       return false;
     }
-    if (!widget.members) return true;
     if (_viewerIsOwner) return true;
     return person.role != 'admin' && person.role != 'owner';
   }
@@ -181,7 +187,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
   }
 
   Future<void> _fetch(int page) async {
-    if (_realm.type == "community" &&
+    if (widget.members &&
         _realm.capabilities.values.isNotEmpty &&
         !_realm.capabilities.allows("can_view_members")) {
       setState(() {
@@ -536,8 +542,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                                   : null,
                               // Followers have no role to change.
                               onSetRole: widget.members &&
-                                      (_realm.type != "community" ||
-                                          _realm.capabilities.values.isEmpty ||
+                                      (_realm.capabilities.values.isEmpty ||
                                           _realm.capabilities
                                               .allows("can_assign_roles")) &&
                                       actionable &&
@@ -548,7 +553,7 @@ class _RealmRosterScreenState extends State<RealmRosterScreen> {
                               // already owns it.
                               onTransfer: widget.members &&
                                       !self &&
-                                      _viewerIsOwner &&
+                                      _canTransferOwnership &&
                                       person.role != 'owner' &&
                                       person.memberId.isNotEmpty
                                   ? () => _transferOwnership(person)

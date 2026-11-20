@@ -131,7 +131,7 @@ bool realmHasCoverPhoto(RealmProfile realm) =>
 /// section goes, not just the cover.
 bool realmHasMedia(RealmProfile realm) {
   final kind = realmFormKind(realm);
-  return kind != "channel" && kind != "voice";
+  return kind != "channel" && kind != "voice" && kind != 'conference';
 }
 
 /// Whether new members come from the PARENT SERVER rather than a global search.
@@ -222,7 +222,7 @@ class _RealmManageScreenState extends RealmPrivateState<RealmManageScreen> {
     final p = cl(context);
     final realm = _realm;
     bool allows(String key, bool fallback) =>
-        realm?.type == 'community' && realm!.capabilities.values.isNotEmpty
+        realm != null && realm.capabilities.values.isNotEmpty
             ? realm.capabilities.allows(key)
             : fallback;
 
@@ -338,7 +338,10 @@ class _RealmManageScreenState extends RealmPrivateState<RealmManageScreen> {
                                 realm.capabilities.values.isEmpty &&
                                 ['owner', 'admin', 'moderator']
                                     .contains(realm.myRole)) ||
-                            (realm.type == 'server' && realm.isAdmin))
+                            (['server', 'conference'].contains(realm.type) &&
+                                (allows('can_review_join_requests', realm.isAdmin) ||
+                                    allows('can_decline_join_requests',
+                                        realm.isAdmin))))
                           _SectionTile(
                               icon: Icons.person_add_alt,
                               title: 'Join requests',
@@ -346,7 +349,12 @@ class _RealmManageScreenState extends RealmPrivateState<RealmManageScreen> {
                               onTap: () => Navigator.of(context).push(
                                   MaterialPageRoute(
                                       builder: (_) => CommunityRequestsView(
-                                          realmId: realm.id)))),
+                                          realmId: realm.id,
+                                          canApprove: allows(
+                                              'can_review_join_requests', true),
+                                          canDecline: allows(
+                                              'can_decline_join_requests',
+                                              true))))),
                         if (realm.type == 'community' &&
                             allows('can_view_notifications', true))
                           _SectionTile(
@@ -381,9 +389,8 @@ class _RealmManageScreenState extends RealmPrivateState<RealmManageScreen> {
                                   MaterialPageRoute(
                                       builder: (_) => CommunityArchiveView(
                                           realmId: realm.id)))),
-                        if (realm.type == 'community' &&
-                            (allows('can_manage_roles', false) ||
-                                allows('can_manage_permissions', false)))
+                        if (allows('can_manage_roles', false) ||
+                            allows('can_manage_permissions', false))
                           _SectionTile(
                               icon: Icons.admin_panel_settings_outlined,
                               title: 'Permissions',

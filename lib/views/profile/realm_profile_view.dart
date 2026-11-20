@@ -633,6 +633,19 @@ class _RealmProfileScreenState extends State<RealmProfileScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (realm.capabilities.allows('can_manage') ||
+            realm.capabilities.allows('can_manage_roles') ||
+            realm.capabilities.allows('can_manage_permissions') ||
+            (realm.capabilities.values.isEmpty && realm.isAdmin)) ...[
+          CLBtn(
+              label: 'Manage realm',
+              iconL: Icons.tune,
+              variant: CLBtnVariant.outline,
+              block: true,
+              onPressed: () => context
+                  .push('/realm/${Uri.encodeComponent(realm.id)}/manage')),
+          const SizedBox(height: 8),
+        ],
         // FIRST, above Follow. Reaching a page is the thing most visitors come
         // for, and it is the one action that is always available - Follow and
         // the connection action both change meaning with state, this does not.
