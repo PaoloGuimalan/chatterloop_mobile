@@ -1,4 +1,6 @@
 import 'package:chatterloop_app/views/realm/realm_permissions_view.dart';
+import 'package:chatterloop_app/views/realm/realm_lifecycle_view.dart';
+import 'package:chatterloop_app/views/settings/deactivated_realms_view.dart';
 import 'package:chatterloop_app/views/communities/community_approvals_view.dart';
 import 'package:chatterloop_app/views/moderation/community_review_detail_view.dart';
 import 'package:chatterloop_app/models/user_models/realm_approval_model.dart';
@@ -424,6 +426,10 @@ GoRouter buildAppRouter(AuthController authController) {
               path: '/settings',
               pageBuilder: (c, s) => _clPage(s, const SettingsScreen())),
           GoRoute(
+            path: '/settings/realms/deactivated',
+            pageBuilder: (c, s) => _clPage(s, const DeactivatedRealmsView()),
+          ),
+          GoRoute(
               path: '/settings/device-sessions',
               pageBuilder: (c, s) => _clPage(s, const DeviceSessionsScreen())),
           GoRoute(
@@ -656,6 +662,10 @@ GoRouter buildAppRouter(AuthController authController) {
             pageBuilder: (c, s) =>
                 _clPage(s, RealmManageScreen(slug: s.pathParameters['slug']!)),
             routes: [
+              GoRoute(
+                  path: 'lifecycle',
+                  pageBuilder: (c, s) => _clPage(s,
+                      RealmLifecycleView(realmId: s.pathParameters['slug']!))),
               GoRoute(
                   path: 'permissions',
                   pageBuilder: (c, s) => _clPage(

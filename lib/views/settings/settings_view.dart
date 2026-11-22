@@ -47,6 +47,13 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = cl(context);
     final categories = [
+      _SettingsCategory('Realms', 'Manage realms you can restore', [
+        _SettingsItem(
+            Icons.restore,
+            'Deactivated Realms',
+            'Restore deactivated realms using an authorized profile',
+            () => context.push('/settings/realms/deactivated')),
+      ]),
       _SettingsCategory(
         "Account",
         "Review, update, and manage your account information",

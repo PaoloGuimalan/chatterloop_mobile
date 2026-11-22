@@ -23,30 +23,57 @@ Future<bool> showCLConfirm(
   required String title,
   required String message,
   String? confirmLabel,
+  String? confirmationName,
 }) async {
   final p = cl(context);
+  var entered = '';
   final answer = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: p.surface,
-      title: Text(title,
-          style: TextStyle(color: p.text, fontSize: CLType.screenTitle)),
-      content: Text(message,
-          style: TextStyle(color: p.text2, fontSize: CLType.body)),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: Text(confirmLabel == null ? 'Got it' : 'Cancel',
-              style: TextStyle(color: p.text2)),
-        ),
-        if (confirmLabel != null)
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: p.pink),
-            child: Text(confirmLabel),
-          ),
-      ],
-    ),
+    builder: (ctx) => StatefulBuilder(
+        builder: (ctx, update) => AlertDialog(
+              backgroundColor: p.surface,
+              title: Text(title,
+                  style:
+                      TextStyle(color: p.text, fontSize: CLType.screenTitle)),
+              content: confirmationName == null
+                  ? Text(message,
+                      style: TextStyle(color: p.text2, fontSize: CLType.body))
+                  : SingleChildScrollView(
+                      child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                          Text(message,
+                              style: TextStyle(
+                                  color: p.text2, fontSize: CLType.body)),
+                          const SizedBox(height: 16),
+                          TextField(
+                              onChanged: (value) =>
+                                  update(() => entered = value),
+                              autocorrect: false,
+                              decoration: InputDecoration(
+                                  labelText:
+                                      'Enter $confirmationName to confirm'),
+                              style: TextStyle(
+                                  color: p.text, fontSize: CLType.body)),
+                        ])),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(confirmLabel == null ? 'Got it' : 'Cancel',
+                      style: TextStyle(color: p.text2)),
+                ),
+                if (confirmLabel != null)
+                  TextButton(
+                    onPressed: confirmationName == null ||
+                            entered.trim() == confirmationName.trim()
+                        ? () => Navigator.pop(ctx, true)
+                        : null,
+                    style: TextButton.styleFrom(foregroundColor: p.pink),
+                    child: Text(confirmLabel),
+                  ),
+              ],
+            )),
   );
   return answer == true;
 }

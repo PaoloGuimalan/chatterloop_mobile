@@ -304,6 +304,7 @@ class SseEvents {
       case 'realm_requests_changed':
       case 'realm_members_changed':
       case 'realm_access_changed':
+      case 'realm_lifecycle_changed':
         communityChanges.value++;
         break;
       case "notifications":

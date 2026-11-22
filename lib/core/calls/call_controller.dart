@@ -41,6 +41,7 @@ import 'package:chatterloop_app/core/redux/store.dart';
 import 'package:chatterloop_app/core/redux/types.dart';
 import 'package:chatterloop_app/core/routes/app_router.dart';
 import 'package:chatterloop_app/core/requests/api_client.dart';
+import 'realm_call_lifecycle.dart';
 import 'package:chatterloop_app/core/requests/call_api.dart';
 import 'package:chatterloop_app/core/requests/sse_connection.dart';
 import 'package:chatterloop_app/core/requests/webrtc_api.dart';
@@ -1276,8 +1277,8 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
     _screenProducer = null;
     _screenAudioProducer?.close();
     _screenAudioProducer = null;
-    _pendingProduceTracks.removeWhere(
-        (t) => t.source == 'screen' || t.source == 'screen-audio');
+    _pendingProduceTracks
+        .removeWhere((t) => t.source == 'screen' || t.source == 'screen-audio');
     notifyListeners();
     for (final track in stream?.getTracks() ?? const <MediaStreamTrack>[]) {
       track.onEnded = null;
@@ -1735,6 +1736,25 @@ class CallController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     switch (event.event) {
+      case 'realm_lifecycle_changed':
+        if (!isGroup ||
+            status == CallEngineStatus.idle ||
+            data['auth'] != true ||
+            data['status'] != true) {
+          return;
+        }
+        final capturedConversation = conversationID;
+        final capturedClient = clientId;
+        if (capturedConversation == null) return;
+        unawaited(checkRealmCallLifecycle(
+          verify: () => verifyRealmConversation(_dio, capturedConversation),
+          isCurrent: () =>
+              conversationID == capturedConversation &&
+              clientId == capturedClient &&
+              status != CallEngineStatus.idle,
+          leave: leaveCall,
+        ));
+        return;
       case "join-room-response":
         final rawParticipants = data['participants'];
         final participants = rawParticipants is List
