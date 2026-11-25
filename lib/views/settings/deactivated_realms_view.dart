@@ -135,7 +135,8 @@ class _DeactivatedRealmsViewState
                                           fontSize: CLType.title,
                                           fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 4),
-                                  Text('${row.kind} · Deactivated',
+                                  Text(
+                                      '${row.kind.isEmpty ? '' : row.kind[0].toUpperCase() + row.kind.substring(1)} · Deactivated',
                                       style: TextStyle(
                                           color: p.text2,
                                           fontSize: CLType.caption)),

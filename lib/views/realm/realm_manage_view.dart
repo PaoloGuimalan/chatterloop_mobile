@@ -290,17 +290,6 @@ class _RealmManageScreenState extends RealmPrivateState<RealmManageScreen> {
                       children: [
                         _RealmHeader(realm: realm),
                         const SizedBox(height: 16),
-                        if (allows('can_deactivate_realm', false) ||
-                            allows('can_delete_realm', false))
-                          _SectionTile(
-                              icon: Icons.power_settings_new,
-                              title: 'Deactivation & deletion',
-                              subtitle:
-                                  'Deactivate or permanently delete this realm',
-                              onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                      builder: (_) => RealmLifecycleView(
-                                          realmId: realm.id)))),
                         if (allows('can_update_realm', realm.isAdmin))
                           _SectionTile(
                             icon: Icons.tune,
@@ -446,6 +435,17 @@ class _RealmManageScreenState extends RealmPrivateState<RealmManageScreen> {
                               ),
                             ),
                           ),
+                        if (allows('can_deactivate_realm', false) ||
+                            allows('can_delete_realm', false))
+                          _SectionTile(
+                              icon: Icons.power_settings_new,
+                              title: 'Deactivation & Deletion',
+                              subtitle:
+                                  'Deactivate or permanently delete this realm',
+                              onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => RealmLifecycleView(
+                                          realmId: realm.id)))),
                       ],
                     ),
     );

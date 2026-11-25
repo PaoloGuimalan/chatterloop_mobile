@@ -72,6 +72,7 @@ class _RealmLifecycleViewState extends RealmPrivateState<RealmLifecycleView> {
   Future<void> _submit(bool delete) async {
     final data = _data;
     if (data == null || _busy) return;
+    final realmId = widget.realmId;
     setState(() => _busy = true);
     try {
       final ticket = await requestTicket(invalidate: false);
@@ -91,21 +92,31 @@ class _RealmLifecycleViewState extends RealmPrivateState<RealmLifecycleView> {
       try {
         final api = widget.api ?? RealmLifecycleApi(authToken: ticket.token);
         if (delete) {
-          await api.delete(widget.realmId, data.name);
+          await api.delete(realmId, data.name);
         } else {
-          await api.deactivate(widget.realmId);
+          await api.deactivate(realmId);
         }
-        if (!await isCurrent(ticket)) return;
+        if (!await isCurrent(ticket, allowRefresh: true) ||
+            widget.realmId != realmId) {
+          return;
+        }
         CLAlerts.show(
             delete ? 'Deletion started.' : '${data.name} was deactivated.',
             type: CLAlertType.success);
         communityChanges.value++;
-        if (mounted)
-          context.go(data.returnServerId == null
+        if (mounted) {
+          final router = GoRouter.of(context);
+          // Manage Realm also pushes plain MaterialPageRoutes. Going to the
+          // current router location alone leaves those screens on top.
+          Navigator.of(context)
+              .popUntil((route) => route.settings is Page || route.isFirst);
+          router.go(data.returnServerId == null
               ? '/newsfeed'
               : '/server/${Uri.encodeComponent(data.returnServerId!)}');
+        }
       } catch (error) {
-        if (await isCurrent(ticket)) {
+        if (await isCurrent(ticket, allowRefresh: true) &&
+            widget.realmId == realmId) {
           CLAlerts.requestError(error, fallback: 'Could not update the realm.');
           setState(() => _busy = false);
           reloadPrivate();
@@ -147,7 +158,7 @@ class _RealmLifecycleViewState extends RealmPrivateState<RealmLifecycleView> {
         appBar: AppBar(
             leadingWidth: 48,
             titleSpacing: 0,
-            title: const Text('Deactivation & deletion')),
+            title: const Text('Deactivation & Deletion')),
         body: ListView(
             padding: const EdgeInsets.all(CLSpacing.contentGutter),
             children: [

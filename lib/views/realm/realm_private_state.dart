@@ -41,15 +41,18 @@ abstract class RealmPrivateState<T extends StatefulWidget> extends State<T>
     return RealmRequestTicket(generation, actor, token);
   }
 
-  Future<bool> isCurrent(RealmRequestTicket ticket) async {
+  // A completed mutation can survive a data refresh, but never an identity or
+  // token change. Read requests still require their original generation.
+  Future<bool> isCurrent(RealmRequestTicket ticket,
+      {bool allowRefresh = false}) async {
     if (!mounted ||
-        ticket.generation != _generation ||
+        (!allowRefresh && ticket.generation != _generation) ||
         ticket.identity != identity) {
       return false;
     }
     final token = await ApiClient.instance.readToken();
     return mounted &&
-        ticket.generation == _generation &&
+        (allowRefresh || ticket.generation == _generation) &&
         ticket.identity == identity &&
         ticket.token == token;
   }

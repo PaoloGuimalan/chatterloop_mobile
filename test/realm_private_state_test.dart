@@ -46,6 +46,19 @@ void main() {
     await state.requestTicket();
     expect(await state.isCurrent(reading), false);
     expect(await state.isCurrent(reviewing), false);
+    expect(await state.isCurrent(reviewing, allowRefresh: true), true);
+    expect(
+        await state.isCurrent(
+            RealmRequestTicket(
+                reviewing.generation, 'another identity', reviewing.token),
+            allowRefresh: true),
+        false);
+    expect(
+        await state.isCurrent(
+            RealmRequestTicket(
+                reviewing.generation, reviewing.identity, 'expired token'),
+            allowRefresh: true),
+        false);
   });
 
   testWidgets(
@@ -60,7 +73,7 @@ void main() {
     final state = key.currentState!;
     final ticket = await state.requestTicket();
     storage.pending = Completer<String?>();
-    final result = state.isCurrent(ticket);
+    final result = state.isCurrent(ticket, allowRefresh: true);
     await tester.pumpWidget(const SizedBox());
     storage.pending!.complete(null);
     expect(await result, false);
